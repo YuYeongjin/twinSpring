@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.SpotDAO">
+
+    <insert id="insertData" parameterType="yyj.project.twinspring.dto.SensorDTO">
+        INSERT INTO sensor_data (location, temperature, timestamp)
+        VALUES (#{location}, #{temperature}, #{timestamp})
+    </insert>
+</mapper>
