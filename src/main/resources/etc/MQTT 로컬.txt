@@ -1,0 +1,12 @@
+mqtt 연동하기
+
+구독하기
+mosquitto_sub -h localhost -t test/topic
+
+메시지 보내기
+mosquitto_pub -h localhost -t test/topic -m "gogo"
+mosquitto_pub -h localhost -t test/topic -m '{"location":"bridgeA","temperature":27,"timestamp":"2025-06-10T19:00:00"}'
+
+***********************
+cd Desktop/yeongjin
+mosquitto_pub -h localhost -t test/topic -f data.json 
