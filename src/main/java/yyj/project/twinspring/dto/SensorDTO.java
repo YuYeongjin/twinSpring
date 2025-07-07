@@ -1,9 +1,6 @@
 package yyj.project.twinspring.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
-import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Getter
@@ -22,6 +19,6 @@ public class SensorDTO {
 
     @Override
     public String toString(){
-        return "SensorDTO => " + "location : " + location + ", temperature : " + temperature + ", time: " + timestamp;
+        return "location : " + location + ", temperature : " + temperature + ", time: " + timestamp;
     };
 }

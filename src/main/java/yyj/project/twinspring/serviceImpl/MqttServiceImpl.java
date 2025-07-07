@@ -1,7 +1,6 @@
 package yyj.project.twinspring.serviceImpl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import yyj.project.twinspring.config.UnityWsPusher;
 import yyj.project.twinspring.dao.SpotDAO;
@@ -13,30 +12,26 @@ import java.time.LocalDateTime;
 @Service
 public class MqttServiceImpl implements MqttService {
 
-    private volatile SensorDTO latestData;
+    private static SensorDTO latestData = new SensorDTO();
 
-    @Autowired
     private final SpotDAO spotDAO;
-
     private final UnityWsPusher unityWsPusher;
 
-    public MqttServiceImpl(SpotDAO spotDAO, UnityWsPusher unityWsPusher) {
+    public MqttServiceImpl(
+            SpotDAO spotDAO,
+            UnityWsPusher unityWsPusher
+    ) {
         this.spotDAO = spotDAO;
         this.unityWsPusher = unityWsPusher;
     }
-//    private final UnityWebSocketHandler unityWebSocketHandler;
-//
-//    public MqttServiceImpl(UnityWebSocketHandler unityWebSocketHandler) {
-//        this.unityWebSocketHandler = unityWebSocketHandler;
-//    }
+
 
     @Override
     public void handleMessage(String payload) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             SensorDTO data = mapper.readValue(payload, SensorDTO.class);
-            this.latestData = data;
-            System.out.println("MQTT 수신 데이터: " + latestData);
+            System.out.println("MQTT 수신 데이터: " + data);
 
             spotDAO.insertData(data);
             unityWsPusher.send(payload);
