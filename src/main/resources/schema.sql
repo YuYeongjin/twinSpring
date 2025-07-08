@@ -1,4 +1,4 @@
-CREATE TABLE SENSOR_DATA (
+CREATE TABLE IF NOT EXISTS SENSOR_DATA (
                              id IDENTITY PRIMARY KEY,
                              location VARCHAR(100) NOT NULL,
                              temperature INT NOT NULL,
