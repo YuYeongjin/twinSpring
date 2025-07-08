@@ -15,7 +15,7 @@ public class PythonManager {
     public void startPythonServer() {
         try {
             ProcessBuilder pb = new ProcessBuilder("python", "detector_test.py");
-            pb.directory(new java.io.File("src/main/util"));
+            pb.directory(new java.io.File("src\\main\\java\\yyj\\project\\twinspring\\util"));
             pb.redirectErrorStream(true);
             pythonProcess = pb.start();
 

@@ -6,9 +6,9 @@ import jaydebeapi
 
 conn = jaydebeapi.connect(
     "org.h2.Driver",
-    "jdbc:h2:mem:testdb",  # 또는 file 경로
+    "jdbc:h2:file:D:/user/twinSpring/twinSpring/testdb",  # 또는 file 경로
     ["sa", ""],
-    "h2-2.2.224.jar"  # H2 JDBC 드라이버 경로
+    "D:/user/twinSpring/twinSpring/lib/h2-2.3.232.jar"  # H2 JDBC 드라이버 경로
 )
 cursor = conn.cursor()
 cursor.execute("SELECT location, temperature, timestamp FROM sensor_data ORDER BY id DESC LIMIT 100")
