@@ -10,7 +10,9 @@ import yyj.project.twinspring.dto.SensorDTO;
 import yyj.project.twinspring.service.MqttService;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -36,10 +38,38 @@ public class MqttServiceImpl implements MqttService {
             ObjectMapper mapper = new ObjectMapper();
             SensorDTO data = mapper.readValue(payload, SensorDTO.class);
             System.out.println("MQTT 수신 데이터: " + data);
-
+            List<Map<String,Object>> datas = new ArrayList<>();
+            datas = spotDAO.getAll();
             spotDAO.insertData(data);
-            System.out.println(check(data.toString()));
-            unityWsPusher.send(payload);
+
+
+
+            //
+            String current = data.toString();
+            List<String> history = datas.stream()
+                    .map(d ->
+                            "location : " + d.get("LOCATION") + ", temperature : " + d.get("TEMPERATURE") + ", time: " + d.get("TIMESTAMP")
+                    )
+                    .toList();
+            // Python API 호출
+            RestTemplate restTemplate = new RestTemplate();
+            Map<String, Object> request = new HashMap<>();
+            request.put("current", current);
+            request.put("history", history);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+
+            String url = "http://localhost:5005/similarity";
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
+
+            Map<String, Object> result = response.getBody();
+            System.out.println("이상기온 판단 결과: " + result);
+            //
+
+//            unityWsPusher.send(payload);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -50,34 +80,5 @@ public class MqttServiceImpl implements MqttService {
     public SensorDTO getLatest() {
         System.out.println("호출");
         return latestData != null ? latestData : new SensorDTO("unknown", 0, LocalDateTime.now().toString());
-    }
-
-
-    private final RestTemplate restTemplate = new RestTemplate();
-    public Object check(String text){
-        String url = "http://localhost:5005/similarity";
-
-        // Request body 구성
-        Map<String, String> request = new HashMap<>();
-        request.put("text", text);
-
-        // Header 설정
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        HttpEntity<Map<String, String>> entity = new HttpEntity<>(request, headers);
-
-        try {
-            ResponseEntity<Map> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    entity,
-                    Map.class
-            );
-            return response.getBody();  // {"similarity": 0.73, ...}
-        } catch (Exception e) {
-            e.printStackTrace();
-            return Map.of("error", "연결 실패");
-        }
     }
 }

@@ -35,7 +35,7 @@ public class UnityWsPusher  implements WebSocket.Listener{
         if (webSocket != null) {
             webSocket.sendText(payload, true);
         } else {
-            System.err.println("⚠️ WebSocket 연결이 아직 열리지 않았습니다.");
+            System.err.println("WebSocket 연결이 아직 열리지 않았습니다.");
         }
     }
 
@@ -51,7 +51,7 @@ public class UnityWsPusher  implements WebSocket.Listener{
     public CompletionStage<?> onText(WebSocket webSocket,
                                      CharSequence data,
                                      boolean last) {
-        System.out.println("📨 메시지 수신: " + data);
+        System.out.println("메시지 수신: " + data);
         webSocket.request(1);
         return null;
     }
