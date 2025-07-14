@@ -43,8 +43,20 @@ public class MqttServiceImpl implements MqttService {
             spotDAO.insertData(data);
 
             // 이상기후 탐지 후 Noti의 강도설정
+            RestTemplate restTemplate = new RestTemplate();
+            Map<String, Object> request = new HashMap<>();
+            request.put("temperature", data.getTemperature());
 
-            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+
+            String url = "http://localhost:5005/predict";
+            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
+
+            Map<String, Object> result = response.getBody();
+            System.out.println("이상기온 판단 결과: " + result);
 
 
             //
