@@ -42,9 +42,14 @@ public class MqttServiceImpl implements MqttService {
             datas = spotDAO.getAll();
             spotDAO.insertData(data);
 
+            // 이상기후 탐지 후 Noti의 강도설정
+
+            
 
 
             //
+            // python vector 유사도 검색 비활성
+            /*
             String current = data.toString();
             List<String> history = datas.stream()
                     .map(d ->
@@ -67,9 +72,11 @@ public class MqttServiceImpl implements MqttService {
 
             Map<String, Object> result = response.getBody();
             System.out.println("이상기온 판단 결과: " + result);
+
+             */
             //
 
-//            unityWsPusher.send(payload);
+            unityWsPusher.send(payload);
 
         } catch (Exception e) {
             e.printStackTrace();
