@@ -14,4 +14,4 @@ model.fit(df)
 
 # 3. 모델 저장
 joblib.dump(model, "model.pkl")
-print("✅ 모델 저장 완료 (model.pkl)")
+print("Create Model Complete (model.pkl)")
