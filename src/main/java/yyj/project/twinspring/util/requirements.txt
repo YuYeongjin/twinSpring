@@ -1,0 +1,5 @@
+Flask
+pymysql
+pandas
+scikit-learn
+joblib

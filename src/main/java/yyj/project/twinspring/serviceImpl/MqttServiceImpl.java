@@ -38,8 +38,6 @@ public class MqttServiceImpl implements MqttService {
             ObjectMapper mapper = new ObjectMapper();
             SensorDTO data = mapper.readValue(payload, SensorDTO.class);
             System.out.println("MQTT 수신 데이터: " + data);
-            List<Map<String,Object>> datas = new ArrayList<>();
-            datas = spotDAO.getAll();
             spotDAO.insertData(data);
 
             // 이상기후 탐지 후 Noti의 강도설정
@@ -52,7 +50,7 @@ public class MqttServiceImpl implements MqttService {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
 
-            String url = "http://localhost:5005/predict";
+            String url = "http://localhost:5000/predict";
             ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
 
             Map<String, Object> result = response.getBody();

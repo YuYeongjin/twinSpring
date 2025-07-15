@@ -9,7 +9,7 @@ while count < 20:
     # 1. 랜덤 JSON 생성
     payload = {
         "location": "bridgeA",
-        "temperature": random.randint(10, 40),
+        "temperature": random.randint(20, 30),
         "timestamp": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     }
 
