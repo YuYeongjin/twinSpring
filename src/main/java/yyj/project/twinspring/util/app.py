@@ -17,8 +17,9 @@ def predict():
 
     X = np.array([[temp]])
     result = model.predict(X)
-    score = model.decision_function(X)
-
+    # 검증 이론 : contamination 값을 기준으로 정상은 1 , 비정상은 -1 로 분리
+    score = model.decision_function(X) 
+    
     return jsonify({
         "anomaly": bool(result[0] == -1),
         "score": float(score[0])
