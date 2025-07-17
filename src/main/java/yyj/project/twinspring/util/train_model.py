@@ -9,7 +9,9 @@ df = pd.read_sql("SELECT temperature  FROM sensor_data", conn)
 conn.close()
 
 # 2. 모델 학습
-model = IsolationForest(n_estimators=100, contamination=0.1, random_state=42)
+# n => 트리의 개수 , contamination => 이상치의 기준
+# random_state => 검증의 무작위값으로 임의의 값이나 고정 필수
+model = IsolationForest(n_estimators=20, contamination=0.2, random_state=1)
 model.fit(df)
 
 # 3. 모델 저장
