@@ -1,6 +1,7 @@
 package yyj.project.twinspring.serviceImpl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -32,6 +33,9 @@ public class MqttServiceImpl implements MqttService {
     }
 
 
+    @Value("${openai.key}")
+    private String key;
+
     @Override
     public void handleMessage(String payload) {
         try {
@@ -48,13 +52,28 @@ public class MqttServiceImpl implements MqttService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+//            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+//
+//            String url = "http://localhost:5000/predict";
+//            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
+//
+//            Map<String, Object> result = response.getBody();
+//            System.out.println("이상기온 판단 결과: " + result);
 
-            String url = "http://localhost:5000/predict";
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
+            /*
+                챗봇 -> 랭체인으로
+             */
+            String prompt = "MQTT 수신 데이터: " + data;
+            Map<String,String> chatBody = new HashMap<>();
+            System.out.println(" 키 ?? " + key) ;
+            chatBody.put("prompt",prompt);
+            chatBody.put("api_key",key);
 
-            Map<String, Object> result = response.getBody();
-            System.out.println("이상기온 판단 결과: " + result);
+            String urls = "http://localhost:5001/chat";
+            ResponseEntity<Map> responses = restTemplate.postForEntity(urls, chatBody, Map.class);
+
+            Map<String, Object> results = responses.getBody();
+            System.out.println("챗봇 결과: " + results);
 
 
             //
