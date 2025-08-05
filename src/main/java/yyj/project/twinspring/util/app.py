@@ -7,6 +7,10 @@ app = Flask(__name__)
 # 모델 로딩
 model = joblib.load("model.pkl")
 
+
+
+
+
 @app.route("/predict", methods=["POST"])
 def predict():
     data = request.get_json()
