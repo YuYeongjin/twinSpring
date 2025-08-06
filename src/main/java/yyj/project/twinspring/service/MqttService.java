@@ -6,4 +6,6 @@ public interface MqttService {
 
     void handleMessage(String payload);
     SensorDTO getLatest();
+
+    Object test();
 }
