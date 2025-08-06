@@ -117,4 +117,19 @@ public class MqttServiceImpl implements MqttService {
         System.out.println("호출");
         return latestData != null ? latestData : new SensorDTO("unknown", 0, LocalDateTime.now().toString());
     }
+
+    @Override
+    public Object test() {
+        RestTemplate restTemplate = new RestTemplate();
+
+        Map<String,String> chatBody = new HashMap<>();
+        chatBody.put("query","bridgeA의 평균 기온?");
+
+        String urls = "http://localhost:5005/agent";
+        ResponseEntity<Map> responses = restTemplate.postForEntity(urls, chatBody, Map.class);
+
+        Map<String, Object> results = responses.getBody();
+        System.out.println("agent 결과: " + results);
+        return null;
+    }
 }

@@ -23,4 +23,9 @@ public class SensorController {
     public ResponseEntity<SensorDTO> getLatest() {
         return ResponseEntity.ok(mqttService.getLatest());
     }
+
+    @GetMapping("/test")
+    public ResponseEntity<?> test (){
+        return ResponseEntity.ok(mqttService.test());
+    }
 }

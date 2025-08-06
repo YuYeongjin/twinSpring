@@ -1,27 +1,45 @@
+
+import os
+
 from typing import TypedDict, Annotated, List, Optional
 from langchain_core.documents import Document
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel
+from langgraph.graph import StateGraph
 
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
 # State 정의
 class GraphState(TypedDict):
     input: str               # 사용자 질문
     retrieved: Optional[str] # DB 조회 결과
     response: Optional[str]    # 응답
 
-from IPython.display import Image,display
-def show_graph(graph):
-  try:
-    display( Image(graph.get_graph().draw_mermaid_png()))
+from sqlalchemy import create_engine
+from langchain_community.utilities import SQLDatabase
+# Database 연결
+db = SQLDatabase.from_uri("mysql+pymysql://root:Abcd1234@localhost:3306/digital_twin")
 
-  except Exception:
-    pass
+
+from langchain_openai import ChatOpenAI
+llm = ChatOpenAI(model="gpt-4.1-nano",temperature=0)
+
+from langchain_experimental.sql import SQLDatabaseChain
+
+db_chain = SQLDatabaseChain.from_llm(llm, db, verbose=True)
 
 # 1. DB에서 데이터 조회
 def retrieve_from_db(state: GraphState) -> GraphState:
     query = state["input"]
-    # DB에서 유사한 날짜/위치/온도 찾기
-    # 자연어 -> Query 자동화 개발예정
-    retrieved = query_db(query)  # 없으면 LLM
+    prompt = f"""
+    다음 질문을 기반으로 SQL을 생성해서 기온 데이터베이스에서 조회해줘:
+    "{query}"
+    결과는 사람이 읽을 수 있도록 문장으로 설명해줘.
+    결과가 정확하지 않거나 없다면 null로 return 해줘.
+    """
+
+    retrieved = db_chain.invoke(prompt)  # 없으면 LLM
     return {"input": state["input"], "retrieved": retrieved}
 
 # 2. LLM
@@ -58,4 +76,27 @@ builder.set_finish_point("use_retrieved")
 
 graph = builder.compile()
 
-# show_graph(graph)
+
+
+class QueryRequest(BaseModel):
+    query: str
+
+
+@app.route("/agent", methods=["POST"])
+def agent():
+    try:
+        data = request.get_json()
+        query = data.get("query")
+        result = graph.invoke({"input": query})
+
+        print("[Graph 결과]", result)
+
+        # 'response' 키가 실제 결과에 존재하는지 확인 필요
+        return jsonify({"response": result.get("response", "결과 없음")})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5005)

@@ -3,3 +3,8 @@ pymysql
 pandas
 scikit-learn
 joblib
+pymysql
+langchain
+langchain-openai
+langchain-community
+langchain-experimental
