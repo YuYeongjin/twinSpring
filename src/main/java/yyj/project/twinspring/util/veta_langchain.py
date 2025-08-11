@@ -1,13 +1,11 @@
-
-import os
-
 from typing import TypedDict, Annotated, List, Optional
 from langchain_core.documents import Document
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel
 from langgraph.graph import StateGraph
-
+from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
+from langchain_community.chat_models import ChatOllama
 
 app = Flask(__name__)
 # State 정의
@@ -16,6 +14,15 @@ class GraphState(TypedDict):
     retrieved: Optional[str] # DB 조회 결과
     response: Optional[str]    # 응답
 
+## 현재 시간 함수
+KST = timezone(timedelta(hours=9))
+
+def print_now(label):
+    now = datetime.now(KST)
+    print(f"[{label}] {now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")  # 밀리초까지
+    return now
+
+
 from sqlalchemy import create_engine
 from langchain_community.utilities import SQLDatabase
 # Database 연결
@@ -23,14 +30,19 @@ db = SQLDatabase.from_uri("mysql+pymysql://root:Abcd1234@localhost:3306/digital_
 
 
 from langchain_openai import ChatOpenAI
-llm = ChatOpenAI(model="gpt-4.1-nano",temperature=0)
-
+# llm = ChatOpenAI(model="gpt-4.1-nano",temperature=0)
+llm = ChatOllama(
+    model="llama3.1:8b",
+    temperature=0,
+    base_url="http://127.0.0.1:11434"
+)
 from langchain_experimental.sql import SQLDatabaseChain
 
 db_chain = SQLDatabaseChain.from_llm(llm, db, verbose=True,return_intermediate_steps=True)
 
 # 1. DB에서 데이터 조회
 def retrieve_from_db(state: GraphState) -> GraphState:
+    print(print_now("시작"))
     query = state["input"]
     prompt = f"""
     다음 질문을 기반으로 SQL을 생성해서 기온 데이터베이스에서 조회해줘:
@@ -40,13 +52,14 @@ def retrieve_from_db(state: GraphState) -> GraphState:
     """
 
     retrieved = db_chain.invoke(prompt)  # 없으면 LLM
-#    print("retrieved :" ,  retrieved["intermediate_steps"])
+   # print("retrieved :" ,  retrieved["intermediate_steps"])
     return {"input": state["input"], "retrieved": retrieved["intermediate_steps"][3]}
 
 # 2. LLM
 def run_llm(state: GraphState) -> GraphState:
         llm_input = state["input"]
         llm_result = llm.invoke(llm_input)
+        print(print_now("종료 llm"))
         return {"input": llm_input, "retrieved": state["retrieved"], "response": llm_result.content}
 
 
@@ -58,6 +71,7 @@ def return_retrieved(state: GraphState) -> GraphState:
         """
     result = llm.invoke(prompt)
     print("result :" ,  result.content)
+    print(print_now("종료 retrieve"))
     return {"response":result.content}
 
 def should_use_retrieved(state: GraphState) -> str:

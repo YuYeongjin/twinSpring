@@ -125,9 +125,10 @@ public class MqttServiceImpl implements MqttService {
         Map<String,String> chatBody = new HashMap<>();
         chatBody.put("query","bridgeA의 평균 기온?");
 
-        String urls = "http://localhost:5005/agent";
+        String urls = "http://127.0.0.1:5005/agent";
         ResponseEntity<Map> responses = restTemplate.postForEntity(urls, chatBody, Map.class);
 
+        System.out.println("responses : " + responses.toString());
         Map<String, Object> results = responses.getBody();
         System.out.println("agent 결과: " + results);
         return null;
