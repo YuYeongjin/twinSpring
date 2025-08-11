@@ -49,47 +49,43 @@ llm = ChatOllama(
 )
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
+# db_chain = SQLDatabaseChain.from_llm(llm, db, verbose=True,return_intermediate_steps=True)
+
 SQL_ONLY_PROMPT = PromptTemplate.from_template("""
-다음 질문을 기반으로 SQL을 생성해 :
-    "{query}"
-    이 location의 평균 기온을 측정하는 쿼리를 생성해
-    SELECT 문만 생성 (DDL/DML 금지)
-    sensor_data 테이블에서 조회해
-    절대로 (```),(**) 같은 코드 블록/펜스를 사용하지 말 것
-    기타 설명은 필요없고 SQL만 만들어
+너는 MySQL용 SQL을 '오직 SQL만' 생성한다. 규칙을 반드시 지켜라.
+- SELECT만 작성 (DDL/DML 금지)
+- 절대로 코드펜스(```)나 굵게(**) 같은 마크다운 금지
+- 존재하지 않는 컬럼 사용 금지
+- SQL만 출력, 설명 금지
+자연어 질문:
+"{question}"
 """)
 
 sql_gen_chain = LLMChain(llm=llm, prompt=SQL_ONLY_PROMPT)
 
-
-# from langchain_experimental.sql import SQLDatabaseChain
-# db_chain = SQLDatabaseChain.from_llm(llm, db, verbose=True,return_intermediate_steps=True)
-
 # 1. DB에서 데이터 조회
 def retrieve_from_db(state: GraphState) -> GraphState:
     print(print_now("시작"))
-    query = state["input"]
+    question = state["input"]
 
-    retrieved = sql_gen_chain.invoke(query)  # 없으면 LLM
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print(retrieved['text'])
-    result = strip_markdown_sql(retrieved['text'])
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print(result)
-    test = db.run(result);
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print( test)
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@" )
-   # print("retrieved :" ,  retrieved["intermediate_steps"])
-   #  return {"input": state["input"], "retrieved": strip_markdown_sql(retrieved["intermediate_steps"][3])}
-    return {"input": state["input"], "retrieved":test}
+
+    retrieved = sql_gen_chain.invoke(question)
+    print("CHECK@@@@@@@@",retrieved)
+    sql = strip_markdown_sql(retrieved['text'])
+    print("CHECK222222222222222",sql)
+
+    result= db.run(sql)
+    print("result ::::" , result)
+    # print("retrieved :" ,  retrieved["intermediate_steps"])
+    #  return {"input": state["input"], "retrieved": strip_markdown_sql(retrieved["intermediate_steps"][3])}
+    return {"input": state["input"], "retrieved": result}
 
 # 2. LLM
 def run_llm(state: GraphState) -> GraphState:
-        llm_input = state["input"]
-        llm_result = llm.invoke(llm_input)
-        print(print_now("종료 llm"))
-        return {"input": llm_input, "retrieved": state["retrieved"], "response": llm_result.content}
+    llm_input = state["input"]
+    llm_result = llm.invoke(llm_input)
+    print(print_now("종료 llm"))
+    return {"input": llm_input, "retrieved": state["retrieved"], "response": llm_result.content}
 
 
 # 3. DB 검색 결과 반환
