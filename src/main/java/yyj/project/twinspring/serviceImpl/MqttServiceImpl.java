@@ -33,9 +33,6 @@ public class MqttServiceImpl implements MqttService {
     }
 
 
-    @Value("${openai.key}")
-    private String key;
-
     @Override
     public void handleMessage(String payload) {
         try {
@@ -65,9 +62,8 @@ public class MqttServiceImpl implements MqttService {
              */
             String prompt = "MQTT 수신 데이터: " + data;
             Map<String,String> chatBody = new HashMap<>();
-            System.out.println(" 키 ?? " + key) ;
+
             chatBody.put("prompt",prompt);
-            chatBody.put("api_key",key);
 
             String urls = "http://localhost:5001/chat";
             ResponseEntity<Map> responses = restTemplate.postForEntity(urls, chatBody, Map.class);
@@ -123,7 +119,7 @@ public class MqttServiceImpl implements MqttService {
         RestTemplate restTemplate = new RestTemplate();
 
         Map<String,String> chatBody = new HashMap<>();
-        chatBody.put("query","bridgeA의 평균 기온?");
+        chatBody.put("query","location : bridgeA', 'temperature:30', 'timestamp : 2025-08-07T21:11:08, 이 값들이 이상기후인지 확인해줘");
 
         String urls = "http://127.0.0.1:5005/agent";
         ResponseEntity<Map> responses = restTemplate.postForEntity(urls, chatBody, Map.class);
