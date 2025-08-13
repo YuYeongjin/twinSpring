@@ -42,7 +42,8 @@ db = SQLDatabase.from_uri("mysql+pymysql://root:Abcd1234@localhost:3306/digital_
 from langchain_openai import ChatOpenAI
 # llm = ChatOpenAI(model="gpt-4.1-nano",temperature=0)
 llm = ChatOllama(
-    model="llama3.1:8b",
+    model="gpt-oss:20b",
+    # model="llama3.1:8b",
     # model="gemma:2b",
     temperature=0,
     base_url="http://127.0.0.1:11434"
