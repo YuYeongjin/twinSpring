@@ -1,6 +1,7 @@
 import time
 import json
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import adafruit_dht
 import board
@@ -23,7 +24,7 @@ try:
             payload = {
                 "temperature": round(float(temperature), 2),
                 "humidity": round(float(humidity), 2),
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(ZoneInfo("Asia/Seoul")).isoformat(),
                 "location": "bridgeA"
             }
             client.publish(MQTT_TOPIC, json.dumps(payload, ensure_ascii=False))

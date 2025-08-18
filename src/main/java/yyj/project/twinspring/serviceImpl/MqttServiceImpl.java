@@ -49,17 +49,6 @@ public class MqttServiceImpl implements MqttService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-//            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
-//
-//            String url = "http://localhost:5000/predict";
-//            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
-//
-//            Map<String, Object> result = response.getBody();
-//            System.out.println("이상기온 판단 결과: " + result);
-
-            /*
-                챗봇 -> 랭체인으로
-             */
             String prompt = "MQTT 수신 데이터: " + data;
             Map<String,String> chatBody = new HashMap<>();
 
@@ -70,36 +59,6 @@ public class MqttServiceImpl implements MqttService {
 
             Map<String, Object> results = responses.getBody();
             System.out.println("챗봇 결과: " + results);
-
-
-            //
-            // python vector 유사도 검색 비활성
-            /*
-            String current = data.toString();
-            List<String> history = datas.stream()
-                    .map(d ->
-                            "location : " + d.get("LOCATION") + ", temperature : " + d.get("TEMPERATURE") + ", time: " + d.get("TIMESTAMP")
-                    )
-                    .toList();
-            // Python API 호출
-            RestTemplate restTemplate = new RestTemplate();
-            Map<String, Object> request = new HashMap<>();
-            request.put("current", current);
-            request.put("history", history);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
-
-            String url = "http://localhost:5005/similarity";
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
-
-            Map<String, Object> result = response.getBody();
-            System.out.println("이상기온 판단 결과: " + result);
-
-             */
-            //
 
             unityWsPusher.send(payload);
 
