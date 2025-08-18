@@ -43,9 +43,9 @@ from langchain_openai import ChatOpenAI
 # llm = ChatOpenAI(model="gpt-4.1-nano",temperature=0)
 llm = ChatOllama(
     # model="gpt-oss:20b",
-    # model="llama3.1:8b",
+    model="llama3.1:8b",
     # model="gemma:2b",
-    model="mistral:7b",
+    # model="mistral:7b",
     temperature=0,
     base_url="http://127.0.0.1:11434"
 )
@@ -55,6 +55,7 @@ SQL_ONLY_PROMPT = PromptTemplate.from_template("""
 다음 질문을 기반으로 SQL을 생성해 :
     "{query}"
     이 location의 평균 기온을 측정하는 쿼리를 생성해
+    실제로 Database에 Select 할거니까, 기타 설명은 하지마
     SELECT 문만 생성 (DDL/DML 금지)
     sensor_data 테이블에서 조회해
     절대로 (```),(**) 같은 코드 블록/펜스를 사용하지 말 것

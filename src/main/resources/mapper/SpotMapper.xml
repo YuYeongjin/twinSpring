@@ -4,8 +4,8 @@
 <mapper namespace="yyj.project.twinspring.dao.SpotDAO">
 
     <insert id="insertData" parameterType="yyj.project.twinspring.dto.SensorDTO">
-        INSERT INTO SENSOR_DATA (location, temperature, timestamp)
-        VALUES (#{location}, #{temperature}, #{timestamp})
+        INSERT INTO SENSOR_DATA (location, temperature, timestamp,humidity)
+        VALUES (#{location}, #{temperature}, #{timestamp},#{humidity})
     </insert>
 
     <select id="getAll">

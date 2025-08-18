@@ -111,7 +111,7 @@ public class MqttServiceImpl implements MqttService {
     @Override
     public SensorDTO getLatest() {
         System.out.println("호출");
-        return latestData != null ? latestData : new SensorDTO("unknown", 0, LocalDateTime.now().toString());
+        return latestData != null ? latestData : new SensorDTO("unknown", 0, LocalDateTime.now().toString(),0);
     }
 
     @Override
