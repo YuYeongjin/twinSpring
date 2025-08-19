@@ -49,12 +49,14 @@ public class MqttServiceImpl implements MqttService {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            String prompt = "MQTT 수신 데이터: " + data;
+            String prompt = data.toString();
             Map<String,String> chatBody = new HashMap<>();
 
-            chatBody.put("prompt",prompt);
+            chatBody.put("data",prompt);
+            chatBody.put("prompt","현재 지역의 평균 대비 이상 기후인지 확인해줘");
 
-            String urls = "http://localhost:5001/chat";
+
+            String urls = "http://localhost:5005/agent";
             ResponseEntity<Map> responses = restTemplate.postForEntity(urls, chatBody, Map.class);
 
             Map<String, Object> results = responses.getBody();
