@@ -20,7 +20,8 @@ def strip_markdown_sql(s: str) -> str:
 app = Flask(__name__)
 # State 정의
 class GraphState(TypedDict):
-    input: str               # 사용자 질문
+    input: str               # 사용자
+    data: str
     retrieved: Optional[str] # DB 조회 결과
     response: Optional[str]    # 응답
 
@@ -51,16 +52,20 @@ llm = ChatOllama(
 )
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
-SQL_ONLY_PROMPT = PromptTemplate.from_template("""
-다음 질문을 기반으로 SQL을 생성해 :
-    "{query}"
-    이 location의 평균 기온을 측정하는 쿼리를 생성해
-    실제로 Database에 Select 할거니까, 기타 설명은 하지마
-    SELECT 문만 생성 (DDL/DML 금지)
-    sensor_data 테이블에서 조회해
-    절대로 (```),(**) 같은 코드 블록/펜스를 사용하지 말 것
-    기타 설명은 필요없고 SQL만 만들어
-""")
+# SQL_ONLY_PROMPT = PromptTemplate.from_template("""
+# 다음 질문을 기반으로 SQL을 생성해 :
+#     "{query}"
+#     이 location의 평균 기온을 측정하는 쿼리를 생성해
+#     실제로 Database에 Select 할거니까, 기타 설명은 하지마
+#     SELECT 문만 생성 (DDL/DML 금지)
+#     sensor_data 테이블에서 조회해
+#     절대로 (```),(**) 같은 코드 블록/펜스를 사용하지 말 것
+#     기타 설명은 필요없고 SQL만 만들어
+# """)
+SQL_ONLY_PROMPT = PromptTemplate.from_template(f"""
+            현재 센서 데이터의 정보를 보내줬을 때 데이터베이스에서 평균 값을 조회해서, 이상 기후인지 확인해줘
+            만약 질문이 센서 데이터가 아닌 다른 질문이 왔다면, 그 질문의 답변을 해줘.
+            """)
 
 sql_gen_chain = LLMChain(llm=llm, prompt=SQL_ONLY_PROMPT)
 
@@ -71,17 +76,17 @@ sql_gen_chain = LLMChain(llm=llm, prompt=SQL_ONLY_PROMPT)
 # 1. DB에서 데이터 조회
 def retrieve_from_db(state: GraphState) -> GraphState:
     print(print_now("시작"))
-    query = state["input"]
+    query = state["data"] + state["input"]
 
     retrieved = sql_gen_chain.invoke(query)  # 없으면 LLM
     print("@@@@@@@@@@@@@@@@@@@@@@@@@")
     print(retrieved['text'])
-    result = strip_markdown_sql(retrieved['text'])
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print(result)
-    test = db.run(result);
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print( test)
+    # result = strip_markdown_sql(retrieved['text'])
+    # print("@@@@@@@@@@@@@@@@@@@@@@@@@")
+    # print(result)
+    # test = db.run(result);
+    # print("@@@@@@@@@@@@@@@@@@@@@@@@@")
+    # print( test)
     print("@@@@@@@@@@@@@@@@@@@@@@@@@" )
    # print("retrieved :" ,  retrieved["intermediate_steps"])
    #  return {"input": state["input"], "retrieved": strip_markdown_sql(retrieved["intermediate_steps"][3])}
@@ -98,7 +103,7 @@ def run_llm(state: GraphState) -> GraphState:
 # 3. DB 검색 결과 반환
 def return_retrieved(state: GraphState) -> GraphState:
     prompt = f"""
-        다음 숫자값은 해당 위치에 Database의 평균값인데, 현재 온도가 30도라면 , 이 온도는 이상기온인지 확인해줘
+        다음 숫자값은 해당 위치에 Database의 평균값인데, 현재 센서 데이터의 정보가 "{state["data"]}" 일 때, 이상 기후인지 확인해줘
         만약 질문이 숫자가 아닌 다른 값이 왔다면, 그 질문의 답변을 해줘.
         "{state["retrieved"]}"
         """
@@ -143,8 +148,12 @@ class QueryRequest(BaseModel):
 def agent():
     try:
         data = request.get_json()
+        raw_data= data.get("data")
         query = data.get("query")
-        result = graph.invoke({"input": query})
+        result = graph.invoke({
+            "input": query,
+            "data": raw_data
+        })
 
         print("[Graph 결과]", result)
 
