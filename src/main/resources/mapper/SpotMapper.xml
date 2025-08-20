@@ -11,4 +11,14 @@
     <select id="getAll">
         SELECT * FROM SENSOR_DATA LIMIT 100
     </select>
+
+    <select id="getAvgData" parameterType="map" resultType="map">
+        SELECT
+            COALESCE(AVG(temperature)) AS temperature,
+            COALESCE(AVG(humidity))    AS humidity
+        FROM sensor_data
+        WHERE location = #{location}
+          AND `timestamp` >= #{start_time}
+</select>
+
 </mapper>
