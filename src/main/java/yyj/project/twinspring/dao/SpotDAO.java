@@ -12,4 +12,7 @@ public interface SpotDAO {
     void insertData(SensorDTO data);
 
     List<Map<String, Object>> getAll();
+
+
+    Map<String,String> getAvgData(String location, String start_time);
 }

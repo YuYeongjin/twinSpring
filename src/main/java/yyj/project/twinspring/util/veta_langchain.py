@@ -1,14 +1,46 @@
-from typing import TypedDict, Annotated, List, Optional
-from langchain_core.documents import Document
-from langgraph.graph.message import add_messages
-from pydantic import BaseModel
+from typing import TypedDict, Optional
 from langgraph.graph import StateGraph
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
 from langchain_community.chat_models import ChatOllama
+from langchain_community.utilities import SQLDatabase
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
+import re, traceback, json  # ← json 추가
 
-#모델이 낮아서 '''가생기는경우
-import re, traceback
+app = Flask(__name__)
+
+# State 정의
+class GraphState(TypedDict):
+    input: str                # 사용자 프롬프트/질문
+    data: dict                # 센서 데이터
+    retrieved: Optional[str]  # DB/LLM 중간 결과
+    response: Optional[str]   # 최종 응답
+
+# 시간
+KST = timezone(timedelta(hours=9))
+def print_now(label):
+    now = datetime.now(KST)
+    print(f"[{label}] {now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")
+    return now
+
+# DB & LLM
+db = SQLDatabase.from_uri("mysql+pymysql://root:Abcd1234@localhost:3306/digital_twin")
+llm = ChatOllama(
+    # model="llama3.1:8b",
+    model="gemma:2b",
+    temperature=0,
+    base_url="http://127.0.0.1:11434"
+)
+
+SQL_ONLY_PROMPT = PromptTemplate.from_template("""
+데이터베이스에서 해당 위치의 평균 온도와 비교할거야.
+데이터베이스에서 해당 위치의 평균 온도 및 습도를 조회해.
+{query}
+""".strip())
+sql_gen_chain = LLMChain(llm=llm, prompt=SQL_ONLY_PROMPT)
+
+# 유틸
 def strip_markdown_sql(s: str) -> str:
     if not s:
         return ""
@@ -17,148 +49,110 @@ def strip_markdown_sql(s: str) -> str:
     s = s.replace("**", "")
     return s.strip().rstrip(";")
 
-app = Flask(__name__)
-# State 정의
-class GraphState(TypedDict):
-    input: str               # 사용자
-    data: str
-    retrieved: Optional[str] # DB 조회 결과
-    response: Optional[str]    # 응답
+def to_text(x):
+    if x is None:
+        return ""
+    if isinstance(x, (dict, list)):
+        try:
+            return json.dumps(x, ensure_ascii=False)
+        except Exception:
+            return str(x)
+    return str(x)
 
-## 현재 시간 함수
-KST = timezone(timedelta(hours=9))
-
-def print_now(label):
-    now = datetime.now(KST)
-    print(f"[{label}] {now.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}")  # 밀리세컨드까지
-    return now
-
-
-from sqlalchemy import create_engine
-from langchain_community.utilities import SQLDatabase
-# Database 연결
-db = SQLDatabase.from_uri("mysql+pymysql://root:Abcd1234@localhost:3306/digital_twin")
-
-
-from langchain_openai import ChatOpenAI
-# llm = ChatOpenAI(model="gpt-4.1-nano",temperature=0)
-llm = ChatOllama(
-    # model="gpt-oss:20b",
-    model="llama3.1:8b",
-    # model="gemma:2b",
-    # model="mistral:7b",
-    temperature=0,
-    base_url="http://127.0.0.1:11434"
-)
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-# SQL_ONLY_PROMPT = PromptTemplate.from_template("""
-# 다음 질문을 기반으로 SQL을 생성해 :
-#     "{query}"
-#     이 location의 평균 기온을 측정하는 쿼리를 생성해
-#     실제로 Database에 Select 할거니까, 기타 설명은 하지마
-#     SELECT 문만 생성 (DDL/DML 금지)
-#     sensor_data 테이블에서 조회해
-#     절대로 (```),(**) 같은 코드 블록/펜스를 사용하지 말 것
-#     기타 설명은 필요없고 SQL만 만들어
-# """)
-SQL_ONLY_PROMPT = PromptTemplate.from_template(f"""
-            현재 센서 데이터의 정보를 보내줬을 때 데이터베이스에서 평균 값을 조회해서, 이상 기후인지 확인해줘
-            만약 질문이 센서 데이터가 아닌 다른 질문이 왔다면, 그 질문의 답변을 해줘.
-            """)
-
-sql_gen_chain = LLMChain(llm=llm, prompt=SQL_ONLY_PROMPT)
+def build_query_text(data: dict, user_input: str) -> str:
+    if not isinstance(data, dict):
+        data = {"raw": to_text(data)}
+    parts = []
+    for k in ("location", "temperature", "humidity", "time"):
+        if k in data:
+            parts.append(f"{k}={data[k]}")
+    data_line = ", ".join(parts) if parts else to_text(data)
+    ui = to_text(user_input)
+    return f"센서데이터: {data_line}\n요청: {ui}".strip()
 
 
-# from langchain_experimental.sql import SQLDatabaseChain
-# db_chain = SQLDatabaseChain.from_llm(llm, db, verbose=True,return_intermediate_steps=True)
-
-# 1. DB에서 데이터 조회
 def retrieve_from_db(state: GraphState) -> GraphState:
-    print(print_now("시작"))
-    query = state["data"] + state["input"]
+    print_now("시작 retrieve")
+    # Dick Data , Prompt 결합한 Query
+    query_text = build_query_text(state["data"], state["input"])
 
-    retrieved = sql_gen_chain.invoke(query)  # 없으면 LLM
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-    print(retrieved['text'])
-    # result = strip_markdown_sql(retrieved['text'])
-    # print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-    # print(result)
-    # test = db.run(result);
-    # print("@@@@@@@@@@@@@@@@@@@@@@@@@")
-    # print( test)
-    print("@@@@@@@@@@@@@@@@@@@@@@@@@" )
-   # print("retrieved :" ,  retrieved["intermediate_steps"])
-   #  return {"input": state["input"], "retrieved": strip_markdown_sql(retrieved["intermediate_steps"][3])}
-    return {"input": state["input"], "retrieved":test}
+    retrieved = sql_gen_chain.invoke({"query": query_text})
+    text = retrieved.get("text", to_text(retrieved))
 
-# 2. LLM
+    print("@@@@@@@@@ RETRIEVED @@@@@@@@@")
+    print(text)
+    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+
+    return {"input": state["input"], "data": state["data"], "retrieved": text}
+
+# 노드 2) 일반 LLM 경로
 def run_llm(state: GraphState) -> GraphState:
-        llm_input = state["input"]
-        llm_result = llm.invoke(llm_input)
-        print(print_now("종료 llm"))
-        return {"input": llm_input, "retrieved": state["retrieved"], "response": llm_result.content}
+    llm_input = to_text(state["input"])
+    llm_result = llm.invoke(llm_input)
+    print_now("종료 llm")
+    return {"input": llm_input, "retrieved": state.get("retrieved"), "response": llm_result.content}
 
-
-# 3. DB 검색 결과 반환
+# 노드 3) DB 검색 결과를 기반으로 최종 판단
 def return_retrieved(state: GraphState) -> GraphState:
-    prompt = f"""
-        다음 숫자값은 해당 위치에 Database의 평균값인데, 현재 센서 데이터의 정보가 "{state["data"]}" 일 때, 이상 기후인지 확인해줘
-        만약 질문이 숫자가 아닌 다른 값이 왔다면, 그 질문의 답변을 해줘.
-        "{state["retrieved"]}"
-        """
+    prompt = (
+        f'DB/LLM에서 얻은 정보:\n"{to_text(state.get("retrieved"))}"\n\n'
+        f'센서 데이터: "{to_text(state.get("data"))}"\n'
+        f"이상이 있는지 한국어로 간결히 판단해"
+    )
     result = llm.invoke(prompt)
-    # print("result :" ,  result.content)
-    print(print_now("종료 retrieve"))
-    return {"response":result.content}
+    print_now("종료 retrieve->final")
+    return {"response": result.content}
 
 def should_use_retrieved(state: GraphState) -> str:
-    if state["retrieved"]:  # DB에 유사한 결과가 있는경우
-        print("use_retrieved")
-        return "use_retrieved"
-    else:
-        print("use_llm")
-        return "use_llm"
+    return "use_retrieved" if state.get("retrieved") else "use_llm"
 
-from langgraph.graph import StateGraph
-
+# 그래프 구성
 builder = StateGraph(GraphState)
-
 builder.add_node("retrieve", retrieve_from_db)
 builder.add_node("use_llm", run_llm)
 builder.add_node("use_retrieved", return_retrieved)
-
 builder.set_entry_point("retrieve")
 builder.add_conditional_edges("retrieve", should_use_retrieved, {
     "use_llm": "use_llm",
-    "use_retrieved": "use_retrieved"
+    "use_retrieved": "use_retrieved",
 })
 builder.set_finish_point("use_llm")
 builder.set_finish_point("use_retrieved")
-
 graph = builder.compile()
 
-
-
-class QueryRequest(BaseModel):
-    query: str
-
-
+# API
 @app.route("/agent", methods=["POST"])
 def agent():
     try:
-        data = request.get_json()
-        raw_data= data.get("data")
-        query = data.get("query")
-        result = graph.invoke({
-            "input": query,
+        payload = request.get_json(silent=True) or {}
+
+        raw_data = payload.get("data") or {}
+        if not isinstance(raw_data, dict):
+            try:
+                raw_data = json.loads(raw_data)
+            except Exception:
+                raw_data = {"raw": to_text(raw_data)}
+
+        user_input = payload.get("prompt")
+        if user_input is None:
+            user_input = payload.get("query")
+
+        state: GraphState = {
+            "input": to_text(user_input),
             "data": raw_data
-        })
+        }
 
-        print("[Graph 결과]", result)
+        result = graph.invoke(state)
+        print("[Graph 결과] : ", result)
 
-        # 'response' 키가 실제 결과에 존재하는지 확인 필요
-        return jsonify({"response": result.get("response", "결과 없음")})
+        # 대표 키 우선 반환
+        if isinstance(result, dict):
+            for k in ("response", "final", "output", "answer"):
+                if result.get(k):
+                    return jsonify({"response": result[k]})
+            return jsonify({"response": to_text(result)})
+
+        return jsonify({"response": to_text(result)})
 
     except Exception as e:
         traceback.print_exc()
