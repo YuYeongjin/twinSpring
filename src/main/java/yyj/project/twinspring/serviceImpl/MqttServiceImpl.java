@@ -42,10 +42,8 @@ public class MqttServiceImpl implements MqttService {
             System.out.println("MQTT 수신 데이터: " + data);
             spotDAO.insertData(data);
 
-            ZonedDateTime zdt = ZonedDateTime.parse(data.getTimestamp()); // "2025-08-20T19:30:30.754860+09:00"
+            ZonedDateTime zdt = ZonedDateTime.parse(data.getTimestamp());
             ZonedDateTime hourStart = zdt.withMinute(0).withSecond(0).withNano(0);
-            ZonedDateTime hourEnd   = hourStart.plusHours(1);
-            System.out.println("start : " + hourStart + " // " + "data.getLocation() : " + data.getLocation() );
             Map<String,String> avgData = spotDAO.getAvgData(data.getLocation(),hourStart.toString());
             System.out.println("avgData : " + avgData);
             // 이상기후 탐지 후 Noti의 강도설정

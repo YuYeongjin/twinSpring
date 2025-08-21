@@ -23,7 +23,8 @@ def print_now(label):
     return now
 
 llm = ChatOllama(
-    model="gemma:2b",          # 필요 시 llama3.1:8b 등으로 교체
+    # model="gemma:2b",          # 필요 시 llama3.1:8b 등으로 교체
+    model="llama3.1:8b",
     temperature=0,
     base_url="http://127.0.0.1:11434"
 )
@@ -60,9 +61,8 @@ def try_parse_json(s: str):
 
 # --- LLM용 프롬프트 생성: 평균 vs 실측 비교를 LLM에게 맡김 ---
 def make_llm_prompt(sensor: dict, avg: dict, user_input: str) -> str:
-    # LLM이 일관되게 JSON만 반환하도록 강하게 지시
     return f"""
-당신은 센서 데이터의 이상 여부를 간단히 판정하는 도우미입니다.
+당신은 센서 데이터의 이상 여부를 간단히 판단해.
 다음 정보를 바탕으로 한국어로 알려줘.
 
 [센서 데이터]
