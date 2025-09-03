@@ -92,16 +92,22 @@ public class MqttServiceImpl implements MqttService {
     @Override
     public Object test() {
         RestTemplate restTemplate = new RestTemplate();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
-        Map<String,String> chatBody = new HashMap<>();
-        chatBody.put("query","location : bridgeA', 'temperature:30', 'timestamp : 2025-08-07T21:11:08, 이 값들이 이상기후인지 확인해줘");
+        Map<String, Object> body = new HashMap<>();
+        body.put("date", "2025-08-25_03:12:10");
+        body.put("amount", 3500000);
+        body.put("source_account_address", "0x5ce9a16a7b7656ecbb760f13996bea982a18fbff");
+        body.put("target_account_address", "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+        body.put("nx", 51.5074);
+        body.put("ny", -0.1278);
+        body.put("device_info", "new-device-zzz-999");
 
-        String urls = "http://127.0.0.1:5005/agent";
-        ResponseEntity<Map> responses = restTemplate.postForEntity(urls, chatBody, Map.class);
+        HttpEntity<Map<String, Object>> req = new HttpEntity<>(body, headers);
+        ResponseEntity<String> resp = restTemplate.postForEntity("http://localhost:5005/agent", req, String.class);
+        System.out.println(resp.getBody());
 
-        System.out.println("responses : " + responses.toString());
-        Map<String, Object> results = responses.getBody();
-        System.out.println("agent 결과: " + results);
         return null;
     }
 }
