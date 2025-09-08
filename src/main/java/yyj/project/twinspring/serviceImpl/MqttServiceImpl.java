@@ -1,8 +1,8 @@
 package yyj.project.twinspring.serviceImpl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import yyj.project.twinspring.config.UnityWsPusher;
@@ -12,9 +12,7 @@ import yyj.project.twinspring.service.MqttService;
 
 import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service
@@ -24,13 +22,14 @@ public class MqttServiceImpl implements MqttService {
 
     private final SpotDAO spotDAO;
     private final UnityWsPusher unityWsPusher;
-
+    private final SimpMessagingTemplate template;
     public MqttServiceImpl(
             SpotDAO spotDAO,
-            UnityWsPusher unityWsPusher
-    ) {
+            UnityWsPusher unityWsPusher,
+            SimpMessagingTemplate template) {
         this.spotDAO = spotDAO;
         this.unityWsPusher = unityWsPusher;
+        this.template = template;
     }
 
 
@@ -39,14 +38,19 @@ public class MqttServiceImpl implements MqttService {
         try {
             ObjectMapper mapper = new ObjectMapper();
             SensorDTO data = mapper.readValue(payload, SensorDTO.class);
-            System.out.println("MQTT 수신 데이터: " + data);
+//            System.out.println("MQTT 수신 데이터: " + data);
             spotDAO.insertData(data);
 
-            ZonedDateTime zdt = ZonedDateTime.parse(data.getTimestamp());
-            ZonedDateTime hourStart = zdt.withMinute(0).withSecond(0).withNano(0);
-            Map<String,String> avgData = spotDAO.getAvgData(data.getLocation(),hourStart.toString());
-            System.out.println("avgData : " + avgData);
+            // 화면으로 Send
+
+
+//            ZonedDateTime zdt = ZonedDateTime.parse(data.getTimestamp());
+//            ZonedDateTime hourStart = zdt.withMinute(0).withSecond(0).withNano(0);
+//            Map<String,String> avgData = spotDAO.getAvgData(data.getLocation(),hourStart.toString());
+//            System.out.println("avgData : " + avgData);
             // 이상기후 탐지 후 Noti의 강도설정
+
+            /*
             RestTemplate restTemplate = new RestTemplate();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -75,9 +79,11 @@ public class MqttServiceImpl implements MqttService {
 
             Map<String, Object> results = responses.getBody();
             System.out.println("챗봇 결과: " + results);
+            */
 
-            unityWsPusher.send(payload);
+//            unityWsPusher.send(payload);
 
+            template.convertAndSend("/topic/sensor", payload);
         } catch (Exception e) {
             e.getMessage();
         }
@@ -108,6 +114,11 @@ public class MqttServiceImpl implements MqttService {
         ResponseEntity<String> resp = restTemplate.postForEntity("http://localhost:5005/agent", req, String.class);
         System.out.println(resp.getBody());
 
+        return null;
+    }
+
+    @Override
+    public Object getLogs() {
         return null;
     }
 }

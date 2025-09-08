@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
+import SatelliteAPI from "./SatelliteAPI";
 
 /** 카드 공통 컴포넌트 */
 function Card({ title, right, children, className = "" }) {
@@ -31,30 +32,16 @@ function Chip({ color = "gray", children }) {
 }
 
 export default function SatelliteDashboard() {
-  const [data, setData] = useState([]);
-  const [mode, setMode] = useState("NORMAL");
-  const [rssi, setRssi] = useState(-92);
-  const [batt, setBatt] = useState({ v: 7.6, i: 0.42 });
+  const {
+    data,
+    mode, setMode,
+    batt,
+    rssi,
+    latest
+  } = SatelliteAPI();
 
-  // Mock 데이터 타이머
-  useEffect(() => {
-    const it = setInterval(() => {
-      const t = +(20 + Math.random() * 6).toFixed(1);
-      const h = +(35 + Math.random() * 25).toFixed(1);
-      const v = +(7.2 + Math.random() * 0.6).toFixed(2);
-      const i = +(0.30 + Math.random() * 0.25).toFixed(2);
-      const r = -95 + Math.floor(Math.random() * 6); // -95 ~ -90 dBm
-      setRssi(r);
-      setBatt({ v, i });
-      setData(prev => [
-        ...prev.slice(-59),
-        { time: new Date().toLocaleTimeString(), temperature: t, humidity: h, vbat: v },
-      ]);
-    }, 1500);
-    return () => clearInterval(it);
-  }, []);
 
-  const latest = useMemo(() => data[data.length - 1] || {}, [data]);
+
 
   const toggleMode = () => setMode(prev => (prev === "NORMAL" ? "SAFE" : "NORMAL"));
 
@@ -70,21 +57,21 @@ export default function SatelliteDashboard() {
             <div className="bg-space-700/70 rounded-xl px-4 py-3 shadow-inner">
               <div className="text-xs text-gray-400 uppercase">Temperature</div>
               <div className="text-2xl font-bold text-accent-orange">
-                {latest.temperature ?? "-"}
+                {latest && latest.temperature ? latest.temperature : "-"}
                 <span className="text-sm ml-1">°C</span>
               </div>
             </div>
             <div className="bg-space-700/70 rounded-xl px-4 py-3 shadow-inner">
               <div className="text-xs text-gray-400 uppercase">Humidity</div>
               <div className="text-2xl font-bold text-accent-blue">
-                {latest.humidity ?? "-"}
+                {latest && latest.humidity ? latest.humidity : "-"}
                 <span className="text-sm ml-1">%</span>
               </div>
             </div>
             <div className="bg-space-700/70 rounded-xl px-4 py-3 shadow-inner">
               <div className="text-xs text-gray-400 uppercase">Battery</div>
               <div className="text-xl font-bold text-green-400">
-                {batt.v}V <span className="mx-1 text-gray-500">/</span> {batt.i}A
+                {batt && batt.v ? batt.v : ''}V <span className="mx-1 text-gray-500">/</span> {batt && batt.i ? batt.i : ''}A
               </div>
             </div>
             <div className="bg-space-700/70 rounded-xl px-4 py-3 shadow-inner">
@@ -126,18 +113,18 @@ export default function SatelliteDashboard() {
 
         <Card title="Event Log">
           <div className="space-y-2 text-sm max-h-48 overflow-auto">
-            {data.slice(-8).map((d, i) => (
+            {data && data.map((d, i) => (
               <div
                 key={i}
                 className="flex items-center justify-between bg-space-700/50 border border-space-600 rounded-lg px-3 py-2"
               >
-                <span className="text-gray-300">{d.time}</span>
+                <span className="text-gray-300">{(d.timestamp).replace('T', ' ')}</span>
                 <span className="text-gray-400">
                   T:{d.temperature}°C / H:{d.humidity}% / V:{d.vbat}V
                 </span>
               </div>
             ))}
-            {!data.length && <div className="text-gray-500">No events yet…</div>}
+            {data && !data.length && <div className="text-gray-500">No events yet…</div>}
           </div>
         </Card>
       </div>
@@ -153,7 +140,7 @@ export default function SatelliteDashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#263246" />
-                <XAxis dataKey="time" hide />
+                <XAxis dataKey="timestamp" hide />
                 <YAxis stroke="#9ca3af" />
                 <Tooltip
                   contentStyle={{
@@ -182,7 +169,7 @@ export default function SatelliteDashboard() {
                   strokeWidth={2}
                   isAnimationActive={false}
                 />
-                <Line
+                {/* <Line
                   type="monotone"
                   dataKey="vbat"
                   name="Vbat (V)"
@@ -190,7 +177,7 @@ export default function SatelliteDashboard() {
                   dot={false}
                   strokeWidth={2}
                   isAnimationActive={false}
-                />
+                /> */}
               </LineChart>
             </ResponsiveContainer>
           </div>
