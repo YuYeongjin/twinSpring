@@ -28,4 +28,10 @@ public class SensorController {
     public ResponseEntity<?> test (){
         return ResponseEntity.ok(mqttService.test());
     }
+
+    @GetMapping("/logs")
+    public ResponseEntity<?> logs(){
+        return ResponseEntity.ok( mqttService.getLogs());
+    }
+
 }
