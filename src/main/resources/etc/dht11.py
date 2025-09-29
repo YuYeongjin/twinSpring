@@ -7,7 +7,7 @@ import adafruit_dht
 import board
 import paho.mqtt.client as mqtt
 
-MQTT_BROKER = "192.168.45.195"
+MQTT_BROKER = "10.132.50.15"
 MQTT_PORT = 1883
 MQTT_TOPIC = "test/topic"
 
