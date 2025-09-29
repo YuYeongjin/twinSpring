@@ -9,7 +9,8 @@ PIR_PIN = 6     # PIR 센서 출력
 LED_PIN = 23    # 빨간 LED
 
 # 핀 입출력 모드 지정
-GPIO.setup(PIR_PIN, GPIO.IN)
+GPIO.setup(PIR_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+
 GPIO.setup(LED_PIN, GPIO.OUT)
 
 print("PIR 센서 예열 중... 20초 정도 기다리세요.")
