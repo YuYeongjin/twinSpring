@@ -1,0 +1,57 @@
+###########################
+# General C# and .NET
+###########################
+
+# Build artifacts
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+*.exe
+*.dll
+*.pdb
+*.suo
+*.user
+*.log
+*.vspscc
+
+# Packages
+# NuGet packages folder
+[Pp]ackages/
+# Bundler artifacts
+*.nupkg
+
+# -------------------------
+# Visual Studio / IDE Files
+# -------------------------
+# Solution User Options File
+*.suo
+# Visual Studio Private Registry and Cache
+.vs/
+# Resharper/Rider files
+*.DotSettings
+*.userprefs
+
+# -------------------------
+# ASP.NET Core Specific
+# -------------------------
+
+# The folder where dotnet run places runtime files
+/temp/
+/tmp/
+
+# ASP.NET Core tool configuration
+appsettings.Development.json
+# (Note: If you use different configuration files for different environments,
+# only ignore the ones that contain local/secret information)
+
+# Entity Framework Core migrations history and database files
+*.db
+
+# -------------------------
+# Test/Coverage Files
+# -------------------------
+# MSTest, xUnit test results
+*.trx
+# Code coverage results
+*.coverage
