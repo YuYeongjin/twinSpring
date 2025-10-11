@@ -3,7 +3,9 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import SatelliteAPI from "./SatelliteAPI";
-
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Environment } from '@react-three/drei';
+import { BimElement } from './bim/element/BimElement';
 /** 카드 공통 컴포넌트 */
 function Card({ title, right, children, className = "" }) {
   return (
@@ -31,7 +33,7 @@ function Chip({ color = "gray", children }) {
   );
 }
 
-export default function SatelliteDashboard({ setViceComponent }) {
+export default function SatelliteDashboard({ setViceComponent, elements, modelData }) {
   const {
     data,
     mode, setMode,
@@ -183,9 +185,35 @@ export default function SatelliteDashboard({ setViceComponent }) {
           </div>
         </Card>
 
-        <Card title="Map / Attitude" onClick={() => { setViceComponent('bim') }}>
-          <div className="h-64 bg-space-700/60 rounded-xl border border-space-600 flex items-center justify-center text-gray-400">
-            3D Orbit / Map / Attitude Widget Placeholder
+        <Card title="Map / Attitude" >
+          <div onClick={() => {
+            setViceComponent('bim')
+          }}
+            className="h-64 w-full bg-space-700/60 rounded-xl border border-space-600 flex items-center justify-center text-gray-400 cursor-pointer"
+          >
+            {elements && elements.length > 0 ?
+
+              <Canvas camera={{ position: [5, 5, 5], fov: 75 }}
+                dpr={[1, 2]} // 성능 및 해상도 안정화
+                gl={{ preserveDrawingBuffer: true }}
+              >
+                {/* 카메라 시점 제어 */}
+                <OrbitControls enableZoom={true} />
+
+                {/* 환경광 및 그림자 설정 */}
+                <ambientLight intensity={0.5} />
+                <spotLight position={[5, 5, 5]} angle={0.15} penumbra={1} castShadow />
+
+                {/* 씬에 BIM 부재들을 렌더링 */}
+                {elements && elements.map((element) => (
+                  <BimElement key={element.id} element={element} />
+                ))}
+                {/* 배경 환경 설정 */}
+                <Environment preset="city" />
+              </Canvas>
+              :
+              null
+            }
           </div>
         </Card>
       </div>
