@@ -31,7 +31,7 @@ function Chip({ color = "gray", children }) {
   );
 }
 
-export default function SatelliteDashboard() {
+export default function SatelliteDashboard({ setViceComponent }) {
   const {
     data,
     mode, setMode,
@@ -183,7 +183,7 @@ export default function SatelliteDashboard() {
           </div>
         </Card>
 
-        <Card title="Map / Attitude (Placeholder)">
+        <Card title="Map / Attitude" onClick={() => { setViceComponent('bim') }}>
           <div className="h-64 bg-space-700/60 rounded-xl border border-space-600 flex items-center justify-center text-gray-400">
             3D Orbit / Map / Attitude Widget Placeholder
           </div>
