@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
+import axios from "axios";
 
 export default function SatelliteAPI() {
   const clientRef = useRef(null);
@@ -11,6 +12,22 @@ export default function SatelliteAPI() {
   const [latest, setLatest] = useState();
   // Spring 부트 포트로 변경하세요. (예: 8080 또는 7011)
   const SOCKET_HTTP_URL = "http://localhost:8080/ws/sensor";
+
+
+  const addNewProject = (category) => {
+    axios.post("http://localhost:8080/api/bim/project",{
+      structureType : category,
+      projectId: 'P-001',
+      projectName:category+" project",
+      spanCount:0
+    })
+    .then((response)=>{
+      console.log(response.data);
+    })
+    .catch((error)=>{
+      console.log(error)
+    })
+  }
 
   useEffect(() => {
     const client = new Client({
@@ -58,6 +75,6 @@ export default function SatelliteAPI() {
     mode, setMode,
     batt,
     rssi,
-    latest
+    latest,addNewProject
   };
 }
