@@ -81,9 +81,10 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public Mono<BimProjectDTO> createProject(BimProjectDTO project) {
+        System.out.println("@@@ " + project.toString());
         return webClient.post()
                 .uri( "/api/bim/project")
-                .bodyValue(project)
+                .bodyValue(project.toString())
                 .retrieve()
                 .onStatus(status -> status.isError(), clientResponse -> {
                     // C# 서버에서 오류 발생 시 예외 처리
