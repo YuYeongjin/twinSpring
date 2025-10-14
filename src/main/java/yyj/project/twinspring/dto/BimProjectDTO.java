@@ -6,27 +6,32 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString
 public class BimProjectDTO {
 
     private String projectId;
     private String projectName;
     private String structureType;
     private int spanCount;
-//    public void setProjectId(String projectId) {
-//        this.projectId = projectId;
-//    }
-//    public void setProjectName(String projectName) {
-//        this.projectName = projectName;
-//    }
-//    public void setStructureType(String structureType) {
-//        this.structureType = structureType;
-//    }
-//    public void setSpanCount(int spanCount) {
-//        this.spanCount = spanCount;
-//    }
-//    @Override
-//    public String toString(){
-//        return "projectId : " + projectId  + ", projectName : " + projectName + " , structureType : " + structureType + " , spanCount :" + spanCount;
-//    }
+    public void setProjectId(String projectId) {
+        this.projectId = projectId;
+    }
+    public void setProjectName(String projectName) {
+        this.projectName = projectName;
+    }
+    public void setStructureType(String structureType) {
+        this.structureType = structureType;
+    }
+    public void setSpanCount(int spanCount) {
+        this.spanCount = spanCount;
+    }
+@Override
+public String toString(){
+    // JSON 문자열을 생성
+    return "{"
+            + "\"projectId\":\"" + projectId + "\","
+            + "\"projectName\":\"" + projectName + "\","
+            + "\"structureType\":\"" + structureType + "\","
+            + "\"spanCount\":" + spanCount
+            + "}";
+}
 }
