@@ -96,34 +96,42 @@ namespace BimProcessorApi.Services
         {
             var elements = new List<Element>();
 
+            int spanCount = 1;
+            if (!string.IsNullOrEmpty(project.SpanCount))
+            {
+                int.TryParse(project.SpanCount, out spanCount); // 안전하고 CS1503 없음
+            }
+
+
+
             if (project.StructureType == "Bridge")
             {
-                // 1. 교량 부재 생성 (4경간으로 가정)
-                for (int i = 0; i < project.SpanCount + 1; i++) // 교각 4개
+                // 1. 교량 부재 생성
+                for (int i = 0; i < spanCount + 1; i++) // 교각
                 {
                     elements.Add(new Element
                     {
                         ElementId = $"P-{project.ProjectId}-{i + 1}",
                         ElementType = "IfcPier",
                         Material = "Concrete C50",
-                        // 3D 위치 및 크기 데이터 (List<float> 형태로 저장)
-                        PositionData = JsonSerializer.Serialize(new float[] { i * 20f - 30f, 0f, 0f }),
-                        SizeData = JsonSerializer.Serialize(new float[] { 3f, 10f, 3f })
+                        PositionData = JsonSerializer.Serialize<float[]>(new float[] { i * 20f - 30f, 0f, 0f }),
+                        SizeData = JsonSerializer.Serialize<float[]>(new float[] { 3f, 10f, 3f })
                     });
                 }
+
+                // 슬래브 생성
                 elements.Add(new Element
                 {
                     ElementId = $"DECK-{project.ProjectId}",
                     ElementType = "IfcSlab",
                     Material = "Prestressed Concrete",
-                    PositionData = JsonSerializer.Serialize(new float[] { 0f, 10f, 0f }),
-                    SizeData = JsonSerializer.Serialize(new float[] { (project.SpanCount * 20f), 1f, 10f })
+                    PositionData = JsonSerializer.Serialize<float[]>(new float[] { 0f, 10f, 0f }),
+                    SizeData = JsonSerializer.Serialize<float[]>(new float[] { (spanCount * 20f), 1f, 10f })
                 });
-
             }
             else if (project.StructureType == "Building")
             {
-                // 2. 건물 부재 생성 (간단한 건물 기둥 4개)
+                // 2. 건물 부재 생성 (기둥 4개)
                 for (int i = 0; i < 4; i++)
                 {
                     elements.Add(new Element
@@ -131,14 +139,14 @@ namespace BimProcessorApi.Services
                         ElementId = $"COL-{project.ProjectId}-{i + 1}",
                         ElementType = "IfcColumn",
                         Material = "Steel Grade A",
-                        PositionData = JsonSerializer.Serialize(new float[] { (i % 2) * 8f - 4f, 0f, (i / 2) * 8f - 4f }),
-                        SizeData = JsonSerializer.Serialize(new float[] { 0.5f, 6f, 0.5f })
+                        PositionData = JsonSerializer.Serialize<float[]>(new float[] { (i % 2) * 8f - 4f, 0f, (i / 2) * 8f - 4f }),
+                        SizeData = JsonSerializer.Serialize<float[]>(new float[] { 0.5f, 6f, 0.5f })
                     });
                 }
             }
+
             return elements;
         }
-
 
     }
 }

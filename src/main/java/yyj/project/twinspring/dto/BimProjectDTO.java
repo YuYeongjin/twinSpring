@@ -11,7 +11,7 @@ public class BimProjectDTO {
     private String projectId;
     private String projectName;
     private String structureType;
-    private int spanCount;
+    private String spanCount;
     public void setProjectId(String projectId) {
         this.projectId = projectId;
     }
@@ -21,7 +21,7 @@ public class BimProjectDTO {
     public void setStructureType(String structureType) {
         this.structureType = structureType;
     }
-    public void setSpanCount(int spanCount) {
+    public void setSpanCount(String spanCount) {
         this.spanCount = spanCount;
     }
 @Override
@@ -31,7 +31,7 @@ public String toString(){
             + "\"projectId\":\"" + projectId + "\","
             + "\"projectName\":\"" + projectName + "\","
             + "\"structureType\":\"" + structureType + "\","
-            + "\"spanCount\":" + spanCount
+            + "\"spanCount\": \"" + spanCount+ "\""
             + "}";
 }
 }
