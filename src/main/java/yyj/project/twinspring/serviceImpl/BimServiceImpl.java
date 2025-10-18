@@ -1,5 +1,7 @@
 package yyj.project.twinspring.serviceImpl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -81,10 +83,19 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public Mono<BimProjectDTO> createProject(BimProjectDTO project) {
-        System.out.println("@@@ " + project.toString());
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            System.out.println("REQ JSON: " + mapper.writeValueAsString(project));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+
         return webClient.post()
                 .uri( "/api/bim/project")
-                .bodyValue(project.toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(project)
+//                .bodyValue("test")
                 .retrieve()
                 .onStatus(status -> status.isError(), clientResponse -> {
                     // C# 서버에서 오류 발생 시 예외 처리

@@ -10,19 +10,18 @@ using Microsoft.Extensions.Configuration; // ⚠️ [추가] 설정 관리를 �
 
 var builder = WebApplication.CreateBuilder(args);
 
-// =========================================================================
-// Add services to the container (DI 컨테이너 등록)
-// =========================================================================
 
-// 1. Core Services 등록 및 JSON 직렬화 설정
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
-        // JSON 직렬화 시 Enum이 이름이 아닌 숫자 값으로 표시되지 않도록 설정 (선택 사항)
-        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.PropertyNamingPolicy =
+            System.Text.Json.JsonNamingPolicy.CamelCase;
+
+        options.JsonSerializerOptions.DefaultIgnoreCondition =
+            System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
-builder.Services.AddOpenApi(); 
-builder.Services.AddAuthorization(); 
+builder.Services.AddOpenApi();
+builder.Services.AddAuthorization();
 
 // 2. ⚠️ [핵심 추가] MySQL DB Context 등록
 var connectionString = builder.Configuration.GetConnectionString("MySqlConnection");
@@ -35,11 +34,11 @@ if (string.IsNullOrEmpty(connectionString))
 
 builder.Services.AddDbContext<BimDbContext>(options =>
     // MySQL Provider를 사용하여 연결 문자열 설정
-    options.UseMySQL(connectionString) 
+    options.UseMySQL(connectionString)
 );
 
 // 3. BIM 서비스 등록 (DbContext 주입이 가능하도록 Scoped으로 등록)
-builder.Services.AddScoped<BimService>(); 
+builder.Services.AddScoped<BimService>();
 
 // =========================================================================
 // Build and Configure (앱 빌드 및 파이프라인 구성)
@@ -64,7 +63,7 @@ var summaries = new[]
 // 여기서는 기존 코드를 유지하되, 핵심 기능은 Controllers로 구현되어 있습니다.
 app.MapGet("/weatherforecast", () =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
+    var forecast = Enumerable.Range(1, 5).Select(index =>
         new WeatherForecast
         (
             DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
@@ -76,7 +75,7 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast");
 
-app.UseAuthorization(); 
+app.UseAuthorization();
 app.MapControllers(); // 컨트롤러 (BimController) 라우팅 활성화
 app.Run();
 

@@ -18,8 +18,8 @@ namespace BimProcessorApi.Models
         public string? StructureType { get; set; }
 
         [Column("span_count")]
-        public int SpanCount { get; set; }
-        
-        public ICollection<Element> Elements { get; set; } 
+        public string? SpanCount { get; set; }
+
+        public ICollection<Element>? Elements { get; set; }
     }
 }

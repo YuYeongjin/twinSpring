@@ -62,22 +62,20 @@ public class BimController : ControllerBase
 
     [HttpPost("project")]
     public async Task<ActionResult<Project>> CreateProject(
-        [FromBody] string req
+        [FromBody]   Project project
         )
     {
-        Console.WriteLine("project :@@@@@@@@ " + req);
-        var project = JsonSerializer.Deserialize<Project>(req);
-        // 1. 초기 요소 생성
+
+        Console.WriteLine("project :@@@@@@@@ " + project);
         var initialElements = _bimService.GenerateInitialElements(project);
 
         // 2. 프로젝트와 요소 모두 저장 (SaveModelAsync 재활용)
         await _bimService.SaveModelAsync(project, initialElements);
 
-        // C# 컨트롤러는 저장된 Project 객체를 JSON으로 반환합니다.    
+        // C# 컨트롤러는 저장된 Project 객체를 JSON으로 반환.
         return CreatedAtAction(nameof(GetProjectList), new { projectId = project.ProjectId }, project);
-        
-    }
 
+    }
     // public async Task<ActionResult<Project>> CreateProject() 
     //     {
     //         // 1. HTTP 요청 본문 스트림을 읽어 Raw String으로 변환
@@ -106,10 +104,10 @@ public class BimController : ControllerBase
 
     //         // 2. 프로젝트와 요소 모두 저장 (SaveModelAsync 재활용)
     //         // await _bimService.SaveModelAsync(project, initialElements);
-            
+
     //         // 임시 데이터
     //         var initialElements = new List<Element>();
-            
+
     //         // C# 컨트롤러는 저장된 Project 객체를 JSON으로 반환합니다.    
     //         return CreatedAtAction(nameof(GetProjectList), new { projectId = project.ProjectId }, project);
     //     }

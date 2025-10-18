@@ -53,7 +53,7 @@ public class BimController {
         BimProjectDTO projectDTO = new BimProjectDTO();
         projectDTO.setProjectId(project.get("projectId"));
         projectDTO.setProjectName(project.get("projectName"));
-        projectDTO.setSpanCount(Integer.parseInt(project.get("spanCount")));
+        projectDTO.setSpanCount((project.get("spanCount")));
         projectDTO.setStructureType(project.get("structureType"));
         return bimService.createProject(projectDTO)
                 // C# 서버가 반환한 DTO 객체를 201 Created 상태와 함께 반환
