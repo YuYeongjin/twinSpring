@@ -39,6 +39,10 @@ public class BimController {
     public ResponseEntity<Mono<List<BimElementDTO>>> getModelElements(@RequestParam String projectId) {
         return bimService.getModelElements(projectId);
     }
+    @GetMapping("project/{projectId}")
+    public ResponseEntity<Mono<List<BimElementDTO>>> getProject(@PathVariable String projectId) {
+        return bimService.getProject(projectId);
+    }
     @DeleteMapping("/project/{projectId}")
     public ResponseEntity<Mono<Void>> deleteProject(@PathVariable String projectId) {
         return bimService.deleteProject(projectId);
@@ -51,7 +55,6 @@ public class BimController {
     public Mono<ResponseEntity<BimProjectDTO>> newProject(@RequestBody Map<String,String> project){
         System.out.println("PROJECT CREATE : " + project);
         BimProjectDTO projectDTO = new BimProjectDTO();
-        projectDTO.setProjectId(project.get("projectId"));
         projectDTO.setProjectName(project.get("projectName"));
         projectDTO.setSpanCount((project.get("spanCount")));
         projectDTO.setStructureType(project.get("structureType"));

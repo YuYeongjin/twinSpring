@@ -2,25 +2,30 @@ package yyj.project.twinspring.serviceImpl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import yyj.project.twinspring.dao.BimDAO;
 import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
 import yyj.project.twinspring.service.BimService;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class BimServiceImpl implements BimService {
 
 
     private final WebClient webClient;
+    private final BimDAO bimDAO;
 
-    public BimServiceImpl(WebClient webClient) {
+    public BimServiceImpl(WebClient webClient, BimDAO bimDAO) {
         this.webClient = webClient;
+        this.bimDAO = bimDAO;
     }
 
     @Override
@@ -53,7 +58,7 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public ResponseEntity<Mono<List<BimElementDTO>>> getModelElements(String projectId) {
-        System.out.println("getModelElements");
+        System.out.println("getModelElements" + projectId);
         return ResponseEntity.ok(webClient.get().uri("/api/bim/projects").retrieve().bodyToFlux(BimElementDTO.class).collectList());
     }
 
@@ -89,6 +94,8 @@ public class BimServiceImpl implements BimService {
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
+        String projectId = "P-"+UUID.randomUUID().toString().substring(0,5);
+        project.setProjectId(projectId);
 
 
         return webClient.post()
@@ -105,6 +112,17 @@ public class BimServiceImpl implements BimService {
                 })
                 .bodyToMono(BimProjectDTO.class);
 
+    }
+
+    @Override
+    public ResponseEntity<Mono<List<BimElementDTO>>> getProject(String projectId) {
+        System.out.println("get Project -> Elements");
+        ParameterizedTypeReference<List<BimElementDTO>> typeRef =
+                new ParameterizedTypeReference<List<BimElementDTO>>() {};
+        Mono<List<BimElementDTO>> responseBodyMono = webClient.get()
+                .uri("/api/bim/project/{projectId}", projectId)
+                .retrieve().bodyToMono(typeRef);
+        return ResponseEntity.ok(responseBodyMono);
     }
 
 

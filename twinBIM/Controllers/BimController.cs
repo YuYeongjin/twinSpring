@@ -62,7 +62,7 @@ public class BimController : ControllerBase
 
     [HttpPost("project")]
     public async Task<ActionResult<Project>> CreateProject(
-        [FromBody]   Project project
+        [FromBody] Project project
         )
     {
 
@@ -75,6 +75,16 @@ public class BimController : ControllerBase
         // C# 컨트롤러는 저장된 Project 객체를 JSON으로 반환.
         return CreatedAtAction(nameof(GetProjectList), new { projectId = project.ProjectId }, project);
 
+    }
+
+    [HttpGet("project/{projectId}")]
+    public async Task<ActionResult<List<Element>>> getProjectElement(
+        string projectId
+    )
+    {
+        var elements = await _bimService.GetElementsByProjectIdAsync(projectId);
+
+        return elements;
     }
     // public async Task<ActionResult<Project>> CreateProject() 
     //     {
