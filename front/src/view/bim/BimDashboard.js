@@ -34,7 +34,7 @@ function Chip({ color = "gray", children }) {
   );
 }
 
-export default function BimDashboard({ elements, modelData, setViceComponent }) {
+export default function BimDashboard({ setViceComponent, elements, modelData  }) {
 
 
 
@@ -49,14 +49,14 @@ export default function BimDashboard({ elements, modelData, setViceComponent }) 
         <div className="lg:col-span-10 space-y-6">
           <Card
             title="Viewer" // 제목 변경 권장
-            right={<Chip color="blue">Live</Chip>}
+            right={<Chip color="blue">3D</Chip>}
             className="h-full"
           >
             <div className="w-full h-[50vh]">
               {
-                elements && elements.length > 0 && modelData && modelData.modelName ?
+                modelData && modelData.length > 0 ?
                   <>
-                    <h2>{modelData.modelName} (Elements: {elements.length})</h2>
+                    <h2>{modelData.modelName} (Elements: {modelData.length})</h2>
                     <Canvas camera={{ position: [5, 5, 5], fov: 75 }}>
                       {/* 카메라 시점 제어 */}
                       <OrbitControls enableZoom={true} />
@@ -64,7 +64,7 @@ export default function BimDashboard({ elements, modelData, setViceComponent }) 
                       <ambientLight intensity={0.5} />
                       <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} castShadow />
                       {/* 씬에 BIM 부재들을 렌더링 */}
-                      {elements.map((element) => (
+                      {modelData.map((element) => (
                         <BimElement key={element.id} element={element} />
                       ))}
                       {/* 배경 환경 설정 */}

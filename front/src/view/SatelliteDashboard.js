@@ -20,16 +20,22 @@ function Card({ title, right, children, className = "" }) {
 }
 
 /** 칩 스타일 라벨 */
-function Chip({ color = "gray", children }) {
+function Chip({ color = "gray", children, onClick }) { // 👈 1. onClick prop을 받도록 추가
   const map = {
     green: "bg-green-900/40 text-green-300 border-green-600/40",
     red: "bg-red-900/40 text-red-300 border-red-600/40",
-    blue: "bg-blue-900/40 text-blue-300 border-blue-600/40",
+    blue: "bg-blue-900/40 text-blue-300 border-blue-600/40 cursor-pointer", // 👈 선택적: 클릭 가능함을 시각적으로 보여줌
     orange: "bg-orange-900/40 text-orange-300 border-orange-600/40",
     gray: "bg-gray-800 text-gray-300 border-gray-700",
   };
   return (
-    <span className={`px-2 py-0.5 text-xs border rounded-md ${map[color]}`}>{children}</span>
+    // 👈 2. 받은 onClick prop을 <span> 태그에 연결
+    <span 
+      className={`px-2 py-0.5 text-xs border rounded-md ${map[color]}`} 
+      onClick={onClick}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -39,12 +45,12 @@ export default function SatelliteDashboard({ setViceComponent, elements, onProje
     mode, setMode,
     batt,
     rssi,
-    latest, addNewProject
+    latest, addNewProject,
+    bimMenu, setBimMenu
   } = SatelliteAPI();
 
 
-
-
+  const toggleMenu = () => setBimMenu(prev => (prev === "default" ? "create" : "default"));
   const toggleMode = () => setMode(prev => (prev === "NORMAL" ? "SAFE" : "NORMAL"));
 
   return (
@@ -185,49 +191,40 @@ export default function SatelliteDashboard({ setViceComponent, elements, onProje
           </div>
         </Card>
 
-        <Card title="Map / Attitude" >
-          <div onClick={() => {
+        <Card title="Map / Attitude"
+          right={<Chip color="blue"
+            onClick={() => toggleMenu()}
+          >
+            {
+              bimMenu === 'default' ?
+                "Add New"
 
-          }}
+                :
+                "View"
+            }
+          </Chip>}
+        >
+          <div
             className="h-64 w-full bg-space-700/60 rounded-xl border border-space-600 flex items-center justify-center text-gray-400 cursor-pointer"
           >
             {
-              // elements && elements.length > 0 ?
-
-              //   <Canvas camera={{ position: [5, 5, 5], fov: 75 }}
-              //     dpr={[1, 2]} // 성능 및 해상도 안정화
-              //     gl={{ preserveDrawingBuffer: true }}
-              //   >
-              //     {/* 카메라 시점 제어 */}
-              //     <OrbitControls enableZoom={true} />
-
-              //     {/* 환경광 및 그림자 설정 */}
-              //     <ambientLight intensity={0.5} />
-              //     <spotLight position={[5, 5, 5]} angle={0.15} penumbra={1} castShadow />
-
-              //     {/* 씬에 BIM 부재들을 렌더링 */}
-              //     {elements && elements.map((element) => (
-              //       <BimElement key={element.id} element={element} />
-              //     ))}
-              //     {/* 배경 환경 설정 */}
-              //     <Environment preset="city" />
-              //   </Canvas>
-              //   :
-
-              projectList && projectList.length > 0 ?
-                projectList.map((item, value) => {
-                  <div key={item}>
+              projectList && projectList.length > 0 && bimMenu === 'default' ?
+                projectList.map((item, index) => (
+                  <div key={index}>
                     <button
-                      onProjectSelect={() => value}
                       onClick={() => {
+                        onProjectSelect(item)
                         setViceComponent('bim')
+
                       }}
                     >
-                      {value}
+                      {item.projectName}
                     </button>
                   </div>
-                })
+
+                ))
                 :
+
                 <div
                   className="w-full"
                 >
@@ -247,7 +244,7 @@ export default function SatelliteDashboard({ setViceComponent, elements, onProje
             }
           </div>
         </Card>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

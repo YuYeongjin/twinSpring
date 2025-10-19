@@ -29,7 +29,8 @@ namespace BimProcessorApi.Services
             }
             else
             {
-                // 이름 등 업데이트
+                // 이름 등 
+                existingProject.ProjectId = project.ProjectId;
                 existingProject.ProjectName = project.ProjectName;
                 existingProject.StructureType = project.StructureType;
                 existingProject.SpanCount = project.SpanCount;

@@ -13,6 +13,6 @@ public class BimElementDTO {
     private String elementType;
     private String material;
 
-    private List<Float> positionData;
-    private List<Float> sizeData;
+    private String positionData;
+    private String sizeData;
 }

@@ -25,8 +25,18 @@ function App() {
   const handleElementSelect = (elementData) => {
     setSelectedElement(elementData);
   };
-  const handleProjectSelect = (projectData) => {
+  function handleProjectSelect(projectData) {
     setSelectedProject(projectData);
+    axios.get(`http://localhost:8080/api/bim/project/${projectData.projectId}`)
+      .then(response => {
+        setModelData(response.data);
+        // setElements(response.data);
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error("Error fetching BIM data from Spring:", error);
+        setLoading(false);
+      });
   };
   const handleElementUpdate = (updatedElement) => {
     // C# 서버에서 데이터 업데이트 성공 후, React 상태도 갱신
@@ -53,18 +63,22 @@ function App() {
 
   // useEffect(() => {
   //   // Spring API 호출
-  //   axios.get(`http://localhost:8080/api/bim/model?projectId=${projectId}`)
-  //     .then(response => {
-  //       setModelData(response.data);
-  //       // setElements(response.data);
-  //       setLoading(false);
-  //     })
-  //     .catch(error => {
-  //       console.error("Error fetching BIM data from Spring:", error);
-  //       setLoading(false);
-  //     });
+  //   console.log(selectedProject);
+  //   if (selectedProject && selectedProject.projectId) {
 
-  // }, [viewComponent]);
+  //     axios.get(`http://localhost:8080/api/bim//project/projectId=${selectedProject.projectId}`)
+  //       .then(response => {
+  //         setModelData(response.data);
+  //         // setElements(response.data);
+  //         setLoading(false);
+  //       })
+  //       .catch(error => {
+  //         console.error("Error fetching BIM data from Spring:", error);
+  //         setLoading(false);
+  //       });
+
+  //   }
+  // }, [selectedProject]);
 
   if (loading) {
     return <div style={{ textAlign: 'center', padding: '50px' }}>Loading 3D Model...</div>;
@@ -79,7 +93,7 @@ function App() {
       {/* Main */}
       <main className="mx-auto max-w-7xl px-4 py-6">
         {
-          viewComponent && elements && viewComponent === 'bim' ?
+          viewComponent && viewComponent === 'bim' ?
             <BimDashboard setViceComponent={setViceComponent} elements={elements} modelData={modelData} />
             :
             selectedElement && selectedElement ?

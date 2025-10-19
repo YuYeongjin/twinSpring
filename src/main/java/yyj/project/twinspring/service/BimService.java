@@ -23,4 +23,6 @@ public interface BimService {
     Mono<ResponseEntity<Void>> newProject(String category);
 
     Mono<BimProjectDTO> createProject(BimProjectDTO project);
+
+    ResponseEntity<Mono<List<BimElementDTO>>> getProject(String projectId);
 }

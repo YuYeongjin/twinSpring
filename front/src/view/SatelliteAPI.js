@@ -10,23 +10,22 @@ export default function SatelliteAPI() {
   const [rssi, setRssi] = useState(-92);
   const [batt, setBatt] = useState({ v: 7.6, i: 0.42 });
   const [latest, setLatest] = useState();
-  // Spring 부트 포트로 변경하세요. (예: 8080 또는 7011)
+  const [bimMenu, setBimMenu] = useState('default');
   const SOCKET_HTTP_URL = "http://localhost:8080/ws/sensor";
 
 
   const addNewProject = (category) => {
-    axios.post("http://localhost:8080/api/bim/project",{
-      structureType : category,
-      projectId: 'P-001',
-      projectName:category+" project",
-      spanCount:0
+    axios.post("http://localhost:8080/api/bim/project", {
+      structureType: category,
+      projectName: category + " project",
+      spanCount: 0
     })
-    .then((response)=>{
-      console.log(response.data);
-    })
-    .catch((error)=>{
-      console.log(error)
-    })
+      .then((response) => {
+        console.log(response.data);
+      })
+      .catch((error) => {
+        console.log(error)
+      })
   }
 
   useEffect(() => {
@@ -75,6 +74,7 @@ export default function SatelliteAPI() {
     mode, setMode,
     batt,
     rssi,
-    latest,addNewProject
+    latest, addNewProject,
+    bimMenu, setBimMenu
   };
 }
