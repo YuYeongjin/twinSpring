@@ -46,7 +46,7 @@ export default function BimDashboard({ setViceComponent, elements, modelData  })
       </h2>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* lg:col-span-8 (화면 너비의 2/3 차지) */}
-        <div className="lg:col-span-10 space-y-6">
+        <div className="lg:col-span-12 space-y-6">
           <Card
             title="Viewer" // 제목 변경 권장
             right={<Chip color="blue">3D</Chip>}

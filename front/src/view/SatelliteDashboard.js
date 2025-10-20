@@ -30,8 +30,8 @@ function Chip({ color = "gray", children, onClick }) { // 👈 1. onClick prop�
   };
   return (
     // 👈 2. 받은 onClick prop을 <span> 태그에 연결
-    <span 
-      className={`px-2 py-0.5 text-xs border rounded-md ${map[color]}`} 
+    <span
+      className={`px-2 py-0.5 text-xs border rounded-md ${map[color]}`}
       onClick={onClick}
     >
       {children}
@@ -205,24 +205,29 @@ export default function SatelliteDashboard({ setViceComponent, elements, onProje
           </Chip>}
         >
           <div
-            className="h-64 w-full bg-space-700/60 rounded-xl border border-space-600 flex items-center justify-center text-gray-400 cursor-pointer"
+            className="flex h-64 w-full bg-space-700/60 rounded-xl border border-space-600 flex items-center justify-center text-gray-400 cursor-pointer"
           >
             {
               projectList && projectList.length > 0 && bimMenu === 'default' ?
-                projectList.map((item, index) => (
-                  <div key={index}>
-                    <button
-                      onClick={() => {
-                        onProjectSelect(item)
-                        setViceComponent('bim')
-
-                      }}
-                    >
-                      {item.projectName}
-                    </button>
-                  </div>
-
-                ))
+                <div className="flex flex-col space-y-2">
+                  {
+                    projectList.map((item, index) => (
+                      <div
+                        key={index}
+                      >
+                        <button
+                          onClick={() => {
+                            onProjectSelect(item)
+                            setViceComponent('bim')
+                          }}
+                          className="p-2 border rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          {item.projectName}
+                        </button>
+                      </div>
+                    ))
+                  }
+                </div>
                 :
 
                 <div
