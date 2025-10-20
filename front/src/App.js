@@ -18,7 +18,7 @@ function App() {
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
 
-  const [modelData, setModelData] = useState(null);
+  const [modelData, setModelData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [projectList, setProjectList] = useState([]);
 
@@ -29,6 +29,7 @@ function App() {
     setSelectedProject(projectData);
     axios.get(`http://localhost:8080/api/bim/project/${projectData.projectId}`)
       .then(response => {
+        console.log("projectData :: "  +response.data);
         setModelData(response.data);
         // setElements(response.data);
         setLoading(false);
@@ -91,10 +92,10 @@ function App() {
       <Header />
 
       {/* Main */}
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className="mx-auto w-full px-4 py-6">
         {
           viewComponent && viewComponent === 'bim' ?
-            <BimDashboard setViceComponent={setViceComponent} elements={elements} modelData={modelData} />
+            <BimDashboard setViceComponent={setViceComponent} elements={elements} modelData={modelData} setModelData={setModelData}/>
             :
             selectedElement && selectedElement ?
               <ElementEditPanel

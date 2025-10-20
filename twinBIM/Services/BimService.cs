@@ -29,7 +29,6 @@ namespace BimProcessorApi.Services
             }
             else
             {
-                // 이름 등 
                 existingProject.ProjectId = project.ProjectId;
                 existingProject.ProjectName = project.ProjectName;
                 existingProject.StructureType = project.StructureType;
@@ -38,6 +37,11 @@ namespace BimProcessorApi.Services
 
             // 기존 부재 삭제 (간단한 전체 덮어쓰기 로직)
             _context.Elements.RemoveRange(_context.Elements.Where(e => e.ProjectId == project.ProjectId));
+
+            foreach (var element in elements)
+            {
+                element.ProjectId = project.ProjectId;
+            }
 
             // 새 부재 저장
             _context.Elements.AddRange(elements);
