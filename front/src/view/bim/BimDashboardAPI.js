@@ -52,9 +52,10 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
 
 
     function saveUpdateElement() {
-        axios.put("http://localhost:8080/api/bim/model/element", {
-            element: selectedElement
-        })
+        console.log(selectedElement.data);
+        axios.put("http://localhost:8080/api/bim/model/element",
+            selectedElement.data
+        )
             .then((response) => {
                 console.log(response.data);
             })

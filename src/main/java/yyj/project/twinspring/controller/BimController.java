@@ -49,6 +49,7 @@ public class BimController {
     }
     @PutMapping("/model/element")
     public ResponseEntity<Mono<Void>> updateElement(@RequestBody BimElementDTO element){
+        System.out.println("수정 :: " + element);
         return bimService.updateElement(element);
     }
     @PostMapping("/project")

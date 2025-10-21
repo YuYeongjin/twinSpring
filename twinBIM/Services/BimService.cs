@@ -73,7 +73,6 @@ namespace BimProcessorApi.Services
             var existing = await _context.Elements.FindAsync(updatedElement.ElementId);
             if (existing == null) return false;
 
-            // 수정 가능한 필드 업데이트
             existing.Material = updatedElement.Material;
             existing.PositionData = updatedElement.PositionData;
             existing.SizeData = updatedElement.SizeData;
@@ -148,7 +147,7 @@ namespace BimProcessorApi.Services
                         SizeData = JsonSerializer.Serialize<float[]>(new float[] { 0.5f, 6f, 0.5f })
                     });
                 }
-            }
+                }
 
             return elements;
         }

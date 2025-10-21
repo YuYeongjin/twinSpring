@@ -77,7 +77,7 @@ function MiniMap({ modelData, mainCameraPosition, minimapContainerElement }) {
 }
 // =========== [ HTML UI 컴포넌트 ] ===========
 
-function PropertyPanel({ selectedElement, updateElementData }) {
+function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement }) {
   const [formData, setFormData] = useState({
     material: '',
     positionData: '',
@@ -137,12 +137,12 @@ function PropertyPanel({ selectedElement, updateElementData }) {
       ))}
 
       <button
-        onClick={handleSave}
+        onClick={() => saveUpdateElement()}
         className="w-full rounded-md bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors mt-4"
       >
         속성 저장 (Save)
       </button>
-    </div>
+    </div >
   );
 }
 
@@ -186,7 +186,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     minimapContainerRef,
     minimapTrackElement, setMinimapTrackElement,
     isLoading,
-    handleElementSelect,updateElementData
+    handleElementSelect, updateElementData
   } = BimDashboardAPI({ setViceComponent, modelData, setModelData });
 
 
@@ -235,6 +235,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                       selectedElement={selectedElement}
                       updateElementData={updateElementData}
                       setMainCameraPosition={setMainCameraPosition}
+                      saveUpdateElement={saveUpdateElement}
                     />
 
                     {/* MiniMap 렌더링 */}
@@ -278,6 +279,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             <PropertyPanel
               selectedElement={selectedElement}
               updateElementData={updateElementData}
+              saveUpdateElement={saveUpdateElement}
             />
           </Card>
         </div>

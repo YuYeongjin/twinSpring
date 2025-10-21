@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization; 
 
 namespace BimProcessorApi.Models
 {
@@ -8,25 +9,31 @@ namespace BimProcessorApi.Models
     {
         [Key]
         [Column("element_id")]
+        [JsonPropertyName("elementId")]
         public string ElementId { get; set; }
 
         [Column("project_id")]
-        public string ProjectId { get; set; } // Foreign Key
+        [JsonPropertyName("projectId")]
+        public string ProjectId { get; set; }
 
         [Column("element_type")]
+        [JsonPropertyName("elementType")] 
         public string ElementType { get; set; }
 
         [Column("material")]
+        [JsonPropertyName("material")] 
         public string Material { get; set; }
 
-        [Column("position_data", TypeName = "json")] // MySQL JSON 타입 매핑
+        [Column("position_data", TypeName = "json")]
+        [JsonPropertyName("positionData")]
         public string PositionData { get; set; }
 
-        [Column("size_data", TypeName = "json")] // MySQL JSON 타입 매핑
+        [Column("size_data", TypeName = "json")]
+        [JsonPropertyName("sizeData")] 
         public string SizeData { get; set; }
-        
-        // 탐색 속성: 부모 Project
+
         [ForeignKey("ProjectId")]
+        [JsonIgnore]
         public Project Project { get; set; }
     }
 }
