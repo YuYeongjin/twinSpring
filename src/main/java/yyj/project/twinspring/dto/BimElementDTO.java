@@ -15,4 +15,17 @@ public class BimElementDTO {
 
     private String positionData;
     private String sizeData;
+
+    @Override
+    public String toString() {
+        // JSON 문자열을 생성
+        return "{"
+                + "\"projectId\":\"" + projectId + "\","
+                + "\"elementId\":\"" + elementId + "\","
+                + "\"elementType\":\"" + elementType + "\","
+                + "\"material\": \"" + material + "\","
+                + "\"positionData\": \"" + positionData + "\","
+                + "\"sizeData\": \"" + sizeData + "\""
+                + "}";
+    }
 }

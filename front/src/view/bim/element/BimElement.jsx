@@ -38,7 +38,7 @@ export const getBaseColor = (elementType) => {
 export function BimElement({ element, onElementSelect }) {
   const meshRef = useRef();
   const [hovered, setHover] = useState(false);
-  
+
   // 1. sizeData 파싱 및 뷰어에 맞는 position 계산
   const { size, position } = useMemo(() => {
     // BIM 데이터에서 size와 position을 문자열로 가져와 파싱
@@ -46,39 +46,39 @@ export function BimElement({ element, onElementSelect }) {
     const rawPosition = parseVectorData(element.positionData || element.position);
 
     // Three.js는 보통 Y축이 높이. rawSize = [Width, Height, Depth]
-    const [width, height, depth] = rawSize; 
-    
+    const [width, height, depth] = rawSize;
+
     let adjustedPosition = [...rawPosition]; // [x, y, z]
 
     // 기둥/벽/슬래브의 경우, 밑면(rawPosition의 Y)에서 시작하도록 중심(Center) Y 위치를 보정.
     if (element.elementType === 'IfcColumn' || element.elementType === 'IfcWall' || element.elementType === 'IfcSlab') {
-        // Center Y = Bottom Y + Height / 2
-        adjustedPosition[1] = rawPosition[1] + height / 2;
+      // Center Y = Bottom Y + Height / 2
+      adjustedPosition[1] = rawPosition[1] + height / 2;
     }
-    
-    return { 
-      size: rawSize, 
-      position: adjustedPosition 
+
+    return {
+      size: rawSize,
+      position: adjustedPosition
     };
   }, [element.sizeData, element.positionData, element.elementType]);
 
 
   // 2. 재질 및 클릭 이벤트 처리
   const baseColor = getBaseColor(element.elementType);
-  const selected = element.selected; 
-  
+  const selected = element.selected;
+
   const handleClick = (e) => {
     e.stopPropagation();
     if (onElementSelect) {
-        // onElementSelect에 element 데이터와 meshRef를 모두 전달
-        onElementSelect(element, meshRef); 
+      // onElementSelect에 element 데이터와 meshRef를 모두 전달
+      onElementSelect(element, meshRef);
     }
   };
 
   return (
-    <Box 
-      ref={meshRef} 
-      args={size} 
+    <Box
+      ref={meshRef}
+      args={size}
       position={position}
       onClick={handleClick}
       onPointerOver={() => setHover(true)}
@@ -88,8 +88,8 @@ export function BimElement({ element, onElementSelect }) {
       receiveShadow
       userData={{ elementId: element.elementId, rawSize: size }}
     >
-      <meshStandardMaterial 
-        color={selected ? 'cyan' : (hovered ? 'hotpink' : baseColor)} 
+      <meshStandardMaterial
+        color={selected ? 'cyan' : (hovered ? 'hotpink' : baseColor)}
         opacity={selected || hovered ? 0.8 : 1}
         transparent={true}
       />
