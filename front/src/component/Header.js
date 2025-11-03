@@ -23,7 +23,7 @@ export default function Header() {
                 <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-gradient-to-br from-accent-blue to-accent-green shadow-glow" />
                     <h1 className="text-xl md:text-2xl font-semibold tracking-wide">
-                        Ground Station • <span className="text-accent-blue">YJ-01</span>
+                        Digital Twin • <span className="text-accent-blue">YJ-01</span>
                     </h1>
                 </div>
                 <div className="text-sm text-gray-400">
