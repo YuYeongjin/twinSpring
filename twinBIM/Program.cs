@@ -3,10 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using MySql.EntityFrameworkCore.Extensions;
 using BimProcessorApi.Data;
 using BimProcessorApi.Services;
-using BimProcessorApi.Models; // WeatherForecast record를 위해 필요
-using System.Text.Json.Serialization; // JSON 직렬화 설정
-using System.IO; // ⚠️ [추가] 파일 I/O를 위한 네임스페이스
-using Microsoft.Extensions.Configuration; // ⚠️ [추가] 설정 관리를 위한 네임스페이스
+using BimProcessorApi.Models; 
+using System.Text.Json.Serialization; 
+using System.IO; 
+using Microsoft.Extensions.Configuration; 
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,8 +20,11 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition =
             System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
-builder.Services.AddOpenApi();
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 builder.Services.AddAuthorization();
+
 
 // 2. ⚠️ [핵심 추가] MySQL DB Context 등록
 var connectionString = builder.Configuration.GetConnectionString("MySqlConnection");
@@ -49,7 +52,8 @@ var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 // app.UseHttpsRedirection(); // (주석 처리된 상태 유지)
