@@ -8,18 +8,29 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
     const [formData, setFormData] = useState({ 
         elementId: element.elementId,
         material: element.material || '',
-        positionData: element.positionData || '', // JSON 문자열 또는 List<Float>을 가정
-        // sizeData 등 필요한 필드 추가
+        
+        // 💡 새 필드 초기화 (Number 타입으로 저장, 입력은 String으로 받음)
+        positionX: element.positionX ?? '', 
+        positionY: element.positionY ?? '',
+        positionZ: element.positionZ ?? '',
+        
+        sizeX: element.sizeX ?? '',
+        sizeY: element.sizeY ?? '',
+        sizeZ: element.sizeZ ?? '',
     });
     const [isSaving, setIsSaving] = useState(false);
 
     // element prop이 변경될 때마다 formData를 업데이트
     useEffect(() => {
         setFormData({ 
-            ...element, 
-            positionData: Array.isArray(element.positionData) 
-                ? element.positionData.join(', ') // 배열을 문자열로 변환 (사용자 편집용)
-                : element.positionData || '' 
+            elementId: element.elementId,
+            material: element.material || '',
+            positionX: element.positionX ?? '',
+            positionY: element.positionY ?? '',
+            positionZ: element.positionZ ?? '',
+            sizeX: element.sizeX ?? '',
+            sizeY: element.sizeY ?? '',
+            sizeZ: element.sizeZ ?? '',
         });
     }, [element]);
 
@@ -36,9 +47,17 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
         
         // 1. 서버로 전송할 최종 데이터 준비
         const dataToSend = {
-            ...formData,
-            // ⚠️ List<Float>을 사용하는 경우: 문자열을 파싱하여 숫자로 변환
-            positionData: formData.positionData.split(',').map(s => parseFloat(s.trim()))
+            elementId: formData.elementId,
+            material: formData.material,
+            
+            // 💡 문자열 입력 값을 숫자로 변환하여 전송 (빈 문자열은 null로 보내짐)
+            positionX: parseFloat(formData.positionX) || null,
+            positionY: parseFloat(formData.positionY) || null,
+            positionZ: parseFloat(formData.positionZ) || null,
+            
+            sizeX: parseFloat(formData.sizeX) || null,
+            sizeY: parseFloat(formData.sizeY) || null,
+            sizeZ: parseFloat(formData.sizeZ) || null,
         };
         
         try {
@@ -74,16 +93,40 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
                         className="mt-1 w-full p-2 bg-space-700 border border-space-600 rounded-md text-gray-200"
                     />
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-300">위치 데이터 (Position: x, y, z)</label>
-                    <input
-                        type="text"
-                        name="positionData"
-                        value={formData.positionData}
-                        onChange={handleChange}
-                        className="mt-1 w-full p-2 bg-space-700 border border-space-600 rounded-md text-gray-200"
-                        placeholder="예: 5.0, 2.5, 0.0"
-                    />
+             <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-300">위치 (Position)</label>
+                    <div className="flex space-x-2">
+                        {['X', 'Y', 'Z'].map(axis => (
+                            <input
+                                key={`position${axis}`}
+                                type="number" // 숫자로 입력 받음
+                                name={`position${axis}`}
+                                value={formData[`position${axis}`]}
+                                onChange={handleChange}
+                                placeholder={axis}
+                                step="0.01"
+                                className="mt-1 w-1/3 p-2 bg-space-700 border border-space-600 rounded-md text-gray-200 text-center"
+                            />
+                        ))}
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-300">크기 (Size)</label>
+                    <div className="flex space-x-2">
+                        {['X', 'Y', 'Z'].map(axis => (
+                            <input
+                                key={`size${axis}`}
+                                type="number" // 숫자로 입력 받음
+                                name={`size${axis}`}
+                                value={formData[`size${axis}`]}
+                                onChange={handleChange}
+                                placeholder={axis}
+                                step="0.01"
+                                className="mt-1 w-1/3 p-2 bg-space-700 border border-space-600 rounded-md text-gray-200 text-center"
+                            />
+                        ))}
+                    </div>
                 </div>
                 
                 <div className="flex justify-end pt-4">

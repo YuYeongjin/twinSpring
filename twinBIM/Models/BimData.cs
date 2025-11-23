@@ -14,8 +14,16 @@ namespace BimProcessorApi.Models
     {
         public string Id { get; set; }        // 고유 ID (예: COL_001)
         public string Type { get; set; }      // 부재 타입 (예: IfcWall, IfcColumn)
-        public float[] Position { get; set; } // 3D 위치 [x, y, z]
-        public float[] Size { get; set; }     // 크기 [width, height, depth]
+        public double? PositionX { get; set; }
+
+        public double? PositionY { get; set; }
+
+        public double? PositionZ { get; set; }
+
+        public double? SizeX { get; set; }
+
+        public double? SizeY { get; set; }
+        public double? SizeZ { get; set; }
         public string Material { get; set; }  // 속성 데이터
         public string ProjectId { get; set; } // 프로젝트 ID
     }

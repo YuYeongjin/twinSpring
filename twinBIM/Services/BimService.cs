@@ -74,8 +74,15 @@ namespace BimProcessorApi.Services
             if (existing == null) return false;
 
             existing.Material = updatedElement.Material;
-            existing.PositionData = updatedElement.PositionData;
-            existing.SizeData = updatedElement.SizeData;
+            existing.Material = updatedElement.Material;
+
+            existing.PositionX = updatedElement.PositionX;
+            existing.PositionY = updatedElement.PositionY;
+            existing.PositionZ = updatedElement.PositionZ;
+
+            existing.SizeX = updatedElement.SizeX;
+            existing.SizeY = updatedElement.SizeY;
+            existing.SizeZ = updatedElement.SizeZ;
 
             _context.Entry(existing).State = EntityState.Modified;
             await _context.SaveChangesAsync();
@@ -113,13 +120,20 @@ namespace BimProcessorApi.Services
                 // 1. 교량 부재 생성
                 for (int i = 0; i < spanCount + 1; i++) // 교각
                 {
+                    float px = i * 20f - 30f;
+                    float sy = 10f; // size Y
+
                     elements.Add(new Element
                     {
                         ElementId = $"P-{project.ProjectId}-{i + 1}",
                         ElementType = "IfcPier",
                         Material = "Concrete C50",
-                        PositionData = JsonSerializer.Serialize<float[]>(new float[] { i * 20f - 30f, 0f, 0f }),
-                        SizeData = JsonSerializer.Serialize<float[]>(new float[] { 3f, 10f, 3f })
+                        PositionX = px,
+                        PositionY = 0f,
+                        PositionZ = 0f,
+                        SizeX = 3f,
+                        SizeY = sy,
+                        SizeZ = 3f
                     });
                 }
 
@@ -129,8 +143,12 @@ namespace BimProcessorApi.Services
                     ElementId = $"DECK-{project.ProjectId}",
                     ElementType = "IfcSlab",
                     Material = "Prestressed Concrete",
-                    PositionData = JsonSerializer.Serialize<float[]>(new float[] { 0f, 10f, 0f }),
-                    SizeData = JsonSerializer.Serialize<float[]>(new float[] { (spanCount * 20f), 1f, 10f })
+                    PositionX = 0f,
+                    PositionY = 10f,
+                    PositionZ = 0f,
+                    SizeX = (spanCount * 20f),
+                    SizeY = 1f,
+                    SizeZ = 10f
                 });
             }
             else if (project.StructureType == "Building")
@@ -143,11 +161,15 @@ namespace BimProcessorApi.Services
                         ElementId = $"COL-{project.ProjectId}-{i + 1}",
                         ElementType = "IfcColumn",
                         Material = "Steel Grade A",
-                        PositionData = JsonSerializer.Serialize<float[]>(new float[] { (i % 2) * 8f - 4f, 0f, (i / 2) * 8f - 4f }),
-                        SizeData = JsonSerializer.Serialize<float[]>(new float[] { 0.5f, 6f, 0.5f })
+                        PositionX = ((i % 2) * 8f - 4f),
+                        PositionY = 0f,
+                        PositionZ = ((i / 2) * 8f - 4f),
+                        SizeX = 0.5f,
+                        SizeY = 6f,
+                        SizeZ = 0.5f
                     });
                 }
-                }
+            }
 
             return elements;
         }
