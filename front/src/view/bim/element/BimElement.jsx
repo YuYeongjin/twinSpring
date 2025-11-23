@@ -42,9 +42,17 @@ export function BimElement({ element, onElementSelect }) {
   // 1. sizeData 파싱 및 뷰어에 맞는 position 계산
   const { size, position } = useMemo(() => {
     // BIM 데이터에서 size와 position을 문자열로 가져와 파싱
-    const rawSize = parseVectorData(element.sizeData || element.size);
-    const rawPosition = parseVectorData(element.positionData || element.position);
+    const rawPosition = [
+      Number(element.positionX) || 0,
+      Number(element.positionY) || 0,
+      Number(element.positionZ) || 0,
+    ];
 
+    const rawSize = [
+      Number(element.sizeX) || 0.1, // 최소 크기 보장
+      Number(element.sizeY) || 0.1,
+      Number(element.sizeZ) || 0.1,
+    ];
     // Three.js는 보통 Y축이 높이. rawSize = [Width, Height, Depth]
     const [width, height, depth] = rawSize;
 

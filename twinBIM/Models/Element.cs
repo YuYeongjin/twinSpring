@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Text.Json.Serialization; 
+using System.Text.Json.Serialization;
 
 namespace BimProcessorApi.Models
 {
@@ -17,20 +17,36 @@ namespace BimProcessorApi.Models
         public string ProjectId { get; set; }
 
         [Column("element_type")]
-        [JsonPropertyName("elementType")] 
+        [JsonPropertyName("elementType")]
         public string ElementType { get; set; }
 
         [Column("material")]
-        [JsonPropertyName("material")] 
+        [JsonPropertyName("material")]
         public string Material { get; set; }
 
-        [Column("position_data", TypeName = "json")]
-        [JsonPropertyName("positionData")]
-        public string PositionData { get; set; }
+        [Column("position_x")]
+        [JsonPropertyName("positionX")]
+        public double? PositionX { get; set; }
 
-        [Column("size_data", TypeName = "json")]
-        [JsonPropertyName("sizeData")] 
-        public string SizeData { get; set; }
+        [Column("position_y")]
+        [JsonPropertyName("positionY")]
+        public double? PositionY { get; set; }
+
+        [Column("position_z")]
+        [JsonPropertyName("positionZ")]
+        public double? PositionZ { get; set; }
+
+        [Column("size_x")]
+        [JsonPropertyName("sizeX")]
+        public double? SizeX { get; set; }
+
+        [Column("size_y")]
+        [JsonPropertyName("sizeY")]
+        public double? SizeY { get; set; }
+
+        [Column("size_z")]
+        [JsonPropertyName("sizeZ")]
+        public double? SizeZ { get; set; }
 
         [ForeignKey("ProjectId")]
         [JsonIgnore]

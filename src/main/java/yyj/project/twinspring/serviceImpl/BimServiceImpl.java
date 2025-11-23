@@ -69,7 +69,8 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public ResponseEntity<Mono<Void>> updateElement(BimElementDTO element) {
-        return ResponseEntity.ok(webClient.put()
+        System.out.println("element ::: " + element);
+        return ResponseEntity.ok(webClient.post()
                 .uri("/api/bim/element")
                 .bodyValue(element)
                 .retrieve()
