@@ -69,10 +69,11 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public ResponseEntity<Mono<Void>> updateElement(BimElementDTO element) {
-        System.out.println("element ::: " + element);
+        System.out.println("Sending element: " + element);
+
         return ResponseEntity.ok(webClient.post()
                 .uri("/api/bim/element")
-                .bodyValue(element)
+                .bodyValue(element) // 자바 객체를 JSON으로 자동 변환하여 전송
                 .retrieve()
                 .onStatus(status -> status.is4xxClientError() || status.is5xxServerError(), clientResponse -> {
                     // C# 서버에서 오류 발생 시 (404 Not Found 등) 예외 처리

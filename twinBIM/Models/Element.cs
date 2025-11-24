@@ -50,6 +50,6 @@ namespace BimProcessorApi.Models
 
         [ForeignKey("ProjectId")]
         [JsonIgnore]
-        public Project Project { get; set; }
+        public Project? Project { get; set; }
     }
 }

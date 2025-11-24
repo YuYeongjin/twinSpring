@@ -49,7 +49,7 @@ export function BimElement({ element, onElementSelect }) {
     ];
 
     const rawSize = [
-      Number(element.sizeX) || 0.1, // 최소 크기 보장
+      Number(element.sizeX) || 0.1, 
       Number(element.sizeY) || 0.1,
       Number(element.sizeZ) || 0.1,
     ];

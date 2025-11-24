@@ -80,17 +80,30 @@ function MiniMap({ modelData, mainCameraPosition, minimapContainerElement }) {
 function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement }) {
   const [formData, setFormData] = useState({
     material: '',
-    positionData: '',
-    sizeData: '',
+    posX: 0, posY: 0, posZ: 0,
+    sizeX: 0, sizeY: 0, sizeZ: 0,
   });
-
   useEffect(() => {
-    if (selectedElement) {
-      const element = selectedElement.data;
+    if (selectedElement && selectedElement.data) {
+      const data = selectedElement.data;
+
+      // 안전한 값 파싱 헬퍼
+      const getVal = (val, arrStr, idx) => {
+        if (val !== undefined && val !== null) return Number(val);
+        try {
+          const parsed = typeof arrStr === 'string' ? JSON.parse(arrStr) : arrStr;
+          return Array.isArray(parsed) ? Number(parsed[idx]) : 0;
+        } catch { return 0; }
+      };
+
       setFormData({
-        material: element.material,
-        positionData: element.positionData,
-        sizeData: element.sizeData,
+        material: data.material || '',
+        posX: getVal(data.positionX, data.positionData, 0),
+        posY: getVal(data.positionY, data.positionData, 1),
+        posZ: getVal(data.positionZ, data.positionData, 2),
+        sizeX: getVal(data.sizeX, data.sizeData, 0),
+        sizeY: getVal(data.sizeY, data.sizeData, 1),
+        sizeZ: getVal(data.sizeZ, data.sizeData, 2),
       });
     }
   }, [selectedElement]);
@@ -106,9 +119,44 @@ function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement }
 
   const element = selectedElement.data;
 
+    // const handleChange = (e) => {
+    //     const { name, value } = e.target;
+    //     setFormData(prev => ({ ...prev, [name]: value }));
+    // };
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const numericValue = name === 'material' ? value : (parseFloat(value) || 0);
+
+    // 1. 현재 폼 상태 미리 계산 (비동기 state 문제 해결용)
+    const nextFormData = {
+      ...formData,
+      [name]: numericValue
+    };
+
+    // 2. 폼 UI 즉시 갱신
+    setFormData(nextFormData);
+
+    // 3. 3D 뷰어용 데이터 실시간 생성
+    // (positionData 등의 배열 문자열은 굳이 실시간 생성 안 해도 뷰어는 돌아가지만, 데이터 일관성을 위해 생성)
+    const realtimePayload = {
+      ...element, // 기존 속성 유지
+      
+      // 변경된 값 덮어쓰기
+      material: nextFormData.material,
+      positionX: nextFormData.posX,
+      positionY: nextFormData.posY,
+      positionZ: nextFormData.posZ,
+      sizeX: nextFormData.sizeX,
+      sizeY: nextFormData.sizeY,
+      sizeZ: nextFormData.sizeZ,
+      
+      // 배열 형태도 필요하다면 갱신 (선택 사항이지만 안전하게 포함)
+      positionData: JSON.stringify([nextFormData.posX, nextFormData.posY, nextFormData.posZ]),
+      sizeData: JSON.stringify([nextFormData.sizeX, nextFormData.sizeY, nextFormData.sizeZ])
+    };
+
+    // 4. 상위 컴포넌트(Dashboard)의 상태를 업데이트 -> 3D Scene 리렌더링 유발
+    updateElementData(element.elementId, realtimePayload);
   };
 
   const handleSave = () => {
