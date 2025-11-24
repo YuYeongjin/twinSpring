@@ -1,38 +1,39 @@
 package yyj.project.twinspring.dto;
 
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
 
-@Getter
-@Setter
+@Data
 public class BimElementDTO {
     private String elementId;
     private String projectId;
     private String elementType;
     private String material;
 
-    private double positionX;
-    private double positionY;
-    private double positionZ;
+    private Double positionX;
+    private Double positionY;
+    private Double positionZ;
 
-    private double sizeX;
-    private double sizeY;
-    private double sizeZ;
-/*
+    private Double sizeX;
+    private Double sizeY;
+    private Double sizeZ;
+
+    /*
     @Override
     public String toString() {
-        // JSON 문자열을 생성
         return "{"
-                + "\"projectId\":\"" + projectId + "\","
-                + "\"elementId\":\"" + elementId + "\","
-                + "\"elementType\":\"" + elementType + "\","
-                + "\"material\": \"" + material + "\","
-                + "\"positionData\": " + positionData + ","
-                + "\"sizeData\": " + sizeData
+                + "\"projectId\": \"" + projectId + "\", "
+                + "\"elementId\": \"" + elementId + "\", "
+                + "\"elementType\": \"" + elementType + "\", "
+                + "\"material\": \"" + material + "\", "
+                + "\"positionData\": [" + positionX + ", " + positionY + ", " + positionZ + "], "
+                + "\"sizeData\": [" + sizeX + ", " + sizeY + ", " + sizeZ + "]"
                 + "}";
     }
 
- */
+     */
+
 }
