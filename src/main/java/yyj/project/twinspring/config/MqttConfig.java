@@ -24,7 +24,7 @@ public class MqttConfig {
     public MqttPahoClientFactory mqttClientFactory() {
         DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
         MqttConnectOptions options   = new MqttConnectOptions();
-        options.setServerURIs(new String[]{"tcp://127.0.0.1:1883"});
+        options.setServerURIs(new String[]{"tcp://192.168.219.103:1883"});
         options.setCleanSession(true);
 
         factory.setConnectionOptions(options);
@@ -37,21 +37,30 @@ public class MqttConfig {
         return new DirectChannel();
     }
 
+//    @Bean
+//    public MessageProducerSupport mqttInbound() {
+//        MqttPahoMessageDrivenChannelAdapter adapter =
+//                new MqttPahoMessageDrivenChannelAdapter("testClient", mqttClientFactory(),
+//                        "test/topic");
+//        adapter.setOutputChannel(mqttInputChannel());
+//        return adapter;
+//    }
+
     @Bean
     public MessageProducerSupport mqttInbound() {
+        // ID 뒤에 현재 시간을 붙여 중복 방지
+        String uniqueClientId = "testClient_" + System.currentTimeMillis();
         MqttPahoMessageDrivenChannelAdapter adapter =
-                new MqttPahoMessageDrivenChannelAdapter("testClient", mqttClientFactory(),
-                        "test/topic");
+                new MqttPahoMessageDrivenChannelAdapter(uniqueClientId, mqttClientFactory(), "test/topic");
         adapter.setOutputChannel(mqttInputChannel());
         return adapter;
     }
-
     @Bean
     @ServiceActivator(inputChannel = "mqttInputChannel")
     public MessageHandler handler() {
         return message -> {
+            System.out.println("Received message: " + message.getPayload());
             String payload = (String) message.getPayload();
-            System.out.println("Received message: " + payload);
 
             mqttService.handleMessage(payload);
         };
