@@ -38,7 +38,7 @@ public class MqttServiceImpl implements MqttService {
         try {
             ObjectMapper mapper = new ObjectMapper();
             SensorDTO data = mapper.readValue(payload, SensorDTO.class);
-//            System.out.println("MQTT 수신 데이터: " + data);
+            System.out.println("MQTT 수신 데이터: " + data);
             spotDAO.insertData(data);
 
             // 화면으로 Send
@@ -85,7 +85,7 @@ public class MqttServiceImpl implements MqttService {
 
             template.convertAndSend("/topic/sensor", payload);
         } catch (Exception e) {
-            e.getMessage();
+            e.printStackTrace();
         }
     }
 
