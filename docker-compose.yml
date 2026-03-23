@@ -1,0 +1,35 @@
+version: '3.3'
+services:
+  db:
+    image: jsurf/mariadb-arm:latest
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "Abcd1234"
+      MYSQL_DATABASE: "digital_twin"
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    restart: always
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    ports:
+      - "1883:1883"
+
+  app:
+    image: yeongjin95/twin-spring:latest
+    restart: always
+    privileged: true
+    depends_on:
+      - db
+      - mqtt
+    ports:
+      - "8080:8080"
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mariadb://db:3306/digital_twin
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: "Abcd1234"
+      MQTT_BROKER_URL: tcp://mqtt:1883

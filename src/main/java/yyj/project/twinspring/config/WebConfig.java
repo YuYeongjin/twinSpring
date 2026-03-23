@@ -9,11 +9,10 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        // allowedOrigins와 allowedOriginPatterns("*")를 동시에 쓰면 와일드카드가 우선됩니다.
-        // 개발 중에는 localhost:3000 허용, 운영 환경에서는 실제 도메인으로 교체하세요.
-        registry.addMapping("/api/**")
-                .allowedOriginPatterns("http://localhost:3000", "http://localhost:*")
+        registry.addMapping("/**") // 모든 경로에 대해
+                .allowedOriginPatterns("*") // 모든 도메인 허용 (라즈베리 파이 IP 접속 대응)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*");
+                .allowedHeaders("*")
+                .allowCredentials(true);
     }
 }

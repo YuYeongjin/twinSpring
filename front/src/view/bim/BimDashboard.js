@@ -310,7 +310,7 @@ function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement, 
  * - Delete: 선택 부재 삭제
  * - Escape: 선택 해제
  */
-export default function BimDashboard({ setViceComponent, modelData, setModelData }) {
+export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject }) {
     const {
         saveUpdateElement,
         selectedElement, setSelectedElement,
@@ -323,10 +323,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         transformMode, setTransformMode,
         addNewElement,
         deleteSelectedElement,
-    } = BimDashboardAPI({ setViceComponent, modelData, setModelData });
+    } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
-    // 현재 프로젝트 ID (modelData 첫 번째 요소에서 추출)
-    const currentProjectId = useMemo(() => modelData?.[0]?.projectId ?? null, [modelData]);
+    /**
+     * 현재 프로젝트 ID
+     * selectedProject(App에서 전달) → modelData 첫 부재 순서로 폴백
+     * 빈 프로젝트(부재 0개)에서도 올바른 ID를 사용하기 위해 selectedProject를 우선
+     */
+    const currentProjectId = useMemo(
+        () => selectedProject?.projectId ?? modelData?.[0]?.projectId ?? null,
+        [selectedProject, modelData]
+    );
 
     /**
      * 키보드 단축키 처리

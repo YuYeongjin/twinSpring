@@ -73,13 +73,16 @@ namespace BimProcessorApi.Services
             var existing = await _context.Elements.FindAsync(updatedElement.ElementId);
             if (existing == null) return false;
 
-            existing.Material = updatedElement.Material;
-            existing.Material = updatedElement.Material;
+            // 부재 유형 및 재료 업데이트 (Revit Properties 창과 동일)
+            existing.ElementType = updatedElement.ElementType;
+            existing.Material    = updatedElement.Material;
 
+            // 위치 업데이트 (X/Y/Z)
             existing.PositionX = updatedElement.PositionX;
             existing.PositionY = updatedElement.PositionY;
             existing.PositionZ = updatedElement.PositionZ;
 
+            // 치수 업데이트 (폭/높이/깊이)
             existing.SizeX = updatedElement.SizeX;
             existing.SizeY = updatedElement.SizeY;
             existing.SizeZ = updatedElement.SizeZ;
@@ -127,6 +130,10 @@ namespace BimProcessorApi.Services
         {
             var projectToDelete = await _context.Projects.FindAsync(projectId);
             if (projectToDelete == null) return false;
+
+            // FK 제약 위반 방지: 프로젝트에 속한 부재를 먼저 삭제 (Cascade Delete)
+            var elements = _context.Elements.Where(e => e.ProjectId == projectId);
+            _context.Elements.RemoveRange(elements);
 
             _context.Projects.Remove(projectToDelete);
             await _context.SaveChangesAsync();

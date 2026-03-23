@@ -95,7 +95,33 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
-
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>dotnet-publish-bim</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>dotnet</executable>
+                            <workingDirectory>${basedir}/twinBIM</workingDirectory>
+                            <arguments>
+                                <argument>publish</argument>
+                                <argument>-c</argument>
+                                <argument>Release</argument>
+                                <argument>-r</argument>
+                                <argument>linux-arm</argument> <argument>--self-contained</argument>
+                                <argument>true</argument>
+                                <argument>-o</argument>
+                                <argument>${project.build.outputDirectory}/bim-api</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -108,29 +134,6 @@
                     </excludes>
                 </configuration>
             </plugin>
-
-
-<!--            <plugin>-->
-<!--                <groupId>org.apache.maven.plugins</groupId>-->
-<!--                <artifactId>maven-resources-plugin</artifactId>-->
-<!--                <executions>-->
-<!--                    <execution>-->
-<!--                        <id>copy-common-config</id>-->
-<!--                        <phase>process-resources</phase>-->
-<!--                        <goals>-->
-<!--                            <goal>copy-resources</goal>-->
-<!--                        </goals>-->
-<!--                        <configuration>-->
-<!--                            <outputDirectory>${project.build.outputDirectory}</outputDirectory>-->
-<!--                            <resources>-->
-<!--                                <resource>-->
-<!--                                    <directory>../</directory>-->
-<!--                                </resource>-->
-<!--                            </resources>-->
-<!--                        </configuration>-->
-<!--                    </execution>-->
-<!--                </executions>-->
-<!--            </plugin>-->
             <plugin>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
@@ -138,8 +141,8 @@
                         <phase>generate-resources</phase>
                         <configuration>
                             <target>
-                                <copy todir="${basedir}/target/classes/public">
-                                    <fileset dir="./front/build"/>
+                                <copy todir="${project.build.outputDirectory}/public">
+                                    <fileset dir="${basedir}/front/build"/>
                                 </copy>
                             </target>
                         </configuration>
@@ -150,6 +153,10 @@
                 </executions>
             </plugin>
 
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
         </plugins>
     </build>
 
