@@ -101,7 +101,7 @@ function App() {
             <EmsDashboard setViceComponent={setViceComponent} />
             :
           viewComponent && viewComponent === 'bim' ?
-            <BimDashboard setViceComponent={setViceComponent} elements={elements} modelData={modelData} setModelData={setModelData}/>
+            <BimDashboard setViceComponent={setViceComponent} elements={elements} modelData={modelData} setModelData={setModelData} selectedProject={selectedProject}/>
             :
             selectedElement && selectedElement ?
               <ElementEditPanel

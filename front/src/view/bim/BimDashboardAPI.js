@@ -4,7 +4,7 @@ import axios from 'axios';
 
 const API_BASE = "http://localhost:8080/api/bim";
 
-export default function BimDashboardAPI({ setViceComponent, modelData, setModelData }) {
+export default function BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject }) {
     const [selectedElement, setSelectedElement] = useState(null);
     const [mainCameraPosition, setMainCameraPosition] = useState(new THREE.Vector3(10, 10, 10));
 
@@ -49,7 +49,11 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         }
     }, [modelData]);
 
-    const isLoading = !modelData || modelData.length === 0;
+    /**
+     * 로딩 상태: 프로젝트가 선택되었지만 아직 modelData가 초기화되지 않은 경우에만 true
+     * 선택된 프로젝트에 부재가 0개인 경우는 로딩이 아니므로 Canvas를 그려야 함
+     */
+    const isLoading = !selectedProject && (!modelData || modelData.length === 0);
 
     /**
      * 현재 선택된 부재의 변경 사항을 서버에 저장 (Revit "저장" 동작)
