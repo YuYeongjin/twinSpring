@@ -1,4 +1,4 @@
-RestAPI 형태로 MQTT , Websocket 받아 처리
-기타 Logic 구현 시 활용 예정
-
+아키텍처 및 이미지
 <img width="941" height="439" alt="image" src="https://github.com/user-attachments/assets/2cff112f-8b8f-4591-b44c-c98de80d51b1" />
+<img width="1475" height="917" alt="image" src="https://github.com/user-attachments/assets/e0c2fcf5-0266-40fe-b301-4d260f2d0ef0" />
+<img width="1449" height="1260" alt="image" src="https://github.com/user-attachments/assets/d4a8a8cf-1fd6-4b4a-83ee-3ebbc1d8be89" />
