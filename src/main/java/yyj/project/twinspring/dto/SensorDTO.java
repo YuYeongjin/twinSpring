@@ -1,60 +1,29 @@
 package yyj.project.twinspring.dto;
 
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
-@Getter
-@Setter
+// @Data = @Getter + @Setter + @EqualsAndHashCode + @ToString + @RequiredArgsConstructor
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class SensorDTO {
     private String location;
     private double temperature;
-
     private double humidity;
     private String timestamp;
-    public SensorDTO(){}
-    public SensorDTO(String location, double temperature, String timestamp,double humidity) {
+
+    // 생성자 인자 순서를 명시적으로 유지하기 위한 커스텀 생성자
+    public SensorDTO(String location, double temperature, String timestamp, double humidity) {
         this.location = location;
         this.temperature = temperature;
         this.timestamp = timestamp;
         this.humidity = humidity;
-    }
-
-    public double getHumidity() {
-        return humidity;
-    }
-
-    public double getTemperature() {
-        return temperature;
-    }
-
-    public String getLocation() {
-        return location;
-    }
-
-    public String getTimestamp() {
-        return timestamp;
-    }
-
-    public void setHumidity(double humidity) {
-        this.humidity = humidity;
-    }
-
-    public void setLocation(String location) {
-        this.location = location;
-    }
-
-    public void setTemperature(double temperature) {
-        this.temperature = temperature;
-    }
-
-    public void setTimestamp(String timestamp) {
-        this.timestamp = timestamp;
     }
 
     @Override
-    public String toString(){
-        return "location : " + location + ", temperature : " + temperature + ", time: " + timestamp;
-    };
+    public String toString() {
+        return "location=" + location + ", temperature=" + temperature + ", humidity=" + humidity + ", time=" + timestamp;
+    }
 }
