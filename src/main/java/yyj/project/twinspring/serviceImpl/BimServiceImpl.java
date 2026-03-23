@@ -121,5 +121,42 @@ public class BimServiceImpl implements BimService {
         return ResponseEntity.ok(responseBodyMono);
     }
 
+    /**
+     * 단일 부재 신규 생성
+     * C# POST /api/bim/element/new 로 전달, 생성된 부재(elementId 포함)를 반환
+     * Revit의 "부재 배치" 기능에 해당
+     */
+    @Override
+    public Mono<BimElementDTO> createElement(BimElementDTO element) {
+        log.info("부재 생성 요청: type={}, projectId={}", element.getElementType(), element.getProjectId());
+        return webClient.post()
+                .uri("/api/bim/element/new")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(element)
+                .retrieve()
+                .onStatus(status -> status.isError(), response -> {
+                    log.error("C# 부재 생성 실패: {}", response.statusCode());
+                    return Mono.error(new RuntimeException("C# element creation failed"));
+                })
+                .bodyToMono(BimElementDTO.class);
+    }
 
+    /**
+     * 단일 부재 삭제
+     * C# DELETE /api/bim/element/{elementId} 로 전달
+     * Revit의 Delete 키 삭제에 해당
+     */
+    @Override
+    public ResponseEntity<Mono<Void>> deleteElement(String elementId) {
+        log.info("부재 삭제 요청: elementId={}", elementId);
+        return ResponseEntity.ok(
+                webClient.delete()
+                        .uri("/api/bim/element/{elementId}", elementId)
+                        .retrieve()
+                        .onStatus(status -> status.isError(), response -> {
+                            log.error("C# 부재 삭제 실패: elementId={}, status={}", elementId, response.statusCode());
+                            return Mono.error(new RuntimeException("C# element delete failed"));
+                        })
+                        .bodyToMono(Void.class));
+    }
 }

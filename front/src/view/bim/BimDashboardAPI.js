@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
-import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, Environment, Box, View, PerspectiveCamera, TransformControls, OrthographicCamera } from '@react-three/drei';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import * as THREE from 'three';
-import { parseVectorData, getBaseColor } from './element/BimElement';
-import Scene from './component/Scene';
 import axios from 'axios';
 
-
+const API_BASE = "http://localhost:8080/api/bim";
 
 export default function BimDashboardAPI({ setViceComponent, modelData, setModelData }) {
     const [selectedElement, setSelectedElement] = useState(null);
     const [mainCameraPosition, setMainCameraPosition] = useState(new THREE.Vector3(10, 10, 10));
+
+    // TransformControls 조작 모드: 'translate' | 'rotate' | 'scale'
+    // Revit의 이동/회전/크기 핸들에 해당
+    const [transformMode, setTransformMode] = useState('translate');
 
     const [isMiniMapReady, setIsMiniMapReady] = useState(false);
     const minimapContainerRef = useRef(null);
@@ -25,10 +25,12 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         }
     }, []);
 
+    // 부재 클릭 선택 핸들러
     const handleElementSelect = (data, ref) => {
         setSelectedElement({ data, meshRef: ref });
     };
 
+    // 로컬 modelData 상태 업데이트 (3D 뷰어 즉시 반영용)
     const updateElementData = (id, newProps) => {
         setModelData(prevData =>
             prevData.map(element =>
@@ -37,8 +39,8 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         );
     };
 
+    // selectedElement가 가리키는 data도 modelData 변경에 맞게 동기화
     useEffect(() => {
-        // modelData가 변경되면 selectedElement의 data도 업데이트
         if (selectedElement) {
             const updatedData = modelData.find(e => e.elementId === selectedElement.data.elementId);
             if (updatedData) {
@@ -46,67 +48,104 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
             }
         }
     }, [modelData]);
-
 
     const isLoading = !modelData || modelData.length === 0;
 
+    /**
+     * 현재 선택된 부재의 변경 사항을 서버에 저장 (Revit "저장" 동작)
+     * positionData / sizeData 문자열 → positionX/Y/Z, sizeX/Y/Z 숫자로 변환 후 PUT
+     */
     function saveUpdateElement() {
+        if (!selectedElement) return;
         const payload = { ...selectedElement.data };
 
+        // 배열 문자열 형태가 있으면 숫자 필드로 변환
         if (payload.positionData) {
-            let posArray;
-
-            if (typeof payload.positionData === 'string') {
-                try {
-                    posArray = JSON.parse(payload.positionData);
-                } catch (e) {
-                    console.error("Position parsing error", e);
+            try {
+                const arr = typeof payload.positionData === 'string'
+                    ? JSON.parse(payload.positionData)
+                    : payload.positionData;
+                if (Array.isArray(arr) && arr.length >= 3) {
+                    payload.positionX = arr[0];
+                    payload.positionY = arr[1];
+                    payload.positionZ = arr[2];
                 }
-            }
-            else if (Array.isArray(payload.positionData)) {
-                posArray = payload.positionData;
-            }
-            if (posArray && posArray.length >= 3) {
-                payload.positionX = posArray[0];
-                payload.positionY = posArray[1];
-                payload.positionZ = posArray[2];
-            }
+            } catch (e) { console.error("Position 파싱 오류", e); }
         }
         if (payload.sizeData) {
-            let sizeArray;
-
-            if (typeof payload.sizeData === 'string') {
-                try { sizeArray = JSON.parse(payload.sizeData); } catch (e) { }
-            } else if (Array.isArray(payload.sizeData)) {
-                sizeArray = payload.sizeData;
-            }
-
-            if (sizeArray && sizeArray.length >= 3) {
-                payload.sizeX = sizeArray[0];
-                payload.sizeY = sizeArray[1];
-                payload.sizeZ = sizeArray[2];
-            }
+            try {
+                const arr = typeof payload.sizeData === 'string'
+                    ? JSON.parse(payload.sizeData)
+                    : payload.sizeData;
+                if (Array.isArray(arr) && arr.length >= 3) {
+                    payload.sizeX = arr[0];
+                    payload.sizeY = arr[1];
+                    payload.sizeZ = arr[2];
+                }
+            } catch (e) { console.error("Size 파싱 오류", e); }
         }
 
-        axios.put("http://localhost:8080/api/bim/model/element", payload)
-            .then((response) => {
-                console.log("저장 성공:", response.data);
-                // 필요하다면 여기서 로컬 상태(modelData)도 최신화하거나 재조회
-            })
-            .catch((error) => {
-                console.log("저장 실패:", error);
-            });
+        axios.put(`${API_BASE}/model/element`, payload)
+            .then(() => console.log("저장 완료:", payload.elementId))
+            .catch(err => console.error("저장 실패:", err));
     }
 
-    useEffect(() => {
-        if (selectedElement) {
-            const updatedData = modelData.find(e => e.elementId === selectedElement.data.elementId);
-            if (updatedData) {
-                setSelectedElement(prev => ({ ...prev, data: updatedData }));
-            }
+    /**
+     * 새 부재 생성 (Revit의 "구성요소 배치" 기능)
+     * ControlPanel의 타입 버튼 → 템플릿 데이터와 현재 프로젝트 ID로 POST
+     * 서버에서 elementId를 부여받아 로컬 modelData에 추가
+     *
+     * @param {object} template - ControlPanel의 elementTemplates 중 하나
+     * @param {string} projectId - 현재 열린 프로젝트 ID
+     */
+    async function addNewElement(template, projectId) {
+        if (!projectId) {
+            console.error("addNewElement: projectId가 없습니다.");
+            return;
         }
-    }, [modelData]);
-    return ({
+        try {
+            const payload = {
+                ...template,
+                projectId,                    // 현재 프로젝트에 귀속
+                positionX: 0, positionY: 0, positionZ: 0,
+                sizeX: template.sizeX ?? 1,
+                sizeY: template.sizeY ?? 1,
+                sizeZ: template.sizeZ ?? 1,
+                material: template.material ?? 'Concrete C30',
+            };
+
+            const response = await axios.post(`${API_BASE}/element`, payload);
+            const created = response.data; // C#이 반환한 elementId 포함 부재
+
+            // 로컬 modelData에 즉시 추가 → 3D 뷰어에 바로 표시
+            setModelData(prev => [...prev, created]);
+            console.log("부재 생성 완료:", created.elementId);
+        } catch (err) {
+            console.error("부재 생성 실패:", err);
+        }
+    }
+
+    /**
+     * 선택된 부재 삭제 (Revit의 Delete 키 기능)
+     * 서버 DELETE 호출 후 로컬 modelData에서도 즉시 제거
+     */
+    async function deleteSelectedElement() {
+        if (!selectedElement) return;
+        const elementId = selectedElement.data.elementId;
+        if (!window.confirm(`부재 "${elementId}"를 삭제하시겠습니까?`)) return;
+
+        try {
+            await axios.delete(`${API_BASE}/element/${elementId}`);
+            // 로컬에서 즉시 제거
+            setModelData(prev => prev.filter(e => e.elementId !== elementId));
+            setSelectedElement(null);
+            console.log("부재 삭제 완료:", elementId);
+        } catch (err) {
+            console.error("부재 삭제 실패:", err);
+        }
+    }
+
+    return {
         saveUpdateElement,
         selectedElement, setSelectedElement,
         mainCameraPosition, setMainCameraPosition,
@@ -114,6 +153,9 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         minimapContainerRef,
         minimapTrackElement, setMinimapTrackElement,
         isLoading,
-        handleElementSelect, updateElementData
-    });
+        handleElementSelect, updateElementData,
+        transformMode, setTransformMode,  // Revit 조작 모드
+        addNewElement,                    // 부재 생성
+        deleteSelectedElement,            // 부재 삭제
+    };
 }

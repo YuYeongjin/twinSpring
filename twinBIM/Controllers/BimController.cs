@@ -56,6 +56,31 @@ public class BimController : ControllerBase
         }
         return NotFound();
     }
+    /// <summary>
+    /// 단일 부재 신규 생성 (Revit "부재 배치"에 해당)
+    /// POST /api/bim/element/new
+    /// </summary>
+    [HttpPost("element/new")]
+    public async Task<ActionResult<Element>> CreateElement([FromBody] Element element)
+    {
+        if (!ModelState.IsValid) return BadRequest(ModelState);
+
+        var created = await _bimService.CreateElementAsync(element);
+        return CreatedAtAction(nameof(GetModelElements), new { projectId = created.ProjectId }, created);
+    }
+
+    /// <summary>
+    /// 단일 부재 삭제 (Revit Delete 키에 해당)
+    /// DELETE /api/bim/element/{elementId}
+    /// </summary>
+    [HttpDelete("element/{elementId}")]
+    public async Task<ActionResult> DeleteElement(string elementId)
+    {
+        if (await _bimService.DeleteElementAsync(elementId))
+            return NoContent();
+        return NotFound();
+    }
+
     [HttpDelete("project/{projectId}")]
     public async Task<ActionResult> DeleteProject(string projectId)
     {

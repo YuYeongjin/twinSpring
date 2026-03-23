@@ -90,6 +90,37 @@ namespace BimProcessorApi.Services
         }
 
         // ---------------------------------------------------------------------
+        // C - CREATE (단일 부재 신규 추가)
+        // Revit의 "부재 배치" 기능에 해당 — 새 elementId를 부여하여 DB에 삽입
+        // ---------------------------------------------------------------------
+        public async Task<Element> CreateElementAsync(Element element)
+        {
+            // elementId가 없으면 자동 생성
+            if (string.IsNullOrEmpty(element.ElementId))
+            {
+                element.ElementId = $"EL-{Guid.NewGuid().ToString()[..6].ToUpper()}";
+            }
+
+            _context.Elements.Add(element);
+            await _context.SaveChangesAsync();
+            return element; // 생성된 element 반환 (프론트에서 ID 확인용)
+        }
+
+        // ---------------------------------------------------------------------
+        // D - DELETE (단일 부재 삭제)
+        // Revit의 "Delete" 키 삭제 기능에 해당
+        // ---------------------------------------------------------------------
+        public async Task<bool> DeleteElementAsync(string elementId)
+        {
+            var element = await _context.Elements.FindAsync(elementId);
+            if (element == null) return false;
+
+            _context.Elements.Remove(element);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        // ---------------------------------------------------------------------
         // D - DELETE (단일 프로젝트 삭제)
         // ---------------------------------------------------------------------
         public async Task<bool> DeleteProjectAsync(string projectId)

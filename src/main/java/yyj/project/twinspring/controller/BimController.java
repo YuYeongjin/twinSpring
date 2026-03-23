@@ -51,6 +51,28 @@ public class BimController {
         System.out.println("수정 :: " + element);
         return bimService.updateElement(element);
     }
+    /**
+     * 단일 부재 신규 생성 API
+     * ControlPanel의 "기둥 생성", "보 생성" 버튼 클릭 시 호출
+     * C# POST /api/bim/element/new 로 프록시, 생성된 부재(elementId 포함) 반환
+     */
+    @PostMapping("/element")
+    public Mono<ResponseEntity<BimElementDTO>> createElement(@RequestBody BimElementDTO element) {
+        return bimService.createElement(element)
+                .map(created -> ResponseEntity.status(HttpStatus.CREATED).body(created));
+    }
+
+    /**
+     * 단일 부재 삭제 API
+     * PropertyPanel의 삭제 버튼 또는 Del 키 단축키 사용 시 호출
+     * C# DELETE /api/bim/element/{elementId} 로 프록시
+     */
+    @DeleteMapping("/element/{elementId}")
+    public ResponseEntity<Mono<Void>> deleteElement(@PathVariable String elementId) {
+        System.out.println("부재 삭제 :: " + elementId);
+        return bimService.deleteElement(elementId);
+    }
+
     @PostMapping("/project")
     public Mono<ResponseEntity<BimProjectDTO>> newProject(@RequestBody Map<String,String> project){
         System.out.println("PROJECT CREATE : " + project);
