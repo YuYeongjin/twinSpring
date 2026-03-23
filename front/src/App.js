@@ -4,6 +4,8 @@ import Header from './component/Header';
 import BimDashboard from './view/bim/BimDashboard';
 import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
+// EMS(에너지 관리 시스템) 대시보드 컴포넌트 임포트
+import EmsDashboard from './view/ems/EmsDashboard';
 import { useEffect, useState } from 'react';
 
 function App() {
@@ -94,6 +96,10 @@ function App() {
       {/* Main */}
       <main className="mx-auto w-full px-4 py-6">
         {
+          // EMS 대시보드 뷰: setViceComponent('ems') 호출 시 표시
+          viewComponent === 'ems' ?
+            <EmsDashboard setViceComponent={setViceComponent} />
+            :
           viewComponent && viewComponent === 'bim' ?
             <BimDashboard setViceComponent={setViceComponent} elements={elements} modelData={modelData} setModelData={setModelData}/>
             :

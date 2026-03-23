@@ -25,4 +25,10 @@ public interface BimService {
     Mono<BimProjectDTO> createProject(BimProjectDTO project);
 
     ResponseEntity<Mono<List<BimElementDTO>>> getProject(String projectId);
+
+    /** 단일 부재 신규 생성 (C# POST /api/bim/element/new 호출) */
+    Mono<BimElementDTO> createElement(BimElementDTO element);
+
+    /** 단일 부재 삭제 (C# DELETE /api/bim/element/{elementId} 호출) */
+    ResponseEntity<Mono<Void>> deleteElement(String elementId);
 }

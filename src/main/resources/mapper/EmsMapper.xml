@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    EMS(에너지 관리 시스템) MyBatis SQL 매퍼
+    ENERGY_DATA, EMS_ALERT, EMS_THRESHOLD 3개 테이블 대상 쿼리 정의
+-->
+<mapper namespace="yyj.project.twinspring.dao.EmsDAO">
+
+    <!-- ============================================================
+         에너지 계측 데이터 (ENERGY_DATA 테이블)
+         ============================================================ -->
+
+    <!--
+        에너지 계측 데이터 저장
+        MQTT 또는 REST로 수신된 실시간 전력/에너지 데이터를 DB에 삽입
+    -->
+    <insert id="insertEnergyData" parameterType="yyj.project.twinspring.dto.EmsDTO">
+        INSERT INTO ENERGY_DATA (location, zone, power_kw, voltage, current_a, power_factor, energy_kwh, timestamp)
+        VALUES (#{location}, #{zone}, #{powerKw}, #{voltage}, #{currentA}, #{powerFactor}, #{energyKwh}, #{timestamp})
+    </insert>
+
+    <!--
+        최근 100건 에너지 데이터 조회
+        프론트엔드 시계열 차트 렌더링에 사용
+        timestamp 기준 내림차순 정렬 후 100건 제한
+    -->
+    <select id="getRecentEnergyData" resultType="map">
+        SELECT id, location, zone, power_kw AS powerKw, voltage,
+               current_a AS currentA, power_factor AS powerFactor,
+               energy_kwh AS energyKwh, timestamp
+        FROM ENERGY_DATA
+        ORDER BY id DESC
+        LIMIT 100
+    </select>
+
+    <!--
+        위치별 최신 에너지 데이터 조회
+        대시보드 위치별 현황 카드에 표시
+    -->
+    <select id="getLatestByLocation" parameterType="string" resultType="map">
+        SELECT id, location, zone, power_kw AS powerKw, voltage,
+               current_a AS currentA, power_factor AS powerFactor,
+               energy_kwh AS energyKwh, timestamp
+        FROM ENERGY_DATA
+        WHERE location = #{location}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <!--
+        구역별 에너지 소비 집계 (오늘 기준)
+        각 구역(zone)의 평균 전력(kW)과 최대 누적 전력량(kWh) 집계
+        파이 차트 또는 막대 차트로 구역별 소비 비교에 사용
+    -->
+    <select id="getEnergyByZone" resultType="map">
+        SELECT
+            zone,
+            location,
+            ROUND(AVG(power_kw), 2)   AS avgPowerKw,
+            ROUND(MAX(energy_kwh), 2) AS totalEnergyKwh,
+            COUNT(*)                  AS dataCount
+        FROM ENERGY_DATA
+        WHERE DATE(timestamp) = CURDATE()
+        GROUP BY zone, location
+        ORDER BY avgPowerKw DESC
+    </select>
+
+    <!--
+        시간별 에너지 추이 (최근 24시간)
+        각 시간대의 평균 전력과 최대 전력을 집계하여 피크 시간대 파악에 사용
+        HOUR() 함수로 시간대별 그룹핑
+    -->
+    <select id="getHourlyEnergyTrend" resultType="map">
+        SELECT
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:00') AS hour,
+            ROUND(AVG(power_kw), 2)                  AS avgPowerKw,
+            ROUND(MAX(power_kw), 2)                  AS peakPowerKw,
+            ROUND(AVG(power_factor), 3)              AS avgPowerFactor
+        FROM ENERGY_DATA
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+        GROUP BY DATE_FORMAT(timestamp, '%Y-%m-%d %H:00')
+        ORDER BY hour ASC
+    </select>
+
+    <!--
+        일별 에너지 요약 (최근 30일)
+        하루 단위로 평균 전력과 최대 누적 전력량을 집계
+        월간 에너지 소비 패턴 분석 및 절감 목표 대비 현황 파악에 사용
+    -->
+    <select id="getDailyEnergySummary" resultType="map">
+        SELECT
+            DATE(timestamp)               AS day,
+            ROUND(AVG(power_kw), 2)       AS avgPowerKw,
+            ROUND(MAX(power_kw), 2)       AS peakPowerKw,
+            ROUND(MAX(energy_kwh), 2)     AS dailyEnergyKwh,
+            ROUND(AVG(power_factor), 3)   AS avgPowerFactor
+        FROM ENERGY_DATA
+        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        GROUP BY DATE(timestamp)
+        ORDER BY day ASC
+    </select>
+
+
+    <!-- ============================================================
+         EMS 알람 관리 (EMS_ALERT 테이블)
+         ============================================================ -->
+
+    <!--
+        알람 저장
+        임계값 초과 또는 이상 감지 시 EmsServiceImpl에서 호출하여 알람 이력 기록
+    -->
+    <insert id="insertAlert" parameterType="yyj.project.twinspring.dto.EmsAlertDTO">
+        INSERT INTO EMS_ALERT (alert_type, severity, message, location, threshold_value, current_value, is_resolved, timestamp)
+        VALUES (#{alertType}, #{severity}, #{message}, #{location}, #{thresholdValue}, #{currentValue}, #{resolved}, #{timestamp})
+    </insert>
+
+    <!--
+        미해결 알람 목록 조회
+        is_resolved = false인 알람만 조회
+        CRITICAL → WARNING → INFO 순으로 정렬하여 우선순위 높은 알람을 먼저 표시
+    -->
+    <select id="getActiveAlerts" resultType="yyj.project.twinspring.dto.EmsAlertDTO">
+        SELECT
+            id,
+            alert_type    AS alertType,
+            severity,
+            message,
+            location,
+            threshold_value AS thresholdValue,
+            current_value   AS currentValue,
+            is_resolved     AS resolved,
+            timestamp
+        FROM EMS_ALERT
+        WHERE is_resolved = false
+        ORDER BY
+            FIELD(severity, 'CRITICAL', 'WARNING', 'INFO'),
+            id DESC
+    </select>
+
+    <!--
+        알람 해결 처리
+        담당자가 조치 완료 후 알람을 닫을 때 is_resolved를 true로 업데이트
+    -->
+    <update id="resolveAlert" parameterType="long">
+        UPDATE EMS_ALERT
+        SET is_resolved = true
+        WHERE id = #{id}
+    </update>
+
+    <!--
+        알람 이력 조회 (최근 50건)
+        해결 여부와 무관하게 최근 알람 이력을 조회
+        과거 알람 패턴 분석 및 재발 방지 검토에 사용
+    -->
+    <select id="getAlertHistory" resultType="yyj.project.twinspring.dto.EmsAlertDTO">
+        SELECT
+            id,
+            alert_type    AS alertType,
+            severity,
+            message,
+            location,
+            threshold_value AS thresholdValue,
+            current_value   AS currentValue,
+            is_resolved     AS resolved,
+            timestamp
+        FROM EMS_ALERT
+        ORDER BY id DESC
+        LIMIT 50
+    </select>
+
+
+    <!-- ============================================================
+         임계값 설정 (EMS_THRESHOLD 테이블)
+         ============================================================ -->
+
+    <!--
+        임계값 저장 또는 업데이트 (UPSERT)
+        동일한 thresholdType + location 조합이 있으면 값을 업데이트,
+        없으면 새로 삽입 (MariaDB/MySQL ON DUPLICATE KEY UPDATE 활용)
+    -->
+    <insert id="upsertThreshold" parameterType="yyj.project.twinspring.dto.EmsThresholdDTO">
+        INSERT INTO EMS_THRESHOLD (threshold_type, location, threshold_value, updated_at)
+        VALUES (#{thresholdType}, #{location}, #{thresholdValue}, #{updatedAt})
+        ON DUPLICATE KEY UPDATE
+            threshold_value = #{thresholdValue},
+            updated_at      = #{updatedAt}
+    </insert>
+
+    <!--
+        특정 위치, 유형의 임계값 조회
+        알람 검사 시 EmsServiceImpl.checkAndGenerateAlerts()에서 호출
+        location이 null이면 전체 적용 임계값 조회
+    -->
+    <select id="getThreshold" resultType="yyj.project.twinspring.dto.EmsThresholdDTO">
+        SELECT
+            id,
+            threshold_type  AS thresholdType,
+            location,
+            threshold_value AS thresholdValue,
+            updated_at      AS updatedAt
+        FROM EMS_THRESHOLD
+        WHERE threshold_type = #{thresholdType}
+          AND (location = #{location} OR location IS NULL)
+        ORDER BY location IS NULL ASC
+        LIMIT 1
+    </select>
+
+    <!--
+        모든 임계값 조회
+        임계값 관리 화면에 현재 설정된 전체 임계값 목록 표시
+    -->
+    <select id="getAllThresholds" resultType="yyj.project.twinspring.dto.EmsThresholdDTO">
+        SELECT
+            id,
+            threshold_type  AS thresholdType,
+            location,
+            threshold_value AS thresholdValue,
+            updated_at      AS updatedAt
+        FROM EMS_THRESHOLD
+        ORDER BY threshold_type, location
+    </select>
+
+</mapper>
