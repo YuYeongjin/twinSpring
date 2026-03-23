@@ -1,14 +1,17 @@
 package yyj.project.twinspring.service;
 
-import org.springframework.http.ResponseEntity;
 import yyj.project.twinspring.dto.SensorDTO;
+
+import java.util.List;
+import java.util.Map;
 
 public interface MqttService {
 
     void handleMessage(String payload);
+
     SensorDTO getLatest();
 
-    Object test();
+    List<Map<String, Object>> getLogs();
 
-    Object getLogs();
+    Object test();
 }

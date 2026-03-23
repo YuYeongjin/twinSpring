@@ -14,7 +14,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bim")
-@CrossOrigin(origins = "*")
 public class BimController {
     private final BimService bimService;
 
