@@ -41,6 +41,35 @@ services:
       MQTT_PORT: "1883"
       MQTT_TOPIC: "test/topic"
 
+  ollama:
+    image: ollama/ollama:latest
+    restart: always
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_data:/root/.ollama
+    # 라즈베리파이 ARM64 지원 (ollama/ollama 이미지는 arm64 포함)
+
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      - ollama
+      - db
+    ports:
+      - "8000:8000"
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      LLM_MODEL: llama3.2:1b-instruct-q4_K_M
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: digital_twin
+      DB_USER: root
+      DB_PASSWORD: "Abcd1234"
+      SPRING_BASE_URL: http://app:8080
+
   app:
     image: yeongjin95/twin-spring:latest
     restart: always
@@ -48,6 +77,7 @@ services:
       - db
       - mqtt
       - bim-api
+      - agent
     ports:
       - "8080:8080"
     environment:
@@ -56,3 +86,4 @@ services:
       SPRING_DATASOURCE_PASSWORD: "Abcd1234"
       MQTT_BROKER_URL: tcp://mqtt:1883
       BIM_SERVER_URL: http://bim-api:5112
+      AGENT_URL: http://agent:8000

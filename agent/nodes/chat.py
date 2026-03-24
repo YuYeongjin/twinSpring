@@ -1,36 +1,32 @@
 """
-Node 3: 일반 대화 LLM 노드
+Node 3: 일반 대화 LLM 노드 (Ollama - Llama 3.2 1B)
 
-데이터 조회 없이 LLM과 직접 대화합니다.
-대화 히스토리를 유지하여 문맥 있는 응답을 생성합니다.
+1B 모델 특성상 시스템 프롬프트를 짧고 영어로 유지하고,
+사용자 메시지는 그대로 전달합니다.
 """
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage, AIMessage
 from state import AgentState
-from config import ANTHROPIC_API_KEY, LLM_MODEL
+from llm import llm_chat
 
-_llm = ChatAnthropic(
-    model=LLM_MODEL,
-    api_key=ANTHROPIC_API_KEY,
-    temperature=0.7,
-    max_tokens=1024,
-)
-
-_SYSTEM_PROMPT = """당신은 스마트 빌딩 디지털 트윈 시스템의 친절한 AI 어시스턴트입니다.
-사용자와 자연스럽게 대화하고, 시스템 사용법이나 일반적인 질문에 도움을 드립니다.
-센서 데이터나 에너지 데이터 조회가 필요한 질문은 "해당 데이터를 조회하려면 구체적으로 질문해 주세요" 라고 안내해 주세요.
-한국어로 답변하세요."""
+# 1B 모델은 짧은 영어 시스템 프롬프트가 더 잘 작동
+_SYSTEM = SystemMessage(content=(
+    "You are a smart building digital twin assistant. "
+    "Answer helpfully in Korean. Keep answers concise."
+))
 
 
 def chat_node(state: AgentState) -> dict:
-    """일반 대화 LLM 노드 - 대화 히스토리 포함"""
-    messages = [SystemMessage(content=_SYSTEM_PROMPT)] + list(state["messages"])
+    messages = [_SYSTEM] + list(state["messages"])
 
-    response = _llm.invoke(messages)
+    try:
+        response = llm_chat.invoke(messages)
+        content = response.content.strip()
+    except Exception as e:
+        content = f"응답 생성 중 오류가 발생했습니다: {e}"
 
     return {
-        "messages": [AIMessage(content=response.content)],
+        "messages": [AIMessage(content=content)],
         "query_result": None,
         "context": None,
     }

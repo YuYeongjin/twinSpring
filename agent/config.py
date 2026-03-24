@@ -3,9 +3,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# LLM
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "claude-sonnet-4-6")
+# LLM (Ollama)
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2:1b-instruct-q4_K_M")
 
 # Database (MariaDB)
 DB_HOST = os.getenv("DB_HOST", "localhost")
