@@ -6,6 +6,8 @@ import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
 // EMS(에너지 관리 시스템) 대시보드 컴포넌트 임포트
 import EmsDashboard from './view/ems/EmsDashboard';
+// AI 채팅 어시스턴트
+import ChatView from './view/chat/ChatView';
 import { useEffect, useState } from 'react';
 
 function App() {
@@ -118,6 +120,9 @@ function App() {
 
       {/* Footer */}
       <Footer />
+
+      {/* AI 채팅 어시스턴트 - 모든 뷰에서 표시 */}
+      <ChatView selectedProject={selectedProject} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 # 1. 최신 안정 버전인 Bookworm 기반 이미지로 변경
 FROM python:3.9-slim-bookworm
 
+
 # 2. 필수 시스템 패키지 설치
 # Bookworm은 최신 레포지토리를 사용하므로 에러 없이 설치됩니다.
 RUN apt-get update && apt-get install -y \
