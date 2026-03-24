@@ -1,7 +1,7 @@
 version: '3.3'
 services:
   db:
-    image: jsurf/mariadb-arm:latest
+    image: biarms/mysql:5.7
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: "Abcd1234"
@@ -17,19 +17,42 @@ services:
     ports:
       - "1883:1883"
 
+  bim-api:
+    image: yeongjin95/twin-bim:latest
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "5112:5112"
+    environment:
+      ConnectionStrings__MySqlConnection: "server=db;port=3306;database=digital_twin;user=root;password=Abcd1234;"
+      ASPNETCORE_URLS: "http://+:5112"
+
+  sensor:
+    image: yeongjin95/twin-sensor:latest
+    restart: always
+    privileged: true
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"
+    depends_on:
+      - mqtt
+    environment:
+      MQTT_BROKER: mqtt
+      MQTT_PORT: "1883"
+      MQTT_TOPIC: "test/topic"
+
   app:
     image: yeongjin95/twin-spring:latest
     restart: always
-    privileged: true
     depends_on:
       - db
       - mqtt
+      - bim-api
     ports:
       - "8080:8080"
-    devices:
-      - "/dev/gpiomem:/dev/gpiomem"
     environment:
       SPRING_DATASOURCE_URL: jdbc:mariadb://db:3306/digital_twin
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: "Abcd1234"
       MQTT_BROKER_URL: tcp://mqtt:1883
+      BIM_SERVER_URL: http://bim-api:5112

@@ -19,6 +19,7 @@ DHT11 센서 → MQTT 발행 스크립트
   sudo apt install libgpiod2   # RPi4 신커널 GPIO 라이브러리
 """
 
+import os
 import time
 import json
 import sys
@@ -29,10 +30,10 @@ import adafruit_dht
 import board
 import paho.mqtt.client as mqtt
 
-# ── MQTT 설정 ──────────────────────────────────────────────────────────────
-MQTT_BROKER = "localhost"   # Spring 서버 IP로 변경 (예: "192.168.1.100")
-MQTT_PORT   = 1883
-MQTT_TOPIC  = "test/topic"
+# ── MQTT 설정 (환경변수 우선, 기본값 fallback) ─────────────────────────────
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "localhost")
+MQTT_PORT   = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_TOPIC  = os.environ.get("MQTT_TOPIC", "test/topic")
 
 # ── DHT11 설정 ────────────────────────────────────────────────────────────
 SENSOR_PIN     = board.D17  # GPIO 17번 핀
