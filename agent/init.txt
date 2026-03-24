@@ -1,0 +1,14 @@
+  실행 순서
+
+  # 1. Python Agent 서버 실행
+  cd agent
+  pip install -r requirements.txt
+  cp .env.example .env  # ANTHROPIC_API_KEY 입력
+  python scripts/init_rag.py  # 최초 1회
+  uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+
+  # 2. Spring Boot 실행
+  ./mvnw spring-boot:run
+
+  # 3. React 실행
+  cd front && npm start
