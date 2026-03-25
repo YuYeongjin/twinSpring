@@ -1,24 +1,3 @@
-"""
-DHT11 센서 → MQTT 발행 스크립트
-대상 하드웨어: Raspberry Pi 4, DHT11 센서 (GPIO 17번 핀)
-
-[문제 원인]
-  "Unable to set line 17 to input" 에러는 RPi4 신형 커널(5.x+)에서
-  adafruit_dht 기본값인 pulseio(하드웨어 방식)가 새 GPIO character device
-  인터페이스(/dev/gpiochip)와 충돌하여 발생합니다.
-
-[수정 사항]
-  - use_pulseio=False 추가: 소프트웨어 비트뱅 방식으로 전환 (RPi4 호환)
-  - dht.exit() 호출로 GPIO 리소스 명시적 해제
-  - 연속 실패 횟수 추적 및 자동 재초기화 로직 추가
-  - MQTT 연결 콜백 추가로 브로커 연결 확인
-
-[사전 준비]
-  pip install adafruit-circuitpython-dht
-  pip install paho-mqtt
-  sudo apt install libgpiod2   # RPi4 신커널 GPIO 라이브러리
-"""
-
 import os
 import time
 import json
