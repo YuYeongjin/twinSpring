@@ -111,6 +111,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
             const payload = {
                 ...template,
                 projectId,                    // 현재 프로젝트에 귀속
+                elementId: "ELEM-" + Math.random().toString(36).substr(2, 9),
                 positionX: 0, positionY: 0, positionZ: 0,
                 sizeX: template.sizeX ?? 1,
                 sizeY: template.sizeY ?? 1,

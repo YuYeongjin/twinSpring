@@ -40,7 +40,7 @@ public class BimController : ControllerBase
         // await _bimService.SaveModelAsync(project, elements);
         return Ok(); // 200 OK
     }
-    [HttpPost("element")]
+    [HttpPut("element")]
     public async Task<ActionResult> UpdateElement([FromBody] Element element)
     {
 
@@ -58,9 +58,9 @@ public class BimController : ControllerBase
     }
     /// <summary>
     /// 단일 부재 신규 생성 (Revit "부재 배치"에 해당)
-    /// POST /api/bim/element/new
+    /// POST /api/bim/element
     /// </summary>
-    [HttpPost("element/new")]
+    [HttpPost("element")]
     public async Task<ActionResult<Element>> CreateElement([FromBody] Element element)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);

@@ -34,3 +34,6 @@ build/
 
 config.yml
 publish/
+publish-amd64/
+publish-arm32/
+publish-arm64/
