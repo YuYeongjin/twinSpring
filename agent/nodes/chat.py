@@ -7,7 +7,7 @@ Node 3: 일반 대화 LLM 노드 (Ollama - Llama 3.2 1B)
 
 from langchain_core.messages import SystemMessage, AIMessage
 from state import AgentState
-from llm import llm_chat
+from llm_config import llm_chat
 
 # 1B 모델은 짧은 영어 시스템 프롬프트가 더 잘 작동
 _SYSTEM = SystemMessage(content=(

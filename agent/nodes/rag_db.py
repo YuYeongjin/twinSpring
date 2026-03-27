@@ -8,7 +8,7 @@ DB 데이터와 RAG 컨텍스트를 LLM에 전달할 때
 import re
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from state import AgentState
-from llm import llm_chat
+from llm_config import llm_chat
 from tools.db_tool import (
     query_sensor_data,
     query_energy_data,
