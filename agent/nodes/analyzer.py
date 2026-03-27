@@ -13,7 +13,7 @@ intent:
 import re
 from langchain_core.messages import HumanMessage
 from state import AgentState
-from llm import llm_precise
+from llm_config import llm_precise
 
 # ── 키워드 기반 빠른 분류 ──────────────────────────────────────────
 

@@ -12,7 +12,7 @@ import re
 import httpx
 from langchain_core.messages import HumanMessage, AIMessage
 from state import AgentState
-from llm import llm_precise
+from llm_config import llm_precise
 from config import SPRING_BASE_URL
 
 # ── 키워드 매핑 ───────────────────────────────────────────────────
