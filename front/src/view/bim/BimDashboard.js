@@ -25,12 +25,12 @@ function Card({ title, right, children, className = "" }) {
 
 function Chip({ color = "gray", children }) {
     const map = {
-        green:  "bg-green-900/40 text-green-300 border-green-600/40",
-        red:    "bg-red-900/40 text-red-300 border-red-600/40",
-        blue:   "bg-blue-900/40 text-blue-300 border-blue-600/40",
+        green: "bg-green-900/40 text-green-300 border-green-600/40",
+        red: "bg-red-900/40 text-red-300 border-red-600/40",
+        blue: "bg-blue-900/40 text-blue-300 border-blue-600/40",
         orange: "bg-orange-900/40 text-orange-300 border-orange-600/40",
-        brown:  "bg-yellow-900/40 text-yellow-300 border-yellow-600/40",
-        gray:   "bg-gray-800 text-gray-300 border-gray-700",
+        brown: "bg-yellow-900/40 text-yellow-300 border-yellow-600/40",
+        gray: "bg-gray-800 text-gray-300 border-gray-700",
     };
     return <span className={`px-2 py-0.5 text-xs border rounded-md ${map[color]}`}>{children}</span>;
 }
@@ -65,8 +65,8 @@ function MiniMapElement({ element }) {
 function CameraMarker({ position }) {
     if (!position || isNaN(position.x)) return null;
     return (
-        <mesh position={[position.x, 0.2, position.z]}>
-            <circleGeometry args={[1.5, 32]} rotation-x={-Math.PI / 2} />
+        <mesh position={[position.x, 0.2, position.z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[1.5, 32]} />
             <meshBasicMaterial color="#3b82f6" />
         </mesh>
     );
@@ -109,9 +109,9 @@ const MATERIAL_OPTIONS = {
 // 재료명에 따른 색상 (3D 뷰어에서 재료별 시각화)
 const MATERIAL_COLORS = {
     'Concrete': '#b0b0a0',
-    'Steel':    '#a0b8d0',
-    'Timber':   '#c8a060',
-    'Composite':'#80c0a0',
+    'Steel': '#a0b8d0',
+    'Timber': '#c8a060',
+    'Composite': '#80c0a0',
 };
 
 // ================================================================
@@ -140,9 +140,9 @@ function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement, 
         const n = (v, def = 0) => (v !== undefined && v !== null ? Number(v) : def);
         setForm({
             material: d.material || '',
-            posX:  n(d.positionX),
-            posY:  n(d.positionY),
-            posZ:  n(d.positionZ),
+            posX: n(d.positionX),
+            posY: n(d.positionY),
+            posZ: n(d.positionZ),
             sizeX: n(d.sizeX, 1),
             sizeY: n(d.sizeY, 1),
             sizeZ: n(d.sizeZ, 1),
@@ -177,9 +177,9 @@ function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement, 
         // 3D Scene 즉시 업데이트 (실시간 미리보기)
         updateElementData(el.elementId, {
             ...el,
-            material:  next.material,
+            material: next.material,
             positionX: next.posX, positionY: next.posY, positionZ: next.posZ,
-            sizeX:     next.sizeX, sizeY: next.sizeY, sizeZ: next.sizeZ,
+            sizeX: next.sizeX, sizeY: next.sizeY, sizeZ: next.sizeZ,
         });
     };
 
@@ -324,7 +324,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         addNewElement,
         deleteSelectedElement,
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
-
+    const mainViewRef = useRef(null);
     /**
      * 현재 프로젝트 ID
      * selectedProject(App에서 전달) → modelData 첫 부재 순서로 폴백
@@ -429,20 +429,27 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             </div>
                         ) : (
                             <div className="w-full flex-1 relative">
+                                <div ref={mainViewRef} className="absolute inset-0 z-10 touch-none" />
                                 <Canvas
+                                    eventSource={mainViewRef} // 이벤트를 위 div에서 받아옴
+                                    // 2. 캔버스 자체는 마우스 클릭을 가로채지 않도록 pointer-events-none 설정 (z-0)
+                                    className="!absolute inset-0 rounded-xl pointer-events-none z-0"
                                     camera={{ position: [15, 12, 15], fov: 55 }}
                                     shadows
-                                    className="rounded-xl"
                                     onPointerMissed={() => setSelectedElement(null)}
                                 >
-                                    <Scene
-                                        modelData={modelData}
-                                        onElementSelect={handleElementSelect}
-                                        selectedElement={selectedElement}
-                                        updateElementData={updateElementData}
-                                        setMainCameraPosition={setMainCameraPosition}
-                                        transformMode={transformMode}
-                                    />
+                                    <View track={mainViewRef}>
+                                        <ambientLight intensity={0.7} />
+                                        <directionalLight position={[10, 10, 10]} intensity={1} castShadow />
+                                        <Scene
+                                            modelData={modelData}
+                                            onElementSelect={handleElementSelect}
+                                            selectedElement={selectedElement}
+                                            updateElementData={updateElementData}
+                                            setMainCameraPosition={setMainCameraPosition}
+                                            transformMode={transformMode}
+                                        />
+                                    </View>
 
                                     {/* 미니맵 오버레이 */}
                                     {isMiniMapReady && minimapTrackElement && (
@@ -454,16 +461,16 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     )}
                                 </Canvas>
 
-                                {/* 미니맵 DOM 앵커 */}
+                                {/* 3. 미니맵 DOM 앵커는 이벤트를 방해하지 않으면서 최상단에 위치 (z-20) */}
                                 <div
                                     ref={minimapContainerRef}
-                                    className="absolute top-3 right-3 w-36 h-36 bg-space-900/90 border border-space-600 rounded-xl overflow-hidden shadow-2xl"
+                                    className="absolute top-3 right-3 w-36 h-36 bg-space-900/90 border border-space-600 rounded-xl overflow-hidden shadow-2xl z-20 pointer-events-auto"
                                 />
 
-                                {/* 선택된 부재 정보 오버레이 (3D 뷰어 좌하단) */}
+                                {/* 4. 선택된 부재 정보 오버레이 (z-20) */}
                                 {selectedElement && (
-                                    <div className="absolute bottom-3 left-3 bg-space-900/80 border border-space-700 rounded-lg px-3 py-2 text-xs text-gray-300">
-                                        <span className="text-accent-orange font-bold">{selectedElement.data.elementType}</span>
+                                    <div className="absolute bottom-3 left-3 bg-space-900/80 border border-space-700 rounded-lg px-3 py-2 text-xs text-gray-300 z-20">
+                                        <span className="text-orange-400 font-bold">{selectedElement.data.elementType}</span>
                                         <span className="ml-2 text-gray-500">{selectedElement.data.elementId}</span>
                                         <span className="ml-3 text-gray-400">
                                             {selectedElement.data.material || '재료 미설정'}

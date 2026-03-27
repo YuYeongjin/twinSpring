@@ -59,16 +59,14 @@ export function BimElement({ element, onElementSelect }) {
     let adjustedPosition = [...rawPosition]; // [x, y, z]
 
     // 기둥/벽/슬래브의 경우, 밑면(rawPosition의 Y)에서 시작하도록 중심(Center) Y 위치를 보정.
-    if (element.elementType === 'IfcColumn' || element.elementType === 'IfcWall' || element.elementType === 'IfcSlab') {
-      // Center Y = Bottom Y + Height / 2
-      adjustedPosition[1] = rawPosition[1] + height / 2;
-    }
+    // Center Y = Bottom Y + Height / 2 (모든 부재 공통 — 밑면 기준 좌표를 중심 기준으로 보정)
+    adjustedPosition[1] = rawPosition[1] + height / 2;
 
     return {
       size: rawSize,
       position: adjustedPosition
     };
-  }, [element.sizeData, element.positionData, element.elementType]);
+  }, [element.positionX, element.positionY, element.positionZ, element.sizeX, element.sizeY, element.sizeZ, element.elementType]);
 
 
   // 2. 재질 및 클릭 이벤트 처리

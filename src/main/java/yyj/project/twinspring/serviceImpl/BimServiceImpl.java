@@ -75,7 +75,7 @@ public class BimServiceImpl implements BimService {
     public ResponseEntity<Mono<Void>> updateElement(BimElementDTO element) {
         log.debug("Element 수정 요청: {}", element);
         return ResponseEntity.ok(
-                webClient.post()
+                webClient.put()
                         .uri("/api/bim/element")
                         .bodyValue(element)
                         .retrieve()
@@ -123,14 +123,14 @@ public class BimServiceImpl implements BimService {
 
     /**
      * 단일 부재 신규 생성
-     * C# POST /api/bim/element/new 로 전달, 생성된 부재(elementId 포함)를 반환
+     * C# POST /api/bim/element 로 전달, 생성된 부재(elementId 포함)를 반환
      * Revit의 "부재 배치" 기능에 해당
      */
     @Override
     public Mono<BimElementDTO> createElement(BimElementDTO element) {
         log.info("부재 생성 요청: type={}, projectId={}", element.getElementType(), element.getProjectId());
         return webClient.post()
-                .uri("/api/bim/element/new")
+                .uri("/api/bim/element")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(element)
                 .retrieve()
