@@ -13,11 +13,13 @@ import org.springframework.beans.factory.annotation.Value;
 @Configuration
 public class WebClientConfig {
 
-    @Value("${bim.server.url}")
+    @Value("${BIM_SERVER_URL:http://localhost:5112}")
     private String csharpBaseUrl;
 
     @Bean
     public WebClient webClient(WebClient.Builder builder, ObjectMapper objectMapper) {
+
+        System.out.println("Connecting to BIM Server at: " + csharpBaseUrl);
 
         ExchangeStrategies strategies = ExchangeStrategies.builder()
                 .codecs(configurer -> {
@@ -34,5 +36,4 @@ public class WebClientConfig {
                 .exchangeStrategies(strategies)
                 .build();
     }
-
 }
