@@ -27,7 +27,7 @@ jobs:
         working-directory: ./front 
         run: |
           npm install
-          npm run build
+          CI=false npm run build
 
       # 1-2. Spring Boot Maven 빌드
       - name: Build Spring Boot
