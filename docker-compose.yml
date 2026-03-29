@@ -87,3 +87,16 @@ services:
       MQTT_BROKER_URL: tcp://mqtt:1883
       BIM_SERVER_URL: http://bim-api:5112
       AGENT_URL: http://agent:8000
+  nginx-proxy:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy
+    restart: always
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - ./npm_data:/data
+      - ./npm_letsencrypt:/etc/letsencrypt
+    depends_on:
+      - app
