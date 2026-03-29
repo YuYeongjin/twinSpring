@@ -17,9 +17,23 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: maven
+      # 1-1. 프론트엔드 빌드 (Node.js 환경 구축 및 빌드)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
+      - name: Build Frontend
+        working-directory: ./front 
+        run: |
+          npm install
+          npm run build
+
+      # 1-2. Spring Boot Maven 빌드
       - name: Build Spring Boot
-        run: chmod +x mvnw && ./mvnw clean package -DskipTests
+        run: |
+          chmod +x mvnw
+          ./mvnw clean package -DskipTests
 
       # 2. .NET 환경 설정 및 Publish (아키텍처별 3번 수행)
       - name: Setup .NET
@@ -46,7 +60,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4. 이미지 빌드 및 푸시 (에뮬레이션 없이 COPY만 하도록 설정됨)
+      # 4. 이미지 빌드 및 푸시 (에뮬레이션 없이 COPY만)
       - name: Build and Push twin-spring
         uses: docker/build-push-action@v5
         with:
