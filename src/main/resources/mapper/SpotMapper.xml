@@ -5,7 +5,12 @@
 
     <insert id="insertData" parameterType="yyj.project.twinspring.dto.SensorDTO">
         INSERT INTO SENSOR_DATA (location, temperature, timestamp,humidity)
-        VALUES (#{location}, #{temperature}, #{timestamp},#{humidity})
+        VALUES (
+            #{location},
+            #{temperature},
+            STR_TO_DATE(LEFT(#{timestamp}, 19), '%Y-%m-%dT%H:%i:%s'), -- T 이전까지만 잘라서 변환
+            #{humidity}
+            )
     </insert>
 
     <select id="getAll">

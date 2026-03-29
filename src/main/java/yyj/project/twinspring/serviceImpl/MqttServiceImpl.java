@@ -13,6 +13,7 @@ import yyj.project.twinspring.service.EmsService;
 import yyj.project.twinspring.service.MqttService;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -67,6 +68,10 @@ public class MqttServiceImpl implements MqttService {
             // 온습도 센서 데이터 여부 판별: temperature 또는 humidity 필드 존재 시 처리
             if (root.has("temperature") || root.has("humidity")) {
                 SensorDTO data = objectMapper.treeToValue(root, SensorDTO.class);
+                OffsetDateTime odt = OffsetDateTime.parse(data.getTimestamp());
+
+                data.setTimestamp(odt.toLocalDateTime().toString());
+
                 log.info("MQTT 센서 데이터 수신: {}", data);
 
                 spotDAO.insertData(data);
