@@ -1,9 +1,9 @@
 FROM debian:bookworm-slim
 
-# Docker buildx가 자동으로 주입하는 빌드 아키텍처 변수
+# Docker buildx가 자동으로 주입하는 변수
 ARG TARGETARCH
-ARG TARGETVARIANT
 
+# 런타임 필수 패키지 설치
 RUN apt-get update && apt-get install -y \
     libicu-dev \
     libssl-dev \
@@ -11,23 +11,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# 세 아키텍처의 publish 결과물을 임시 경로에 모두 복사
-COPY publish-arm32/ /tmp/arm32/
-COPY publish-arm64/ /tmp/arm64/
-COPY publish-amd64/ /tmp/amd64/
+# [핵심 수정] 아키텍처별로 폴더명을 맞춰서 필요한 것만 복사 (에뮬레이션 불필요)
+# TARGETARCH는 amd64, arm64, arm 등으로 들어옵니다.
+COPY publish-${TARGETARCH}/ .
 
-# TARGETARCH 에 따라 올바른 바이너리를 /app 으로 이동
-RUN if [ "$TARGETARCH" = "arm" ]; then \
-      cp -r /tmp/arm32/. /app/; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-      cp -r /tmp/arm64/. /app/; \
-    else \
-      cp -r /tmp/amd64/. /app/; \
-    fi \
-    && rm -rf /tmp/arm32 /tmp/arm64 /tmp/amd64 \
-    && chmod +x /app/twinBIM
+# 실행 권한 부여 (바이너리 이름이 twinBIM이라고 가정)
+RUN chmod +x ./twinBIM
 
 ENV ASPNETCORE_URLS=http://+:5112
-
 EXPOSE 5112
+
 ENTRYPOINT ["./twinBIM"]
