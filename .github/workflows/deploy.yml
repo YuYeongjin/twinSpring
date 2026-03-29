@@ -2,8 +2,7 @@ name: CI - Build and Push to Docker Hub
 
 on:
   push:
-    branches: [ main ] # 브랜치 이름이 main인지 꼭 확인하세요!
-
+    branches: [ master ] 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
