@@ -13,11 +13,13 @@ export default function SatelliteAPI() {
   const [bimMenu, setBimMenu] = useState('default');
   // WebSocket 연결 상태: 'connecting' | 'connected' | 'disconnected' | 'error'
   const [wsStatus, setWsStatus] = useState('connecting');
-  const SOCKET_HTTP_URL = "http://localhost:8080/ws/sensor";
-
+  const host = window.location.hostname;
+  const port = "8080";
+  const SOCKET_HTTP_URL = `http://${host}:${port}/ws/sensor`;
+  const API_BASE_URL = `http://${host}:${port}/api/bim`;
 
   const addNewProject = (category) => {
-    axios.post("http://localhost:8080/api/bim/project", {
+    axios.post(`${API_BASE_URL}/project`, {
       structureType: category,
       projectName: category + " project",
       spanCount: 0
