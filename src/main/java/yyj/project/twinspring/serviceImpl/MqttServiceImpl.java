@@ -76,7 +76,6 @@ public class MqttServiceImpl implements MqttService {
 
                 data.setTimestamp(dbFriendlyTimestamp);
 
-                log.info("MQTT 센서 데이터 수신 (변환 완료): {}", data);
                 spotDAO.insertData(data);
             }
 

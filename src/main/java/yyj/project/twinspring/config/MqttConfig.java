@@ -61,7 +61,6 @@ public class MqttConfig {
     public MessageHandler handler() {
         return message -> {
             String payload = (String) message.getPayload();
-            log.debug("MQTT 메시지 수신: {}", payload);
             mqttService.handleMessage(payload);
         };
     }
