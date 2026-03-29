@@ -24,10 +24,10 @@ jobs:
           node-version: '20'
 
       - name: Build Frontend
-        working-directory: ./front 
+        working-directory: ./front
         run: |
           npm install
-          npm run build
+          CI=false npm run build
 
       # 1-2. Spring Boot Maven 빌드
       - name: Build Spring Boot
@@ -60,7 +60,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4. 이미지 빌드 및 푸시 (에뮬레이션 없이 COPY만)
+      # 4. 이미지 빌드 및 푸시 (에뮬레이션 없이 COPY만 하도록 설정됨)
       - name: Build and Push twin-spring
         uses: docker/build-push-action@v5
         with:
