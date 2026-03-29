@@ -37,3 +37,6 @@ publish/
 publish-amd64/
 publish-arm32/
 publish-arm64/
+agent/__pycache__/**
+agent/nodes/__pycache__/**
+agent/tools/__pycache__/**
