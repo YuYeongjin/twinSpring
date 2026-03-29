@@ -8,7 +8,7 @@
         VALUES (
             #{location},
             #{temperature},
-            STR_TO_DATE(LEFT(#{timestamp}, 19), '%Y-%m-%dT%H:%i:%s'), -- T 이전까지만 잘라서 변환
+            #{timestamp},
             #{humidity}
             )
     </insert>

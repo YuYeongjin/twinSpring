@@ -14,6 +14,7 @@ import yyj.project.twinspring.service.MqttService;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -65,18 +66,18 @@ public class MqttServiceImpl implements MqttService {
                 emsService.handleEnergyData(emsData);
             }
 
-            // 온습도 센서 데이터 여부 판별: temperature 또는 humidity 필드 존재 시 처리
             if (root.has("temperature") || root.has("humidity")) {
                 SensorDTO data = objectMapper.treeToValue(root, SensorDTO.class);
                 OffsetDateTime odt = OffsetDateTime.parse(data.getTimestamp());
 
-                data.setTimestamp(odt.toLocalDateTime().toString());
+                // 포맷터 정의 (T 대신 공백 사용)
+                String dbFriendlyTimestamp = odt.toLocalDateTime()
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS"));
 
-                log.info("MQTT 센서 데이터 수신: {}", data);
+                data.setTimestamp(dbFriendlyTimestamp);
 
+                log.info("MQTT 센서 데이터 수신 (변환 완료): {}", data);
                 spotDAO.insertData(data);
-                latestData = data; // 최신 데이터 갱신
-                template.convertAndSend("/topic/sensor", payload);
             }
 
             // 두 필드 모두 없는 경우 경고 로그
