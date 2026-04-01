@@ -11,6 +11,7 @@ services:
 
   mqtt:
     image: eclipse-mosquitto:2.0
+    command: mosquitto -c /mosquitto/config/mosquitto.conf
     restart: always
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
@@ -85,6 +86,7 @@ services:
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: "Abcd1234"
       MQTT_BROKER_URL: tcp://mqtt:1883
+      MQTT_TOPIC: test/topic
       BIM_SERVER_URL: http://bim-api:5112
       AGENT_URL: http://agent:8000
   nginx-proxy:
