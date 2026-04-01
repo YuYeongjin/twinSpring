@@ -25,7 +25,7 @@ public class MqttConfig {
     @Autowired
     public MqttService mqttService;
 
-    @Value("${MQTT_BROKER_URL:tcp://localhost:1883}")
+    @Value("${mqtt.broker.url:tcp://localhost:1883}")
     private String brokerUrl;
 
     @Value("${mqtt.topic:test/topic}")
