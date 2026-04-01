@@ -56,7 +56,7 @@ public class MqttServiceImpl implements MqttService {
     public void handleMessage(String payload) {
         try {
             JsonNode root = objectMapper.readTree(payload);
-            log.info("MqttService 수신 성공! payload: {}", payload);
+//            log.info("MqttService 수신 성공! payload: {}", payload);
             // EMS 에너지 데이터 여부 판별: powerKw 필드 존재 시 EMS 데이터로 분기
             if (root.has("powerKw")) {
                 EmsDTO emsData = objectMapper.treeToValue(root, EmsDTO.class);
@@ -76,7 +76,9 @@ public class MqttServiceImpl implements MqttService {
 
                 data.setTimestamp(dbFriendlyTimestamp);
 
+                latestData = data;
                 spotDAO.insertData(data);
+                template.convertAndSend("/topic/sensor", data);
             }
 
             // 두 필드 모두 없는 경우 경고 로그
