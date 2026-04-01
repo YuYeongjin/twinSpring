@@ -13,7 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 @Configuration
 public class WebClientConfig {
 
-    @Value("${BIM_SERVER_URL:http://localhost:5112}")
+    @Value("${bim.server.url:http://localhost:5112}")
     private String csharpBaseUrl;
 
     @Bean
