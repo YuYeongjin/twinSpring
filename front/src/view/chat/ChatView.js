@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8080/api/chat';
+const API_BASE = `${window.location.protocol}//${window.location.host}/api/chat`;
 
 /**
  * 플로팅 AI 채팅 패널

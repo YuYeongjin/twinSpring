@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8080/api/bim/element'; 
+const API_URL = `${window.location.protocol}//${window.location.host}/api/bim/element`;
 
 export default function ElementEditPanel({ element, onClose, onUpdate }) {
     // 폼 입력 값을 관리할 상태
