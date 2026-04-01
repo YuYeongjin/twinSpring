@@ -3,8 +3,8 @@ import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
 import axios from "axios";
 
-const API_BASE = "http://localhost:8080/api/ems";
-const SOCKET_URL = "http://localhost:8080/ws/sensor"; // 기존 WebSocket 엔드포인트 공유 사용
+const API_BASE = `${window.location.protocol}//${window.location.host}/api/ems`;
+const SOCKET_URL = `${window.location.protocol}//${window.location.host}/ws/sensor`;
 
 /**
  * EMS(에너지 관리 시스템) 데이터 훅

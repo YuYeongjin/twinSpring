@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import * as THREE from 'three';
 import axios from 'axios';
 
-const API_BASE = "http://localhost:8080/api/bim";
+const API_BASE = `${window.location.protocol}//${window.location.host}/api/bim`;
 
 export default function BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject }) {
     const [selectedElement, setSelectedElement] = useState(null);

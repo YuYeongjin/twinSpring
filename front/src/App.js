@@ -31,7 +31,7 @@ function App() {
   };
   function handleProjectSelect(projectData) {
     setSelectedProject(projectData);
-    axios.get(`http://localhost:8080/api/bim/project/${projectData.projectId}`)
+    axios.get(`${window.location.protocol}//${window.location.host}/api/bim/project/${projectData.projectId}`)
       .then(response => {
         console.log("projectData :: "  +response.data);
         setModelData(response.data);
@@ -55,7 +55,7 @@ function App() {
 
   useEffect(() => {
     // Spring API 호출
-    axios.get(`http://localhost:8080/api/bim/projects`)
+    axios.get(`${window.location.protocol}//${window.location.host}/api/bim/projects`)
       .then(response => {
         setProjectList(response.data);
         setLoading(false);
