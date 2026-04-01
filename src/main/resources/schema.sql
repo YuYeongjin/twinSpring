@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS bim_project
     project_name   VARCHAR(200) NULL,
     structure_type VARCHAR(500) NULL,
     span_count     VARCHAR(200) NULL
-);
+    );
 
 -- ================================================================
 -- BIM 요소 테이블
@@ -25,10 +25,13 @@ CREATE TABLE IF NOT EXISTS bim_element
     size_z       DOUBLE       NULL,
     material     VARCHAR(255) NULL,
     CONSTRAINT bim_element_ibfk_1
-        FOREIGN KEY (project_id) REFERENCES bim_project (project_id)
-);
+    FOREIGN KEY (project_id) REFERENCES bim_project (project_id),
+    -- [수정] MySQL 5.7 호환을 위해 테이블 생성 시점에 인덱스 추가
+    INDEX idx_project_id (project_id)
+    );
 
-CREATE INDEX IF NOT EXISTS project_id ON bim_element (project_id);
+-- [삭제] 아래 줄은 MySQL 5.7에서 문법 오류를 발생시키므로 삭제합니다.
+-- CREATE INDEX IF NOT EXISTS project_id ON bim_element (project_id);
 
 -- ================================================================
 -- 센서 데이터 테이블 (DHT11 등)
@@ -40,7 +43,7 @@ CREATE TABLE IF NOT EXISTS SENSOR_DATA
     temperature DOUBLE       NOT NULL,
     humidity    DOUBLE,
     timestamp   DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
-);
+    );
 
 -- ================================================================
 -- EMS(에너지 관리 시스템) 관련 테이블
@@ -58,7 +61,7 @@ CREATE TABLE IF NOT EXISTS ENERGY_DATA
     power_factor DOUBLE                DEFAULT 1,
     energy_kwh   DOUBLE                DEFAULT 0,
     timestamp    DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
-);
+    );
 
 -- EMS 알람 테이블
 CREATE TABLE IF NOT EXISTS EMS_ALERT
@@ -72,7 +75,7 @@ CREATE TABLE IF NOT EXISTS EMS_ALERT
     current_value   DOUBLE                DEFAULT 0,
     is_resolved     BOOLEAN               DEFAULT FALSE,
     timestamp       DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
-);
+    );
 
 -- EMS 임계값 설정 테이블
 CREATE TABLE IF NOT EXISTS EMS_THRESHOLD
@@ -83,4 +86,4 @@ CREATE TABLE IF NOT EXISTS EMS_THRESHOLD
     threshold_value DOUBLE       NOT NULL,
     updated_at      DATETIME(6)  DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
     CONSTRAINT uq_threshold UNIQUE (threshold_type, location)
-);
+    );
