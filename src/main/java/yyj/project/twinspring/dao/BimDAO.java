@@ -1,12 +1,31 @@
 package yyj.project.twinspring.dao;
 
 import org.apache.ibatis.annotations.Mapper;
-import yyj.project.twinspring.dto.SensorDTO;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 import java.util.Map;
 
-
 @Mapper
 public interface BimDAO {
+
+    // ── 레이어 ──────────────────────────────────────────────────────
+    List<Map<String, Object>> getLayersByProject(@Param("projectId") String projectId);
+
+    void insertLayer(Map<String, Object> layer);
+
+    void updateLayer(Map<String, Object> layer);
+
+    void deleteLayer(@Param("layerId") String layerId);
+
+    void deleteLayersByProject(@Param("projectId") String projectId);
+
+    // ── 부재 커스텀 색상 ────────────────────────────────────────────
+    List<Map<String, Object>> getColorsByProject(@Param("projectId") String projectId);
+
+    void upsertColor(Map<String, Object> colorData);
+
+    void deleteColor(@Param("elementId") String elementId);
+
+    void deleteColorsByProject(@Param("projectId") String projectId);
 }

@@ -1,7 +1,10 @@
 package yyj.project.twinspring.serviceImpl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -10,12 +13,14 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import yyj.project.twinspring.dao.BimDAO;
+import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
+import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
 import yyj.project.twinspring.service.BimService;
 
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class BimServiceImpl implements BimService {
@@ -25,9 +30,48 @@ public class BimServiceImpl implements BimService {
     private final WebClient webClient;
     private final BimDAO bimDAO;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     public BimServiceImpl(WebClient webClient, BimDAO bimDAO) {
         this.webClient = webClient;
         this.bimDAO = bimDAO;
+    }
+
+    // ── JSON 변환 헬퍼 ─────────────────────────────────────────────
+
+    private List<String> parseIds(Object obj) {
+        if (obj == null) return new ArrayList<>();
+        String json = obj.toString().trim();
+        if (json.isEmpty() || json.equals("null")) return new ArrayList<>();
+        try {
+            return objectMapper.readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    private String toJson(List<String> list) {
+        if (list == null) return "[]";
+        try {
+            return objectMapper.writeValueAsString(list);
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private BimLayerDTO rowToLayer(Map<String, Object> row) {
+        BimLayerDTO dto = new BimLayerDTO();
+        dto.setLayerId((String) row.get("layerId"));
+        dto.setProjectId((String) row.get("projectId"));
+        dto.setLayerName((String) row.get("layerName"));
+        dto.setColor((String) row.get("color"));
+        Object vis = row.get("visible");
+        dto.setVisible(vis != null && (Boolean.TRUE.equals(vis) || "1".equals(vis.toString()) || (vis instanceof Number && ((Number) vis).intValue() == 1)));
+        dto.setElementIds(parseIds(row.get("elementIds")));
+        Object order = row.get("sortOrder");
+        dto.setSortOrder(order instanceof Number ? ((Number) order).intValue() : 0);
+        return dto;
     }
 
     @Override
@@ -208,5 +252,40 @@ public class BimServiceImpl implements BimService {
                             return Mono.error(new RuntimeException("C# element delete failed"));
                         })
                         .bodyToMono(Void.class));
+    }
+
+    @Override
+    public List<BimLayerDTO> getLayersByProject(String projectId) {
+        return List.of();
+    }
+
+    @Override
+    public BimLayerDTO createLayer(BimLayerDTO layer) {
+        return null;
+    }
+
+    @Override
+    public BimLayerDTO updateLayer(BimLayerDTO layer) {
+        return null;
+    }
+
+    @Override
+    public void deleteLayer(String layerId) {
+
+    }
+
+    @Override
+    public List<BimElementColorDTO> getColorsByProject(String projectId) {
+        return List.of();
+    }
+
+    @Override
+    public void upsertColor(BimElementColorDTO colorDTO) {
+
+    }
+
+    @Override
+    public void deleteColor(String elementId) {
+
     }
 }

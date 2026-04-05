@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallba
 import { Canvas } from '@react-three/fiber';
 import { OrthographicCamera, View } from '@react-three/drei';
 import * as THREE from 'three';
-import { parseVectorData, getBaseColor } from './element/BimElement';
+import { getBaseColor } from './element/BimElement';
 import Scene from './component/Scene';
 import ControlPanel from './component/ControlPanel';
+import LayerPanel from './component/LayerPanel';
 import BimDashboardAPI from './BimDashboardAPI';
 
 // ================================================================
@@ -25,32 +26,25 @@ function Card({ title, right, children, className = "" }) {
 
 function Chip({ color = "gray", children }) {
     const map = {
-        green: "bg-green-900/40 text-green-300 border-green-600/40",
-        red: "bg-red-900/40 text-red-300 border-red-600/40",
-        blue: "bg-blue-900/40 text-blue-300 border-blue-600/40",
+        green:  "bg-green-900/40 text-green-300 border-green-600/40",
+        red:    "bg-red-900/40 text-red-300 border-red-600/40",
+        blue:   "bg-blue-900/40 text-blue-300 border-blue-600/40",
         orange: "bg-orange-900/40 text-orange-300 border-orange-600/40",
-        brown: "bg-yellow-900/40 text-yellow-300 border-yellow-600/40",
-        gray: "bg-gray-800 text-gray-300 border-gray-700",
+        brown:  "bg-yellow-900/40 text-yellow-300 border-yellow-600/40",
+        violet: "bg-violet-900/40 text-violet-300 border-violet-600/40",
+        gray:   "bg-gray-800 text-gray-300 border-gray-700",
     };
-    return <span className={`px-2 py-0.5 text-xs border rounded-md ${map[color]}`}>{children}</span>;
+    return <span className={`px-2 py-0.5 text-xs border rounded-md ${map[color] ?? map.gray}`}>{children}</span>;
 }
 
 // ================================================================
-// 미니맵 컴포넌트
+// 미니맵
 // ================================================================
 
 function MiniMapElement({ element }) {
     const { size, position } = useMemo(() => {
-        const rawSize = [
-            Number(element.sizeX) || 1,
-            Number(element.sizeY) || 1,
-            Number(element.sizeZ) || 1,
-        ];
-        const rawPos = [
-            Number(element.positionX) || 0,
-            0.1,
-            Number(element.positionZ) || 0,
-        ];
+        const rawSize = [Number(element.sizeX) || 1, Number(element.sizeY) || 1, Number(element.sizeZ) || 1];
+        const rawPos  = [Number(element.positionX) || 0, 0.1, Number(element.positionZ) || 0];
         return { size: rawSize, position: rawPos };
     }, [element]);
 
@@ -85,124 +79,96 @@ function MiniMap({ modelData, mainCameraPosition, minimapContainerElement }) {
 }
 
 // ================================================================
-// 재료 데이터 (Revit Material Library 스타일)
+// 재료 데이터
 // ================================================================
 
-/**
- * 부재 유형별 사용 가능한 재료 목록
- * Revit의 재료 라이브러리에서 구조 재료를 분류한 방식과 유사
- */
 const MATERIAL_OPTIONS = {
-    Concrete: [
-        'Concrete C20', 'Concrete C25', 'Concrete C30', 'Concrete C35',
-        'Concrete C40', 'Concrete C50', 'Prestressed Concrete',
-        'High-Strength Concrete C60',
-    ],
-    Steel: [
-        'Steel Grade A', 'Steel Grade B', 'Steel SS400',
-        'Steel SHN275', 'Steel SHN355', 'Stainless Steel',
-    ],
-    Timber: ['Pine LVL', 'Oak', 'Glulam GL28h', 'CLT'],
-    Composite: ['Steel-Concrete Composite', 'FRP', 'Carbon Fiber'],
-};
-
-// 재료명에 따른 색상 (3D 뷰어에서 재료별 시각화)
-const MATERIAL_COLORS = {
-    'Concrete': '#b0b0a0',
-    'Steel': '#a0b8d0',
-    'Timber': '#c8a060',
-    'Composite': '#80c0a0',
+    Concrete:  ['Concrete C20','Concrete C25','Concrete C30','Concrete C35','Concrete C40','Concrete C50','Prestressed Concrete','High-Strength Concrete C60'],
+    Steel:     ['Steel Grade A','Steel Grade B','Steel SS400','Steel SHN275','Steel SHN355','Stainless Steel'],
+    Timber:    ['Pine LVL','Oak','Glulam GL28h','CLT'],
+    Composite: ['Steel-Concrete Composite','FRP','Carbon Fiber'],
 };
 
 // ================================================================
-// PropertyPanel - Revit 속성 창 스타일
+// PropertyPanel
 // ================================================================
 
-/**
- * 선택된 부재의 속성 편집 패널 (Revit의 Properties 창과 유사)
- *
- * 기능:
- * - 부재 유형 표시 (IFC 타입 칩)
- * - 재료 드롭다운 (카테고리별 그룹핑)
- * - 치수 입력 (폭/높이/깊이, 위치 X/Y/Z)
- * - 실시간 3D 반영 (onChange 즉시 updateElementData 호출)
- * - 저장(Save) / 삭제(Delete) 버튼
- */
-function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement, deleteSelectedElement }) {
+function PropertyPanel({ selectedElement, selectedElements, updateElementData, saveUpdateElement, deleteSelectedElements }) {
     const [form, setForm] = useState({
         material: '', posX: 0, posY: 0, posZ: 0, sizeX: 1, sizeY: 1, sizeZ: 1,
     });
 
-    // selectedElement 변경 시 폼 초기화
     useEffect(() => {
         if (!selectedElement?.data) return;
         const d = selectedElement.data;
         const n = (v, def = 0) => (v !== undefined && v !== null ? Number(v) : def);
         setForm({
             material: d.material || '',
-            posX: n(d.positionX),
-            posY: n(d.positionY),
-            posZ: n(d.positionZ),
-            sizeX: n(d.sizeX, 1),
-            sizeY: n(d.sizeY, 1),
-            sizeZ: n(d.sizeZ, 1),
+            posX: n(d.positionX), posY: n(d.positionY), posZ: n(d.positionZ),
+            sizeX: n(d.sizeX, 1),  sizeY: n(d.sizeY, 1),  sizeZ: n(d.sizeZ, 1),
         });
     }, [selectedElement]);
 
-    if (!selectedElement) {
+    // 다중 선택 시 다른 UI 표시
+    const multiCount = selectedElements?.size ?? 0;
+    if (!selectedElement && multiCount === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm p-4 text-center">
                 <div className="text-3xl mb-2">🏗️</div>
                 <p>3D 뷰어에서 부재를 클릭하여 속성을 편집하세요</p>
-                <p className="text-xs mt-2 text-gray-600">또는 좌측 패널에서 새 부재를 생성하세요</p>
+                <p className="text-xs mt-2 text-gray-600">Shift+클릭 또는 선택 모드로 다중 선택</p>
+            </div>
+        );
+    }
+
+    if (!selectedElement && multiCount > 0) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full p-4 text-center gap-3">
+                <div className="text-2xl">⬚</div>
+                <p className="text-sm text-gray-300">
+                    <span className="text-violet-400 font-bold">{multiCount}개</span> 부재 선택됨
+                </p>
+                <button
+                    onClick={deleteSelectedElements}
+                    className="w-full px-3 py-2 rounded-md bg-red-700/60 text-red-300 hover:bg-red-600/80 transition text-xs font-semibold"
+                >
+                    🗑 선택 부재 모두 삭제
+                </button>
             </div>
         );
     }
 
     const el = selectedElement.data;
+    const typeColor = { IfcColumn:'brown', IfcBeam:'gray', IfcWall:'gray', IfcSlab:'blue', IfcPier:'orange' }[el.elementType] ?? 'gray';
 
-    // 부재 타입에 따른 칩 색상
-    const typeColor = {
-        IfcColumn: 'brown', IfcBeam: 'gray', IfcWall: 'gray',
-        IfcSlab: 'blue', IfcPier: 'orange',
-    }[el.elementType] ?? 'gray';
-
-    // 입력 변경 → 로컬 폼 + 3D 뷰어 즉시 반영
     const handleChange = (field, value) => {
         const isNum = field !== 'material';
         const parsed = isNum ? (parseFloat(value) || 0) : value;
         const next = { ...form, [field]: parsed };
         setForm(next);
-
-        // 3D Scene 즉시 업데이트 (실시간 미리보기)
         updateElementData(el.elementId, {
             ...el,
-            material: next.material,
+            material:  next.material,
             positionX: next.posX, positionY: next.posY, positionZ: next.posZ,
-            sizeX: next.sizeX, sizeY: next.sizeY, sizeZ: next.sizeZ,
+            sizeX: next.sizeX,    sizeY: next.sizeY,    sizeZ: next.sizeZ,
         });
     };
 
-    // 입력 필드 공통 스타일
     const inputCls = "w-full rounded-md border border-space-600 bg-space-700/80 px-2 py-1.5 text-sm text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none";
 
     return (
         <div className="space-y-4 overflow-y-auto">
-            {/* 부재 타입 헤더 */}
             <div className="flex items-center gap-2">
                 <Chip color={typeColor}>{el.elementType?.replace('Ifc', '') ?? '?'}</Chip>
                 <span className="text-xs text-gray-500 truncate">ID: {el.elementId}</span>
+                {multiCount > 1 && (
+                    <Chip color="violet">+{multiCount - 1}</Chip>
+                )}
             </div>
 
-            {/* ── 재료 선택 ── */}
             <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">재료 (Material)</label>
-                {/* 카테고리별 grouped select — Revit 재료 라이브러리와 유사한 구조 */}
-                <select
-                    value={form.material}
-                    onChange={e => handleChange('material', e.target.value)}
-                    className={inputCls}
-                >
+                <select value={form.material} onChange={e => handleChange('material', e.target.value)} className={inputCls}>
                     <option value="">-- 재료 선택 --</option>
                     {Object.entries(MATERIAL_OPTIONS).map(([group, items]) => (
                         <optgroup key={group} label={group}>
@@ -210,81 +176,46 @@ function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement, 
                         </optgroup>
                     ))}
                 </select>
-                {/* 재료를 직접 입력할 수도 있도록 텍스트 필드도 제공 */}
                 <input
-                    type="text"
-                    placeholder="또는 직접 입력..."
-                    value={form.material}
-                    onChange={e => handleChange('material', e.target.value)}
+                    type="text" placeholder="또는 직접 입력..."
+                    value={form.material} onChange={e => handleChange('material', e.target.value)}
                     className={`${inputCls} mt-1 text-xs`}
                 />
             </div>
 
-            {/* ── 치수 입력 (Revit의 Properties > Dimensions) ── */}
             <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">치수 (m)</label>
                 <div className="grid grid-cols-3 gap-1">
-                    {/* W = sizeX (폭) */}
-                    <div>
-                        <span className="text-xs text-gray-500">폭 (W)</span>
-                        <input type="number" step="0.01" min="0.01"
-                            value={form.sizeX}
-                            onChange={e => handleChange('sizeX', e.target.value)}
-                            className={inputCls}
-                        />
-                    </div>
-                    {/* H = sizeY (높이) */}
-                    <div>
-                        <span className="text-xs text-gray-500">높이 (H)</span>
-                        <input type="number" step="0.01" min="0.01"
-                            value={form.sizeY}
-                            onChange={e => handleChange('sizeY', e.target.value)}
-                            className={inputCls}
-                        />
-                    </div>
-                    {/* D = sizeZ (깊이/두께) */}
-                    <div>
-                        <span className="text-xs text-gray-500">깊이 (D)</span>
-                        <input type="number" step="0.01" min="0.01"
-                            value={form.sizeZ}
-                            onChange={e => handleChange('sizeZ', e.target.value)}
-                            className={inputCls}
-                        />
-                    </div>
-                </div>
-            </div>
-
-            {/* ── 위치 입력 (Revit의 Properties > Constraints) ── */}
-            <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">위치 (m)</label>
-                <div className="grid grid-cols-3 gap-1">
-                    {['posX', 'posY', 'posZ'].map((f, i) => (
+                    {[['sizeX','폭 (W)'],['sizeY','높이 (H)'],['sizeZ','깊이 (D)']].map(([f, lbl]) => (
                         <div key={f}>
-                            <span className="text-xs text-gray-500">{['X', 'Y', 'Z'][i]}</span>
-                            <input type="number" step="0.1"
-                                value={form[f]}
-                                onChange={e => handleChange(f, e.target.value)}
-                                className={inputCls}
-                            />
+                            <span className="text-xs text-gray-500">{lbl}</span>
+                            <input type="number" step="0.01" min="0.01" value={form[f]}
+                                   onChange={e => handleChange(f, e.target.value)} className={inputCls} />
                         </div>
                     ))}
                 </div>
             </div>
 
-            {/* ── 액션 버튼 ── */}
+            <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">위치 (m)</label>
+                <div className="grid grid-cols-3 gap-1">
+                    {[['posX','X'],['posY','Y'],['posZ','Z']].map(([f, lbl]) => (
+                        <div key={f}>
+                            <span className="text-xs text-gray-500">{lbl}</span>
+                            <input type="number" step="0.1" value={form[f]}
+                                   onChange={e => handleChange(f, e.target.value)} className={inputCls} />
+                        </div>
+                    ))}
+                </div>
+            </div>
+
             <div className="flex gap-2 pt-2">
-                {/* 저장: 서버 PUT 요청 */}
-                <button
-                    onClick={saveUpdateElement}
-                    className="flex-1 rounded-md bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-500 transition"
-                >
+                <button onClick={saveUpdateElement}
+                        className="flex-1 rounded-md bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-500 transition">
                     💾 저장
                 </button>
-                {/* 삭제: 서버 DELETE 후 로컬에서도 제거 */}
-                <button
-                    onClick={deleteSelectedElement}
-                    className="px-3 py-2 rounded-md bg-red-700/60 text-red-300 hover:bg-red-600/80 transition text-xs font-semibold"
-                >
+                <button onClick={deleteSelectedElements}
+                        className="px-3 py-2 rounded-md bg-red-700/60 text-red-300 hover:bg-red-600/80 transition text-xs font-semibold">
                     🗑 삭제
                 </button>
             </div>
@@ -296,20 +227,6 @@ function PropertyPanel({ selectedElement, updateElementData, saveUpdateElement, 
 // 메인 BIM 대시보드
 // ================================================================
 
-/**
- * BIM 대시보드 — Revit-like 3D 뷰어 + 편집 환경
- *
- * 레이아웃:
- * - 좌측 (col-span-2): 편집 도구 패널 (부재 생성, 조작 모드, 속성 편집)
- * - 우측 (col-span-10): 3D 뷰어 + 미니맵
- *
- * 키보드 단축키:
- * - T: translate 모드
- * - R: rotate 모드
- * - S: scale 모드
- * - Delete: 선택 부재 삭제
- * - Escape: 선택 해제
- */
 export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject }) {
     const {
         saveUpdateElement,
@@ -321,100 +238,301 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         isLoading,
         handleElementSelect, updateElementData,
         transformMode, setTransformMode,
-        addNewElement,
-        deleteSelectedElement,
+
+        // 다중 선택
+        selectedElements, setSelectedElements,
+        applyRubberBandSelection,
+        toggleSelectMode, isSelectMode,
+
+        // 배치 모드
+        pendingElement, startPlacement, cancelPlacement, confirmPlacement,
+
+        // 통합 삭제
+        deleteSelectedElements,
+
+        // 카메라 ref
+        cameraRef,
+
+        // 레이어
+        layers, addLayer, deleteLayer, updateLayer, assignToLayer, removeFromLayer,
+
+        // 부재 커스텀 색상
+        elementColors, setElementColor, clearElementColor,
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
+
     const mainViewRef = useRef(null);
-    /**
-     * 현재 프로젝트 ID
-     * selectedProject(App에서 전달) → modelData 첫 부재 순서로 폴백
-     * 빈 프로젝트(부재 0개)에서도 올바른 ID를 사용하기 위해 selectedProject를 우선
-     */
+
+    // ── 레이어 패널 표시 여부 ──────────────────────────────────────
+    const [showLayerPanel, setShowLayerPanel] = useState(true);
+
     const currentProjectId = useMemo(
         () => selectedProject?.projectId ?? modelData?.[0]?.projectId ?? null,
         [selectedProject, modelData]
     );
 
-    /**
-     * 키보드 단축키 처리
-     * Revit과 동일한 키 바인딩 적용
-     */
+    // ── 선택된 부재 수 ─────────────────────────────────────────────
+    const totalSelectedCount = useMemo(() => {
+        const ids = new Set([
+            ...selectedElements,
+            ...(selectedElement ? [selectedElement.data.elementId] : []),
+        ]);
+        return ids.size;
+    }, [selectedElements, selectedElement]);
+
+    // ================================================================
+    // 색상 해석: 커스텀색 > 레이어색 > 기본색
+    // 레이어 visibility=false인 부재는 hidden=true
+    // ================================================================
+    const resolvedModelData = useMemo(() => {
+        return modelData.map(el => {
+            const layer = layers.find(l => l.elementIds.includes(el.elementId));
+            const hidden = layer ? !layer.visible : false;
+            const resolvedColor = elementColors[el.elementId] || layer?.color || null;
+            return { ...el, resolvedColor, hidden };
+        });
+    }, [modelData, layers, elementColors]);
+
+    // 렌더링에서는 숨겨진 부재 제외
+    const visibleModelData = useMemo(
+        () => resolvedModelData.filter(el => !el.hidden),
+        [resolvedModelData]
+    );
+
+    // ================================================================
+    // 러버밴드 선택 박스 (선택 모드에서만 활성)
+    // ================================================================
+    const [selBox, setSelBox] = useState(null); // { left, top, width, height } for CSS
+
+    /** 러버밴드 박스 정보를 카메라 투영으로 부재 선택에 변환 */
+    const computeRubberBandSelection = useCallback((startX, startY, endX, endY) => {
+        if (!cameraRef.current || !mainViewRef.current) return;
+        const camera  = cameraRef.current;
+        const domRect = mainViewRef.current.getBoundingClientRect();
+
+        const minX = Math.min(startX, endX);
+        const maxX = Math.max(startX, endX);
+        const minY = Math.min(startY, endY);
+        const maxY = Math.max(startY, endY);
+
+        const hit = modelData.filter(el => {
+            const px = Number(el.positionX) || 0;
+            const py = Number(el.positionY) || 0;
+            const pz = Number(el.positionZ) || 0;
+            const sy = Number(el.sizeY) || 1;
+            // 중심점 (positionY는 밑면 기준이므로 + sy/2)
+            const center = new THREE.Vector3(px, py + sy / 2, pz);
+            center.project(camera);
+            // NDC → 캔버스 픽셀 좌표
+            const sx = (center.x + 1) / 2 * domRect.width;
+            const sc = (1 - center.y) / 2 * domRect.height;
+            return sx >= minX && sx <= maxX && sc >= minY && sc <= maxY;
+        }).map(el => el.elementId);
+
+        applyRubberBandSelection(hit);
+    }, [cameraRef, mainViewRef, modelData, applyRubberBandSelection]);
+
+    // 선택 모드일 때 mainViewRef에 마우스 이벤트 부착
+    useEffect(() => {
+        if (!isSelectMode) { setSelBox(null); return; }
+        const el = mainViewRef.current;
+        if (!el) return;
+
+        let startX = 0, startY = 0, dragging = false;
+
+        const onPointerDown = (e) => {
+            if (e.button !== 0) return;
+            const rect = el.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            dragging = false;
+        };
+
+        const onPointerMove = (e) => {
+            if (!(e.buttons & 1)) return;
+            const rect = el.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+            if (Math.abs(cx - startX) > 5 || Math.abs(cy - startY) > 5) {
+                dragging = true;
+                setSelBox({
+                    left:   Math.min(startX, cx),
+                    top:    Math.min(startY, cy),
+                    width:  Math.abs(cx - startX),
+                    height: Math.abs(cy - startY),
+                    endX: cx, endY: cy,
+                });
+            }
+        };
+
+        const onPointerUp = (e) => {
+            if (dragging) {
+                const rect = el.getBoundingClientRect();
+                const ex = e.clientX - rect.left;
+                const ey = e.clientY - rect.top;
+                computeRubberBandSelection(startX, startY, ex, ey);
+            }
+            dragging = false;
+            setSelBox(null);
+        };
+
+        el.addEventListener('pointerdown', onPointerDown);
+        el.addEventListener('pointermove', onPointerMove);
+        el.addEventListener('pointerup',   onPointerUp);
+        return () => {
+            el.removeEventListener('pointerdown', onPointerDown);
+            el.removeEventListener('pointermove', onPointerMove);
+            el.removeEventListener('pointerup',   onPointerUp);
+        };
+    }, [isSelectMode, computeRubberBandSelection]);
+
+    // ================================================================
+    // 키보드 단축키
+    // ================================================================
     useEffect(() => {
         const onKeyDown = (e) => {
-            // 입력 필드 포커스 중에는 단축키 비활성화
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
             if (e.key === 't' || e.key === 'T') setTransformMode('translate');
             if (e.key === 'r' || e.key === 'R') setTransformMode('rotate');
             if (e.key === 's' || e.key === 'S') setTransformMode('scale');
-            if (e.key === 'Delete' || e.key === 'Backspace') deleteSelectedElement();
-            if (e.key === 'Escape') setSelectedElement(null);
+            if (e.key === 'q' || e.key === 'Q') toggleSelectMode();
+            if ((e.key === 'Delete' || e.key === 'Backspace') && !pendingElement) deleteSelectedElements();
+            if (e.key === 'Escape') {
+                if (pendingElement) { cancelPlacement(); }
+                else if (isSelectMode) { toggleSelectMode(); }
+                else { setSelectedElement(null); setSelectedElements(new Set()); }
+            }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [selectedElement, deleteSelectedElement, setTransformMode, setSelectedElement]);
+    }, [selectedElement, pendingElement, isSelectMode, deleteSelectedElements,
+        cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements]);
 
     return (
         <div className="min-h-screen bg-space-900 p-4">
-            {/* 헤더 */}
-            <div className="flex items-center gap-4 mb-4">
+
+            {/* ── 헤더 ── */}
+            <div className="flex items-center gap-4 mb-4 flex-wrap">
                 <button
                     className="text-gray-300 hover:text-white text-sm"
-                    onClick={() => { setViceComponent(''); setModelData([]); }}
+                    onClick={() => { setViceComponent('bim-projects'); setModelData([]); }}
                 >
                     ← 프로젝트 목록
                 </button>
                 <h2 className="text-xl font-light text-white">BIM 편집기</h2>
                 <Chip color="blue">Edit Mode</Chip>
-                {/* 키보드 단축키 안내 */}
-                <span className="text-xs text-gray-600 ml-auto">
-                    T: 이동 &nbsp;|&nbsp; R: 회전 &nbsp;|&nbsp; S: 크기 &nbsp;|&nbsp; Del: 삭제 &nbsp;|&nbsp; Esc: 선택 해제
-                </span>
+
+                {/* 다중 선택 삭제 버튼 */}
+                {totalSelectedCount > 1 && (
+                    <button
+                        onClick={deleteSelectedElements}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-red-700/60 text-red-300 hover:bg-red-600/80 transition"
+                    >
+                        🗑 {totalSelectedCount}개 삭제
+                    </button>
+                )}
+
+                <div className="ml-auto flex items-center gap-2">
+                    {/* 레이어 패널 토글 */}
+                    <button
+                        onClick={() => setShowLayerPanel(v => !v)}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                            showLayerPanel
+                                ? 'bg-teal-700/60 text-teal-300 border border-teal-600/60'
+                                : 'bg-space-700/70 text-gray-400 border border-space-600'
+                        }`}
+                        title="레이어 패널 토글"
+                    >
+                        🗂 레이어
+                        {layers.length > 0 && (
+                            <span className="px-1 py-0.5 rounded-full text-xs bg-teal-600/40 text-teal-300">
+                                {layers.length}
+                            </span>
+                        )}
+                    </button>
+                    <span className="text-xs text-gray-600 hidden xl:block">
+                        T: 이동&nbsp;|&nbsp;R: 회전&nbsp;|&nbsp;S: 크기&nbsp;|&nbsp;Q: 선택모드&nbsp;|&nbsp;Del: 삭제&nbsp;|&nbsp;Esc: 취소
+                    </span>
+                </div>
             </div>
+
+            {/* ── 배치 / 선택 모드 배너 ── */}
+            {pendingElement && (
+                <div className="mb-3 px-4 py-2 rounded-xl flex items-center gap-3 text-sm"
+                     style={{ backgroundColor: '#1a2f4a', border: '1px solid #2a5080' }}>
+                    <span className="text-blue-400 text-lg">📍</span>
+                    <span className="text-blue-200 font-medium">
+                        배치 모드 &nbsp;—&nbsp;
+                        <span className="text-white">{pendingElement.elementType?.replace('Ifc','')}</span>
+                    </span>
+                    <span className="text-gray-400 text-xs">3D 뷰어를 클릭하면 해당 위치에 부재가 추가됩니다. 연속 배치 가능.</span>
+                    <button onClick={cancelPlacement}
+                            className="ml-auto text-xs px-2 py-1 rounded border border-blue-700/60 text-blue-400 hover:text-white transition">
+                        ESC 취소
+                    </button>
+                </div>
+            )}
+            {isSelectMode && !pendingElement && (
+                <div className="mb-3 px-4 py-2 rounded-xl flex items-center gap-3 text-sm"
+                     style={{ backgroundColor: '#1f1040', border: '1px solid #5b21b6' }}>
+                    <span className="text-violet-400 text-lg">⬚</span>
+                    <span className="text-violet-200 font-medium">선택 모드</span>
+                    <span className="text-gray-400 text-xs">3D 뷰어에서 드래그하여 영역 선택 &nbsp;•&nbsp; Shift+클릭으로 추가 선택</span>
+                    {totalSelectedCount > 0 && (
+                        <span className="text-violet-300 text-xs font-semibold">{totalSelectedCount}개 선택됨</span>
+                    )}
+                    <button onClick={toggleSelectMode}
+                            className="ml-auto text-xs px-2 py-1 rounded border border-violet-700/60 text-violet-400 hover:text-white transition">
+                        ESC / Q 해제
+                    </button>
+                </div>
+            )}
 
             <div className="grid grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
 
-                {/* ── 좌측 편집 패널 (col-span-2) ── */}
-                <div className="col-span-2 flex flex-col gap-4 h-full overflow-y-auto">
-
-                    {/* 부재 생성 + 조작 모드 패널 */}
+                {/* ── 좌측 편집 패널 ── */}
+                <div className="col-span-2 flex flex-col gap-4 h-full overflow-y-auto" style={{ minWidth: 0 }}>
                     <Card title="편집 도구">
                         <ControlPanel
-                            addNewElement={(template) => addNewElement(template, currentProjectId)}
+                            startPlacement={startPlacement}
+                            pendingElement={pendingElement}
+                            cancelPlacement={cancelPlacement}
                             currentMode={transformMode}
                             setMode={setTransformMode}
+                            isSelectMode={isSelectMode}
+                            toggleSelectMode={toggleSelectMode}
                         />
                     </Card>
 
-                    {/* 속성 패널 (Revit Properties 창) */}
                     <Card
                         title="부재 속성"
                         right={
-                            <Chip color={selectedElement ? 'orange' : 'gray'}>
-                                {selectedElement ? 'SELECTED' : 'NONE'}
+                            <Chip color={selectedElement ? 'orange' : totalSelectedCount > 1 ? 'violet' : 'gray'}>
+                                {selectedElement ? 'SELECTED' : totalSelectedCount > 1 ? `${totalSelectedCount}개` : 'NONE'}
                             </Chip>
                         }
                         className="flex-1"
                     >
                         <PropertyPanel
                             selectedElement={selectedElement}
+                            selectedElements={selectedElements}
                             updateElementData={updateElementData}
                             saveUpdateElement={saveUpdateElement}
-                            deleteSelectedElement={deleteSelectedElement}
+                            deleteSelectedElements={deleteSelectedElements}
                         />
                     </Card>
                 </div>
 
-                {/* ── 우측 3D 뷰어 영역 (col-span-10) ── */}
-                <div className="col-span-10 flex flex-col gap-4 h-full">
-
+                {/* ── 중앙 3D 뷰어 ── */}
+                <div className={`${showLayerPanel ? 'col-span-7' : 'col-span-10'} flex flex-col gap-4 h-full`} style={{ minWidth: 0 }}>
                     <Card
-                        title={`3D BIM Viewer — ${currentProjectId ?? '프로젝트'} (부재 ${modelData.length}개)`}
+                        title={`3D BIM Viewer — ${currentProjectId ?? '프로젝트'} (부재 ${modelData.length}개 / 표시 ${visibleModelData.length}개)`}
                         right={
                             <div className="flex gap-2 items-center">
-                                {/* 현재 조작 모드 표시 */}
                                 <Chip color="orange">
                                     {transformMode === 'translate' ? '이동' : transformMode === 'rotate' ? '회전' : '크기'}
                                 </Chip>
+                                {pendingElement && <Chip color="blue">배치중</Chip>}
+                                {isSelectMode   && <Chip color="violet">선택모드</Chip>}
                                 <Chip color="blue">Live</Chip>
                             </div>
                         }
@@ -422,74 +540,111 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     >
                         {isLoading ? (
                             <div className="flex flex-1 items-center justify-center text-gray-400">
-                                <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <svg className="animate-spin h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                                 </svg>
                             </div>
                         ) : (
-                            <div className="w-full flex-1 relative">
+                            <div className="w-full flex-1 relative"
+                                 style={{ cursor: pendingElement ? 'crosshair' : isSelectMode ? 'crosshair' : 'default' }}>
+
+                                {/* R3F 이벤트 소스 div */}
                                 <div ref={mainViewRef} className="absolute inset-0 z-10 touch-none" />
+
                                 <Canvas
-                                    eventSource={mainViewRef} // 이벤트를 위 div에서 받아옴
-                                    // 2. 캔버스 자체는 마우스 클릭을 가로채지 않도록 pointer-events-none 설정 (z-0)
+                                    eventSource={mainViewRef}
                                     className="!absolute inset-0 rounded-xl pointer-events-none z-0"
                                     camera={{ position: [15, 12, 15], fov: 55 }}
                                     shadows
-                                    onPointerMissed={() => setSelectedElement(null)}
+                                    onPointerMissed={() => {
+                                        if (!isSelectMode) {
+                                            setSelectedElement(null);
+                                            setSelectedElements(new Set());
+                                        }
+                                    }}
                                 >
                                     <View track={mainViewRef}>
                                         <ambientLight intensity={0.7} />
                                         <directionalLight position={[10, 10, 10]} intensity={1} castShadow />
                                         <Scene
-                                            modelData={modelData}
+                                            modelData={visibleModelData}
                                             onElementSelect={handleElementSelect}
                                             selectedElement={selectedElement}
+                                            selectedElements={selectedElements}
                                             updateElementData={updateElementData}
                                             setMainCameraPosition={setMainCameraPosition}
                                             transformMode={transformMode}
+                                            pendingElement={pendingElement}
+                                            onPlacementConfirm={(pos) => confirmPlacement(pos, currentProjectId)}
+                                            isSelectMode={isSelectMode}
+                                            cameraRef={cameraRef}
                                         />
                                     </View>
 
-                                    {/* 미니맵 오버레이 */}
                                     {isMiniMapReady && minimapTrackElement && (
                                         <MiniMap
-                                            modelData={modelData}
+                                            modelData={visibleModelData}
                                             mainCameraPosition={mainCameraPosition}
                                             minimapContainerElement={minimapTrackElement}
                                         />
                                     )}
                                 </Canvas>
 
-                                {/* 3. 미니맵 DOM 앵커는 이벤트를 방해하지 않으면서 최상단에 위치 (z-20) */}
+                                {/* 미니맵 앵커 */}
                                 <div
                                     ref={minimapContainerRef}
                                     className="absolute top-3 right-3 w-36 h-36 bg-space-900/90 border border-space-600 rounded-xl overflow-hidden shadow-2xl z-20 pointer-events-auto"
                                 />
 
-                                {/* 4. 선택된 부재 정보 오버레이 (z-20) */}
+                                {/* ── 러버밴드 선택 박스 ── */}
+                                {isSelectMode && selBox && selBox.width > 5 && (
+                                    <div
+                                        style={{
+                                            position: 'absolute',
+                                            pointerEvents: 'none',
+                                            left:   selBox.left,
+                                            top:    selBox.top,
+                                            width:  selBox.width,
+                                            height: selBox.height,
+                                            border: '1.5px solid #a78bfa',
+                                            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                                            zIndex: 25,
+                                            borderRadius: 2,
+                                        }}
+                                    />
+                                )}
+
+                                {/* ── 선택 부재 정보 오버레이 ── */}
                                 {selectedElement && (
                                     <div className="absolute bottom-3 left-3 bg-space-900/80 border border-space-700 rounded-lg px-3 py-2 text-xs text-gray-300 z-20">
                                         <span className="text-orange-400 font-bold">{selectedElement.data.elementType}</span>
                                         <span className="ml-2 text-gray-500">{selectedElement.data.elementId}</span>
-                                        <span className="ml-3 text-gray-400">
-                                            {selectedElement.data.material || '재료 미설정'}
-                                        </span>
+                                        <span className="ml-3 text-gray-400">{selectedElement.data.material || '재료 미설정'}</span>
+                                        {totalSelectedCount > 1 && (
+                                            <span className="ml-3 text-violet-400 font-semibold">+{totalSelectedCount - 1}개 선택됨</span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* ── 배치 모드 커서 힌트 ── */}
+                                {pendingElement && (
+                                    <div className="absolute bottom-3 right-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20 mr-40">
+                                        클릭하여 배치 &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> 취소
                                     </div>
                                 )}
                             </div>
                         )}
                     </Card>
 
-                    {/* 구조 데이터 분석 패널 */}
+                    {/* 구조 데이터 분석 */}
                     <Card title="구조 데이터 분석" right={<Chip color="green">Live</Chip>} className="h-36">
-                        <div className="grid grid-cols-4 gap-3 h-full">
-                            {/* 부재 유형별 개수 집계 */}
-                            {['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcSlab'].map(type => {
+                        <div className="grid grid-cols-5 gap-3 h-full">
+                            {['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier'].map(type => {
                                 const count = modelData.filter(e => e.elementType === type).length;
                                 return (
                                     <div key={type} className="bg-space-700/60 rounded-xl p-3 flex flex-col justify-between">
-                                        <span className="text-xs text-gray-400">{type.replace('Ifc', '')}</span>
+                                        <span className="text-xs text-gray-400">{type.replace('Ifc','')}</span>
                                         <span className="text-2xl font-bold text-gray-100">{count}</span>
                                         <span className="text-xs text-gray-500">개</span>
                                     </div>
@@ -498,6 +653,46 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         </div>
                     </Card>
                 </div>
+
+                {/* ── 우측 레이어 패널 ── */}
+                {showLayerPanel && (
+                    <div className="col-span-3 flex flex-col h-full overflow-hidden" style={{ minWidth: 0 }}>
+                        <Card
+                            title="레이어 관리"
+                            right={
+                                <div className="flex items-center gap-2">
+                                    <Chip color="green">{layers.length}개</Chip>
+                                    <button
+                                        onClick={() => setShowLayerPanel(false)}
+                                        className="text-gray-500 hover:text-gray-300 transition text-sm leading-none"
+                                        title="패널 닫기"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            }
+                            className="flex-1 flex flex-col overflow-hidden"
+                        >
+                            <div className="flex-1 overflow-y-auto">
+                                <LayerPanel
+                                    layers={layers}
+                                    elementColors={elementColors}
+                                    modelData={modelData}
+                                    selectedElement={selectedElement}
+                                    selectedElements={selectedElements}
+                                    onAddLayer={addLayer}
+                                    onDeleteLayer={deleteLayer}
+                                    onUpdateLayer={updateLayer}
+                                    onAssignToLayer={assignToLayer}
+                                    onRemoveFromLayer={removeFromLayer}
+                                    onSetElementColor={setElementColor}
+                                    onClearElementColor={clearElementColor}
+                                    onSelectElement={(el) => handleElementSelect(el, null)}
+                                />
+                            </div>
+                        </Card>
+                    </div>
+                )}
             </div>
         </div>
     );

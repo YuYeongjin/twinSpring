@@ -93,6 +93,33 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- ================================================================
+-- BIM 레이어 테이블 (Spring 로컬 저장 — C# 서버와 무관)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS bim_layer
+(
+    layer_id    VARCHAR(200) NOT NULL PRIMARY KEY,
+    project_id  VARCHAR(200) NOT NULL,
+    layer_name  VARCHAR(200) NOT NULL DEFAULT '레이어',
+    color       VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
+    visible     TINYINT(1)   NOT NULL DEFAULT 1,
+    element_ids TEXT         NULL,
+    sort_order  INT          NOT NULL DEFAULT 0,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_bim_layer_project (project_id)
+);
+
+-- ================================================================
+-- BIM 부재 커스텀 색상 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS bim_element_color
+(
+    element_id VARCHAR(200) NOT NULL PRIMARY KEY,
+    project_id VARCHAR(200) NOT NULL,
+    color      VARCHAR(20)  NOT NULL,
+    INDEX idx_bim_color_project (project_id)
+);
+
 -- EMS 임계값 설정 테이블
 CREATE TABLE IF NOT EXISTS EMS_THRESHOLD
 (

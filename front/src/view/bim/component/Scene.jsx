@@ -1,28 +1,111 @@
-import React, { useRef, useState, useEffect, Suspense } from 'react';
+import React, { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, Environment, TransformControls } from '@react-three/drei';
-import { BimElement } from '../element/BimElement';
+import * as THREE from 'three';
+import { BimElement, getBaseColor } from '../element/BimElement';
 
+// ================================================================
+// 카메라 ref 주입 (BimDashboard 의 cameraRef 에 연결)
+// ================================================================
+function CameraSync({ cameraRef }) {
+    const { camera } = useThree();
+    useEffect(() => {
+        if (cameraRef) cameraRef.current = camera;
+    }, [camera, cameraRef]);
+    return null;
+}
+
+// ================================================================
+// 배치 고스트 + 바닥 클릭 평면
+// ================================================================
+/**
+ * pendingElement 가 있을 때 마우스 커서를 따라다니는 반투명 고스트 메시.
+ * useFrame 에서 직접 mesh.position을 업데이트하므로 re-render 없이 60fps.
+ * 바닥 평면(y=0) 과의 교점을 구해 위치를 결정.
+ */
+function PlacementGhost({ template, onConfirm }) {
+    const meshRef = useRef();
+    const { camera, raycaster, mouse } = useThree();
+
+    // 바닥 평면: Y=0, 위쪽 방향
+    const floorPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+    const hitPoint   = useMemo(() => new THREE.Vector3(), []);
+
+    const sizeX = template.sizeX ?? 1;
+    const sizeY = template.sizeY ?? 1;
+    const sizeZ = template.sizeZ ?? 1;
+
+    // 매 프레임: 레이캐스터로 바닥 교점 계산 → 메시 위치 갱신 (Re-render 없음)
+    useFrame(() => {
+        raycaster.setFromCamera(mouse, camera);
+        if (raycaster.ray.intersectPlane(floorPlane, hitPoint) && meshRef.current) {
+            meshRef.current.position.set(hitPoint.x, sizeY / 2, hitPoint.z);
+        }
+    });
+
+    return (
+        <>
+            {/* 고스트 메시 */}
+            <mesh ref={meshRef} position={[0, sizeY / 2, 0]}>
+                <boxGeometry args={[sizeX, sizeY, sizeZ]} />
+                <meshStandardMaterial
+                    color={getBaseColor(template.elementType)}
+                    opacity={0.45}
+                    transparent
+                    depthWrite={false}
+                />
+            </mesh>
+
+            {/* 고스트 윤곽선 (wireframe) */}
+            <mesh position={[0, sizeY / 2, 0]} ref={null}>
+                <boxGeometry args={[sizeX + 0.02, sizeY + 0.02, sizeZ + 0.02]} />
+                <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.6} />
+            </mesh>
+
+            {/* 바닥 클릭 캐처 — 클릭 시 배치 확정 */}
+            <mesh
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[0, 0.001, 0]}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onConfirm({ x: hitPoint.x, y: 0, z: hitPoint.z });
+                }}
+            >
+                <planeGeometry args={[500, 500]} />
+                <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} />
+            </mesh>
+        </>
+    );
+}
+
+// ================================================================
+// 메인 Scene
+// ================================================================
 export default function Scene({
     modelData,
     onElementSelect,
     selectedElement,
+    selectedElements,   // Set<string> — 다중 선택된 elementId 집합
     updateElementData,
     setMainCameraPosition,
     transformMode,
+    pendingElement,     // 배치 대기 중인 부재 템플릿
+    onPlacementConfirm, // (position) => void
+    isSelectMode,       // 러버밴드 선택 모드 (OrbitControls 비활성)
+    cameraRef,          // Three.js camera ref (러버밴드 투영용)
 }) {
     const { camera } = useThree();
     const transformRef = useRef();
     const [isDragging, setIsDragging] = useState(false);
 
+    // 카메라 위치 → 미니맵 마커
     useFrame(() => {
         setMainCameraPosition(camera.position.clone());
     });
 
-    // 💡 수정됨: 마우스 드래그가 끝났을 때 단 한 번만 호출되는 함수
+    // TransformControls 드래그 완료 처리
     const handleTransformComplete = (mesh) => {
         if (!mesh || !mesh.userData?.elementId) return;
-
         const elementId = mesh.userData.elementId;
         const element = modelData.find(el => el.elementId === elementId);
         if (!element) return;
@@ -30,7 +113,6 @@ export default function Scene({
         if (transformMode === 'translate') {
             const rawSize = mesh.userData.rawSize ?? [1, 1, 1];
             const bottomY = mesh.position.y - rawSize[1] / 2;
-
             updateElementData(elementId, {
                 positionX: parseFloat(mesh.position.x.toFixed(3)),
                 positionY: parseFloat(bottomY.toFixed(3)),
@@ -47,30 +129,33 @@ export default function Scene({
         }
     };
 
-    // 💡 수정됨: TransformControls의 이벤트 리스너를 useEffect로 안전하게 관리
     useEffect(() => {
         const controls = transformRef.current;
-        if (controls) {
-            const onDraggingChanged = (e) => {
-                setIsDragging(e.value);
-                // e.value가 false이면 사용자가 드래그를 마치고 마우스를 놓았다는 뜻
-                if (!e.value && controls.object) {
-                    handleTransformComplete(controls.object);
-                }
-            };
-            controls.addEventListener('dragging-changed', onDraggingChanged);
-            return () => controls.removeEventListener('dragging-changed', onDraggingChanged);
-        }
+        if (!controls) return;
+        const onDraggingChanged = (e) => {
+            setIsDragging(e.value);
+            if (!e.value && controls.object) {
+                handleTransformComplete(controls.object);
+            }
+        };
+        controls.addEventListener('dragging-changed', onDraggingChanged);
+        return () => controls.removeEventListener('dragging-changed', onDraggingChanged);
     }, [transformMode, modelData, updateElementData]);
+
+    // OrbitControls: 드래그 중이거나 선택 모드일 때 비활성
+    const orbitEnabled = !isDragging && !isSelectMode;
 
     return (
         <>
-            <OrbitControls enabled={!isDragging} enableZoom={true} makeDefault />
+            {/* 카메라 ref 주입 */}
+            <CameraSync cameraRef={cameraRef} />
+
+            <OrbitControls enabled={orbitEnabled} enableZoom makeDefault />
             <ambientLight intensity={0.5} />
             <spotLight position={[10, 15, 10]} angle={0.2} penumbra={1} castShadow intensity={1.2} />
             <directionalLight position={[-10, 10, -5]} intensity={0.4} />
 
-            {/* 💡 수정됨: onObjectChange 속성 제거 (무한 상태 업데이트 방지) */}
+            {/* TransformControls — 단일 선택된 부재에만 표시 */}
             {selectedElement?.meshRef?.current && (
                 <TransformControls
                     ref={transformRef}
@@ -79,17 +164,28 @@ export default function Scene({
                 />
             )}
 
+            {/* BIM 부재 목록 */}
             {modelData.map((element) => (
                 <BimElement
                     key={element.elementId}
                     element={{
                         ...element,
-                        // 💡 수정됨: .data가 없을 때 에러가 발생하여 씬이 멈추는 것을 방지 (? 추가)
-                        selected: selectedElement?.data?.elementId === element.elementId,
+                        selected:      selectedElement?.data?.elementId === element.elementId,
+                        multiSelected: selectedElements?.has(element.elementId) &&
+                                       selectedElement?.data?.elementId !== element.elementId,
                     }}
                     onElementSelect={onElementSelect}
+                    isPlacementMode={!!pendingElement}
                 />
             ))}
+
+            {/* 배치 고스트 */}
+            {pendingElement && (
+                <PlacementGhost
+                    template={pendingElement}
+                    onConfirm={onPlacementConfirm}
+                />
+            )}
 
             <gridHelper args={[100, 100, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
 

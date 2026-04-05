@@ -3,10 +3,13 @@ package yyj.project.twinspring.service;
 
 import org.springframework.http.ResponseEntity;
 import reactor.core.publisher.Mono;
+import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
+import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
 
 import java.util.List;
+import java.util.Map;
 
 public interface BimService {
 
@@ -38,4 +41,15 @@ public interface BimService {
 
     /** 단일 부재 삭제 (C# DELETE /api/bim/element/{elementId} 호출) */
     ResponseEntity<Mono<Void>> deleteElement(String elementId);
+
+    // ── 레이어 (로컬 MariaDB) ──────────────────────────────────────
+    List<BimLayerDTO> getLayersByProject(String projectId);
+    BimLayerDTO createLayer(BimLayerDTO layer);
+    BimLayerDTO updateLayer(BimLayerDTO layer);
+    void deleteLayer(String layerId);
+
+    // ── 부재 커스텀 색상 (로컬 MariaDB) ───────────────────────────
+    List<BimElementColorDTO> getColorsByProject(String projectId);
+    void upsertColor(BimElementColorDTO colorDTO);
+    void deleteColor(String elementId);
 }

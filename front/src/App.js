@@ -2,6 +2,7 @@ import AxiosCustom from './axios/AxiosCustom';
 import Footer from './component/Footer';
 import Header from './component/Header';
 import BimDashboard from './view/bim/BimDashboard';
+import BimProjectList from './view/bim/BimProjectList';
 import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
 import EmsDashboard from './view/ems/EmsDashboard';
@@ -13,34 +14,60 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.add("dark");
   }, []);
+
   const [viewComponent, setViceComponent] = useState('');
 
-  const [elements, setElements] = useState(null); // 모든 부재 데이터
-
+  const [elements, setElements] = useState(null);
   const [selectedElement, setSelectedElement] = useState(null);
   const [selectedProject, setSelectedProject] = useState(null);
-
   const [modelData, setModelData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [projectList, setProjectList] = useState([]);
 
-  const handleElementSelect = (elementData) => {
-    setSelectedElement(elementData);
-  };
+  // ---------------------------------------------------------------
+  // 프로젝트 목록 새로 고침
+  // ---------------------------------------------------------------
+  const refreshProjectList = useCallback(() => {
+    return AxiosCustom.get('/api/bim/projects')
+      .then(response => {
+        setProjectList(response.data);
+      })
+      .catch(error => {
+        console.error('프로젝트 목록 로딩 실패:', error);
+      });
+  }, []);
+
+  // ---------------------------------------------------------------
+  // 신규 프로젝트 생성 (BimProjectList에서 사용)
+  // ---------------------------------------------------------------
+  const addNewProject = useCallback((type, name, callback) => {
+    AxiosCustom.post('/api/bim/project', {
+      structureType: type,
+      projectName: name || type + ' project',
+      spanCount: 0,
+    })
+      .then(() => refreshProjectList())
+      .then(() => { if (callback) callback(); })
+      .catch(error => {
+        console.error('프로젝트 생성 실패:', error);
+        if (callback) callback();
+      });
+  }, [refreshProjectList]);
+
+  // ---------------------------------------------------------------
+  // 프로젝트 선택 → BIM 모델 데이터 로딩
+  // ---------------------------------------------------------------
   function handleProjectSelect(projectData) {
     setSelectedProject(projectData);
     AxiosCustom.get(`/api/bim/project/${projectData.projectId}`)
       .then(response => {
-        console.log("projectData :: "  +response.data);
         setModelData(response.data);
-        // setElements(response.data);
-        setLoading(false);
       })
       .catch(error => {
-        console.error("Error fetching BIM data from Spring:", error);
-        setLoading(false);
+        console.error('BIM 데이터 로딩 실패:', error);
       });
-  };
+  }
+
   const handleElementUpdate = (updatedElement) => {
     if (elements) {
       setElements(
@@ -50,7 +77,7 @@ function App() {
     }
   };
 
-  // AI가 BIM 부재를 생성/수정/삭제한 후 3D 뷰어를 즉시 갱신
+  // AI가 BIM 부재를 생성/수정/삭제한 후 3D 뷰어 즉시 갱신
   const refreshModelData = useCallback(() => {
     if (!selectedProject) return;
     AxiosCustom.get(`/api/bim/project/${selectedProject.projectId}`)
@@ -58,75 +85,81 @@ function App() {
       .catch(error => console.error('모델 갱신 실패:', error));
   }, [selectedProject]);
 
+  // 초기 프로젝트 목록 로딩
   useEffect(() => {
-    // Spring API 호출
-    AxiosCustom.get(`/api/bim/projects`)
-      .then(response => {
-        setProjectList(response.data);
-        setLoading(false);
-      })
-      .catch(error => {
-        setLoading(false);
-      });
-
-  }, [viewComponent]);
-
-  // useEffect(() => {
-  //   // Spring API 호출
-  //   console.log(selectedProject);
-  //   if (selectedProject && selectedProject.projectId) {
-
-  //     axios.get(`http://localhost:8080/api/bim//project/projectId=${selectedProject.projectId}`)
-  //       .then(response => {
-  //         setModelData(response.data);
-  //         // setElements(response.data);
-  //         setLoading(false);
-  //       })
-  //       .catch(error => {
-  //         console.error("Error fetching BIM data from Spring:", error);
-  //         setLoading(false);
-  //       });
-
-  //   }
-  // }, [selectedProject]);
+    refreshProjectList().finally(() => setLoading(false));
+  }, [refreshProjectList]);
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: '50px' }}>Loading 3D Model...</div>;
+    return (
+      <div className="min-h-screen bg-[#0d1b2a] flex items-center justify-center text-gray-400">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🏗</div>
+          <div className="text-sm">Digital Twin 초기화 중…</div>
+        </div>
+      </div>
+    );
   }
 
-  // const { elements } = modelData;
+  // ---------------------------------------------------------------
+  // 뷰 렌더링
+  // ---------------------------------------------------------------
+  const renderView = () => {
+    if (viewComponent === 'ems') {
+      return <EmsDashboard setViceComponent={setViceComponent} />;
+    }
+    if (viewComponent === 'bim') {
+      return (
+        <BimDashboard
+          setViceComponent={setViceComponent}
+          elements={elements}
+          modelData={modelData}
+          setModelData={setModelData}
+          selectedProject={selectedProject}
+        />
+      );
+    }
+    if (viewComponent === 'bim-projects') {
+      return (
+        <BimProjectList
+          setViceComponent={setViceComponent}
+          projectList={projectList}
+          onProjectSelect={handleProjectSelect}
+          onCreateProject={addNewProject}
+        />
+      );
+    }
+    if (selectedElement) {
+      return (
+        <ElementEditPanel
+          element={selectedElement}
+          onClose={() => setSelectedElement(null)}
+          onUpdate={handleElementUpdate}
+        />
+      );
+    }
+    return (
+      <SatelliteDashboard
+        setViceComponent={setViceComponent}
+        elements={elements}
+        modelData={modelData}
+        onProjectSelect={handleProjectSelect}
+        projectList={projectList}
+      />
+    );
+  };
+
   return (
     <div className="min-h-screen bg-space-900 text-gray-200">
-      {/* Top Bar */}
-      <Header />
+      <Header viewComponent={viewComponent} setViceComponent={setViceComponent} />
 
-      {/* Main */}
       <main className="mx-auto w-full px-4 py-6">
-        {
-          // EMS 대시보드 뷰: setViceComponent('ems') 호출 시 표시
-          viewComponent === 'ems' ?
-            <EmsDashboard setViceComponent={setViceComponent} />
-            :
-          viewComponent && viewComponent === 'bim' ?
-            <BimDashboard setViceComponent={setViceComponent} elements={elements} modelData={modelData} setModelData={setModelData} selectedProject={selectedProject}/>
-            :
-            selectedElement && selectedElement ?
-              <ElementEditPanel
-                element={selectedElement}
-                onClose={() => setSelectedElement(null)}
-                onUpdate={handleElementUpdate} // 업데이트 핸들러 전달
-              />
-              :
-              <>
-                <SatelliteDashboard setViceComponent={setViceComponent} elements={elements} modelData={modelData} onProjectSelect={handleProjectSelect} projectList={projectList} />
-              </>
-        }
+        {renderView()}
       </main>
 
-      {/* Footer */}
       <Footer />
 
-      {/* AI 채팅 어시스턴트 - 모든 뷰에서 표시 */}
+      {/* AI 채팅 어시스턴트 — 모든 뷰에서 표시 */}
       <ChatView selectedProject={selectedProject} onBimUpdate={refreshModelData} />
     </div>
   );
