@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import yyj.project.twinspring.dao.BimDAO;
 import yyj.project.twinspring.dto.BimElementDTO;
@@ -128,7 +129,11 @@ public class BimServiceImpl implements BimService {
      */
     @Override
     public Mono<BimElementDTO> createElement(BimElementDTO element) {
-        log.info("부재 생성 요청: type={}, projectId={}", element.getElementType(), element.getProjectId());
+        // elementId가 없으면 Spring에서 자동 생성 (에이전트 경유 시에도 보장)
+        if (element.getElementId() == null || element.getElementId().isBlank()) {
+            element.setElementId("ELEM-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        }
+        log.info("부재 생성 요청: type={}, projectId={}, elementId={}", element.getElementType(), element.getProjectId(), element.getElementId());
         return webClient.post()
                 .uri("/api/bim/element")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -139,6 +144,51 @@ public class BimServiceImpl implements BimService {
                     return Mono.error(new RuntimeException("C# element creation failed"));
                 })
                 .bodyToMono(BimElementDTO.class);
+    }
+
+    // 타입별 기본 크기 (X, Y, Z) 단위: m  — bim_builder.py의 _DEFAULT_SIZES와 동일하게 유지
+    private static final java.util.Map<String, double[]> DEFAULT_SIZES = java.util.Map.of(
+            "IfcColumn", new double[]{0.5, 3.0, 0.5},
+            "IfcBeam",   new double[]{5.0, 0.4, 0.4},
+            "IfcWall",   new double[]{5.0, 3.0, 0.2},
+            "IfcSlab",   new double[]{5.0, 0.2, 5.0},
+            "IfcPier",   new double[]{1.0, 5.0, 1.0}
+    );
+
+    /**
+     * 특정 좌표에 부재 생성
+     * elementType별 기본 크기를 적용하여 C# POST /api/bim/element 호출
+     */
+    @Override
+    public Mono<BimElementDTO> createElementAt(String projectId, String elementType, String material,
+                                               double x, double y, double z) {
+        double[] size = DEFAULT_SIZES.getOrDefault(elementType, new double[]{0.5, 3.0, 0.5});
+
+        BimElementDTO element = new BimElementDTO();
+        element.setProjectId(projectId);
+        element.setElementType(elementType);
+        element.setMaterial(material != null ? material : "Concrete");
+        element.setPositionX(x);
+        element.setPositionY(y);
+        element.setPositionZ(z);
+        element.setSizeX(size[0]);
+        element.setSizeY(size[1]);
+        element.setSizeZ(size[2]);
+
+        log.info("좌표 지정 부재 생성: type={}, pos=({},{},{}), projectId={}", elementType, x, y, z, projectId);
+        return createElement(element);
+    }
+
+    /**
+     * 복합 구조물 배치 생성
+     * 교각·골조 등 다수 부재를 순차적으로 C# 서버에 생성 요청
+     */
+    @Override
+    public Mono<List<BimElementDTO>> createElements(List<BimElementDTO> elements) {
+        log.info("배치 부재 생성 요청: {}개", elements.size());
+        return Flux.fromIterable(elements)
+                .concatMap(this::createElement)   // 순차 처리로 C# 서버 부하 방지
+                .collectList();
     }
 
     /**

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import AxiosCustom from '../../axios/AxiosCustom';
 
-const API_BASE = `${window.location.protocol}//${window.location.host}/api/chat`;
+const API_BASE = `/api/chat`;
 
 /**
  * 플로팅 AI 채팅 패널
@@ -9,7 +9,7 @@ const API_BASE = `${window.location.protocol}//${window.location.host}/api/chat`
  * - BIM 프로젝트 컨텍스트를 자동으로 Agent에 전달
  * - rag_db / bim_builder / chat intent에 따라 뱃지 표시
  */
-export default function ChatView({ selectedProject }) {
+export default function ChatView({ selectedProject, onBimUpdate }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -38,7 +38,7 @@ export default function ChatView({ selectedProject }) {
 
     try {
       const history = messages.map(m => ({ role: m.role, content: m.content }));
-      const { data } = await axios.post(`${API_BASE}/message`, {
+      const { data } = await AxiosCustom.post(`${API_BASE}/message`, {
         sessionId,
         message: text,
         projectId: selectedProject?.projectId || null,
@@ -48,6 +48,10 @@ export default function ChatView({ selectedProject }) {
         ...prev,
         { role: 'assistant', content: data.response, intent: data.intent },
       ]);
+      // BIM 부재 생성/수정/삭제 후 3D 뷰어 즉시 갱신
+      if (data.intent === 'bim_builder' && onBimUpdate) {
+        onBimUpdate();
+      }
     } catch {
       setMessages(prev => [
         ...prev,
@@ -59,7 +63,7 @@ export default function ChatView({ selectedProject }) {
   };
 
   const clearHistory = async () => {
-    await axios.delete(`${API_BASE}/history/${sessionId}`).catch(() => {});
+    await AxiosCustom.delete(`${API_BASE}/history/${sessionId}`).catch(() => {});
     setMessages([
       {
         role: 'assistant',

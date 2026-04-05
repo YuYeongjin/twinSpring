@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
-import axios from "axios";
+import AxiosCustom, { WS_BASE } from "../../axios/AxiosCustom";
 
-const API_BASE = `${window.location.protocol}//${window.location.host}/api/ems`;
-const SOCKET_URL = `${window.location.protocol}//${window.location.host}/ws/sensor`;
+const API_BASE = `/api/ems`;
+const SOCKET_URL = `${WS_BASE}/ws/sensor`;
 
 /**
  * EMS(에너지 관리 시스템) 데이터 훅
@@ -57,7 +57,7 @@ export default function EmsAPI() {
    */
   const fetchSummary = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE}/summary`);
+      const res = await AxiosCustom.get(`${API_BASE}/summary`);
       setSummary(res.data);
       if (res.data.activeAlerts) setAlerts(res.data.activeAlerts);
       if (res.data.zoneData) setZoneData(res.data.zoneData);
@@ -72,7 +72,7 @@ export default function EmsAPI() {
    */
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE}/logs`);
+      const res = await AxiosCustom.get(`${API_BASE}/logs`);
       // 시계열 차트를 위해 오래된 순서로 정렬
       setEnergyHistory(res.data.reverse());
     } catch (e) {
@@ -85,7 +85,7 @@ export default function EmsAPI() {
    */
   const fetchHourlyTrend = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE}/trend/hourly`);
+      const res = await AxiosCustom.get(`${API_BASE}/trend/hourly`);
       setHourlyTrend(res.data);
     } catch (e) {
       console.error("시간별 추이 조회 실패:", e);
@@ -97,7 +97,7 @@ export default function EmsAPI() {
    */
   const fetchDailySummary = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE}/trend/daily`);
+      const res = await AxiosCustom.get(`${API_BASE}/trend/daily`);
       setDailySummary(res.data);
     } catch (e) {
       console.error("일별 요약 조회 실패:", e);
@@ -109,7 +109,7 @@ export default function EmsAPI() {
    */
   const fetchThresholds = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE}/threshold`);
+      const res = await AxiosCustom.get(`${API_BASE}/threshold`);
       setThresholds(res.data);
     } catch (e) {
       console.error("임계값 조회 실패:", e);
@@ -134,7 +134,7 @@ export default function EmsAPI() {
    */
   const resolveAlert = useCallback(async (id) => {
     try {
-      await axios.put(`${API_BASE}/alerts/${id}/resolve`);
+      await AxiosCustom.put(`${API_BASE}/alerts/${id}/resolve`);
       // UI에서 즉시 제거 (낙관적 업데이트)
       setAlerts(prev => prev.filter(a => a.id !== id));
     } catch (e) {
@@ -148,7 +148,7 @@ export default function EmsAPI() {
    */
   const setThreshold = useCallback(async (data) => {
     try {
-      await axios.post(`${API_BASE}/threshold`, data);
+      await AxiosCustom.post(`${API_BASE}/threshold`, data);
       fetchThresholds(); // 설정 후 목록 새로고침
     } catch (e) {
       console.error("임계값 설정 실패:", e);
@@ -162,7 +162,7 @@ export default function EmsAPI() {
    */
   const sendEnergyData = useCallback(async (data) => {
     try {
-      await axios.post(`${API_BASE}/data`, data);
+      await AxiosCustom.post(`${API_BASE}/data`, data);
     } catch (e) {
       console.error("에너지 데이터 전송 실패:", e);
     }

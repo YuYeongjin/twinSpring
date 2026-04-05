@@ -1,8 +1,5 @@
 """
-Node 2: RAG + Database 조회 노드 (Ollama - Llama 3.2 1B)
-
-DB 데이터와 RAG 컨텍스트를 LLM에 전달할 때
-1B 모델의 컨텍스트 한계(2048 토큰)를 고려해 데이터 양을 제한합니다.
+Node 2: RAG + Database 조회 노드 (Ollama - gemma3:12b)
 """
 
 import re
@@ -24,11 +21,10 @@ _KEYWORDS = {
     "threshold": re.compile(r"임계|threshold|기준값|설정값", re.I),
 }
 
-# 1B 모델 컨텍스트 절약: 시스템 프롬프트를 짧게 영어로
 _SYSTEM = SystemMessage(content=(
-    "You are a smart building assistant. "
-    "Use the provided data to answer the question in Korean. "
-    "Be concise and include key numbers."
+    "당신은 스마트 빌딩 디지털 트윈 어시스턴트입니다. "
+    "제공된 데이터를 바탕으로 한국어로 명확하고 구체적으로 답변하세요. "
+    "수치 데이터를 포함하여 답변하세요."
 ))
 
 
@@ -40,13 +36,13 @@ def _detect_targets(text: str) -> list[str]:
 def _fetch_db_context(targets: list[str]) -> str:
     parts = []
     if "sensor" in targets:
-        rows = query_sensor_data(limit=3)   # 1B 모델 컨텍스트 절약: 3건
+        rows = query_sensor_data(limit=5)
         parts.append(f"[Sensor]\n{_rows_to_text(rows)}")
     if "energy" in targets:
-        rows = query_energy_data(limit=3)
+        rows = query_energy_data(limit=5)
         parts.append(f"[Energy]\n{_rows_to_text(rows)}")
     if "alert" in targets:
-        rows = query_ems_alerts(limit=3)
+        rows = query_ems_alerts(limit=5)
         parts.append(f"[Alerts]\n{_rows_to_text(rows)}")
     if "threshold" in targets:
         rows = query_ems_thresholds()
@@ -72,8 +68,8 @@ def rag_db_node(state: AgentState) -> dict:
     targets = _detect_targets(user_text)
     db_context = _fetch_db_context(targets)
 
-    # 2. RAG 검색 (k=2로 제한해 토큰 절약)
-    rag_context = search_as_text(user_text, k=2)
+    # 2. RAG 검색
+    rag_context = search_as_text(user_text, k=3)
 
     # 3. 컨텍스트를 간결하게 조합
     combined = f"Data:\n{db_context}\n\nDocs:\n{rag_context}"
