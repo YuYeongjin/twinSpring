@@ -3,4 +3,83 @@
 
 <mapper namespace="yyj.project.twinspring.dao.BimDAO">
 
+    <!-- ============================================================
+         BIM 레이어 (bim_layer)
+         ============================================================ -->
+
+    <!-- 프로젝트의 모든 레이어 조회 (sort_order ASC) -->
+    <select id="getLayersByProject" parameterType="string" resultType="map">
+        SELECT layer_id    AS layerId,
+               project_id  AS projectId,
+               layer_name  AS layerName,
+               color,
+               visible,
+               element_ids AS elementIds,
+               sort_order  AS sortOrder
+        FROM bim_layer
+        WHERE project_id = #{projectId}
+        ORDER BY sort_order ASC, created_at ASC
+    </select>
+
+    <!-- 레이어 신규 삽입 -->
+    <insert id="insertLayer" parameterType="map">
+        INSERT INTO bim_layer (layer_id, project_id, layer_name, color, visible, element_ids, sort_order)
+        VALUES (#{layerId}, #{projectId}, #{layerName}, #{color}, #{visible}, #{elementIds}, #{sortOrder})
+    </insert>
+
+    <!-- 레이어 수정 (이름·색상·가시성·부재목록·순서) -->
+    <update id="updateLayer" parameterType="map">
+        UPDATE bim_layer
+        SET layer_name  = #{layerName},
+            color       = #{color},
+            visible     = #{visible},
+            element_ids = #{elementIds},
+            sort_order  = #{sortOrder}
+        WHERE layer_id = #{layerId}
+    </update>
+
+    <!-- 단일 레이어 삭제 -->
+    <delete id="deleteLayer" parameterType="string">
+        DELETE FROM bim_layer
+        WHERE layer_id = #{layerId}
+    </delete>
+
+    <!-- 프로젝트의 모든 레이어 삭제 (프로젝트 삭제 연동) -->
+    <delete id="deleteLayersByProject" parameterType="string">
+        DELETE FROM bim_layer
+        WHERE project_id = #{projectId}
+    </delete>
+
+    <!-- ============================================================
+         BIM 부재 커스텀 색상 (bim_element_color)
+         ============================================================ -->
+
+    <!-- 프로젝트의 모든 커스텀 색상 조회 -->
+    <select id="getColorsByProject" parameterType="string" resultType="map">
+        SELECT element_id AS elementId,
+               project_id AS projectId,
+               color
+        FROM bim_element_color
+        WHERE project_id = #{projectId}
+    </select>
+
+    <!-- 색상 저장(없으면 INSERT, 있으면 UPDATE) -->
+    <insert id="upsertColor" parameterType="map">
+        INSERT INTO bim_element_color (element_id, project_id, color)
+        VALUES (#{elementId}, #{projectId}, #{color})
+        ON DUPLICATE KEY UPDATE color = #{color}
+    </insert>
+
+    <!-- 단일 부재 색상 삭제 -->
+    <delete id="deleteColor" parameterType="string">
+        DELETE FROM bim_element_color
+        WHERE element_id = #{elementId}
+    </delete>
+
+    <!-- 프로젝트의 모든 커스텀 색상 삭제 -->
+    <delete id="deleteColorsByProject" parameterType="string">
+        DELETE FROM bim_element_color
+        WHERE project_id = #{projectId}
+    </delete>
+
 </mapper>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, ReferenceLine,
@@ -149,12 +149,9 @@ function ChartTooltip({ active, payload, label }) {
 export default function SatelliteDashboard({ setViceComponent, onProjectSelect, projectList }) {
   const {
     data, mode, setMode, batt, rssi,
-    latest, addNewProject,
-    bimMenu, setBimMenu,
+    latest,
     wsStatus,
   } = SatelliteAPI();
-
-  const [showCreate, setShowCreate] = useState(false);
 
   // 히스토리에서 통계값 계산
   const stats = useMemo(() => {
@@ -221,9 +218,9 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
             ⚡ EMS
           </button>
 
-          {/* BIM 바로가기 (프로젝트 선택) */}
+          {/* BIM 프로젝트 목록 바로가기 */}
           <button
-            onClick={() => setShowCreate(v => !v)}
+            onClick={() => setViceComponent('bim-projects')}
             className="px-3 py-1.5 rounded-lg text-xs font-bold transition text-white"
             style={{ backgroundColor: "#1a2a3a", border: `1px solid #2a5080` }}
           >
@@ -321,61 +318,61 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
         {/* 프로젝트 패널 */}
         <div className="lg:col-span-4 flex flex-col gap-4">
 
-          {/* BIM 프로젝트 목록 */}
+          {/* BIM 프로젝트 요약 카드 */}
           <Widget title="BIM 프로젝트" accent="#7c3aed"
                   action={
                     <button
-                      onClick={() => setShowCreate(v => !v)}
+                      onClick={() => setViceComponent('bim-projects')}
                       className="text-xs px-2 py-0.5 rounded text-purple-300 hover:text-white transition"
                       style={{ border: "1px solid #7c3aed" }}
                     >
-                      {showCreate ? "목록" : "+ 신규"}
+                      모두 보기 →
                     </button>
                   }
           >
-            {showCreate ? (
-              /* 프로젝트 생성 UI */
-              <div className="space-y-2">
-                <p className="text-xs" style={{ color: TB.text2 }}>프로젝트 유형 선택:</p>
-                {["Bridge", "Building"].map(type => (
-                  <button
-                    key={type}
-                    onClick={() => { addNewProject(type); setShowCreate(false); }}
-                    className="w-full px-3 py-2.5 rounded-lg text-sm font-medium text-white transition flex items-center gap-2"
-                    style={{ backgroundColor: "#1e3a5f", border: "1px solid #2a5080" }}
-                  >
-                    <span>{type === "Bridge" ? "🌉" : "🏢"}</span>
-                    {type === "Bridge" ? "교량 (Bridge)" : "건물 (Building)"}
-                  </button>
-                ))}
+            <div className="space-y-2">
+              {/* 프로젝트 수 요약 */}
+              <div className="flex items-center justify-between py-2 px-3 rounded-lg"
+                   style={{ backgroundColor: "#152030" }}>
+                <span className="text-xs" style={{ color: TB.text2 }}>전체 프로젝트</span>
+                <span className="text-lg font-bold text-white">{projectList?.length ?? 0}</span>
               </div>
-            ) : (
-              /* 프로젝트 목록 */
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                {projectList?.length > 0 ? (
-                  projectList.map((item, i) => (
-                    <button
-                      key={i}
-                      onClick={() => { onProjectSelect(item); setViceComponent('bim'); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition group"
-                      style={{ backgroundColor: "#152030", border: "1px solid #253347" }}
-                    >
-                      <span>{item.structureType === "Bridge" ? "🌉" : "🏢"}</span>
-                      <span className="text-gray-300 group-hover:text-white transition truncate flex-1">
-                        {item.projectName}
-                      </span>
-                      <span className="text-xs opacity-0 group-hover:opacity-100 transition"
-                            style={{ color: TB.accent }}>열기 →</span>
-                    </button>
-                  ))
-                ) : (
-                  <div className="text-center py-4 text-xs" style={{ color: TB.text2 }}>
-                    프로젝트 없음<br />
-                    <span className="opacity-60">+ 신규 버튼으로 생성하세요</span>
-                  </div>
-                )}
+              <div className="flex gap-2">
+                {[["🌉", "Bridge"], ["🏢", "Building"]].map(([icon, type]) => {
+                  const cnt = (projectList ?? []).filter(p => p.structureType === type).length;
+                  return (
+                    <div key={type} className="flex-1 text-center py-2 rounded-lg"
+                         style={{ backgroundColor: "#152030", border: "1px solid #253347" }}>
+                      <div className="text-lg">{icon}</div>
+                      <div className="text-xs font-semibold text-white">{cnt}</div>
+                      <div className="text-xs" style={{ color: TB.text2 }}>{type}</div>
+                    </div>
+                  );
+                })}
               </div>
-            )}
+              {/* 최근 프로젝트 1개 */}
+              {projectList?.length > 0 && (
+                <button
+                  onClick={() => { onProjectSelect(projectList[projectList.length - 1]); setViceComponent('bim'); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition group"
+                  style={{ backgroundColor: "#152030", border: "1px solid #253347" }}
+                >
+                  <span>{projectList[projectList.length - 1].structureType === "Bridge" ? "🌉" : "🏢"}</span>
+                  <span className="text-gray-300 group-hover:text-white transition truncate flex-1 text-xs">
+                    {projectList[projectList.length - 1].projectName}
+                  </span>
+                  <span className="text-xs opacity-0 group-hover:opacity-100 transition"
+                        style={{ color: TB.accent }}>열기 →</span>
+                </button>
+              )}
+              <button
+                onClick={() => setViceComponent('bim-projects')}
+                className="w-full py-2 rounded-lg text-xs font-semibold transition text-white"
+                style={{ backgroundColor: "#1e1040", border: "1px solid #7c3aed" }}
+              >
+                🏗 BIM 프로젝트 관리
+              </button>
+            </div>
           </Widget>
 
           {/* 빠른 제어 패널 */}
