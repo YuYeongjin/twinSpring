@@ -5,7 +5,7 @@
   pip install -r requirements.txt
   cp .env.example .env  # ANTHROPIC_API_KEY 입력
   python scripts/init_rag.py  # 최초 1회
-  uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+  uvicorn server:app --host 0.0.0.0 --port 7070 --reload
 
   # 2. Spring Boot 실행
   ./mvnw spring-boot:run

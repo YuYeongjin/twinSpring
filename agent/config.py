@@ -5,14 +5,14 @@ load_dotenv()
 
 # LLM (Ollama)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2:1b-instruct-q4_K_M")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemma3:12b")
 
 # Database (MariaDB)
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_NAME = os.getenv("DB_NAME", "digital_twin")
 DB_USER = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "Abcd1234")
 
 # RAG (ChromaDB)
 CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")

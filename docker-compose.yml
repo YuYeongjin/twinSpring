@@ -60,10 +60,10 @@ services:
       - ollama
       - db
     ports:
-      - "8000:8000"
+      - "7070:7070"
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
-      LLM_MODEL: llama3.2:1b-instruct-q4_K_M
+      LLM_MODEL: gemma3:12b
       DB_HOST: db
       DB_PORT: "3306"
       DB_NAME: digital_twin
@@ -88,7 +88,7 @@ services:
       MQTT_BROKER_URL: tcp://mqtt:1883
       MQTT_TOPIC: test/topic
       BIM_SERVER_URL: http://bim-api:5112
-      AGENT_URL: http://agent:8000
+      AGENT_URL: http://agent:7070
   nginx-proxy:
     image: 'jc21/nginx-proxy-manager:latest'
     container_name: nginx-proxy

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import AxiosCustom from '../../../axios/AxiosCustom';
 
-const API_URL = `${window.location.protocol}//${window.location.host}/api/bim/element`;
+const API_URL = `/api/bim/element`;
 
 export default function ElementEditPanel({ element, onClose, onUpdate }) {
     // 폼 입력 값을 관리할 상태
@@ -62,7 +62,7 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
         
         try {
             // 2. Spring API로 PUT 요청 전송
-            await axios.put(API_URL, dataToSend); 
+            await AxiosCustom.put(API_URL, dataToSend);
             
             // 3. 상태 갱신 및 UI 닫기
             onUpdate(dataToSend); // 부모 컴포넌트의 상태 갱신 함수 호출

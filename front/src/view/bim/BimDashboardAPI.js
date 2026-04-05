@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import * as THREE from 'three';
-import axios from 'axios';
+import AxiosCustom from '../../axios/AxiosCustom';
 
-const API_BASE = `${window.location.protocol}//${window.location.host}/api/bim`;
+const API_BASE = `/api/bim`;
 
 export default function BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject }) {
     const [selectedElement, setSelectedElement] = useState(null);
@@ -89,7 +89,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
             } catch (e) { console.error("Size 파싱 오류", e); }
         }
 
-        axios.put(`${API_BASE}/model/element`, payload)
+        AxiosCustom.put(`${API_BASE}/model/element`, payload)
             .then(() => console.log("저장 완료:", payload.elementId))
             .catch(err => console.error("저장 실패:", err));
     }
@@ -119,7 +119,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 material: template.material ?? 'Concrete C30',
             };
 
-            const response = await axios.post(`${API_BASE}/element`, payload);
+            const response = await AxiosCustom.post(`${API_BASE}/element`, payload);
             const created = response.data; // C#이 반환한 elementId 포함 부재
 
             // 로컬 modelData에 즉시 추가 → 3D 뷰어에 바로 표시
@@ -140,7 +140,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         if (!window.confirm(`부재 "${elementId}"를 삭제하시겠습니까?`)) return;
 
         try {
-            await axios.delete(`${API_BASE}/element/${elementId}`);
+            await AxiosCustom.delete(`${API_BASE}/element/${elementId}`);
             // 로컬에서 즉시 제거
             setModelData(prev => prev.filter(e => e.elementId !== elementId));
             setSelectedElement(null);

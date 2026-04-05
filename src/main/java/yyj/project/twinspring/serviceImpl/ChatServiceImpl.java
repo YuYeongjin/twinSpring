@@ -40,7 +40,7 @@ public class ChatServiceImpl implements ChatService {
     public ChatServiceImpl(
             WebClient.Builder builder,
             ObjectMapper objectMapper,
-            @Value("${agent.url:http://localhost:8000}") String agentUrl
+            @Value("${agent.url:http://localhost:7070}") String agentUrl
     ) {
         this.agentClient = builder
                 .baseUrl(agentUrl)
@@ -61,6 +61,7 @@ public class ChatServiceImpl implements ChatService {
         // Python Agent 요청 바디 구성
         ObjectNode body = objectMapper.createObjectNode();
         body.put("message", request.getMessage());
+        body.put("session_id", sessionId);
 
         ArrayNode historyArray = body.putArray("history");
         for (ChatMessageDTO msg : recentHistory) {
@@ -112,5 +113,15 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public void clearHistory(String sessionId) {
         sessions.remove(sessionId);
+        // Python Agent 세션 상태(pending_action 등)도 초기화
+        try {
+            agentClient.delete()
+                    .uri("/session/" + sessionId)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+        } catch (Exception e) {
+            log.warn("Agent 세션 초기화 실패 (무시): {}", e.getMessage());
+        }
     }
 }

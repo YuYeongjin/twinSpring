@@ -54,12 +54,57 @@ public class BimController {
     /**
      * 단일 부재 신규 생성 API
      * ControlPanel의 "기둥 생성", "보 생성" 버튼 클릭 시 호출
-     * C# POST /api/bim/element/new 로 프록시, 생성된 부재(elementId 포함) 반환
+     * C# POST /api/bim/element 로 프록시, 생성된 부재(elementId 포함) 반환
      */
     @PostMapping("/element")
     public Mono<ResponseEntity<BimElementDTO>> createElement(@RequestBody BimElementDTO element) {
         return bimService.createElement(element)
+                .map(created -> ResponseEntity.status(HttpStatus.CREATED).body(created))
+                .onErrorResume(e -> {
+                    System.err.println("부재 생성 오류: " + e.getMessage());
+                    return reactor.core.publisher.Mono.just(
+                            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).<BimElementDTO>build());
+                });
+    }
+
+    /**
+     * 복합 구조물 배치 생성 API
+     * AI Agent에서 교각·골조 등 복합 구조 생성 시 호출
+     * 요청 바디: BimElementDTO 배열
+     */
+    @PostMapping("/elements/batch")
+    public Mono<ResponseEntity<List<BimElementDTO>>> createElements(@RequestBody List<BimElementDTO> elements) {
+        return bimService.createElements(elements)
+                .map(created -> ResponseEntity.status(HttpStatus.CREATED).body(created))
+                .onErrorResume(e -> {
+                    System.err.println("배치 부재 생성 오류: " + e.getMessage());
+                    return reactor.core.publisher.Mono.just(
+                            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).<List<BimElementDTO>>build());
+                });
+    }
+
+    /**
+     * 특정 좌표에 부재 생성 API
+     * AI Agent 또는 프론트엔드에서 좌표를 명시적으로 지정해 부재를 생성할 때 호출
+     * 요청 바디: { projectId, elementType, material(optional), x, y, z }
+     */
+    @PostMapping("/element/at")
+    public Mono<ResponseEntity<BimElementDTO>> createElementAt(@RequestBody Map<String, Object> body) {
+        String projectId   = (String) body.get("projectId");
+        String elementType = (String) body.getOrDefault("elementType", "IfcColumn");
+        String material    = (String) body.getOrDefault("material", "Concrete");
+        double x = toDouble(body.get("x"));
+        double y = toDouble(body.get("y"));
+        double z = toDouble(body.get("z"));
+
+        return bimService.createElementAt(projectId, elementType, material, x, y, z)
                 .map(created -> ResponseEntity.status(HttpStatus.CREATED).body(created));
+    }
+
+    private double toDouble(Object val) {
+        if (val == null) return 0.0;
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        try { return Double.parseDouble(val.toString()); } catch (NumberFormatException e) { return 0.0; }
     }
 
     /**

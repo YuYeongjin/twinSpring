@@ -74,8 +74,24 @@ CREATE TABLE IF NOT EXISTS EMS_ALERT
     threshold_value DOUBLE                DEFAULT 0,
     current_value   DOUBLE                DEFAULT 0,
     is_resolved     BOOLEAN               DEFAULT FALSE,
-    timestamp       DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
+    timestamp       DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    created_at      DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
     );
+
+-- 기존 EMS_ALERT 테이블에 created_at 컬럼이 없는 경우 추가 (마이그레이션)
+SET @exists = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'EMS_ALERT'
+      AND COLUMN_NAME  = 'created_at'
+);
+SET @sql = IF(@exists = 0,
+    'ALTER TABLE EMS_ALERT ADD COLUMN created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)',
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- EMS 임계값 설정 테이블
 CREATE TABLE IF NOT EXISTS EMS_THRESHOLD

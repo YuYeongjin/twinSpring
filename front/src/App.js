@@ -1,14 +1,12 @@
-import axios from 'axios';
+import AxiosCustom from './axios/AxiosCustom';
 import Footer from './component/Footer';
 import Header from './component/Header';
 import BimDashboard from './view/bim/BimDashboard';
 import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
-// EMS(에너지 관리 시스템) 대시보드 컴포넌트 임포트
 import EmsDashboard from './view/ems/EmsDashboard';
-// AI 채팅 어시스턴트
 import ChatView from './view/chat/ChatView';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 function App() {
 
@@ -31,7 +29,7 @@ function App() {
   };
   function handleProjectSelect(projectData) {
     setSelectedProject(projectData);
-    axios.get(`${window.location.protocol}//${window.location.host}/api/bim/project/${projectData.projectId}`)
+    AxiosCustom.get(`/api/bim/project/${projectData.projectId}`)
       .then(response => {
         console.log("projectData :: "  +response.data);
         setModelData(response.data);
@@ -44,7 +42,6 @@ function App() {
       });
   };
   const handleElementUpdate = (updatedElement) => {
-    // C# 서버에서 데이터 업데이트 성공 후, React 상태도 갱신
     if (elements) {
       setElements(
         elements.map(el => (el.elementId === updatedElement.elementId ? updatedElement : el))
@@ -53,9 +50,17 @@ function App() {
     }
   };
 
+  // AI가 BIM 부재를 생성/수정/삭제한 후 3D 뷰어를 즉시 갱신
+  const refreshModelData = useCallback(() => {
+    if (!selectedProject) return;
+    AxiosCustom.get(`/api/bim/project/${selectedProject.projectId}`)
+      .then(response => setModelData(response.data))
+      .catch(error => console.error('모델 갱신 실패:', error));
+  }, [selectedProject]);
+
   useEffect(() => {
     // Spring API 호출
-    axios.get(`${window.location.protocol}//${window.location.host}/api/bim/projects`)
+    AxiosCustom.get(`/api/bim/projects`)
       .then(response => {
         setProjectList(response.data);
         setLoading(false);
@@ -122,7 +127,7 @@ function App() {
       <Footer />
 
       {/* AI 채팅 어시스턴트 - 모든 뷰에서 표시 */}
-      <ChatView selectedProject={selectedProject} />
+      <ChatView selectedProject={selectedProject} onBimUpdate={refreshModelData} />
     </div>
   );
 }

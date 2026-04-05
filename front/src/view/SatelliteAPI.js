@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import SockJS from "sockjs-client";
 import { Client } from "@stomp/stompjs";
-import axios from "axios";
+import AxiosCustom, { WS_BASE } from "../axios/AxiosCustom";
 
 export default function SatelliteAPI() {
   const clientRef = useRef(null);
@@ -13,11 +13,11 @@ export default function SatelliteAPI() {
   const [bimMenu, setBimMenu] = useState('default');
   // WebSocket 연결 상태: 'connecting' | 'connected' | 'disconnected' | 'error'
   const [wsStatus, setWsStatus] = useState('connecting');
-  const SOCKET_HTTP_URL = `${window.location.protocol}//${window.location.host}/ws/sensor`;
-  const API_BASE_URL = `${window.location.protocol}//${window.location.host}/api/bim`;
+  const SOCKET_HTTP_URL = `${WS_BASE}/ws/sensor`;
+  const API_BASE_URL = `/api/bim`;
 
   const addNewProject = (category) => {
-    axios.post(`${API_BASE_URL}/project`, {
+    AxiosCustom.post(`${API_BASE_URL}/project`, {
       structureType: category,
       projectName: category + " project",
       spanCount: 0
