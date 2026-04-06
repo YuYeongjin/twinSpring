@@ -48,6 +48,18 @@ namespace BimProcessorApi.Models
         [JsonPropertyName("sizeZ")]
         public double? SizeZ { get; set; }
 
+        [Column("rotation_x")]
+        [JsonPropertyName("rotationX")]
+        public double? RotationX { get; set; }
+
+        [Column("rotation_y")]
+        [JsonPropertyName("rotationY")]
+        public double? RotationY { get; set; }
+
+        [Column("rotation_z")]
+        [JsonPropertyName("rotationZ")]
+        public double? RotationZ { get; set; }
+
         [ForeignKey("ProjectId")]
         [JsonIgnore]
         public Project? Project { get; set; }

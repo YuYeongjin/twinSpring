@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import * as THREE from 'three';
 import AxiosCustom from '../../axios/AxiosCustom';
 
@@ -14,11 +14,9 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     const [minimapTrackElement, setMinimapTrackElement] = useState(null);
 
     // ── 신규 상태: 다중 선택 ────────────────────────────────────────
-    /** 다중 선택된 elementId 집합 */
     const [selectedElements, setSelectedElements] = useState(new Set());
 
     // ── 신규 상태: 배치 모드 ────────────────────────────────────────
-    /** 호버 배치 대기 중인 부재 템플릿 (null이면 배치 모드 비활성) */
     const [pendingElement, setPendingElement] = useState(null);
 
     // ── 신규 상태: 선택(러버밴드) 모드 ─────────────────────────────
@@ -27,17 +25,8 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // Three.js 카메라 ref — Scene 내부에서 주입, 러버밴드 투영에 사용
     const cameraRef = useRef(null);
 
-    // ── 신규 상태: 레이어 ────────────────────────────────────────────
-    /**
-     * 레이어 목록: [{ layerId, layerName, color, visible, elementIds[] }]
-     * projectId별 localStorage에 영속화
-     */
+    // ── 레이어 & 색상 상태 ──────────────────────────────────────────
     const [layers, setLayers] = useState([]);
-
-    /**
-     * 부재별 커스텀 색상: { elementId: "#hexcolor" }
-     * localStorage 영속화
-     */
     const [elementColors, setElementColors] = useState({});
 
     // ── 미니맵 초기화 ───────────────────────────────────────────────
@@ -60,33 +49,25 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         }
     }, [modelData]);
 
-    // ── 레이어 / 색상 localStorage 로드 (프로젝트 전환 시) ──────────
+    // ── 레이어 / 색상 DB 로드 (프로젝트 전환 시) ──────────────────
     useEffect(() => {
         const pid = selectedProject?.projectId;
         if (!pid) return;
-        try {
-            const raw = localStorage.getItem(`bim_layers_${pid}`);
-            setLayers(raw ? JSON.parse(raw) : []);
-        } catch { setLayers([]); }
-        try {
-            const raw = localStorage.getItem(`bim_colors_${pid}`);
-            setElementColors(raw ? JSON.parse(raw) : {});
-        } catch { setElementColors({}); }
+
+        // 레이어 로드
+        AxiosCustom.get(`${API_BASE}/layers?projectId=${pid}`)
+            .then(res => setLayers(res.data || []))
+            .catch(() => setLayers([]));
+
+        // 부재 커스텀 색상 로드
+        AxiosCustom.get(`${API_BASE}/colors?projectId=${pid}`)
+            .then(res => {
+                const colorMap = {};
+                (res.data || []).forEach(c => { colorMap[c.elementId] = c.color; });
+                setElementColors(colorMap);
+            })
+            .catch(() => setElementColors({}));
     }, [selectedProject?.projectId]);
-
-    // ── 레이어 변경 → localStorage 저장 ──────────────────────────
-    useEffect(() => {
-        const pid = selectedProject?.projectId;
-        if (!pid) return;
-        try { localStorage.setItem(`bim_layers_${pid}`, JSON.stringify(layers)); } catch {}
-    }, [layers, selectedProject?.projectId]);
-
-    // ── 색상 변경 → localStorage 저장 ────────────────────────────
-    useEffect(() => {
-        const pid = selectedProject?.projectId;
-        if (!pid) return;
-        try { localStorage.setItem(`bim_colors_${pid}`, JSON.stringify(elementColors)); } catch {}
-    }, [elementColors, selectedProject?.projectId]);
 
     // ── 로딩 상태 ──────────────────────────────────────────────────
     const isLoading = !selectedProject && (!modelData || modelData.length === 0);
@@ -95,29 +76,24 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // 부재 선택 (단일 / Shift+클릭 다중)
     // ================================================================
     const handleElementSelect = (data, ref, shiftKey = false) => {
-        if (pendingElement) return; // 배치 모드 중 선택 무시
+        if (pendingElement) return;
 
         if (shiftKey) {
-            // Shift+클릭: 집합에 추가 또는 제거
             setSelectedElements(prev => {
                 const next = new Set(prev);
-                if (next.has(data.elementId)) {
-                    next.delete(data.elementId);
-                } else {
-                    next.add(data.elementId);
-                }
+                if (next.has(data.elementId)) next.delete(data.elementId);
+                else next.add(data.elementId);
                 return next;
             });
             setSelectedElement({ data, meshRef: ref });
         } else {
-            // 일반 클릭: 해당 부재만 선택
             setSelectedElements(new Set([data.elementId]));
             setSelectedElement({ data, meshRef: ref });
         }
     };
 
     // ================================================================
-    // 러버밴드 다중 선택 적용 (BimDashboard 에서 호출)
+    // 러버밴드 다중 선택 적용
     // ================================================================
     function applyRubberBandSelection(ids) {
         setSelectedElements(new Set(ids));
@@ -134,10 +110,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // ================================================================
     function toggleSelectMode() {
         setIsSelectMode(prev => {
-            if (prev) {
-                // 선택 모드 종료 시 다중 선택 초기화
-                setSelectedElements(new Set());
-            }
+            if (prev) setSelectedElements(new Set());
             return !prev;
         });
     }
@@ -154,7 +127,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     };
 
     // ================================================================
-    // 저장 (서버 PUT)
+    // 저장 (서버 PUT) — rotation 포함
     // ================================================================
     function saveUpdateElement() {
         if (!selectedElement) return;
@@ -187,26 +160,18 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     }
 
     // ================================================================
-    // 배치 모드 — 부재 생성 (호버 후 클릭 위치 지정)
+    // 배치 모드
     // ================================================================
-
-    /** 배치 모드 시작: 템플릿을 들고 마우스로 위치를 지정하게 됨 */
     function startPlacement(template) {
         setPendingElement(template);
         setSelectedElement(null);
-        setIsSelectMode(false); // 선택 모드와 동시 사용 불가
+        setIsSelectMode(false);
     }
 
-    /** 배치 모드 취소 */
     function cancelPlacement() {
         setPendingElement(null);
     }
 
-    /**
-     * 배치 확정 — Scene의 바닥 평면 클릭 시 호출
-     * @param {{ x: number, z: number }} position  클릭된 3D 좌표 (Y=0 바닥 기준)
-     * @param {string} projectId
-     */
     async function confirmPlacement(position, projectId) {
         if (!projectId || !pendingElement) return;
         try {
@@ -221,12 +186,31 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 sizeY: pendingElement.sizeY ?? 1,
                 sizeZ: pendingElement.sizeZ ?? 1,
                 material: pendingElement.material ?? 'Concrete C30',
+                rotationX: 0, rotationY: 0, rotationZ: 0,
             };
             const response = await AxiosCustom.post(`${API_BASE}/element`, payload);
             setModelData(prev => [...prev, response.data]);
-            // 배치 모드 유지 — 연속 배치 가능 (Escape로 종료)
         } catch (err) {
             console.error("부재 배치 실패:", err);
+        }
+    }
+
+    // ================================================================
+    // 샘플 구조물 일괄 배치
+    // ================================================================
+    async function placeSampleStructure(elements, projectId) {
+        if (!projectId || !elements?.length) return;
+        try {
+            const payload = elements.map(el => ({
+                ...el,
+                elementId: "ELEM-" + Math.random().toString(36).substr(2, 9),
+                projectId,
+                rotationX: 0, rotationY: 0, rotationZ: 0,
+            }));
+            const response = await AxiosCustom.post(`${API_BASE}/elements/batch`, payload);
+            setModelData(prev => [...prev, ...(response.data || [])]);
+        } catch (err) {
+            console.error("샘플 구조물 배치 실패:", err);
         }
     }
 
@@ -234,7 +218,6 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // 삭제 (단일 + 다중 통합)
     // ================================================================
     async function deleteSelectedElements() {
-        // 다중 선택 집합 + 현재 selectedElement 를 합산
         const toDeleteSet = new Set([
             ...selectedElements,
             ...(selectedElement ? [selectedElement.data.elementId] : []),
@@ -250,25 +233,41 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         for (const id of toDelete) {
             try {
                 await AxiosCustom.delete(`${API_BASE}/element/${id}`);
+                // 색상도 함께 삭제
+                AxiosCustom.delete(`${API_BASE}/color/${id}`).catch(() => {});
             } catch (err) {
                 console.error('삭제 실패:', id, err);
             }
         }
         setModelData(prev => prev.filter(e => !toDeleteSet.has(e.elementId)));
-        // 삭제된 부재를 레이어에서도 제거
-        setLayers(prev => prev.map(l => ({
-            ...l,
-            elementIds: l.elementIds.filter(id => !toDeleteSet.has(id)),
-        })));
+
+        // 레이어에서도 제거 + DB 동기화
+        setLayers(prev => {
+            const updated = prev.map(l => ({
+                ...l,
+                elementIds: l.elementIds.filter(id => !toDeleteSet.has(id)),
+            }));
+            updated.forEach(l => {
+                AxiosCustom.put(`${API_BASE}/layer`, l).catch(() => {});
+            });
+            return updated;
+        });
+
+        // 색상 상태에서도 제거
+        setElementColors(prev => {
+            const next = { ...prev };
+            toDelete.forEach(id => delete next[id]);
+            return next;
+        });
+
         setSelectedElements(new Set());
         setSelectedElement(null);
     }
 
     // ================================================================
-    // 레이어 CRUD
+    // 레이어 CRUD — API 연동
     // ================================================================
 
-    /** 랜덤 선명한 색상 생성 */
     function randomLayerColor() {
         const palette = [
             '#ef4444','#f97316','#eab308','#22c55e',
@@ -279,53 +278,72 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     }
 
     function addLayer() {
+        const pid = selectedProject?.projectId;
+        if (!pid) return;
         const newLayer = {
-            layerId:   'layer-' + Math.random().toString(36).substr(2, 9),
-            layerName: `레이어 ${layers.length + 1}`,
-            color:     randomLayerColor(),
-            visible:   true,
+            layerId:    'layer-' + Math.random().toString(36).substr(2, 9),
+            projectId:  pid,
+            layerName:  `레이어 ${layers.length + 1}`,
+            color:      randomLayerColor(),
+            visible:    true,
             elementIds: [],
+            sortOrder:  layers.length,
         };
-        setLayers(prev => [...prev, newLayer]);
+        AxiosCustom.post(`${API_BASE}/layer`, newLayer)
+            .then(() => setLayers(prev => [...prev, newLayer]))
+            .catch(err => console.error('레이어 생성 실패:', err));
     }
 
     function deleteLayer(layerId) {
-        setLayers(prev => prev.filter(l => l.layerId !== layerId));
+        AxiosCustom.delete(`${API_BASE}/layer/${layerId}`)
+            .then(() => setLayers(prev => prev.filter(l => l.layerId !== layerId)))
+            .catch(err => console.error('레이어 삭제 실패:', err));
     }
 
     function updateLayer(layerId, updates) {
-        setLayers(prev => prev.map(l =>
-            l.layerId === layerId ? { ...l, ...updates } : l
-        ));
+        const currentLayer = layers.find(l => l.layerId === layerId);
+        if (!currentLayer) return;
+        const updatedLayer = { ...currentLayer, ...updates };
+        setLayers(prev => prev.map(l => l.layerId === layerId ? updatedLayer : l));
+        AxiosCustom.put(`${API_BASE}/layer`, updatedLayer)
+            .catch(err => console.error('레이어 업데이트 실패:', err));
     }
 
-    /**
-     * 부재를 레이어에 추가
-     * 같은 부재가 이미 다른 레이어에 있더라도 중복 허용 (멀티-레이어)
-     */
     function assignToLayer(layerId, elementId) {
-        setLayers(prev => prev.map(l =>
-            l.layerId === layerId
-                ? { ...l, elementIds: [...new Set([...l.elementIds, elementId])] }
-                : l
-        ));
+        const currentLayer = layers.find(l => l.layerId === layerId);
+        if (!currentLayer) return;
+        const updatedLayer = {
+            ...currentLayer,
+            elementIds: [...new Set([...currentLayer.elementIds, elementId])],
+        };
+        setLayers(prev => prev.map(l => l.layerId === layerId ? updatedLayer : l));
+        AxiosCustom.put(`${API_BASE}/layer`, updatedLayer)
+            .catch(err => console.error('레이어 부재 할당 실패:', err));
     }
 
-    /** 레이어에서 부재 제거 */
     function removeFromLayer(layerId, elementId) {
-        setLayers(prev => prev.map(l =>
-            l.layerId === layerId
-                ? { ...l, elementIds: l.elementIds.filter(id => id !== elementId) }
-                : l
-        ));
+        const currentLayer = layers.find(l => l.layerId === layerId);
+        if (!currentLayer) return;
+        const updatedLayer = {
+            ...currentLayer,
+            elementIds: currentLayer.elementIds.filter(id => id !== elementId),
+        };
+        setLayers(prev => prev.map(l => l.layerId === layerId ? updatedLayer : l));
+        AxiosCustom.put(`${API_BASE}/layer`, updatedLayer)
+            .catch(err => console.error('레이어 부재 제거 실패:', err));
     }
 
     // ================================================================
-    // 부재 커스텀 색상
+    // 부재 커스텀 색상 — API 연동
     // ================================================================
 
     function setElementColor(elementId, color) {
+        const pid = selectedProject?.projectId;
         setElementColors(prev => ({ ...prev, [elementId]: color }));
+        if (pid) {
+            AxiosCustom.post(`${API_BASE}/color`, { elementId, projectId: pid, color })
+                .catch(err => console.error('색상 저장 실패:', err));
+        }
     }
 
     function clearElementColor(elementId) {
@@ -334,6 +352,8 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
             delete next[elementId];
             return next;
         });
+        AxiosCustom.delete(`${API_BASE}/color/${elementId}`)
+            .catch(err => console.error('색상 삭제 실패:', err));
     }
 
     return {
@@ -348,25 +368,28 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         handleElementSelect, updateElementData,
         transformMode, setTransformMode,
 
-        // 신규: 다중 선택
+        // 다중 선택
         selectedElements, setSelectedElements,
         applyRubberBandSelection,
         toggleSelectMode,
         isSelectMode,
 
-        // 신규: 배치 모드
+        // 배치 모드
         pendingElement,
         startPlacement,
         cancelPlacement,
         confirmPlacement,
 
-        // 신규: 통합 삭제
+        // 샘플 구조물
+        placeSampleStructure,
+
+        // 통합 삭제
         deleteSelectedElements,
 
-        // 카메라 ref (러버밴드 투영용)
+        // 카메라 ref
         cameraRef,
 
-        // 신규: 레이어
+        // 레이어
         layers,
         addLayer,
         deleteLayer,
@@ -374,7 +397,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         assignToLayer,
         removeFromLayer,
 
-        // 신규: 부재 커스텀 색상
+        // 부재 커스텀 색상
         elementColors,
         setElementColor,
         clearElementColor,

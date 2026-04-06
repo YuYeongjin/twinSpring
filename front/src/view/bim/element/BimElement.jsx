@@ -69,11 +69,18 @@ export function BimElement({ element, onElementSelect, isPlacementMode }) {
     : hovered  ? '#ff69b4'
     : baseColor;
 
+  const rotation = useMemo(() => [
+    Number(element.rotationX) || 0,
+    Number(element.rotationY) || 0,
+    Number(element.rotationZ) || 0,
+  ], [element.rotationX, element.rotationY, element.rotationZ]);
+
   return (
     <Box
       ref={meshRef}
       args={size}
       position={position}
+      rotation={rotation}
       onClick={handleClick}
       onPointerOver={(e) => { if (!isPlacementMode) { e.stopPropagation(); setHover(true); } }}
       onPointerOut={() => setHover(false)}

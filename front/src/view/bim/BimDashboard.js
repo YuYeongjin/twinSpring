@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrthographicCamera, View } from '@react-three/drei';
+import { View } from '@react-three/drei';
 import * as THREE from 'three';
-import { getBaseColor } from './element/BimElement';
 import Scene from './component/Scene';
 import ControlPanel from './component/ControlPanel';
 import LayerPanel from './component/LayerPanel';
 import BimDashboardAPI from './BimDashboardAPI';
+import { ENV_PRESETS, DEFAULT_ENV_ID } from './component/SkyEnvironment';
+import MiniMapCanvas from './component/MiniMapCanvas';
 
 // ================================================================
 // 공통 UI
@@ -38,45 +39,62 @@ function Chip({ color = "gray", children }) {
 }
 
 // ================================================================
-// 미니맵
+// 환경 선택 드롭다운
 // ================================================================
 
-function MiniMapElement({ element }) {
-    const { size, position } = useMemo(() => {
-        const rawSize = [Number(element.sizeX) || 1, Number(element.sizeY) || 1, Number(element.sizeZ) || 1];
-        const rawPos  = [Number(element.positionX) || 0, 0.1, Number(element.positionZ) || 0];
-        return { size: rawSize, position: rawPos };
-    }, [element]);
+function EnvSelector({ currentId, onChange }) {
+    const [open, setOpen] = useState(false);
+    const current = ENV_PRESETS.find(p => p.id === currentId) ?? ENV_PRESETS[0];
 
     return (
-        <mesh position={position}>
-            <boxGeometry args={[size[0], 0.1, size[2]]} />
-            <meshBasicMaterial color={getBaseColor(element.elementType)} />
-        </mesh>
+        <div className="relative">
+            <button
+                onClick={() => setOpen(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold
+                           bg-space-700/70 text-gray-300 border border-space-600 hover:bg-space-600 transition"
+                title="배경 환경 선택"
+            >
+                <span>{current.icon}</span>
+                <span className="hidden sm:inline">{current.label}</span>
+                <span className="opacity-50">▾</span>
+            </button>
+
+            {open && (
+                <>
+                    {/* 오버레이 */}
+                    <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => setOpen(false)}
+                    />
+                    {/* 드롭다운 패널 */}
+                    <div className="absolute right-0 top-full mt-1 z-40 bg-space-800 border border-space-600
+                                    rounded-xl shadow-2xl p-2 min-w-[160px]">
+                        <p className="text-xs text-gray-500 px-2 pb-1.5 font-medium">배경 환경</p>
+                        {ENV_PRESETS.map(p => (
+                            <button
+                                key={p.id}
+                                onClick={() => { onChange(p.id); setOpen(false); }}
+                                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs
+                                            transition-colors text-left
+                                            ${p.id === currentId
+                                                ? 'bg-blue-600/40 text-blue-200'
+                                                : 'text-gray-300 hover:bg-space-700'}`}
+                            >
+                                <span className="text-sm">{p.icon}</span>
+                                <span>{p.label}</span>
+                                {p.id === currentId && <span className="ml-auto text-blue-400">✓</span>}
+                            </button>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
     );
 }
 
-function CameraMarker({ position }) {
-    if (!position || isNaN(position.x)) return null;
-    return (
-        <mesh position={[position.x, 0.2, position.z]} rotation={[-Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[1.5, 32]} />
-            <meshBasicMaterial color="#3b82f6" />
-        </mesh>
-    );
-}
-
-function MiniMap({ modelData, mainCameraPosition, minimapContainerElement }) {
-    if (!minimapContainerElement) return null;
-    return (
-        <View index={1} track={minimapContainerElement}>
-            <OrthographicCamera makeDefault position={[0, 50, 0]} rotation={[-Math.PI / 2, 0, 0]} zoom={3} near={0.1} far={200} />
-            <color attach="background" args={['#1e293b']} />
-            {modelData.map(el => <MiniMapElement key={el.elementId} element={el} />)}
-            <CameraMarker position={mainCameraPosition} />
-        </View>
-    );
-}
+// ================================================================
+// (MiniMap은 MiniMapCanvas.jsx로 이동)
+// ================================================================
 
 // ================================================================
 // 재료 데이터
@@ -232,9 +250,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         saveUpdateElement,
         selectedElement, setSelectedElement,
         mainCameraPosition, setMainCameraPosition,
-        isMiniMapReady, setIsMiniMapReady,
         minimapContainerRef,
-        minimapTrackElement, setMinimapTrackElement,
+        minimapTrackElement,
         isLoading,
         handleElementSelect, updateElementData,
         transformMode, setTransformMode,
@@ -253,6 +270,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         // 카메라 ref
         cameraRef,
 
+        // 샘플 구조물
+        placeSampleStructure,
+
         // 레이어
         layers, addLayer, deleteLayer, updateLayer, assignToLayer, removeFromLayer,
 
@@ -265,10 +285,38 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ── 레이어 패널 표시 여부 ──────────────────────────────────────
     const [showLayerPanel, setShowLayerPanel] = useState(true);
 
+    // ── 환경 프리셋 ─────────────────────────────────────────────────
+    const [envId, setEnvId] = useState(DEFAULT_ENV_ID);
+    const envPreset = useMemo(
+        () => ENV_PRESETS.find(p => p.id === envId) ?? ENV_PRESETS[0],
+        [envId]
+    );
+
+    // ── 미니맵 카메라 yaw 추적 ─────────────────────────────────────
+    const [mainCameraYaw, setMainCameraYaw] = useState(0);
+
+    // ── 미니맵 클릭 → 메인 카메라 네비게이션 ──────────────────────
+    const navigationTargetRef = useRef(null);
+    const handleMiniMapNavigate = useCallback((x, z) => {
+        navigationTargetRef.current = { x, z };
+    }, []);
+
     const currentProjectId = useMemo(
         () => selectedProject?.projectId ?? modelData?.[0]?.projectId ?? null,
         [selectedProject, modelData]
     );
+
+    const [isPlacingSample, setIsPlacingSample] = React.useState(false);
+
+    const handlePlaceSample = React.useCallback(async (elements) => {
+        if (isPlacingSample) return;
+        setIsPlacingSample(true);
+        try {
+            await placeSampleStructure(elements, currentProjectId);
+        } finally {
+            setIsPlacingSample(false);
+        }
+    }, [isPlacingSample, placeSampleStructure, currentProjectId]);
 
     // ── 선택된 부재 수 ─────────────────────────────────────────────
     const totalSelectedCount = useMemo(() => {
@@ -432,6 +480,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 )}
 
                 <div className="ml-auto flex items-center gap-2">
+                    {/* 환경 선택 */}
+                    <EnvSelector currentId={envId} onChange={setEnvId} />
+
                     {/* 레이어 패널 토글 */}
                     <button
                         onClick={() => setShowLayerPanel(v => !v)}
@@ -500,6 +551,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             setMode={setTransformMode}
                             isSelectMode={isSelectMode}
                             toggleSelectMode={toggleSelectMode}
+                            onPlaceSample={handlePlaceSample}
+                            isPlacingSample={isPlacingSample}
                         />
                     </Card>
 
@@ -565,8 +618,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     }}
                                 >
                                     <View track={mainViewRef}>
-                                        <ambientLight intensity={0.7} />
-                                        <directionalLight position={[10, 10, 10]} intensity={1} castShadow />
                                         <Scene
                                             modelData={visibleModelData}
                                             onElementSelect={handleElementSelect}
@@ -574,28 +625,36 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             selectedElements={selectedElements}
                                             updateElementData={updateElementData}
                                             setMainCameraPosition={setMainCameraPosition}
+                                            setMainCameraYaw={setMainCameraYaw}
                                             transformMode={transformMode}
                                             pendingElement={pendingElement}
                                             onPlacementConfirm={(pos) => confirmPlacement(pos, currentProjectId)}
                                             isSelectMode={isSelectMode}
                                             cameraRef={cameraRef}
+                                            envPreset={envPreset}
+                                            navigationTargetRef={navigationTargetRef}
                                         />
                                     </View>
 
-                                    {isMiniMapReady && minimapTrackElement && (
-                                        <MiniMap
-                                            modelData={visibleModelData}
-                                            mainCameraPosition={mainCameraPosition}
-                                            minimapContainerElement={minimapTrackElement}
-                                        />
-                                    )}
                                 </Canvas>
 
-                                {/* 미니맵 앵커 */}
+                                {/* 미니맵 앵커 + MiniMapCanvas (별도 Canvas, portal) */}
                                 <div
                                     ref={minimapContainerRef}
-                                    className="absolute top-3 right-3 w-36 h-36 bg-space-900/90 border border-space-600 rounded-xl overflow-hidden shadow-2xl z-20 pointer-events-auto"
+                                    className="absolute top-3 right-3 w-40 h-40 border border-space-500 rounded-xl overflow-hidden shadow-2xl z-20 pointer-events-auto"
+                                    style={{ cursor: 'crosshair' }}
+                                    title="미니맵 — 클릭하면 해당 위치로 이동"
                                 />
+                                {minimapTrackElement && (
+                                    <MiniMapCanvas
+                                        modelData={visibleModelData}
+                                        mainCameraPosition={mainCameraPosition}
+                                        mainCameraYaw={mainCameraYaw}
+                                        containerElement={minimapTrackElement}
+                                        envId={envId}
+                                        onNavigate={handleMiniMapNavigate}
+                                    />
+                                )}
 
                                 {/* ── 러버밴드 선택 박스 ── */}
                                 {isSelectMode && selBox && selBox.width > 5 && (

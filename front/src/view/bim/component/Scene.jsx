@@ -1,11 +1,12 @@
 import React, { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, Environment, TransformControls } from '@react-three/drei';
+import { OrbitControls, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
+import SkyEnvironment from './SkyEnvironment';
 
 // ================================================================
-// 카메라 ref 주입 (BimDashboard 의 cameraRef 에 연결)
+// 카메라 ref 주입
 // ================================================================
 function CameraSync({ cameraRef }) {
     const { camera } = useThree();
@@ -18,16 +19,10 @@ function CameraSync({ cameraRef }) {
 // ================================================================
 // 배치 고스트 + 바닥 클릭 평면
 // ================================================================
-/**
- * pendingElement 가 있을 때 마우스 커서를 따라다니는 반투명 고스트 메시.
- * useFrame 에서 직접 mesh.position을 업데이트하므로 re-render 없이 60fps.
- * 바닥 평면(y=0) 과의 교점을 구해 위치를 결정.
- */
 function PlacementGhost({ template, onConfirm }) {
     const meshRef = useRef();
     const { camera, raycaster, mouse } = useThree();
 
-    // 바닥 평면: Y=0, 위쪽 방향
     const floorPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
     const hitPoint   = useMemo(() => new THREE.Vector3(), []);
 
@@ -35,7 +30,6 @@ function PlacementGhost({ template, onConfirm }) {
     const sizeY = template.sizeY ?? 1;
     const sizeZ = template.sizeZ ?? 1;
 
-    // 매 프레임: 레이캐스터로 바닥 교점 계산 → 메시 위치 갱신 (Re-render 없음)
     useFrame(() => {
         raycaster.setFromCamera(mouse, camera);
         if (raycaster.ray.intersectPlane(floorPlane, hitPoint) && meshRef.current) {
@@ -45,7 +39,6 @@ function PlacementGhost({ template, onConfirm }) {
 
     return (
         <>
-            {/* 고스트 메시 */}
             <mesh ref={meshRef} position={[0, sizeY / 2, 0]}>
                 <boxGeometry args={[sizeX, sizeY, sizeZ]} />
                 <meshStandardMaterial
@@ -55,14 +48,10 @@ function PlacementGhost({ template, onConfirm }) {
                     depthWrite={false}
                 />
             </mesh>
-
-            {/* 고스트 윤곽선 (wireframe) */}
             <mesh position={[0, sizeY / 2, 0]} ref={null}>
                 <boxGeometry args={[sizeX + 0.02, sizeY + 0.02, sizeZ + 0.02]} />
                 <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.6} />
             </mesh>
-
-            {/* 바닥 클릭 캐처 — 클릭 시 배치 확정 */}
             <mesh
                 rotation={[-Math.PI / 2, 0, 0]}
                 position={[0, 0.001, 0]}
@@ -85,39 +74,94 @@ export default function Scene({
     modelData,
     onElementSelect,
     selectedElement,
-    selectedElements,   // Set<string> — 다중 선택된 elementId 집합
+    selectedElements,
     updateElementData,
     setMainCameraPosition,
+    setMainCameraYaw,
     transformMode,
-    pendingElement,     // 배치 대기 중인 부재 템플릿
-    onPlacementConfirm, // (position) => void
-    isSelectMode,       // 러버밴드 선택 모드 (OrbitControls 비활성)
-    cameraRef,          // Three.js camera ref (러버밴드 투영용)
+    pendingElement,
+    onPlacementConfirm,
+    isSelectMode,
+    cameraRef,
+    envPreset,
+    navigationTargetRef,  // { x, z } — 미니맵 클릭 시 이동 목표
 }) {
     const { camera } = useThree();
     const transformRef = useRef();
     const [isDragging, setIsDragging] = useState(false);
+    const orbitRef = useRef();
 
-    // 카메라 위치 → 미니맵 마커
+    // 드래그 시작 시 모든 선택 부재의 초기 위치를 저장
+    const startPositionsRef = useRef({});
+
+    // 카메라 위치 + yaw → 미니맵 마커, 미니맵 클릭 네비게이션
     useFrame(() => {
         setMainCameraPosition(camera.position.clone());
+        setMainCameraYaw?.(camera.rotation.y);
+
+        // 미니맵 클릭 네비게이션: 목표 위치로 부드럽게 이동
+        if (navigationTargetRef?.current) {
+            const target = navigationTargetRef.current;
+            const currentHeight = camera.position.y;
+            camera.position.lerp(
+                new THREE.Vector3(target.x, currentHeight, target.z),
+                0.1
+            );
+            // OrbitControls target도 동기화
+            if (orbitRef.current) {
+                orbitRef.current.target.lerp(
+                    new THREE.Vector3(target.x, 0, target.z),
+                    0.1
+                );
+                orbitRef.current.update();
+            }
+            // 충분히 가까워지면 완료
+            const dist = Math.sqrt(
+                Math.pow(camera.position.x - target.x, 2) +
+                Math.pow(camera.position.z - target.z, 2)
+            );
+            if (dist < 0.5) navigationTargetRef.current = null;
+        }
     });
 
+    // ================================================================
     // TransformControls 드래그 완료 처리
+    // 다중 선택 translate: 모든 부재에 동일한 delta 적용
+    // ================================================================
     const handleTransformComplete = (mesh) => {
         if (!mesh || !mesh.userData?.elementId) return;
         const elementId = mesh.userData.elementId;
-        const element = modelData.find(el => el.elementId === elementId);
-        if (!element) return;
 
         if (transformMode === 'translate') {
-            const rawSize = mesh.userData.rawSize ?? [1, 1, 1];
-            const bottomY = mesh.position.y - rawSize[1] / 2;
-            updateElementData(elementId, {
-                positionX: parseFloat(mesh.position.x.toFixed(3)),
-                positionY: parseFloat(bottomY.toFixed(3)),
-                positionZ: parseFloat(mesh.position.z.toFixed(3)),
-            });
+            const rawSize  = mesh.userData.rawSize ?? [1, 1, 1];
+            const bottomY  = mesh.position.y - rawSize[1] / 2;
+            const newX     = parseFloat(mesh.position.x.toFixed(3));
+            const newY     = parseFloat(bottomY.toFixed(3));
+            const newZ     = parseFloat(mesh.position.z.toFixed(3));
+
+            // 드래그 시작 시 저장한 원래 위치 기반 delta 계산
+            const startPos = startPositionsRef.current[elementId];
+            const deltaX   = newX - (startPos?.positionX ?? newX);
+            const deltaY   = newY - (startPos?.positionY ?? newY);
+            const deltaZ   = newZ - (startPos?.positionZ ?? newZ);
+
+            // 주 선택 부재 업데이트
+            updateElementData(elementId, { positionX: newX, positionY: newY, positionZ: newZ });
+
+            // 나머지 선택 부재들도 같은 delta 만큼 이동
+            if (selectedElements && selectedElements.size > 1) {
+                for (const selId of selectedElements) {
+                    if (selId === elementId) continue;
+                    const sp = startPositionsRef.current[selId];
+                    if (!sp) continue;
+                    updateElementData(selId, {
+                        positionX: parseFloat(((sp.positionX ?? 0) + deltaX).toFixed(3)),
+                        positionY: parseFloat(((sp.positionY ?? 0) + deltaY).toFixed(3)),
+                        positionZ: parseFloat(((sp.positionZ ?? 0) + deltaZ).toFixed(3)),
+                    });
+                }
+            }
+
         } else if (transformMode === 'scale') {
             const rawSize = mesh.userData.rawSize ?? [1, 1, 1];
             updateElementData(elementId, {
@@ -126,34 +170,63 @@ export default function Scene({
                 sizeZ: parseFloat((rawSize[2] * mesh.scale.z).toFixed(3)),
             });
             mesh.scale.set(1, 1, 1);
+
+        } else if (transformMode === 'rotate') {
+            // 회전값(라디안)을 element 데이터에 저장
+            updateElementData(elementId, {
+                rotationX: parseFloat(mesh.rotation.x.toFixed(5)),
+                rotationY: parseFloat(mesh.rotation.y.toFixed(5)),
+                rotationZ: parseFloat(mesh.rotation.z.toFixed(5)),
+            });
         }
     };
 
     useEffect(() => {
         const controls = transformRef.current;
         if (!controls) return;
+
         const onDraggingChanged = (e) => {
             setIsDragging(e.value);
+
+            if (e.value && controls.object) {
+                // 드래그 시작: 모든 선택 부재의 현재 위치를 스냅샷
+                startPositionsRef.current = {};
+                modelData.forEach(el => {
+                    startPositionsRef.current[el.elementId] = {
+                        positionX: el.positionX ?? 0,
+                        positionY: el.positionY ?? 0,
+                        positionZ: el.positionZ ?? 0,
+                    };
+                });
+            }
+
             if (!e.value && controls.object) {
                 handleTransformComplete(controls.object);
             }
         };
+
         controls.addEventListener('dragging-changed', onDraggingChanged);
         return () => controls.removeEventListener('dragging-changed', onDraggingChanged);
-    }, [transformMode, modelData, updateElementData]);
+    }, [transformMode, modelData, updateElementData, selectedElements]);
 
-    // OrbitControls: 드래그 중이거나 선택 모드일 때 비활성
     const orbitEnabled = !isDragging && !isSelectMode;
 
     return (
         <>
-            {/* 카메라 ref 주입 */}
             <CameraSync cameraRef={cameraRef} />
 
-            <OrbitControls enabled={orbitEnabled} enableZoom makeDefault />
-            <ambientLight intensity={0.5} />
-            <spotLight position={[10, 15, 10]} angle={0.2} penumbra={1} castShadow intensity={1.2} />
-            <directionalLight position={[-10, 10, -5]} intensity={0.4} />
+            <OrbitControls ref={orbitRef} enabled={orbitEnabled} enableZoom makeDefault />
+
+            {/* 환경 조명: 프리셋 기반 동적 설정 */}
+            <ambientLight intensity={envPreset?.light?.ambientIntensity ?? 0.7} />
+            <directionalLight
+                position={envPreset?.light?.dirPos ?? [10, 10, 10]}
+                color={envPreset?.light?.dirColor ?? '#ffffff'}
+                intensity={envPreset?.light?.dirIntensity ?? 1.0}
+                castShadow
+                shadow-mapSize={[2048, 2048]}
+            />
+            <directionalLight position={[-10, 5, -10]} intensity={(envPreset?.light?.dirIntensity ?? 1.0) * 0.2} />
 
             {/* TransformControls — 단일 선택된 부재에만 표시 */}
             {selectedElement?.meshRef?.current && (
@@ -187,10 +260,18 @@ export default function Scene({
                 />
             )}
 
-            <gridHelper args={[100, 100, '#334155', '#1e293b']} position={[0, -0.01, 0]} />
+            {/* 그리드: 환경에 따라 색상 조정 */}
+            <gridHelper
+                args={[100, 100,
+                    envPreset?.id === 'night' ? '#1a2040' : '#334155',
+                    envPreset?.id === 'night' ? '#0d1020' : '#1e293b',
+                ]}
+                position={[0, -0.01, 0]}
+            />
 
+            {/* 하늘 / 별 / HDR 환경 */}
             <Suspense fallback={null}>
-                <Environment preset="city" />
+                {envPreset && <SkyEnvironment preset={envPreset} />}
             </Suspense>
         </>
     );

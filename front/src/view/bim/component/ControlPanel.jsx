@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 /**
  * BIM 편집 도구 패널
@@ -6,16 +6,21 @@ import React from 'react';
  * A. 부재 배치 — 클릭 시 "배치 모드"로 진입, 3D 뷰어에서 위치를 지정해 배치
  * B. 조작 모드 전환 — TransformControls 모드
  * C. 선택 모드 토글 — 러버밴드 드래그 다중 선택
+ * D. 샘플 구조물 — 미리 정의된 구조물 일괄 배치
  */
 export default function ControlPanel({
-    startPlacement,     // (template) => void
-    pendingElement,     // 현재 배치 대기 중인 템플릿 (null이면 비활성)
-    cancelPlacement,    // () => void
+    startPlacement,
+    pendingElement,
+    cancelPlacement,
     currentMode,
     setMode,
     isSelectMode,
     toggleSelectMode,
+    onPlaceSample,       // (elements) => void — 샘플 구조물 일괄 배치
+    isPlacingSample,     // boolean — 샘플 배치 중
 }) {
+
+    const [showSamples, setShowSamples] = useState(false);
 
     const elementTemplates = [
         {
@@ -71,6 +76,93 @@ export default function ControlPanel({
         { key: 'scale',     label: '크기', icon: '⤢', shortcut: 'S' },
     ];
 
+    // ── 샘플 구조물 정의 ─────────────────────────────────────────
+    const sampleStructures = [
+        {
+            label: '단층 건물 골조',
+            icon: '🏢',
+            desc: '기둥 4개 + 보 4개 + 슬래브',
+            color: 'bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/50',
+            elements: [
+                // 기둥 4개 (모서리)
+                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 4.0, sizeZ: 0.5, positionX: -4,  positionY: 0, positionZ: -4 },
+                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 4.0, sizeZ: 0.5, positionX:  4,  positionY: 0, positionZ: -4 },
+                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 4.0, sizeZ: 0.5, positionX: -4,  positionY: 0, positionZ:  4 },
+                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 4.0, sizeZ: 0.5, positionX:  4,  positionY: 0, positionZ:  4 },
+                // 보 4개 (테두리, sizeY 기준 top)
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 8.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0,  positionY: 3.8, positionZ: -4 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 8.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0,  positionY: 3.8, positionZ:  4 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 8.5, positionX: -4,  positionY: 3.8, positionZ:  0 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 8.5, positionX:  4,  positionY: 3.8, positionZ:  0 },
+                // 슬래브
+                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 8.5, sizeY: 0.25, sizeZ: 8.5, positionX:  0,  positionY: 4.2, positionZ:  0 },
+            ],
+        },
+        {
+            label: '2경간 교량',
+            icon: '🌉',
+            desc: '교각 3개 + 상부 슬래브',
+            color: 'bg-orange-900/40 text-orange-200 hover:bg-orange-800/50',
+            elements: [
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 8.0, sizeZ: 2.5, positionX: -20, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 8.0, sizeZ: 2.5, positionX:   0, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 8.0, sizeZ: 2.5, positionX:  20, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcSlab', material: 'Prestressed Concrete', sizeX: 42.0, sizeY: 1.0, sizeZ: 10.0, positionX: 0, positionY: 8.0, positionZ: 0 },
+            ],
+        },
+        {
+            label: '라멘 교각',
+            icon: '⛩',
+            desc: '교각 기둥 2개 + 캡 빔',
+            color: 'bg-violet-900/40 text-violet-200 hover:bg-violet-800/50',
+            elements: [
+                { elementType: 'IfcPier', material: 'Concrete C40', sizeX: 2.0, sizeY: 8.0, sizeZ: 2.0, positionX: -6, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C40', sizeX: 2.0, sizeY: 8.0, sizeZ: 2.0, positionX:  6, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcBeam', material: 'Concrete C40', sizeX: 14.0, sizeY: 1.5, sizeZ: 2.5, positionX: 0, positionY: 8.0, positionZ: 0 },
+            ],
+        },
+        {
+            label: '3경간 교량',
+            icon: '🏗',
+            desc: '교각 4개 + 긴 슬래브',
+            color: 'bg-sky-900/40 text-sky-200 hover:bg-sky-800/50',
+            elements: [
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX: -30, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX: -10, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX:  10, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX:  30, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcSlab', material: 'Prestressed Concrete', sizeX: 64.0, sizeY: 1.2, sizeZ: 12.0, positionX: 0, positionY: 10.0, positionZ: 0 },
+            ],
+        },
+        {
+            label: '2층 건물 골조',
+            icon: '🏬',
+            desc: '기둥 4개 + 보 8개 + 슬래브 2개',
+            color: 'bg-teal-900/40 text-teal-200 hover:bg-teal-800/50',
+            elements: [
+                // 기둥 4개 (2층 높이)
+                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 8.0, sizeZ: 0.5, positionX: -5, positionY: 0, positionZ: -5 },
+                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 8.0, sizeZ: 0.5, positionX:  5, positionY: 0, positionZ: -5 },
+                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 8.0, sizeZ: 0.5, positionX: -5, positionY: 0, positionZ:  5 },
+                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 8.0, sizeZ: 0.5, positionX:  5, positionY: 0, positionZ:  5 },
+                // 1층 보 4개
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0, positionY: 3.8, positionZ: -5 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0, positionY: 3.8, positionZ:  5 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 10.5, positionX: -5, positionY: 3.8, positionZ:  0 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 10.5, positionX:  5, positionY: 3.8, positionZ:  0 },
+                // 1층 슬래브
+                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 10.5, sizeY: 0.25, sizeZ: 10.5, positionX: 0, positionY: 4.2, positionZ: 0 },
+                // 2층 보 4개
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0, positionY: 7.8, positionZ: -5 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0, positionY: 7.8, positionZ:  5 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 10.5, positionX: -5, positionY: 7.8, positionZ:  0 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 10.5, positionX:  5, positionY: 7.8, positionZ:  0 },
+                // 2층 슬래브 (지붕)
+                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 10.5, sizeY: 0.25, sizeZ: 10.5, positionX: 0, positionY: 8.2, positionZ: 0 },
+            ],
+        },
+    ];
+
     return (
         <div className="space-y-4">
 
@@ -100,7 +192,7 @@ export default function ControlPanel({
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                                     isActive ? activeColor : color
                                 }`}
-                                title={isActive ? '배치 모드 취소' : `${label} 배치 시작 — 뷰어에서 클릭하여 위치 지정`}
+                                title={isActive ? '배치 모드 취소' : `${label} 배치 시작`}
                             >
                                 <span className="text-base leading-none">{icon}</span>
                                 <span>{label}</span>
@@ -114,7 +206,6 @@ export default function ControlPanel({
                     })}
                 </div>
 
-                {/* 배치 모드 안내 */}
                 {pendingElement && (
                     <p className="mt-2 text-xs text-blue-400 leading-relaxed">
                         3D 뷰어를 클릭하여 배치 &nbsp;•&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> 취소
@@ -154,21 +245,60 @@ export default function ControlPanel({
                             ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/40'
                             : 'bg-space-700/70 text-gray-300 hover:bg-space-600'
                     }`}
-                    title="드래그로 여러 부재를 동시 선택합니다"
                 >
                     <span className="text-base leading-none">⬚</span>
                     <span>선택 모드</span>
                     <kbd className="ml-auto text-xs bg-black/30 px-1 py-0.5 rounded opacity-60">Q</kbd>
                 </button>
-                {isSelectMode && (
+                {isSelectMode ? (
                     <p className="mt-1.5 text-xs text-violet-400 leading-relaxed">
                         드래그로 영역 선택 &nbsp;•&nbsp; <kbd className="bg-black/30 px-1 rounded">Shift</kbd>+클릭 추가
                     </p>
-                )}
-                {!isSelectMode && (
+                ) : (
                     <p className="mt-1.5 text-xs text-gray-600">
                         <kbd className="bg-black/30 px-1 rounded">Shift</kbd>+클릭으로 추가 선택
                     </p>
+                )}
+            </div>
+
+            {/* D. 샘플 구조물 */}
+            <div className="border-t border-space-700 pt-3">
+                <button
+                    onClick={() => setShowSamples(v => !v)}
+                    className="w-full flex items-center justify-between mb-2 group"
+                >
+                    <p className="text-xs font-medium text-gray-400 group-hover:text-gray-200 transition">
+                        샘플 구조물
+                    </p>
+                    <span className="text-xs text-gray-600 group-hover:text-gray-400 transition">
+                        {showSamples ? '▲' : '▼'}
+                    </span>
+                </button>
+
+                {showSamples && (
+                    <div className="flex flex-col gap-1.5">
+                        {sampleStructures.map(({ label, icon, desc, color, elements }) => (
+                            <button
+                                key={label}
+                                onClick={() => onPlaceSample?.(elements)}
+                                disabled={isPlacingSample}
+                                className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left disabled:opacity-50 ${color}`}
+                                title={desc}
+                            >
+                                <span className="text-base leading-none mt-0.5 shrink-0">{icon}</span>
+                                <div className="min-w-0">
+                                    <div className="font-semibold truncate">{label}</div>
+                                    <div className="text-xs opacity-60 truncate">{desc}</div>
+                                </div>
+                                {isPlacingSample && (
+                                    <span className="ml-auto shrink-0 animate-pulse text-xs">배치 중...</span>
+                                )}
+                            </button>
+                        ))}
+                        <p className="mt-1 text-xs text-gray-600 leading-relaxed">
+                            클릭하면 원점(0,0,0) 기준으로 배치됩니다
+                        </p>
+                    </div>
                 )}
             </div>
         </div>
