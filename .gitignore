@@ -40,3 +40,4 @@ publish-arm64/
 agent/__pycache__/**
 agent/nodes/__pycache__/**
 agent/tools/__pycache__/**
+agent/.env
