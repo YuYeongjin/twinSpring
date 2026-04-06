@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS bim_layer
 (
     layer_id    VARCHAR(200) NOT NULL PRIMARY KEY,
     project_id  VARCHAR(200) NOT NULL,
-    layer_name  VARCHAR(200) NOT NULL DEFAULT '레이어',
+    layer_name  VARCHAR(200) NOT NULL DEFAULT 'layer',
     color       VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
     visible     TINYINT(1)   NOT NULL DEFAULT 1,
     element_ids TEXT         NULL,
