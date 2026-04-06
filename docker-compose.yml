@@ -52,9 +52,7 @@ services:
     # 라즈베리파이 ARM64 지원 (ollama/ollama 이미지는 arm64 포함)
 
   agent:
-    build:
-      context: ./agent
-      dockerfile: Dockerfile
+    image: yeongjin95/twin-agent:latest
     restart: always
     depends_on:
       - ollama
