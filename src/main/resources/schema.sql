@@ -94,6 +94,30 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 -- ================================================================
+-- bim_element 회전 컬럼 마이그레이션 (기존 테이블에 컬럼 추가)
+-- ================================================================
+SET @col_rx = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bim_element' AND COLUMN_NAME = 'rotation_x');
+SET @sql_rx = IF(@col_rx = 0,
+    'ALTER TABLE bim_element ADD COLUMN rotation_x DOUBLE NULL DEFAULT 0',
+    'SELECT 1');
+PREPARE stmt FROM @sql_rx; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col_ry = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bim_element' AND COLUMN_NAME = 'rotation_y');
+SET @sql_ry = IF(@col_ry = 0,
+    'ALTER TABLE bim_element ADD COLUMN rotation_y DOUBLE NULL DEFAULT 0',
+    'SELECT 1');
+PREPARE stmt FROM @sql_ry; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @col_rz = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bim_element' AND COLUMN_NAME = 'rotation_z');
+SET @sql_rz = IF(@col_rz = 0,
+    'ALTER TABLE bim_element ADD COLUMN rotation_z DOUBLE NULL DEFAULT 0',
+    'SELECT 1');
+PREPARE stmt FROM @sql_rz; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ================================================================
 -- BIM 레이어 테이블 (Spring 로컬 저장 — C# 서버와 무관)
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_layer

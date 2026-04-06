@@ -256,36 +256,73 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public List<BimLayerDTO> getLayersByProject(String projectId) {
-        return List.of();
+        return bimDAO.getLayersByProject(projectId).stream()
+                .map(this::rowToLayer)
+                .collect(Collectors.toList());
     }
 
     @Override
     public BimLayerDTO createLayer(BimLayerDTO layer) {
-        return null;
+        if (layer.getLayerId() == null || layer.getLayerId().isBlank()) {
+            layer.setLayerId("layer-" + UUID.randomUUID().toString().substring(0, 8));
+        }
+        if (layer.getVisible() == null) layer.setVisible(true);
+        if (layer.getSortOrder() == null) layer.setSortOrder(0);
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("layerId",    layer.getLayerId());
+        params.put("projectId",  layer.getProjectId());
+        params.put("layerName",  layer.getLayerName());
+        params.put("color",      layer.getColor());
+        params.put("visible",    layer.getVisible());
+        params.put("elementIds", toJson(layer.getElementIds() != null ? layer.getElementIds() : new ArrayList<>()));
+        params.put("sortOrder",  layer.getSortOrder());
+        bimDAO.insertLayer(params);
+        return layer;
     }
 
     @Override
     public BimLayerDTO updateLayer(BimLayerDTO layer) {
-        return null;
+        Map<String, Object> params = new HashMap<>();
+        params.put("layerId",    layer.getLayerId());
+        params.put("layerName",  layer.getLayerName());
+        params.put("color",      layer.getColor());
+        params.put("visible",    layer.getVisible() != null ? layer.getVisible() : true);
+        params.put("elementIds", toJson(layer.getElementIds() != null ? layer.getElementIds() : new ArrayList<>()));
+        params.put("sortOrder",  layer.getSortOrder() != null ? layer.getSortOrder() : 0);
+        bimDAO.updateLayer(params);
+        return layer;
     }
 
     @Override
     public void deleteLayer(String layerId) {
-
+        bimDAO.deleteLayer(layerId);
     }
 
     @Override
     public List<BimElementColorDTO> getColorsByProject(String projectId) {
-        return List.of();
+        return bimDAO.getColorsByProject(projectId).stream()
+                .map(row -> {
+                    BimElementColorDTO dto = new BimElementColorDTO();
+                    dto.setElementId((String) row.get("elementId"));
+                    dto.setProjectId((String) row.get("projectId"));
+                    dto.setColor((String) row.get("color"));
+                    return dto;
+                })
+                .collect(Collectors.toList());
     }
 
     @Override
     public void upsertColor(BimElementColorDTO colorDTO) {
-
+        Map<String, Object> params = new HashMap<>();
+        params.put("elementId", colorDTO.getElementId());
+        params.put("projectId", colorDTO.getProjectId());
+        params.put("color",     colorDTO.getColor());
+        bimDAO.upsertColor(params);
     }
 
     @Override
     public void deleteColor(String elementId) {
-
+        bimDAO.deleteColor(elementId);
     }
 }

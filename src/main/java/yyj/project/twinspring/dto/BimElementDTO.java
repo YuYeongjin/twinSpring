@@ -21,6 +21,10 @@ public class BimElementDTO {
     private Double sizeY;
     private Double sizeZ;
 
+    private Double rotationX;
+    private Double rotationY;
+    private Double rotationZ;
+
     /*
     @Override
     public String toString() {

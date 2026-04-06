@@ -5,7 +5,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
+import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
+import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
 import yyj.project.twinspring.service.BimService;
 
@@ -116,6 +118,52 @@ public class BimController {
     public ResponseEntity<Mono<Void>> deleteElement(@PathVariable String elementId) {
         System.out.println("부재 삭제 :: " + elementId);
         return bimService.deleteElement(elementId);
+    }
+
+    // ================================================================
+    // 레이어 CRUD (MariaDB 직접 저장)
+    // ================================================================
+
+    @GetMapping("/layers")
+    public ResponseEntity<List<BimLayerDTO>> getLayers(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getLayersByProject(projectId));
+    }
+
+    @PostMapping("/layer")
+    public ResponseEntity<BimLayerDTO> createLayer(@RequestBody BimLayerDTO layer) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(bimService.createLayer(layer));
+    }
+
+    @PutMapping("/layer")
+    public ResponseEntity<BimLayerDTO> updateLayer(@RequestBody BimLayerDTO layer) {
+        return ResponseEntity.ok(bimService.updateLayer(layer));
+    }
+
+    @DeleteMapping("/layer/{layerId}")
+    public ResponseEntity<Void> deleteLayer(@PathVariable String layerId) {
+        bimService.deleteLayer(layerId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ================================================================
+    // 부재 커스텀 색상 CRUD (MariaDB 직접 저장)
+    // ================================================================
+
+    @GetMapping("/colors")
+    public ResponseEntity<List<BimElementColorDTO>> getColors(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getColorsByProject(projectId));
+    }
+
+    @PostMapping("/color")
+    public ResponseEntity<Void> upsertColor(@RequestBody BimElementColorDTO color) {
+        bimService.upsertColor(color);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/color/{elementId}")
+    public ResponseEntity<Void> deleteColor(@PathVariable String elementId) {
+        bimService.deleteColor(elementId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/project")

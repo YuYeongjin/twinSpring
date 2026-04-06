@@ -87,6 +87,11 @@ namespace BimProcessorApi.Services
             existing.SizeY = updatedElement.SizeY;
             existing.SizeZ = updatedElement.SizeZ;
 
+            // 회전 업데이트 (라디안)
+            existing.RotationX = updatedElement.RotationX ?? 0;
+            existing.RotationY = updatedElement.RotationY ?? 0;
+            existing.RotationZ = updatedElement.RotationZ ?? 0;
+
             _context.Entry(existing).State = EntityState.Modified;
             await _context.SaveChangesAsync();
             return true;
