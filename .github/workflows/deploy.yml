@@ -76,3 +76,11 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: yeongjin95/twin-bim:latest
+          
+      - name: Build and Push twin-agent
+        uses: docker/build-push-action@v5
+        with:
+          context: ./agent
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: yeongjin95/twin-agent:latest
