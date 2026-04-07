@@ -6,6 +6,7 @@ import reactor.core.publisher.Mono;
 import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
+import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
 
 import java.util.List;
@@ -52,4 +53,10 @@ public interface BimService {
     List<BimElementColorDTO> getColorsByProject(String projectId);
     void upsertColor(BimElementColorDTO colorDTO);
     void deleteColor(String elementId);
+
+    // ── 선 (로컬 MariaDB) ──────────────────────────────────────────
+    List<BimLineDTO> getLinesByProject(String projectId);
+    BimLineDTO createLine(BimLineDTO line);
+    void deleteLine(String lineId);
+    void deleteLinesByProject(String projectId);
 }

@@ -3,6 +3,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, TransformControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
+import { BimLine } from '../element/BimLine';
 import SkyEnvironment from './SkyEnvironment';
 
 // ================================================================
@@ -86,6 +87,13 @@ export default function Scene({
     envPreset,
     navigationTargetRef,  // { x, z } — 미니맵 클릭 시 이동 목표
     pushUndo,             // () → void — 드래그 시작 전 undo 스냅샷 저장
+    // 선 작도
+    lines = [],
+    selectedLineId,
+    onLineSelect,
+    lineDrawMode,         // 'off' | 'click'
+    lineDrawHeight = 0,
+    onLineClick,          // (THREE.Vector3) => void
 }) {
     const { camera } = useThree();
     const transformRef = useRef();
@@ -212,7 +220,7 @@ export default function Scene({
         return () => controls.removeEventListener('dragging-changed', onDraggingChanged);
     }, [transformMode, modelData, updateElementData, selectedElements]);
 
-    const orbitEnabled = !isDragging && !isSelectMode;
+    const orbitEnabled = !isDragging && !isSelectMode && lineDrawMode !== 'click';
 
     return (
         <>
@@ -262,6 +270,31 @@ export default function Scene({
                     onConfirm={onPlacementConfirm}
                 />
             )}
+
+            {/* 선 작도 클릭 평면 */}
+            {lineDrawMode === 'click' && (
+                <mesh
+                    rotation={[-Math.PI / 2, 0, 0]}
+                    position={[0, lineDrawHeight, 0]}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onLineClick?.(e.point);
+                    }}
+                >
+                    <planeGeometry args={[500, 500]} />
+                    <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} />
+                </mesh>
+            )}
+
+            {/* 선 목록 렌더링 */}
+            {lines.map(line => (
+                <BimLine
+                    key={line.lineId}
+                    line={line}
+                    selected={line.lineId === selectedLineId}
+                    onClick={onLineSelect}
+                />
+            ))}
 
             {/* 그리드: 바다 배경에서는 숨김, 환경에 따라 색상 조정 */}
             {!envPreset?.useWater && (

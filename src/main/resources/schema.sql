@@ -92,3 +92,22 @@ CREATE TABLE IF NOT EXISTS bim_element_color
     color      VARCHAR(20)  NOT NULL,
     INDEX idx_bim_color_project (project_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ================================================================
+-- BIM 선 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS bim_line
+(
+    line_id    VARCHAR(64)  NOT NULL PRIMARY KEY,
+    project_id VARCHAR(64)  NOT NULL,
+    start_x    DOUBLE       NOT NULL DEFAULT 0,
+    start_y    DOUBLE       NOT NULL DEFAULT 0,
+    start_z    DOUBLE       NOT NULL DEFAULT 0,
+    end_x      DOUBLE       NOT NULL DEFAULT 0,
+    end_y      DOUBLE       NOT NULL DEFAULT 0,
+    end_z      DOUBLE       NOT NULL DEFAULT 0,
+    color      VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
+    line_width DOUBLE       NOT NULL DEFAULT 2,
+    created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_bim_line_project (project_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
