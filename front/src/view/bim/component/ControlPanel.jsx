@@ -128,11 +128,91 @@ function genBurjKhalifa() {
     return els;
 }
 
+function genIncheonBridge() {
+    const els = [];
+    const tX = 42;          // 주탑 X 위치 (중심 기준)
+    const tH = 25;          // 주탑 높이
+    const tFH = 1.5;        // 기초 슬래브 높이
+    const deckY = 9;        // 상판 하단 Y
+    const deckH = 0.8;      // 상판 두께
+    const deckCY = deckY + deckH / 2;   // 상판 중심 Y
+    const tTopY = tFH + tH;             // 주탑 꼭대기 Y = 26.5
+    const cAttY = tTopY - 1.5;          // 케이블 탑 부착점 Y = 25
+
+    // 주탑 기초 슬래브
+    [-tX, tX].forEach(tx => {
+        els.push({ elementType:'IfcSlab', material:'Concrete C60', sizeX:10, sizeY:tFH, sizeZ:18, positionX:tx, positionY:0, positionZ:0 });
+    });
+
+    // 주탑 기둥 (A형: 탑당 앞·뒤 2개)
+    [-tX, tX].forEach(tx => {
+        [-4.5, 4.5].forEach(tz => {
+            els.push({ elementType:'IfcColumn', material:'Concrete C60', sizeX:2, sizeY:tH, sizeZ:2, positionX:tx, positionY:tFH, positionZ:tz });
+        });
+    });
+
+    // 주탑 수평 가로보 (상단 + 중간)
+    [-tX, tX].forEach(tx => {
+        els.push({ elementType:'IfcBeam', material:'Concrete C60', sizeX:1.2, sizeY:1.5, sizeZ:12, positionX:tx, positionY:tTopY - 1, positionZ:0 });
+        els.push({ elementType:'IfcBeam', material:'Concrete C60', sizeX:1.2, sizeY:1.2, sizeZ:12, positionX:tx, positionY:12, positionZ:0 });
+    });
+
+    // 주경간 상판
+    els.push({ elementType:'IfcSlab', material:'Prestressed Concrete', sizeX:tX * 2 + 4, sizeY:deckH, sizeZ:16, positionX:0, positionY:deckY, positionZ:0 });
+
+    // 사장 케이블 (rotationZ 사용) — 각 탑 내측 4가닥 × 앞뒤 2열
+    const anchorDists = [10, 20, 30, 38]; // 탑에서 내측으로의 거리
+    [-1, 1].forEach(side => {
+        const cz = side * 6.5;
+        // 좌탑 (x = -tX) 내측 케이블
+        anchorDists.forEach(d => {
+            const ancX = -tX + d;
+            const dx = ancX - (-tX);           // +d
+            const dy = deckCY - cAttY;          // 음수 (아래 방향)
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+            const midX = -tX + dx / 2;
+            const midY = cAttY + dy / 2 - 0.125;
+            els.push({ elementType:'IfcBeam', material:'Steel Grade A',
+                sizeX: Math.round(len * 100) / 100, sizeY:0.25, sizeZ:0.25,
+                positionX: Math.round(midX * 100) / 100,
+                positionY: Math.round(midY * 100) / 100, positionZ: cz,
+                rotationZ: Math.round(angle * 10000) / 10000 });
+        });
+        // 우탑 (x = +tX) 내측 케이블
+        anchorDists.forEach(d => {
+            const ancX = tX - d;
+            const dx = ancX - tX;              // -d
+            const dy = deckCY - cAttY;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+            const midX = tX + dx / 2;
+            const midY = cAttY + dy / 2 - 0.125;
+            els.push({ elementType:'IfcBeam', material:'Steel Grade A',
+                sizeX: Math.round(len * 100) / 100, sizeY:0.25, sizeZ:0.25,
+                positionX: Math.round(midX * 100) / 100,
+                positionY: Math.round(midY * 100) / 100, positionZ: cz,
+                rotationZ: Math.round(angle * 10000) / 10000 });
+        });
+    });
+
+    // 접속 교각 (양측 각 2기)
+    [-73, -58].forEach(px => els.push({ elementType:'IfcPier', material:'Concrete C50', sizeX:5, sizeY:9, sizeZ:14, positionX:px, positionY:0, positionZ:0 }));
+    [ 58,  73].forEach(px => els.push({ elementType:'IfcPier', material:'Concrete C50', sizeX:5, sizeY:9, sizeZ:14, positionX:px, positionY:0, positionZ:0 }));
+
+    // 접속 상판
+    els.push({ elementType:'IfcSlab', material:'Prestressed Concrete', sizeX:34, sizeY:deckH, sizeZ:16, positionX:-57.5, positionY:deckY, positionZ:0 });
+    els.push({ elementType:'IfcSlab', material:'Prestressed Concrete', sizeX:34, sizeY:deckH, sizeZ:16, positionX: 57.5, positionY:deckY, positionZ:0 });
+
+    return els;
+}
+
 // 정적 생성 (컴포넌트 외부, 한 번만 실행)
-const _TOWER_OF_PISA = genTowerOfPisa();
-const _EIFFEL_TOWER  = genEiffelTower();
-const _PYRAMID       = genPyramid();
-const _BURJ_KHALIFA  = genBurjKhalifa();
+const _TOWER_OF_PISA   = genTowerOfPisa();
+const _EIFFEL_TOWER    = genEiffelTower();
+const _PYRAMID         = genPyramid();
+const _BURJ_KHALIFA    = genBurjKhalifa();
+const _INCHEON_BRIDGE  = genIncheonBridge();
 
 /**
  * BIM 편집 도구 패널
@@ -269,6 +349,13 @@ export default function ControlPanel({
             ],
         },
         // ── 랜드마크 구조물 ──────────────────────────────────────────
+        {
+            label: '인천대교 사장교',
+            icon: '🌉',
+            desc: '사장 케이블 · A형 주탑 2기 · 접속경간 포함 · 33개 부재',
+            color: 'bg-blue-900/40 text-blue-200 hover:bg-blue-800/50',
+            elements: _INCHEON_BRIDGE,
+        },
         {
             label: '피사의 사탑',
             icon: '🗼',

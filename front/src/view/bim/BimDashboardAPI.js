@@ -227,7 +227,9 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 ...el,
                 elementId: "ELEM-" + Math.random().toString(36).substr(2, 9),
                 projectId,
-                rotationX: 0, rotationY: 0, rotationZ: 0,
+                rotationX: el.rotationX ?? 0,
+                rotationY: el.rotationY ?? 0,
+                rotationZ: el.rotationZ ?? 0,
             }));
             const response = await AxiosCustom.post(`${API_BASE}/elements/batch`, payload);
             setModelData(prev => [...prev, ...(response.data || [])]);

@@ -5,7 +5,9 @@
       "Bash(./mvnw compile:*)",
       "Bash(npm run:*)",
       "Bash(find /c/Users/82104/Desktop/yjyoo/twinSpring/agent /c/Users/82104/Desktop/yjyoo/twinSpring/front/src/view/chat /c/Users/82104/Desktop/yjyoo/twinSpring/src/main/java/yyj/project/twinspring -name *.java -o -name *.js -o -name *.py)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Read(//mnt/c/Users/svvo2/Desktop/yeongjin/project/twinSpring/**)",
+      "Bash(python -c ':*)"
     ]
   }
 }

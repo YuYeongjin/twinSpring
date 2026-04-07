@@ -107,6 +107,58 @@ export const ENV_PRESETS = [
         light: { ambientIntensity: 0.15, dirColor: '#8090ff', dirIntensity: 0.4, dirPos: [10, 30, 10] },
     },
     {
+        id: 'ocean_day',
+        label: '바다 (낮)',
+        icon: '🌊',
+        env: 'park',
+        useEnvBg: false,
+        useSky: true,
+        useStars: false,
+        useWater: true,
+        waterColor: '#1a6fa0',
+        bgColor: null,
+        sunPosition: [150, 60, 100],
+        turbidity: 2,
+        rayleigh: 1.5,
+        mieCoefficient: 0.005,
+        mieDirectionalG: 0.95,
+        fog: { color: '#a0c8e0', density: 0.0015 },
+        light: { ambientIntensity: 0.85, dirColor: '#fffbe8', dirIntensity: 2.2, dirPos: [20, 50, 20] },
+    },
+    {
+        id: 'ocean_sunset',
+        label: '바다 (노을)',
+        icon: '🌅',
+        env: 'sunset',
+        useEnvBg: false,
+        useSky: true,
+        useStars: false,
+        useWater: true,
+        waterColor: '#8b4060',
+        bgColor: null,
+        sunPosition: [100, 3, 100],
+        turbidity: 15,
+        rayleigh: 4,
+        mieCoefficient: 0.06,
+        mieDirectionalG: 0.9,
+        fog: { color: '#c06040', density: 0.002 },
+        light: { ambientIntensity: 0.4, dirColor: '#ff7030', dirIntensity: 2.0, dirPos: [80, 5, 50] },
+    },
+    {
+        id: 'ocean_night',
+        label: '바다 (밤)',
+        icon: '🌙',
+        env: 'night',
+        useEnvBg: false,
+        useSky: false,
+        useStars: true,
+        useWater: true,
+        waterColor: '#051530',
+        bgColor: '#04091a',
+        fog: { color: '#020810', density: 0.002 },
+        light: { ambientIntensity: 0.12, dirColor: '#6080ff', dirIntensity: 0.3, dirPos: [10, 30, 10] },
+    },
+    {
         id: 'forest',
         label: '숲',
         icon: '🌲',
@@ -201,6 +253,20 @@ export default function SkyEnvironment({ preset }) {
                     preset={preset.env}
                     background={preset.useEnvBg}
                 />
+            )}
+
+            {/* 수면 (바다 배경 전용) */}
+            {preset.useWater && (
+                <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.6, 0]} receiveShadow>
+                    <planeGeometry args={[3000, 3000, 1, 1]} />
+                    <meshStandardMaterial
+                        color={preset.waterColor ?? '#1a6fa0'}
+                        metalness={0.15}
+                        roughness={0.25}
+                        transparent
+                        opacity={0.92}
+                    />
+                </mesh>
             )}
         </>
     );

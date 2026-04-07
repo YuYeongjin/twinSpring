@@ -27,7 +27,7 @@ export default function Header({ viewComponent, setViceComponent }) {
 
   return (
     <header className="sticky top-0 z-30 backdrop-blur bg-space-900/80 border-b border-space-700">
-      <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between gap-4">
+      <div className="mx-auto w-full px-4 py-3 flex items-center justify-between gap-4">
 
         {/* 로고 */}
         <div className="flex items-center gap-3 shrink-0">
