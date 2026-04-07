@@ -82,4 +82,52 @@
         WHERE project_id = #{projectId}
     </delete>
 
+    <!-- ============================================================
+         BIM 선 (bim_line)
+         필요 DDL:
+         CREATE TABLE bim_line (
+             line_id    VARCHAR(64)  NOT NULL PRIMARY KEY,
+             project_id VARCHAR(64)  NOT NULL,
+             start_x    DOUBLE       NOT NULL DEFAULT 0,
+             start_y    DOUBLE       NOT NULL DEFAULT 0,
+             start_z    DOUBLE       NOT NULL DEFAULT 0,
+             end_x      DOUBLE       NOT NULL DEFAULT 0,
+             end_y      DOUBLE       NOT NULL DEFAULT 0,
+             end_z      DOUBLE       NOT NULL DEFAULT 0,
+             color      VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
+             line_width DOUBLE       NOT NULL DEFAULT 2,
+             created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             INDEX idx_bim_line_project (project_id)
+         );
+         ============================================================ -->
+
+    <select id="getLinesByProject" parameterType="string" resultType="map">
+        SELECT line_id    AS lineId,
+               project_id AS projectId,
+               start_x    AS startX,
+               start_y    AS startY,
+               start_z    AS startZ,
+               end_x      AS endX,
+               end_y      AS endY,
+               end_z      AS endZ,
+               color,
+               line_width AS lineWidth
+        FROM bim_line
+        WHERE project_id = #{projectId}
+        ORDER BY created_at ASC
+    </select>
+
+    <insert id="insertLine" parameterType="map">
+        INSERT INTO bim_line (line_id, project_id, start_x, start_y, start_z, end_x, end_y, end_z, color, line_width)
+        VALUES (#{lineId}, #{projectId}, #{startX}, #{startY}, #{startZ}, #{endX}, #{endY}, #{endZ}, #{color}, #{lineWidth})
+    </insert>
+
+    <delete id="deleteLine" parameterType="string">
+        DELETE FROM bim_line WHERE line_id = #{lineId}
+    </delete>
+
+    <delete id="deleteLinesByProject" parameterType="string">
+        DELETE FROM bim_line WHERE project_id = #{projectId}
+    </delete>
+
 </mapper>

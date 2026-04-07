@@ -16,6 +16,7 @@ import yyj.project.twinspring.dao.BimDAO;
 import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
+import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
 import yyj.project.twinspring.service.BimService;
 
@@ -324,5 +325,63 @@ public class BimServiceImpl implements BimService {
     @Override
     public void deleteColor(String elementId) {
         bimDAO.deleteColor(elementId);
+    }
+
+    // ── 선 CRUD ────────────────────────────────────────────────────
+
+    @Override
+    public List<BimLineDTO> getLinesByProject(String projectId) {
+        return bimDAO.getLinesByProject(projectId).stream()
+                .map(row -> {
+                    BimLineDTO dto = new BimLineDTO();
+                    dto.setLineId((String) row.get("lineId"));
+                    dto.setProjectId((String) row.get("projectId"));
+                    dto.setStartX(toDouble(row.get("startX")));
+                    dto.setStartY(toDouble(row.get("startY")));
+                    dto.setStartZ(toDouble(row.get("startZ")));
+                    dto.setEndX(toDouble(row.get("endX")));
+                    dto.setEndY(toDouble(row.get("endY")));
+                    dto.setEndZ(toDouble(row.get("endZ")));
+                    dto.setColor((String) row.getOrDefault("color", "#60a5fa"));
+                    dto.setLineWidth(toDouble(row.getOrDefault("lineWidth", 2.0)));
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public BimLineDTO createLine(BimLineDTO line) {
+        if (line.getLineId() == null || line.getLineId().isBlank()) {
+            line.setLineId("line-" + UUID.randomUUID().toString().substring(0, 12));
+        }
+        Map<String, Object> params = new HashMap<>();
+        params.put("lineId",    line.getLineId());
+        params.put("projectId", line.getProjectId());
+        params.put("startX",    line.getStartX());
+        params.put("startY",    line.getStartY());
+        params.put("startZ",    line.getStartZ());
+        params.put("endX",      line.getEndX());
+        params.put("endY",      line.getEndY());
+        params.put("endZ",      line.getEndZ());
+        params.put("color",     line.getColor() != null ? line.getColor() : "#60a5fa");
+        params.put("lineWidth", line.getLineWidth() > 0 ? line.getLineWidth() : 2.0);
+        bimDAO.insertLine(params);
+        return line;
+    }
+
+    @Override
+    public void deleteLine(String lineId) {
+        bimDAO.deleteLine(lineId);
+    }
+
+    @Override
+    public void deleteLinesByProject(String projectId) {
+        bimDAO.deleteLinesByProject(projectId);
+    }
+
+    private double toDouble(Object val) {
+        if (val == null) return 0.0;
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        try { return Double.parseDouble(val.toString()); } catch (NumberFormatException e) { return 0.0; }
     }
 }

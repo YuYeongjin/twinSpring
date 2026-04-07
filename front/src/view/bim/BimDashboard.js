@@ -5,9 +5,13 @@ import * as THREE from 'three';
 import Scene from './component/Scene';
 import ControlPanel from './component/ControlPanel';
 import LayerPanel from './component/LayerPanel';
+import LinePanel from './component/LinePanel';
 import BimDashboardAPI from './BimDashboardAPI';
 import { ENV_PRESETS, DEFAULT_ENV_ID } from './component/SkyEnvironment';
 import MiniMapCanvas from './component/MiniMapCanvas';
+import AxiosCustom from '../../axios/AxiosCustom';
+
+const API_BASE = '/api/bim';
 
 // ================================================================
 // 공통 UI
@@ -285,8 +289,151 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     const mainViewRef = useRef(null);
 
-    // ── 레이어 패널 표시 여부 ──────────────────────────────────────
+    // ── 패널 표시 여부 ─────────────────────────────────────────────
     const [showLayerPanel, setShowLayerPanel] = useState(true);
+    const [showLeftPanel, setShowLeftPanel] = useState(true);
+    // 좌측 패널 탭: 'edit' | 'line'
+    const [leftTab, setLeftTab] = useState('edit');
+
+    // ── 패널 드래그 리사이즈 ───────────────────────────────────────
+    const [leftPanelPct, setLeftPanelPct]   = useState(13); // 5~20%
+    const [rightPanelPct, setRightPanelPct] = useState(18); // 5~20%
+    const panelContainerRef = useRef(null);
+    const draggingSideRef   = useRef(null); // 'left' | 'right' | null
+
+    // 모바일 여부 (768px 기준)
+    const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768);
+    useEffect(() => {
+        const handler = () => setIsDesktop(window.innerWidth >= 768);
+        window.addEventListener('resize', handler);
+        return () => window.removeEventListener('resize', handler);
+    }, []);
+
+    const handlePanelDragStart = useCallback((side, e) => {
+        e.preventDefault();
+        draggingSideRef.current = side;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        const onMove = (ev) => {
+            if (!panelContainerRef.current || !draggingSideRef.current) return;
+            const rect = panelContainerRef.current.getBoundingClientRect();
+            const clientX = ev.clientX ?? ev.touches?.[0]?.clientX ?? 0;
+            const x = clientX - rect.left;
+            const pct = (x / rect.width) * 100;
+
+            if (draggingSideRef.current === 'left') {
+                setLeftPanelPct(Math.min(20, Math.max(5, Math.round(pct * 10) / 10)));
+            } else {
+                // 우측: 컨테이너 오른쪽 끝에서의 비율
+                const pctRight = ((rect.right - clientX) / rect.width) * 100;
+                setRightPanelPct(Math.min(20, Math.max(5, Math.round(pctRight * 10) / 10)));
+            }
+        };
+
+        const onUp = () => {
+            draggingSideRef.current = null;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+            window.removeEventListener('touchmove', onMove);
+            window.removeEventListener('touchend', onUp);
+        };
+
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onUp);
+    }, []);
+
+    // ── 선 작도 상태 ───────────────────────────────────────────────
+    const [lines, setLines] = useState([]);
+    const [lineDrawMode, setLineDrawMode] = useState('off'); // 'off' | 'click' | 'coord'
+    const [lineStart, setLineStart] = useState(null);
+    const [lineDrawHeight, setLineDrawHeight] = useState(0);
+    const [lineColor, setLineColor] = useState('#60a5fa');
+    const [lineWidth, setLineWidth] = useState(2);
+    const [selectedLineId, setSelectedLineId] = useState(null);
+
+    // 프로젝트 전환 시 선 목록 DB 로드
+    useEffect(() => {
+        const pid = selectedProject?.projectId;
+        if (!pid) return;
+        AxiosCustom.get(`${API_BASE}/lines?projectId=${pid}`)
+            .then(res => {
+                // DB row → 프론트 형식 변환
+                const loaded = (res.data || []).map(d => ({
+                    lineId: d.lineId,
+                    start:  [d.startX, d.startY, d.startZ],
+                    end:    [d.endX,   d.endY,   d.endZ],
+                    color:  d.color,
+                    lineWidth: d.lineWidth,
+                }));
+                setLines(loaded);
+            })
+            .catch(() => setLines([]));
+    }, [selectedProject]);
+
+    const addLine = useCallback((start, end, color, width) => {
+        const pid = selectedProject?.projectId;
+        const body = {
+            projectId: pid,
+            startX: start[0], startY: start[1], startZ: start[2],
+            endX:   end[0],   endY:   end[1],   endZ:   end[2],
+            color,
+            lineWidth: width,
+        };
+        AxiosCustom.post(`${API_BASE}/line`, body)
+            .then(res => {
+                const d = res.data;
+                setLines(prev => [...prev, {
+                    lineId: d.lineId,
+                    start:  [d.startX, d.startY, d.startZ],
+                    end:    [d.endX,   d.endY,   d.endZ],
+                    color:  d.color,
+                    lineWidth: d.lineWidth,
+                }]);
+            })
+            .catch(err => console.error('선 저장 실패:', err));
+        setLineStart(null);
+    }, [selectedProject]);
+
+    const deleteLine = useCallback((lineId) => {
+        AxiosCustom.delete(`${API_BASE}/line/${lineId}`)
+            .catch(err => console.error('선 삭제 실패:', err));
+        setLines(prev => prev.filter(l => l.lineId !== lineId));
+        setSelectedLineId(prev => prev === lineId ? null : prev);
+    }, []);
+
+    const clearLines = useCallback(() => {
+        const pid = selectedProject?.projectId;
+        if (pid) {
+            AxiosCustom.delete(`${API_BASE}/lines?projectId=${pid}`)
+                .catch(err => console.error('선 전체 삭제 실패:', err));
+        }
+        setLines([]);
+        setSelectedLineId(null);
+        setLineStart(null);
+        setLineDrawMode('off');
+    }, [selectedProject]);
+
+    const cancelLineDraw = useCallback(() => {
+        setLineStart(null);
+    }, []);
+
+    const handleLineClick = useCallback((point) => {
+        const pos = [
+            parseFloat(point.x.toFixed(3)),
+            lineDrawHeight,
+            parseFloat(point.z.toFixed(3)),
+        ];
+        if (!lineStart) {
+            setLineStart(pos);
+        } else {
+            addLine(lineStart, pos, lineColor, lineWidth);
+        }
+    }, [lineStart, lineDrawHeight, lineColor, lineWidth, addLine]);
 
     // ── 환경 프리셋 ─────────────────────────────────────────────────
     const [envId, setEnvId] = useState(DEFAULT_ENV_ID);
@@ -452,28 +599,31 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 undo();
             }
             if (e.key === 'Escape') {
-                if (pendingElement) { cancelPlacement(); }
+                if (lineDrawMode !== 'off') {
+                    setLineDrawMode('off');
+                    cancelLineDraw();
+                } else if (pendingElement) { cancelPlacement(); }
                 else if (isSelectMode) { toggleSelectMode(); }
                 else { setSelectedElement(null); setSelectedElements(new Set()); }
             }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [selectedElement, pendingElement, isSelectMode, deleteSelectedElements,
-        cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements, undo]);
+    }, [selectedElement, pendingElement, isSelectMode, lineDrawMode, deleteSelectedElements,
+        cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements, undo, cancelLineDraw]);
 
     return (
-        <div className="min-h-screen bg-space-900 p-4">
+        <div className="w-full bg-space-900 pb-2">
 
             {/* ── 헤더 ── */}
-            <div className="flex items-center gap-4 mb-4 flex-wrap">
+            <div className="flex items-center gap-2 md:gap-4 mb-3 flex-wrap py-2">
                 <button
                     className="text-gray-300 hover:text-white text-sm"
                     onClick={() => { setViceComponent('bim-projects'); setModelData([]); }}
                 >
-                    ← 프로젝트 목록
+                    ← 목록
                 </button>
-                <h2 className="text-xl font-light text-white">BIM 편집기</h2>
+                <h2 className="text-lg md:text-xl font-light text-white">BIM 편집기</h2>
                 <Chip color="blue">Edit Mode</Chip>
 
                 {/* 다중 선택 삭제 버튼 */}
@@ -486,21 +636,34 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     </button>
                 )}
 
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex items-center gap-1.5 md:gap-2 flex-wrap justify-end">
                     {/* 환경 선택 */}
                     <EnvSelector currentId={envId} onChange={setEnvId} />
+
+                    {/* 좌측 패널 토글 */}
+                    <button
+                        onClick={() => setShowLeftPanel(v => !v)}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                            showLeftPanel
+                                ? 'bg-blue-700/50 text-blue-300 border border-blue-600/60'
+                                : 'bg-space-700/70 text-gray-400 border border-space-600'
+                        }`}
+                        title="편집 패널 접기/펴기"
+                    >
+                        {showLeftPanel ? '◀' : '▶'} <span className="hidden sm:inline">편집</span>
+                    </button>
 
                     {/* 레이어 패널 토글 */}
                     <button
                         onClick={() => setShowLayerPanel(v => !v)}
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
                             showLayerPanel
                                 ? 'bg-teal-700/60 text-teal-300 border border-teal-600/60'
                                 : 'bg-space-700/70 text-gray-400 border border-space-600'
                         }`}
                         title="레이어 패널 토글"
                     >
-                        🗂 레이어
+                        🗂 <span className="hidden sm:inline">레이어</span>
                         {layers.length > 0 && (
                             <span className="px-1 py-0.5 rounded-full text-xs bg-teal-600/40 text-teal-300">
                                 {layers.length}
@@ -508,21 +671,20 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         )}
                     </button>
                     <span className="text-xs text-gray-600 hidden xl:block">
-                        T: 이동&nbsp;|&nbsp;R: 회전&nbsp;|&nbsp;S: 크기&nbsp;|&nbsp;Q: 선택모드&nbsp;|&nbsp;Del: 삭제&nbsp;|&nbsp;Ctrl+Z: 실행취소&nbsp;|&nbsp;Esc: 취소
+                        T:이동&nbsp;R:회전&nbsp;S:크기&nbsp;Q:선택&nbsp;Del:삭제&nbsp;Ctrl+Z:취소
                     </span>
                 </div>
             </div>
 
             {/* ── 배치 / 선택 모드 배너 ── */}
             {pendingElement && (
-                <div className="mb-3 px-4 py-2 rounded-xl flex items-center gap-3 text-sm"
+                <div className="mb-2 px-3 py-2 rounded-xl flex items-center gap-2 text-sm flex-wrap"
                      style={{ backgroundColor: '#1a2f4a', border: '1px solid #2a5080' }}>
-                    <span className="text-blue-400 text-lg">📍</span>
-                    <span className="text-blue-200 font-medium">
-                        배치 모드 &nbsp;—&nbsp;
-                        <span className="text-white">{pendingElement.elementType?.replace('Ifc','')}</span>
+                    <span className="text-blue-400">📍</span>
+                    <span className="text-blue-200 font-medium text-xs">
+                        배치 모드 — <span className="text-white">{pendingElement.elementType?.replace('Ifc','')}</span>
                     </span>
-                    <span className="text-gray-400 text-xs">3D 뷰어를 클릭하면 해당 위치에 부재가 추가됩니다. 연속 배치 가능.</span>
+                    <span className="text-gray-400 text-xs hidden sm:inline">클릭하여 배치. 연속 배치 가능.</span>
                     <button onClick={cancelPlacement}
                             className="ml-auto text-xs px-2 py-1 rounded border border-blue-700/60 text-blue-400 hover:text-white transition">
                         ESC 취소
@@ -530,69 +692,150 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 </div>
             )}
             {isSelectMode && !pendingElement && (
-                <div className="mb-3 px-4 py-2 rounded-xl flex items-center gap-3 text-sm"
+                <div className="mb-2 px-3 py-2 rounded-xl flex items-center gap-2 text-sm flex-wrap"
                      style={{ backgroundColor: '#1f1040', border: '1px solid #5b21b6' }}>
-                    <span className="text-violet-400 text-lg">⬚</span>
-                    <span className="text-violet-200 font-medium">선택 모드</span>
-                    <span className="text-gray-400 text-xs">3D 뷰어에서 드래그하여 영역 선택 &nbsp;•&nbsp; Shift+클릭으로 추가 선택</span>
+                    <span className="text-violet-400">⬚</span>
+                    <span className="text-violet-200 font-medium text-xs">선택 모드</span>
+                    <span className="text-gray-400 text-xs hidden sm:inline">드래그로 영역 선택 • Shift+클릭 추가</span>
                     {totalSelectedCount > 0 && (
-                        <span className="text-violet-300 text-xs font-semibold">{totalSelectedCount}개 선택됨</span>
+                        <span className="text-violet-300 text-xs font-semibold">{totalSelectedCount}개</span>
                     )}
                     <button onClick={toggleSelectMode}
                             className="ml-auto text-xs px-2 py-1 rounded border border-violet-700/60 text-violet-400 hover:text-white transition">
-                        ESC / Q 해제
+                        Q 해제
                     </button>
                 </div>
             )}
 
-            <div className="grid grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
+            <div
+                ref={panelContainerRef}
+                className="flex flex-col md:flex-row md:h-[calc(100vh-7rem)]"
+                style={{ gap: 0 }}
+            >
 
                 {/* ── 좌측 편집 패널 ── */}
-                <div className="col-span-2 flex flex-col gap-4 h-full overflow-y-auto" style={{ minWidth: 0 }}>
-                    <Card title="편집 도구">
-                        <ControlPanel
-                            startPlacement={startPlacement}
-                            pendingElement={pendingElement}
-                            cancelPlacement={cancelPlacement}
-                            currentMode={transformMode}
-                            setMode={setTransformMode}
-                            isSelectMode={isSelectMode}
-                            toggleSelectMode={toggleSelectMode}
-                            onPlaceSample={handlePlaceSample}
-                            isPlacingSample={isPlacingSample}
-                        />
-                    </Card>
+                {showLeftPanel && (
+                <div
+                    className="w-full shrink-0 flex flex-col gap-3 md:h-full md:overflow-y-auto px-0 md:pr-1.5"
+                    style={isDesktop ? { width: `${leftPanelPct}%`, minWidth: 120 } : undefined}
+                >
+                    {/* 탭 */}
+                    <div className="flex gap-1 bg-space-800/80 border border-space-700 rounded-xl p-1">
+                        <button
+                            onClick={() => setLeftTab('edit')}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                leftTab === 'edit'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            편집
+                        </button>
+                        <button
+                            onClick={() => setLeftTab('line')}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                leftTab === 'line'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'text-gray-400 hover:text-white'
+                            }`}
+                        >
+                            선 작도
+                            {lines.length > 0 && (
+                                <span className="ml-1 px-1 rounded-full bg-blue-800/60 text-blue-300 text-xs">{lines.length}</span>
+                            )}
+                        </button>
+                    </div>
 
-                    <Card
-                        title="부재 속성"
-                        right={
-                            <Chip color={selectedElement ? 'orange' : totalSelectedCount > 1 ? 'violet' : 'gray'}>
-                                {selectedElement ? 'SELECTED' : totalSelectedCount > 1 ? `${totalSelectedCount}개` : 'NONE'}
-                            </Chip>
-                        }
-                        className="flex-1"
-                    >
-                        <PropertyPanel
-                            selectedElement={selectedElement}
-                            selectedElements={selectedElements}
-                            updateElementData={updateElementData}
-                            saveUpdateElement={saveUpdateElement}
-                            deleteSelectedElements={deleteSelectedElements}
-                        />
-                    </Card>
+                    {leftTab === 'edit' && (
+                        <>
+                            <Card title="편집 도구">
+                                <ControlPanel
+                                    startPlacement={startPlacement}
+                                    pendingElement={pendingElement}
+                                    cancelPlacement={cancelPlacement}
+                                    currentMode={transformMode}
+                                    setMode={setTransformMode}
+                                    isSelectMode={isSelectMode}
+                                    toggleSelectMode={toggleSelectMode}
+                                    onPlaceSample={handlePlaceSample}
+                                    isPlacingSample={isPlacingSample}
+                                />
+                            </Card>
+                            <Card
+                                title="부재 속성"
+                                right={
+                                    <Chip color={selectedElement ? 'orange' : totalSelectedCount > 1 ? 'violet' : 'gray'}>
+                                        {selectedElement ? 'SEL' : totalSelectedCount > 1 ? `${totalSelectedCount}개` : 'NONE'}
+                                    </Chip>
+                                }
+                                className="flex-1"
+                            >
+                                <PropertyPanel
+                                    selectedElement={selectedElement}
+                                    selectedElements={selectedElements}
+                                    updateElementData={updateElementData}
+                                    saveUpdateElement={saveUpdateElement}
+                                    deleteSelectedElements={deleteSelectedElements}
+                                />
+                            </Card>
+                        </>
+                    )}
+
+                    {leftTab === 'line' && (
+                        <Card title="선 작도" className="flex-1">
+                            <LinePanel
+                                lineDrawMode={lineDrawMode}
+                                setLineDrawMode={setLineDrawMode}
+                                lineStart={lineStart}
+                                lineDrawHeight={lineDrawHeight}
+                                setLineDrawHeight={setLineDrawHeight}
+                                onCancelDraw={cancelLineDraw}
+                                lineColor={lineColor}
+                                setLineColor={setLineColor}
+                                lineWidth={lineWidth}
+                                setLineWidth={setLineWidth}
+                                lines={lines}
+                                selectedLineId={selectedLineId}
+                                setSelectedLineId={setSelectedLineId}
+                                onAddLine={addLine}
+                                onDeleteLine={deleteLine}
+                                onClearLines={clearLines}
+                            />
+                        </Card>
+                    )}
                 </div>
+                )}
+
+                {/* ── 좌측 드래그 핸들 ── */}
+                {showLeftPanel && isDesktop && (
+                    <div
+                        onMouseDown={(e) => handlePanelDragStart('left', e)}
+                        onTouchStart={(e) => handlePanelDragStart('left', e)}
+                        className="hidden md:flex items-center justify-center shrink-0 z-10 group relative"
+                        style={{ width: 10, cursor: 'col-resize', touchAction: 'none' }}
+                        title={`드래그하여 너비 조절 (현재 ${leftPanelPct.toFixed(0)}%)`}
+                    >
+                        <div
+                            className="h-16 rounded-full transition-all duration-150 group-hover:h-24 group-hover:w-1"
+                            style={{ width: 3, backgroundColor: '#334155', transition: 'background-color 0.15s, height 0.15s' }}
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#3b82f6'}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#334155'}
+                        />
+                    </div>
+                )}
 
                 {/* ── 중앙 3D 뷰어 ── */}
-                <div className={`${showLayerPanel ? 'col-span-7' : 'col-span-10'} flex flex-col gap-4 h-full`} style={{ minWidth: 0 }}>
+                <div className="flex-1 min-w-0 flex flex-col gap-3 md:h-full" style={{ paddingLeft: showLeftPanel && isDesktop ? 4 : 0, paddingRight: showLayerPanel && isDesktop ? 4 : 0 }}>
                     <Card
-                        title={`3D BIM Viewer — ${currentProjectId ?? '프로젝트'} (부재 ${modelData.length}개 / 표시 ${visibleModelData.length}개)`}
+                        title={`3D BIM Viewer — ${currentProjectId ?? '프로젝트'} (부재 ${visibleModelData.length}개)`}
                         right={
-                            <div className="flex gap-2 items-center">
+                            <div className="flex gap-1.5 items-center flex-wrap">
                                 <Chip color="orange">
                                     {transformMode === 'translate' ? '이동' : transformMode === 'rotate' ? '회전' : '크기'}
                                 </Chip>
                                 {pendingElement && <Chip color="blue">배치중</Chip>}
                                 {isSelectMode   && <Chip color="violet">선택모드</Chip>}
+                                {lineDrawMode !== 'off' && <Chip color="blue">선 작도</Chip>}
                                 <Chip color="blue">Live</Chip>
                             </div>
                         }
@@ -606,8 +849,16 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 </svg>
                             </div>
                         ) : (
-                            <div className="w-full flex-1 relative"
-                                 style={{ cursor: pendingElement ? 'crosshair' : isSelectMode ? 'crosshair' : 'default' }}>
+                            <div
+                                className="w-full flex-1 relative"
+                                style={{
+                                    minHeight: '55vw',
+                                    cursor: pendingElement ? 'crosshair'
+                                          : isSelectMode  ? 'crosshair'
+                                          : lineDrawMode === 'click' ? 'crosshair'
+                                          : 'default',
+                                }}
+                            >
 
                                 {/* R3F 이벤트 소스 div */}
                                 <div ref={mainViewRef} className="absolute inset-0 z-10 touch-none" />
@@ -641,6 +892,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             envPreset={envPreset}
                                             navigationTargetRef={navigationTargetRef}
                                             pushUndo={pushUndo}
+                                            lines={lines}
+                                            selectedLineId={selectedLineId}
+                                            onLineSelect={setSelectedLineId}
+                                            lineDrawMode={lineDrawMode}
+                                            lineDrawHeight={lineDrawHeight}
+                                            onLineClick={handleLineClick}
                                         />
                                     </View>
 
@@ -696,34 +953,50 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
                                 {/* ── 배치 모드 커서 힌트 ── */}
                                 {pendingElement && (
-                                    <div className="absolute bottom-3 right-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20 mr-40">
+                                    <div className="absolute bottom-3 right-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20 mr-44">
                                         클릭하여 배치 &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> 취소
+                                    </div>
+                                )}
+
+                                {/* ── 선 작도 클릭 힌트 ── */}
+                                {lineDrawMode === 'click' && (
+                                    <div className="absolute bottom-3 left-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20">
+                                        {!lineStart
+                                            ? '⏳ 첫 번째 점을 클릭하세요'
+                                            : `✓ 시작점 선택됨 — 두 번째 점을 클릭하세요`}
+                                        &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> 취소
                                     </div>
                                 )}
                             </div>
                         )}
                     </Card>
 
-                    {/* 구조 데이터 분석 */}
-                    <Card title="구조 데이터 분석" right={<Chip color="green">Live</Chip>} className="h-36">
-                        <div className="grid grid-cols-5 gap-3 h-full">
-                            {['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier'].map(type => {
-                                const count = modelData.filter(e => e.elementType === type).length;
-                                return (
-                                    <div key={type} className="bg-space-700/60 rounded-xl p-3 flex flex-col justify-between">
-                                        <span className="text-xs text-gray-400">{type.replace('Ifc','')}</span>
-                                        <span className="text-2xl font-bold text-gray-100">{count}</span>
-                                        <span className="text-xs text-gray-500">개</span>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </Card>
                 </div>
+
+                {/* ── 우측 드래그 핸들 ── */}
+                {showLayerPanel && isDesktop && (
+                    <div
+                        onMouseDown={(e) => handlePanelDragStart('right', e)}
+                        onTouchStart={(e) => handlePanelDragStart('right', e)}
+                        className="hidden md:flex items-center justify-center shrink-0 z-10 group"
+                        style={{ width: 10, cursor: 'col-resize', touchAction: 'none' }}
+                        title={`드래그하여 너비 조절 (현재 ${rightPanelPct.toFixed(0)}%)`}
+                    >
+                        <div
+                            className="h-16 rounded-full"
+                            style={{ width: 3, backgroundColor: '#334155', transition: 'background-color 0.15s, height 0.15s' }}
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#14b8a6'}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#334155'}
+                        />
+                    </div>
+                )}
 
                 {/* ── 우측 레이어 패널 ── */}
                 {showLayerPanel && (
-                    <div className="col-span-3 flex flex-col h-full overflow-hidden" style={{ minWidth: 0 }}>
+                    <div
+                        className="w-full shrink-0 flex flex-col md:h-full md:overflow-y-auto md:pl-1.5"
+                        style={isDesktop ? { width: `${rightPanelPct}%`, minWidth: 120 } : undefined}
+                    >
                         <Card
                             title="레이어 관리"
                             right={
@@ -738,9 +1011,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     </button>
                                 </div>
                             }
-                            className="flex-1 flex flex-col overflow-hidden"
+                            className="flex flex-col overflow-hidden"
+                            style={{ minHeight: 0, flex: '1 1 0' }}
                         >
-                            <div className="flex-1 overflow-y-auto">
+                            <div className="flex-1 overflow-y-auto" style={{ minHeight: 80 }}>
                                 <LayerPanel
                                     layers={layers}
                                     elementColors={elementColors}
@@ -758,8 +1032,25 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 />
                             </div>
                         </Card>
+
+                        {/* 구조 데이터 분석 */}
+                        <Card title="구조 데이터 분석" right={<Chip color="green">Live</Chip>} className="mt-3 shrink-0">
+                            <div className="grid grid-cols-5 gap-1.5">
+                                {['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier'].map(type => {
+                                    const count = modelData.filter(e => e.elementType === type).length;
+                                    return (
+                                        <div key={type} className="bg-space-700/60 rounded-lg p-2 flex flex-col items-center gap-0.5">
+                                            <span className="text-xs text-gray-400 truncate w-full text-center">{type.replace('Ifc','')}</span>
+                                            <span className="text-lg font-bold text-gray-100">{count}</span>
+                                            <span className="text-xs text-gray-500">개</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </Card>
                     </div>
                 )}
+
             </div>
         </div>
     );

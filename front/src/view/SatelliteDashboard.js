@@ -292,10 +292,10 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
       {/* ================================================================
           3. 차트 + 프로젝트 패널
           ================================================================ */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div className="flex flex-col gap-4">
 
         {/* 실시간 텔레메트리 차트 */}
-        <div className="lg:col-span-12">
+        <div className="w-full">
           <Widget
             title="실시간 텔레메트리"
             subtitle={`데이터 포인트 ${data.length}개 수신`}

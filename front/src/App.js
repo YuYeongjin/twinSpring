@@ -153,7 +153,7 @@ function App() {
     <div className="min-h-screen bg-space-900 text-gray-200">
       <Header viewComponent={viewComponent} setViceComponent={setViceComponent} />
 
-      <main className="mx-auto w-full px-4 py-6">
+      <main className="w-full px-2 sm:px-4 py-4 sm:py-6 overflow-x-hidden">
         {renderView()}
       </main>
 

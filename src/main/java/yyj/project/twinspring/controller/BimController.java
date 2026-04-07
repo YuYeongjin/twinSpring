@@ -8,6 +8,7 @@ import reactor.core.publisher.Mono;
 import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
+import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
 import yyj.project.twinspring.service.BimService;
 
@@ -163,6 +164,32 @@ public class BimController {
     @DeleteMapping("/color/{elementId}")
     public ResponseEntity<Void> deleteColor(@PathVariable String elementId) {
         bimService.deleteColor(elementId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ================================================================
+    // 선 CRUD (MariaDB 직접 저장)
+    // ================================================================
+
+    @GetMapping("/lines")
+    public ResponseEntity<List<BimLineDTO>> getLines(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getLinesByProject(projectId));
+    }
+
+    @PostMapping("/line")
+    public ResponseEntity<BimLineDTO> createLine(@RequestBody BimLineDTO line) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(bimService.createLine(line));
+    }
+
+    @DeleteMapping("/line/{lineId}")
+    public ResponseEntity<Void> deleteLine(@PathVariable String lineId) {
+        bimService.deleteLine(lineId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/lines")
+    public ResponseEntity<Void> deleteLinesByProject(@RequestParam String projectId) {
+        bimService.deleteLinesByProject(projectId);
         return ResponseEntity.noContent().build();
     }
 

@@ -28,4 +28,13 @@ public interface BimDAO {
     void deleteColor(@Param("elementId") String elementId);
 
     void deleteColorsByProject(@Param("projectId") String projectId);
+
+    // ── 선 (bim_line) ───────────────────────────────────────────────
+    List<Map<String, Object>> getLinesByProject(@Param("projectId") String projectId);
+
+    void insertLine(Map<String, Object> line);
+
+    void deleteLine(@Param("lineId") String lineId);
+
+    void deleteLinesByProject(@Param("projectId") String projectId);
 }
