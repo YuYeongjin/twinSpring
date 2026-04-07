@@ -9,14 +9,14 @@ import SatelliteAPI from "./SatelliteAPI";
 // ThingsBoard 스타일 디자인 토큰
 // ================================================================
 const TB = {
-  card:    "bg-[#1c2a3a] border border-[#253347] rounded-xl shadow-lg",
-  header:  "bg-[#162032] border-b border-[#253347]",
-  accent:  "#2196f3",
+  card: "bg-[#1c2a3a] border border-[#253347] rounded-xl shadow-lg",
+  header: "bg-[#162032] border-b border-[#253347]",
+  accent: "#2196f3",
   success: "#4caf50",
   warning: "#ff9800",
-  danger:  "#f44336",
-  text1:   "#e2e8f0",
-  text2:   "#8896a4",
+  danger: "#f44336",
+  text1: "#e2e8f0",
+  text2: "#8896a4",
 };
 
 // ================================================================
@@ -30,7 +30,7 @@ const TB = {
 function Widget({ title, subtitle, accent = TB.accent, children, action, className = "" }) {
   return (
     <div className={`${TB.card} overflow-hidden flex flex-col ${className}`}
-         style={{ borderLeft: `3px solid ${accent}` }}>
+      style={{ borderLeft: `3px solid ${accent}` }}>
       {/* 위젯 헤더 */}
       <div className={`${TB.header} px-4 py-2.5 flex items-center justify-between`}>
         <div>
@@ -49,16 +49,16 @@ function Widget({ title, subtitle, accent = TB.accent, children, action, classNa
  */
 function StatusBadge({ status }) {
   const cfg = {
-    connected:    { color: TB.success, label: "ONLINE",       dot: "animate-pulse" },
-    disconnected: { color: TB.danger,  label: "OFFLINE",      dot: "" },
-    error:        { color: TB.warning, label: "ERROR",        dot: "" },
-    connecting:   { color: TB.warning, label: "CONNECTING…",  dot: "animate-pulse" },
+    connected: { color: TB.success, label: "ONLINE", dot: "animate-pulse" },
+    disconnected: { color: TB.danger, label: "OFFLINE", dot: "" },
+    error: { color: TB.warning, label: "ERROR", dot: "" },
+    connecting: { color: TB.warning, label: "CONNECTING…", dot: "animate-pulse" },
   }[status] ?? { color: TB.text2, label: "UNKNOWN", dot: "" };
 
   return (
     <div className="flex items-center gap-1.5">
       <span className={`w-2 h-2 rounded-full ${cfg.dot}`}
-            style={{ backgroundColor: cfg.color, boxShadow: `0 0 6px ${cfg.color}` }} />
+        style={{ backgroundColor: cfg.color, boxShadow: `0 0 6px ${cfg.color}` }} />
       <span className="text-xs font-bold" style={{ color: cfg.color }}>{cfg.label}</span>
     </div>
   );
@@ -97,7 +97,7 @@ function KpiWidget({ label, icon, value, unit, min, max, avg, accent, warnMin, w
         {/* 게이지 바 */}
         <div className="w-full h-1.5 rounded-full bg-[#253347] overflow-hidden">
           <div className="h-full rounded-full transition-all duration-500"
-               style={{ width: `${pct}%`, backgroundColor: isWarn ? TB.danger : accent }} />
+            style={{ width: `${pct}%`, backgroundColor: isWarn ? TB.danger : accent }} />
         </div>
 
         {/* 통계 서브라인 */}
@@ -157,12 +157,12 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
   const stats = useMemo(() => {
     if (!data.length) return {};
     const temps = data.map(d => Number(d.temperature)).filter(v => !isNaN(v));
-    const hums  = data.map(d => Number(d.humidity)).filter(v => !isNaN(v));
+    const hums = data.map(d => Number(d.humidity)).filter(v => !isNaN(v));
     return {
       tempMin: Math.min(...temps), tempMax: Math.max(...temps),
       tempAvg: temps.reduce((a, b) => a + b, 0) / temps.length,
-      humMin:  Math.min(...hums),  humMax:  Math.max(...hums),
-      humAvg:  hums.reduce((a, b) => a + b, 0) / hums.length,
+      humMin: Math.min(...hums), humMax: Math.max(...hums),
+      humAvg: hums.reduce((a, b) => a + b, 0) / hums.length,
     };
   }, [data]);
 
@@ -183,7 +183,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
         {/* 디바이스 정보 */}
         <div className="flex items-center gap-4">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xl"
-               style={{ backgroundColor: "#1e3a5f" }}>📡</div>
+            style={{ backgroundColor: "#1e3a5f" }}>📡</div>
           <div>
             <div className="text-sm font-bold text-white">IoT Sensor Dashboard</div>
             <div className="text-xs" style={{ color: TB.text2 }}>
@@ -208,24 +208,6 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
             <span>{mode === "SAFE" ? "🔴" : "🟢"}</span>
             {mode} MODE
           </button>
-
-          {/* EMS 바로가기 */}
-          <button
-            onClick={() => setViceComponent('ems')}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold transition text-white"
-            style={{ backgroundColor: "#1a3a2a", border: `1px solid #2d7a4f` }}
-          >
-            ⚡ EMS
-          </button>
-
-          {/* BIM 프로젝트 목록 바로가기 */}
-          <button
-            onClick={() => setViceComponent('bim-projects')}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold transition text-white"
-            style={{ backgroundColor: "#1a2a3a", border: `1px solid #2a5080` }}
-          >
-            🏗 BIM
-          </button>
         </div>
       </div>
 
@@ -247,21 +229,64 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
           accent={TB.accent} warnMax={80} warnMin={20}
           subtitle="DHT11 센서"
         />
-        <KpiWidget
-          label="배터리" icon="🔋"
-          value={batt?.v ?? null} unit="V"
-          min={6.0} max={8.4} avg={batt?.v}
-          accent={TB.success} warnMin={6.5}
-          subtitle={`전류: ${batt?.i ?? "—"} A`}
-        />
-        <KpiWidget
-          label="신호 강도" icon="📶"
-          value={rssi} unit="dBm"
-          min={-110} max={-50} avg={rssi}
-          accent={rssi > -92 ? TB.success : TB.warning}
-          warnMin={-100}
-          subtitle="Link RSSI"
-        />
+        <div className="lg:col-span-2">
+          <Widget
+            title="BIM 프로젝트" accent="#7c3aed"
+            action={
+              <button
+                onClick={() => setViceComponent('bim-projects')}
+                className="text-xs px-2 py-0.5 rounded text-purple-300 hover:text-white transition"
+                style={{ border: "1px solid #7c3aed" }}
+              >
+                모두 보기 →
+              </button>
+            }
+          >
+            <div className="space-y-2">
+              {/* 프로젝트 수 요약 */}
+              <div className="flex items-center justify-between py-2 px-3 rounded-lg"
+                style={{ backgroundColor: "#152030" }}>
+                <span className="text-xs" style={{ color: TB.text2 }}>전체 프로젝트</span>
+                <span className="text-lg font-bold text-white">{projectList?.length ?? 0}</span>
+              </div>
+              <div className="flex gap-2">
+                {[["🌉", "Bridge"], ["🏢", "Building"]].map(([icon, type]) => {
+                  const cnt = (projectList ?? []).filter(p => p.structureType === type).length;
+                  return (
+                    <div key={type} className="flex-1 text-center py-2 rounded-lg"
+                      style={{ backgroundColor: "#152030", border: "1px solid #253347" }}>
+                      <div className="text-lg">{icon}</div>
+                      <div className="text-xs font-semibold text-white">{cnt}</div>
+                      <div className="text-xs" style={{ color: TB.text2 }}>{type}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 최근 프로젝트 1개 */}
+              {projectList?.length > 0 && (
+                <button
+                  onClick={() => { onProjectSelect(projectList[projectList.length - 1]); setViceComponent('bim'); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition group"
+                  style={{ backgroundColor: "#152030", border: "1px solid #253347" }}
+                >
+                  <span>{projectList[projectList.length - 1].structureType === "Bridge" ? "🌉" : "🏢"}</span>
+                  <span className="text-gray-300 group-hover:text-white transition truncate flex-1 text-xs">
+                    {projectList[projectList.length - 1].projectName}
+                  </span>
+                  <span className="text-xs opacity-0 group-hover:opacity-100 transition"
+                    style={{ color: TB.accent }}>열기 →</span>
+                </button>
+              )}
+              <button
+                onClick={() => setViceComponent('bim-projects')}
+                className="w-full py-2 rounded-lg text-xs font-semibold transition text-white"
+                style={{ backgroundColor: "#1e1040", border: "1px solid #7c3aed" }}
+              >
+                🏗 BIM 프로젝트 관리
+              </button>
+            </div>
+          </Widget>
+        </div>
       </div>
 
       {/* ================================================================
@@ -270,14 +295,14 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
         {/* 실시간 텔레메트리 차트 */}
-        <div className="lg:col-span-8">
+        <div className="lg:col-span-12">
           <Widget
             title="실시간 텔레메트리"
             subtitle={`데이터 포인트 ${data.length}개 수신`}
             accent={TB.accent}
             action={
               <span className="flex items-center gap-1 text-xs"
-                    style={{ color: TB.success }}>
+                style={{ color: TB.success }}>
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 LIVE
               </span>
@@ -301,7 +326,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
                 />
                 {/* 온도 경고선 */}
                 <ReferenceLine y={35} stroke={TB.danger} strokeDasharray="4 4"
-                               label={{ value: "경고", fill: TB.danger, fontSize: 10 }} />
+                  label={{ value: "경고", fill: TB.danger, fontSize: 10 }} />
                 <Line
                   type="monotone" dataKey="temperature" name="온도 (°C)"
                   stroke={TB.warning} dot={false} strokeWidth={2} isAnimationActive={false}
@@ -315,86 +340,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
           </Widget>
         </div>
 
-        {/* 프로젝트 패널 */}
-        <div className="lg:col-span-4 flex flex-col gap-4">
 
-          {/* BIM 프로젝트 요약 카드 */}
-          <Widget title="BIM 프로젝트" accent="#7c3aed"
-                  action={
-                    <button
-                      onClick={() => setViceComponent('bim-projects')}
-                      className="text-xs px-2 py-0.5 rounded text-purple-300 hover:text-white transition"
-                      style={{ border: "1px solid #7c3aed" }}
-                    >
-                      모두 보기 →
-                    </button>
-                  }
-          >
-            <div className="space-y-2">
-              {/* 프로젝트 수 요약 */}
-              <div className="flex items-center justify-between py-2 px-3 rounded-lg"
-                   style={{ backgroundColor: "#152030" }}>
-                <span className="text-xs" style={{ color: TB.text2 }}>전체 프로젝트</span>
-                <span className="text-lg font-bold text-white">{projectList?.length ?? 0}</span>
-              </div>
-              <div className="flex gap-2">
-                {[["🌉", "Bridge"], ["🏢", "Building"]].map(([icon, type]) => {
-                  const cnt = (projectList ?? []).filter(p => p.structureType === type).length;
-                  return (
-                    <div key={type} className="flex-1 text-center py-2 rounded-lg"
-                         style={{ backgroundColor: "#152030", border: "1px solid #253347" }}>
-                      <div className="text-lg">{icon}</div>
-                      <div className="text-xs font-semibold text-white">{cnt}</div>
-                      <div className="text-xs" style={{ color: TB.text2 }}>{type}</div>
-                    </div>
-                  );
-                })}
-              </div>
-              {/* 최근 프로젝트 1개 */}
-              {projectList?.length > 0 && (
-                <button
-                  onClick={() => { onProjectSelect(projectList[projectList.length - 1]); setViceComponent('bim'); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition group"
-                  style={{ backgroundColor: "#152030", border: "1px solid #253347" }}
-                >
-                  <span>{projectList[projectList.length - 1].structureType === "Bridge" ? "🌉" : "🏢"}</span>
-                  <span className="text-gray-300 group-hover:text-white transition truncate flex-1 text-xs">
-                    {projectList[projectList.length - 1].projectName}
-                  </span>
-                  <span className="text-xs opacity-0 group-hover:opacity-100 transition"
-                        style={{ color: TB.accent }}>열기 →</span>
-                </button>
-              )}
-              <button
-                onClick={() => setViceComponent('bim-projects')}
-                className="w-full py-2 rounded-lg text-xs font-semibold transition text-white"
-                style={{ backgroundColor: "#1e1040", border: "1px solid #7c3aed" }}
-              >
-                🏗 BIM 프로젝트 관리
-              </button>
-            </div>
-          </Widget>
-
-          {/* 빠른 제어 패널 */}
-          <Widget title="디바이스 제어" accent="#059669">
-            <div className="space-y-2">
-              <button
-                className="w-full px-3 py-2 rounded-lg text-xs font-medium transition text-white"
-                style={{ backgroundColor: "#1a3a2a", border: "1px solid #059669" }}
-                onClick={() => alert("Ping sent!")}
-              >
-                📡 Ping 전송
-              </button>
-              <button
-                className="w-full px-3 py-2 rounded-lg text-xs font-medium transition text-white"
-                style={{ backgroundColor: "#1a2a3a", border: "1px solid #2a5080" }}
-                onClick={() => alert("Snapshot requested!")}
-              >
-                📷 스냅샷 요청
-              </button>
-            </div>
-          </Widget>
-        </div>
       </div>
 
       {/* ================================================================
@@ -412,7 +358,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
       >
         {/* 테이블 헤더 */}
         <div className="grid grid-cols-5 gap-2 text-xs font-semibold pb-2 mb-1"
-             style={{ color: TB.text2, borderBottom: "1px solid #253347" }}>
+          style={{ color: TB.text2, borderBottom: "1px solid #253347" }}>
           <span>#</span>
           <span>수신 시각</span>
           <span>위치</span>
@@ -442,11 +388,11 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
                 </span>
                 <span className="truncate">{d.location ?? "—"}</span>
                 <span className="text-center font-semibold"
-                      style={{ color: tempHigh ? TB.danger : TB.warning }}>
+                  style={{ color: tempHigh ? TB.danger : TB.warning }}>
                   {tempHigh && "⚠ "}{tempVal.toFixed(1)}
                 </span>
                 <span className="text-center font-semibold"
-                      style={{ color: humHigh ? TB.danger : TB.accent }}>
+                  style={{ color: humHigh ? TB.danger : TB.accent }}>
                   {humHigh && "⚠ "}{humVal.toFixed(1)}
                 </span>
               </div>

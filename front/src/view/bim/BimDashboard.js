@@ -278,6 +278,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
         // 부재 커스텀 색상
         elementColors, setElementColor, clearElementColor,
+
+        // Undo
+        undo, pushUndo,
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
     const mainViewRef = useRef(null);
@@ -444,6 +447,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             if (e.key === 's' || e.key === 'S') setTransformMode('scale');
             if (e.key === 'q' || e.key === 'Q') toggleSelectMode();
             if ((e.key === 'Delete' || e.key === 'Backspace') && !pendingElement) deleteSelectedElements();
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+                e.preventDefault();
+                undo();
+            }
             if (e.key === 'Escape') {
                 if (pendingElement) { cancelPlacement(); }
                 else if (isSelectMode) { toggleSelectMode(); }
@@ -453,7 +460,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [selectedElement, pendingElement, isSelectMode, deleteSelectedElements,
-        cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements]);
+        cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements, undo]);
 
     return (
         <div className="min-h-screen bg-space-900 p-4">
@@ -501,7 +508,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         )}
                     </button>
                     <span className="text-xs text-gray-600 hidden xl:block">
-                        T: 이동&nbsp;|&nbsp;R: 회전&nbsp;|&nbsp;S: 크기&nbsp;|&nbsp;Q: 선택모드&nbsp;|&nbsp;Del: 삭제&nbsp;|&nbsp;Esc: 취소
+                        T: 이동&nbsp;|&nbsp;R: 회전&nbsp;|&nbsp;S: 크기&nbsp;|&nbsp;Q: 선택모드&nbsp;|&nbsp;Del: 삭제&nbsp;|&nbsp;Ctrl+Z: 실행취소&nbsp;|&nbsp;Esc: 취소
                     </span>
                 </div>
             </div>
@@ -633,6 +640,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             cameraRef={cameraRef}
                                             envPreset={envPreset}
                                             navigationTargetRef={navigationTargetRef}
+                                            pushUndo={pushUndo}
                                         />
                                     </View>
 

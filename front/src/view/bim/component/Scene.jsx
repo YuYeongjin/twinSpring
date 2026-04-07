@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, TransformControls } from '@react-three/drei';
+import { OrbitControls, TransformControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
 import SkyEnvironment from './SkyEnvironment';
@@ -85,6 +85,7 @@ export default function Scene({
     cameraRef,
     envPreset,
     navigationTargetRef,  // { x, z } — 미니맵 클릭 시 이동 목표
+    pushUndo,             // () → void — 드래그 시작 전 undo 스냅샷 저장
 }) {
     const { camera } = useThree();
     const transformRef = useRef();
@@ -189,6 +190,8 @@ export default function Scene({
             setIsDragging(e.value);
 
             if (e.value && controls.object) {
+                // 드래그 시작: undo 스냅샷 저장
+                pushUndo?.();
                 // 드래그 시작: 모든 선택 부재의 현재 위치를 스냅샷
                 startPositionsRef.current = {};
                 modelData.forEach(el => {
@@ -273,6 +276,14 @@ export default function Scene({
             <Suspense fallback={null}>
                 {envPreset && <SkyEnvironment preset={envPreset} />}
             </Suspense>
+
+            {/* XYZ 좌표축 기즈모 (좌측 하단) */}
+            <GizmoHelper alignment="bottom-left" margin={[72, 72]}>
+                <GizmoViewport
+                    axisColors={['#ff4060', '#80ff80', '#2080ff']}
+                    labelColor="white"
+                />
+            </GizmoHelper>
         </>
     );
 }

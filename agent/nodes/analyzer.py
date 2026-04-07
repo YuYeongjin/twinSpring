@@ -21,7 +21,9 @@ _RAG_DB_KEYWORDS = re.compile(
 _BIM_KEYWORDS = re.compile(
     r"기둥|IfcColumn|보(?!\w)|IfcBeam|벽|IfcWall|슬래브|IfcSlab|교각|IfcPier"
     r"|추가|생성|만들|삭제|제거|수정|변경|프로젝트\s*(생성|만들|추가)"
-    r"|bim|ifc",
+    r"|bim|ifc"
+    r"|피사의\s*사탑|피사탑|에펠탑|피라미드|부르즈\s*할리파|랜드마크"
+    r"|타워|tower|pyramid|구조물|건축물",
     re.IGNORECASE,
 )
 

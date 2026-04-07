@@ -1,5 +1,139 @@
 import React, { useState } from 'react';
 
+// ── 랜드마크 구조물 생성 함수 ────────────────────────────────────────
+
+function genTowerOfPisa() {
+    const els = [];
+    const floors = 8, floorH = 5.5, radius = 6.5, lean = 0.35;
+    for (let f = 0; f < floors; f++) {
+        const xOff = f * lean;
+        for (let c = 0; c < 8; c++) {
+            const a = (c / 8) * Math.PI * 2;
+            els.push({
+                elementType: 'IfcColumn', material: 'Concrete C40',
+                sizeX: 1.0, sizeY: floorH, sizeZ: 1.0,
+                positionX: Math.round((xOff + radius * Math.cos(a)) * 100) / 100,
+                positionY: f * floorH,
+                positionZ: Math.round(radius * Math.sin(a) * 100) / 100,
+            });
+        }
+        els.push({
+            elementType: 'IfcSlab', material: 'Concrete C35',
+            sizeX: 15, sizeY: 0.4, sizeZ: 15,
+            positionX: Math.round(xOff * 100) / 100,
+            positionY: (f + 1) * floorH,
+            positionZ: 0,
+        });
+    }
+    // 종탑
+    els.push({
+        elementType: 'IfcSlab', material: 'Concrete C50',
+        sizeX: 7, sizeY: 3.5, sizeZ: 7,
+        positionX: Math.round(floors * lean * 100) / 100,
+        positionY: floors * floorH,
+        positionZ: 0,
+    });
+    return els;
+}
+
+function genEiffelTower() {
+    return [
+        // 1층 기초 교각 (4개, 넓게 벌림)
+        { elementType: 'IfcPier',   material: 'Steel Grade A', sizeX: 3.0, sizeY: 20, sizeZ: 3.0, positionX: -18, positionY:  0,    positionZ: -18 },
+        { elementType: 'IfcPier',   material: 'Steel Grade A', sizeX: 3.0, sizeY: 20, sizeZ: 3.0, positionX:  18, positionY:  0,    positionZ: -18 },
+        { elementType: 'IfcPier',   material: 'Steel Grade A', sizeX: 3.0, sizeY: 20, sizeZ: 3.0, positionX: -18, positionY:  0,    positionZ:  18 },
+        { elementType: 'IfcPier',   material: 'Steel Grade A', sizeX: 3.0, sizeY: 20, sizeZ: 3.0, positionX:  18, positionY:  0,    positionZ:  18 },
+        // 1층 가로 브레이싱
+        { elementType: 'IfcBeam',   material: 'Steel Grade A', sizeX: 39,  sizeY: 0.8, sizeZ: 0.8, positionX:  0, positionY: 10,    positionZ: -18 },
+        { elementType: 'IfcBeam',   material: 'Steel Grade A', sizeX: 39,  sizeY: 0.8, sizeZ: 0.8, positionX:  0, positionY: 10,    positionZ:  18 },
+        { elementType: 'IfcBeam',   material: 'Steel Grade A', sizeX: 0.8, sizeY: 0.8, sizeZ: 39,  positionX: -18, positionY: 10,   positionZ:   0 },
+        { elementType: 'IfcBeam',   material: 'Steel Grade A', sizeX: 0.8, sizeY: 0.8, sizeZ: 39,  positionX:  18, positionY: 10,   positionZ:   0 },
+        // 1층 플랫폼
+        { elementType: 'IfcSlab',   material: 'Steel Grade A', sizeX: 40,  sizeY: 0.5, sizeZ: 40,  positionX:  0, positionY: 20,    positionZ:   0 },
+        // 2층 기둥 (수렴)
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 2.0, sizeY: 18, sizeZ: 2.0, positionX: -11, positionY: 20.5, positionZ: -11 },
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 2.0, sizeY: 18, sizeZ: 2.0, positionX:  11, positionY: 20.5, positionZ: -11 },
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 2.0, sizeY: 18, sizeZ: 2.0, positionX: -11, positionY: 20.5, positionZ:  11 },
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 2.0, sizeY: 18, sizeZ: 2.0, positionX:  11, positionY: 20.5, positionZ:  11 },
+        // 2층 플랫폼
+        { elementType: 'IfcSlab',   material: 'Steel Grade A', sizeX: 26,  sizeY: 0.5, sizeZ: 26,  positionX:  0, positionY: 38.5, positionZ:   0 },
+        // 3층 기둥 (더 수렴)
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 1.5, sizeY: 20, sizeZ: 1.5, positionX:  -5, positionY: 39,   positionZ:  -5 },
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 1.5, sizeY: 20, sizeZ: 1.5, positionX:   5, positionY: 39,   positionZ:  -5 },
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 1.5, sizeY: 20, sizeZ: 1.5, positionX:  -5, positionY: 39,   positionZ:   5 },
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 1.5, sizeY: 20, sizeZ: 1.5, positionX:   5, positionY: 39,   positionZ:   5 },
+        // 3층 플랫폼
+        { elementType: 'IfcSlab',   material: 'Steel Grade A', sizeX: 14,  sizeY: 0.5, sizeZ: 14,  positionX:  0, positionY: 59,   positionZ:   0 },
+        // 정상 첨탑
+        { elementType: 'IfcColumn', material: 'Steel Grade A', sizeX: 1.0, sizeY: 30, sizeZ: 1.0, positionX:   0, positionY: 59.5, positionZ:   0 },
+    ];
+}
+
+function genPyramid() {
+    const levels = [
+        { s: 60, y: 0  }, { s: 50, y: 3  }, { s: 40, y: 6  },
+        { s: 30, y: 9  }, { s: 22, y: 12 }, { s: 15, y: 15 },
+        { s: 10, y: 18 }, { s:  6, y: 21 }, { s:  2, y: 24 },
+    ];
+    return levels.map(({ s, y }) => ({
+        elementType: 'IfcSlab', material: 'Concrete C25',
+        sizeX: s, sizeY: 3, sizeZ: s,
+        positionX: 0, positionY: y, positionZ: 0,
+    }));
+}
+
+function genBurjKhalifa() {
+    // Y 모양 단면 + 계단식 세트백 구조 (단순화)
+    const els = [];
+    const setbacks = [
+        { floors: 10, h: 5,   baseW: 14, arms: 3 },
+        { floors:  8, h: 5,   baseW: 11, arms: 3 },
+        { floors:  7, h: 4.5, baseW:  8, arms: 2 },
+        { floors:  6, h: 4,   baseW:  6, arms: 2 },
+        { floors:  4, h: 4,   baseW:  4, arms: 1 },
+        { floors:  3, h: 4,   baseW:  3, arms: 1 },
+    ];
+    let yBase = 0;
+    const angles = [0, 2.094, 4.189]; // 120도 간격 Y-wing
+    setbacks.forEach(({ floors, h, baseW, arms }) => {
+        const armAngles = angles.slice(0, arms === 3 ? 3 : 2);
+        for (let f = 0; f < floors; f++) {
+            // 중앙 코어
+            els.push({
+                elementType: 'IfcColumn', material: 'Concrete C60',
+                sizeX: baseW * 0.5, sizeY: h, sizeZ: baseW * 0.5,
+                positionX: 0, positionY: yBase + f * h, positionZ: 0,
+            });
+            // 날개 슬래브
+            armAngles.forEach(angle => {
+                const dist = baseW * 0.8;
+                els.push({
+                    elementType: 'IfcSlab', material: 'Concrete C50',
+                    sizeX: baseW * 0.5, sizeY: 0.3, sizeZ: baseW,
+                    positionX: Math.round(Math.cos(angle) * dist * 100) / 100,
+                    positionY: yBase + f * h + h,
+                    positionZ: Math.round(Math.sin(angle) * dist * 100) / 100,
+                    rotationY: angle,
+                });
+            });
+        }
+        yBase += floors * h;
+    });
+    // 첨탑
+    els.push({
+        elementType: 'IfcColumn', material: 'Steel Grade A',
+        sizeX: 1, sizeY: 60, sizeZ: 1,
+        positionX: 0, positionY: yBase, positionZ: 0,
+    });
+    return els;
+}
+
+// 정적 생성 (컴포넌트 외부, 한 번만 실행)
+const _TOWER_OF_PISA = genTowerOfPisa();
+const _EIFFEL_TOWER  = genEiffelTower();
+const _PYRAMID       = genPyramid();
+const _BURJ_KHALIFA  = genBurjKhalifa();
+
 /**
  * BIM 편집 도구 패널
  *
@@ -133,6 +267,35 @@ export default function ControlPanel({
                 { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX:  30, positionY: 0, positionZ: 0 },
                 { elementType: 'IfcSlab', material: 'Prestressed Concrete', sizeX: 64.0, sizeY: 1.2, sizeZ: 12.0, positionX: 0, positionY: 10.0, positionZ: 0 },
             ],
+        },
+        // ── 랜드마크 구조물 ──────────────────────────────────────────
+        {
+            label: '피사의 사탑',
+            icon: '🗼',
+            desc: '8층 팔각 원형 타워 · 기울기 약 3.9° · 73개 부재',
+            color: 'bg-amber-900/40 text-amber-200 hover:bg-amber-800/50',
+            elements: _TOWER_OF_PISA,
+        },
+        {
+            label: '에펠탑',
+            icon: '🗽',
+            desc: '3층 철골 타워 · 첨탑 포함 · 20개 부재',
+            color: 'bg-gray-700/50 text-gray-200 hover:bg-gray-600/60',
+            elements: _EIFFEL_TOWER,
+        },
+        {
+            label: '이집트 피라미드',
+            icon: '🔺',
+            desc: '9단 계단식 피라미드 · 층별 크기 감소 · 9개 부재',
+            color: 'bg-yellow-900/40 text-yellow-200 hover:bg-yellow-800/50',
+            elements: _PYRAMID,
+        },
+        {
+            label: '부르즈 할리파',
+            icon: '🏙',
+            desc: '세트백 Y형 초고층 · 날개 슬래브 + 첨탑',
+            color: 'bg-cyan-900/40 text-cyan-200 hover:bg-cyan-800/50',
+            elements: _BURJ_KHALIFA,
         },
         {
             label: '2층 건물 골조',
