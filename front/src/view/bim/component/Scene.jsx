@@ -263,14 +263,16 @@ export default function Scene({
                 />
             )}
 
-            {/* 그리드: 환경에 따라 색상 조정 */}
-            <gridHelper
-                args={[100, 100,
-                    envPreset?.id === 'night' ? '#1a2040' : '#334155',
-                    envPreset?.id === 'night' ? '#0d1020' : '#1e293b',
-                ]}
-                position={[0, -0.01, 0]}
-            />
+            {/* 그리드: 바다 배경에서는 숨김, 환경에 따라 색상 조정 */}
+            {!envPreset?.useWater && (
+                <gridHelper
+                    args={[100, 100,
+                        envPreset?.id === 'night' ? '#1a2040' : '#334155',
+                        envPreset?.id === 'night' ? '#0d1020' : '#1e293b',
+                    ]}
+                    position={[0, -0.01, 0]}
+                />
+            )}
 
             {/* 하늘 / 별 / HDR 환경 */}
             <Suspense fallback={null}>
