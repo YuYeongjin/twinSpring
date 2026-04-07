@@ -25,6 +25,25 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // Three.js 카메라 ref — Scene 내부에서 주입, 러버밴드 투영에 사용
     const cameraRef = useRef(null);
 
+    // ── Undo 히스토리 ──────────────────────────────────────────────
+    const undoHistoryRef = useRef([]);
+    const MAX_UNDO = 50;
+
+    const pushUndo = useCallback(() => {
+        undoHistoryRef.current = [
+            ...undoHistoryRef.current.slice(-(MAX_UNDO - 1)),
+            JSON.parse(JSON.stringify(modelData)),
+        ];
+    }, [modelData]);
+
+    const undo = useCallback(() => {
+        if (undoHistoryRef.current.length === 0) return;
+        const prev = undoHistoryRef.current.pop();
+        setModelData(prev);
+        setSelectedElement(null);
+        setSelectedElements(new Set());
+    }, [setModelData]);
+
     // ── 레이어 & 색상 상태 ──────────────────────────────────────────
     const [layers, setLayers] = useState([]);
     const [elementColors, setElementColors] = useState({});
@@ -131,6 +150,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // ================================================================
     function saveUpdateElement() {
         if (!selectedElement) return;
+        pushUndo();
         const payload = { ...selectedElement.data };
 
         if (payload.positionData) {
@@ -174,6 +194,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
 
     async function confirmPlacement(position, projectId) {
         if (!projectId || !pendingElement) return;
+        pushUndo();
         try {
             const payload = {
                 ...pendingElement,
@@ -200,6 +221,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // ================================================================
     async function placeSampleStructure(elements, projectId) {
         if (!projectId || !elements?.length) return;
+        pushUndo();
         try {
             const payload = elements.map(el => ({
                 ...el,
@@ -218,6 +240,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // 삭제 (단일 + 다중 통합)
     // ================================================================
     async function deleteSelectedElements() {
+        pushUndo();
         const toDeleteSet = new Set([
             ...selectedElements,
             ...(selectedElement ? [selectedElement.data.elementId] : []),
@@ -388,6 +411,10 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
 
         // 카메라 ref
         cameraRef,
+
+        // Undo
+        undo,
+        pushUndo,
 
         // 레이어
         layers,

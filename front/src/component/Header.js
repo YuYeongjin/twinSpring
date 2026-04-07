@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 const NAV_ITEMS = [
   { id: "",             label: "IoT",  icon: "📡" },
   { id: "bim-projects", label: "BIM",  icon: "🏗" },
-  { id: "ems",          label: "EMS",  icon: "⚡" },
+  // { id: "ems",          label: "EMS",  icon: "⚡" },
 ];
 
 export default function Header({ viewComponent, setViceComponent }) {

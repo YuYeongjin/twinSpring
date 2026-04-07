@@ -5,7 +5,7 @@ import BimDashboard from './view/bim/BimDashboard';
 import BimProjectList from './view/bim/BimProjectList';
 import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
-import EmsDashboard from './view/ems/EmsDashboard';
+// import EmsDashboard from './view/ems/EmsDashboard';
 import ChatView from './view/chat/ChatView';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -105,9 +105,9 @@ function App() {
   // 뷰 렌더링
   // ---------------------------------------------------------------
   const renderView = () => {
-    if (viewComponent === 'ems') {
-      return <EmsDashboard setViceComponent={setViceComponent} />;
-    }
+    // if (viewComponent === 'ems') {
+    //   return <EmsDashboard setViceComponent={setViceComponent} />;
+    // }
     if (viewComponent === 'bim') {
       return (
         <BimDashboard
