@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
-  { id: "",             label: "IoT",  icon: "📡" },
-  { id: "bim-projects", label: "BIM",  icon: "🏗" },
-  // { id: "ems",          label: "EMS",  icon: "⚡" },
+  { id: "",             label: "IoT",   icon: "📡" },
+  { id: "bim-projects", label: "BIM",   icon: "🏗" },
+  { id: "agent",        label: "Agent", icon: "🤖" },
 ];
 
 export default function Header({ viewComponent, setViceComponent }) {
@@ -23,7 +23,7 @@ export default function Header({ viewComponent, setViceComponent }) {
   }, []);
 
   // 활성 탭 판단: 'bim' 뷰는 'bim-projects' 탭으로 인식
-  const activeTab = viewComponent === "bim" ? "bim-projects" : viewComponent;
+  const activeTab = viewComponent === "bim" ? "bim-projects" : viewComponent === "agent" ? "agent" : viewComponent;
 
   return (
     <header className="sticky top-0 z-30 backdrop-blur bg-space-900/80 border-b border-space-700">
