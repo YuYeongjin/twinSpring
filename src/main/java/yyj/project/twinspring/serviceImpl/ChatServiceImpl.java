@@ -13,6 +13,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
+import yyj.project.twinspring.dto.MultimodalRequestDTO;
 import yyj.project.twinspring.service.ChatService;
 
 import java.util.ArrayList;
@@ -103,6 +104,35 @@ public class ChatServiceImpl implements ChatService {
         history.add(new ChatMessageDTO("assistant", agentResponse));
 
         return new ChatResponseDTO(agentResponse, intent, sessionId);
+    }
+
+    @Override
+    public ChatResponseDTO sendMultimodal(MultimodalRequestDTO request) {
+        String sessionId = request.getSessionId() != null ? request.getSessionId() : "default";
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("message", request.getMessage() != null ? request.getMessage() : "이 이미지를 분석해주세요.");
+        body.put("image_base64", request.getImageBase64());
+        body.put("session_id", sessionId);
+
+        String agentResponse;
+        try {
+            String raw = agentClient.post()
+                    .uri("/chat-multimodal")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            JsonNode json = objectMapper.readTree(raw);
+            agentResponse = json.path("response").asText("응답을 받지 못했습니다.");
+        } catch (Exception e) {
+            log.error("Multimodal Agent 호출 실패: {}", e.getMessage());
+            agentResponse = "이미지 분석에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+        }
+
+        return new ChatResponseDTO(agentResponse, "vision", sessionId);
     }
 
     @Override

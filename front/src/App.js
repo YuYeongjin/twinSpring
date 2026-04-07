@@ -7,6 +7,7 @@ import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
 // import EmsDashboard from './view/ems/EmsDashboard';
 import ChatView from './view/chat/ChatView';
+import AgentDashboard from './view/agent/AgentDashboard';
 import { useCallback, useEffect, useState } from 'react';
 
 function App() {
@@ -105,6 +106,14 @@ function App() {
   // 뷰 렌더링
   // ---------------------------------------------------------------
   const renderView = () => {
+    if (viewComponent === 'agent') {
+      return (
+        <AgentDashboard
+          selectedProject={selectedProject}
+          onBimUpdate={refreshModelData}
+        />
+      );
+    }
     // if (viewComponent === 'ems') {
     //   return <EmsDashboard setViceComponent={setViceComponent} />;
     // }
@@ -159,8 +168,10 @@ function App() {
 
       <Footer />
 
-      {/* AI 채팅 어시스턴트 — 모든 뷰에서 표시 */}
-      <ChatView selectedProject={selectedProject} onBimUpdate={refreshModelData} />
+      {/* AI 채팅 어시스턴트 — Agent 전용 화면 제외 모든 뷰에서 표시 */}
+      {viewComponent !== 'agent' && (
+        <ChatView selectedProject={selectedProject} onBimUpdate={refreshModelData} />
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.*;
 import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
+import yyj.project.twinspring.dto.MultimodalRequestDTO;
 import yyj.project.twinspring.service.ChatService;
 
 import java.util.List;
@@ -40,6 +41,16 @@ public class ChatController {
     @PostMapping("/message")
     public ResponseEntity<ChatResponseDTO> sendMessage(@RequestBody ChatRequestDTO request) {
         ChatResponseDTO response = chatService.sendMessage(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 이미지 + 텍스트 멀티모달 분석
+     * Body: { sessionId, message, imageBase64 }
+     */
+    @PostMapping("/multimodal")
+    public ResponseEntity<ChatResponseDTO> sendMultimodal(@RequestBody MultimodalRequestDTO request) {
+        ChatResponseDTO response = chatService.sendMultimodal(request);
         return ResponseEntity.ok(response);
     }
 
