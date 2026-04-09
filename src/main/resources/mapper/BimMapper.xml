@@ -130,4 +130,47 @@
         DELETE FROM bim_line WHERE project_id = #{projectId}
     </delete>
 
+    <!-- ============================================================
+         BIM 통계 / 전체 조회
+         ============================================================ -->
+
+    <!-- 전체 프로젝트 목록 -->
+    <select id="getAllProjects" resultType="map">
+        SELECT project_id    AS projectId,
+               project_name  AS projectName,
+               structure_type AS structureType,
+               span_count    AS spanCount
+        FROM bim_project
+        ORDER BY project_name ASC
+    </select>
+
+    <!-- 프로젝트별 부재 타입 통계 (count by element_type) -->
+    <select id="getElementStatsByProject" parameterType="string" resultType="map">
+        SELECT element_type AS elementType,
+               COUNT(*)     AS elementCount
+        FROM bim_element
+        WHERE project_id = #{projectId}
+        GROUP BY element_type
+        ORDER BY elementCount DESC
+    </select>
+
+    <!-- 프로젝트별 전체 부재 목록 (CSV 내보내기 용) -->
+    <select id="getElementsByProject" parameterType="string" resultType="map">
+        SELECT element_id  AS elementId,
+               element_type AS elementType,
+               material,
+               position_x  AS positionX,
+               position_y  AS positionY,
+               position_z  AS positionZ,
+               size_x      AS sizeX,
+               size_y      AS sizeY,
+               size_z      AS sizeZ,
+               rotation_x  AS rotationX,
+               rotation_y  AS rotationY,
+               rotation_z  AS rotationZ
+        FROM bim_element
+        WHERE project_id = #{projectId}
+        ORDER BY element_type, element_id
+    </select>
+
 </mapper>

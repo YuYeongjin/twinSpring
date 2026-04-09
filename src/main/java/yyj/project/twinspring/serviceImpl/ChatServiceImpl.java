@@ -81,6 +81,7 @@ public class ChatServiceImpl implements ChatService {
         // Python Agent 호출
         String agentResponse;
         String intent = "chat";
+        Map<String, Object> bimData = null;
         try {
             String raw = agentClient.post()
                     .uri("/chat")
@@ -94,6 +95,12 @@ public class ChatServiceImpl implements ChatService {
             agentResponse = json.path("response").asText("응답을 받지 못했습니다.");
             intent = json.path("intent").asText("chat");
 
+            // bimData 파싱 (bim_query 노드에서 반환)
+            JsonNode bimDataNode = json.path("bimData");
+            if (!bimDataNode.isMissingNode() && !bimDataNode.isNull()) {
+                bimData = objectMapper.convertValue(bimDataNode, Map.class);
+            }
+
         } catch (Exception e) {
             log.error("Agent 호출 실패: {}", e.getMessage());
             agentResponse = "AI Agent에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
@@ -103,7 +110,9 @@ public class ChatServiceImpl implements ChatService {
         history.add(new ChatMessageDTO("user", request.getMessage()));
         history.add(new ChatMessageDTO("assistant", agentResponse));
 
-        return new ChatResponseDTO(agentResponse, intent, sessionId);
+        ChatResponseDTO responseDTO = new ChatResponseDTO(agentResponse, intent, sessionId);
+        responseDTO.setBimData(bimData);
+        return responseDTO;
     }
 
     @Override
