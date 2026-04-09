@@ -12,6 +12,7 @@ import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
 import yyj.project.twinspring.service.BimService;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -191,6 +192,33 @@ public class BimController {
     public ResponseEntity<Void> deleteLinesByProject(@RequestParam String projectId) {
         bimService.deleteLinesByProject(projectId);
         return ResponseEntity.noContent().build();
+    }
+
+    // ================================================================
+    // BIM 통계 / 내보내기 (MariaDB 직접 조회)
+    // ================================================================
+
+    /** 로컬 DB에서 전체 프로젝트 목록 조회 (C# 서버 우회) */
+    @GetMapping("/db-projects")
+    public ResponseEntity<List<BimProjectDTO>> getBimProjectsFromDb() {
+        return ResponseEntity.ok(bimService.getBimProjectsFromDb());
+    }
+
+    /** 프로젝트의 부재 타입별 통계 */
+    @GetMapping("/stats/{projectId}")
+    public ResponseEntity<List<Map<String, Object>>> getBimStats(@PathVariable String projectId) {
+        return ResponseEntity.ok(bimService.getBimElementStats(projectId));
+    }
+
+    /** 프로젝트 부재 데이터 CSV 내보내기 */
+    @GetMapping("/export/{projectId}")
+    public ResponseEntity<byte[]> exportBimElements(@PathVariable String projectId) {
+        String csv = bimService.exportBimElementsCsv(projectId);
+        byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header("Content-Type", "text/csv; charset=UTF-8")
+                .header("Content-Disposition", "attachment; filename=\"bim-elements-" + projectId + ".csv\"")
+                .body(bytes);
     }
 
     @PostMapping("/project")

@@ -384,4 +384,47 @@ public class BimServiceImpl implements BimService {
         if (val instanceof Number) return ((Number) val).doubleValue();
         try { return Double.parseDouble(val.toString()); } catch (NumberFormatException e) { return 0.0; }
     }
+
+    // ── BIM 통계 / 내보내기 ────────────────────────────────────────
+
+    @Override
+    public List<BimProjectDTO> getBimProjectsFromDb() {
+        return bimDAO.getAllProjects().stream()
+                .map(row -> {
+                    BimProjectDTO dto = new BimProjectDTO();
+                    dto.setProjectId((String) row.get("projectId"));
+                    dto.setProjectName((String) row.get("projectName"));
+                    dto.setStructureType((String) row.get("structureType"));
+                    dto.setSpanCount((String) row.get("spanCount"));
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Map<String, Object>> getBimElementStats(String projectId) {
+        return bimDAO.getElementStatsByProject(projectId);
+    }
+
+    @Override
+    public String exportBimElementsCsv(String projectId) {
+        List<Map<String, Object>> rows = bimDAO.getElementsByProject(projectId);
+        StringBuilder sb = new StringBuilder();
+        sb.append("elementId,elementType,material,positionX,positionY,positionZ,sizeX,sizeY,sizeZ,rotationX,rotationY,rotationZ\n");
+        for (Map<String, Object> row : rows) {
+            sb.append(row.getOrDefault("elementId", "")).append(",");
+            sb.append(row.getOrDefault("elementType", "")).append(",");
+            sb.append(row.getOrDefault("material", "")).append(",");
+            sb.append(row.getOrDefault("positionX", "")).append(",");
+            sb.append(row.getOrDefault("positionY", "")).append(",");
+            sb.append(row.getOrDefault("positionZ", "")).append(",");
+            sb.append(row.getOrDefault("sizeX", "")).append(",");
+            sb.append(row.getOrDefault("sizeY", "")).append(",");
+            sb.append(row.getOrDefault("sizeZ", "")).append(",");
+            sb.append(row.getOrDefault("rotationX", "")).append(",");
+            sb.append(row.getOrDefault("rotationY", "")).append(",");
+            sb.append(row.getOrDefault("rotationZ", "")).append("\n");
+        }
+        return sb.toString();
+    }
 }

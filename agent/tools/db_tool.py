@@ -63,6 +63,58 @@ def run_custom_query(sql: str, params: tuple = ()) -> list[dict]:
             return cur.fetchall()
 
 
+def query_bim_projects() -> list[dict]:
+    """BIM 프로젝트 목록 조회"""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT project_id AS projectId, project_name AS projectName, "
+                "structure_type AS structureType, span_count AS spanCount "
+                "FROM bim_project ORDER BY project_name ASC"
+            )
+            return cur.fetchall()
+
+
+def query_bim_element_stats(project_id: str) -> list[dict]:
+    """프로젝트 부재 타입별 통계 조회"""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT element_type AS elementType, COUNT(*) AS elementCount "
+                "FROM bim_element WHERE project_id = %s "
+                "GROUP BY element_type ORDER BY elementCount DESC",
+                (project_id,),
+            )
+            return cur.fetchall()
+
+
+def query_bim_elements(project_id: str, limit: int = 200) -> list[dict]:
+    """프로젝트 부재 목록 조회"""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT element_id AS elementId, element_type AS elementType, material, "
+                "position_x AS positionX, position_y AS positionY, position_z AS positionZ, "
+                "size_x AS sizeX, size_y AS sizeY, size_z AS sizeZ "
+                "FROM bim_element WHERE project_id = %s "
+                "ORDER BY element_type, element_id LIMIT %s",
+                (project_id, limit),
+            )
+            return cur.fetchall()
+
+
+def query_bim_total_count(project_id: str) -> int:
+    """프로젝트 전체 부재 수"""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS cnt FROM bim_element WHERE project_id = %s",
+                (project_id,),
+            )
+            row = cur.fetchone()
+            return row["cnt"] if row else 0
+
+
 # 테이블별 조회 함수 매핑
 TABLE_QUERY_MAP = {
     "sensor": query_sensor_data,

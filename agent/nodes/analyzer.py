@@ -18,6 +18,17 @@ _RAG_DB_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# BIM 데이터 조회 (생성/수정 아닌 조회/통계)
+_BIM_QUERY_KEYWORDS = re.compile(
+    r"프로젝트\s*(목록|리스트|현황|조회|보여|알려|확인|몇\s*개)"
+    r"|부재\s*(수|개수|목록|현황|통계|구성|조회|종류|몇\s*개)"
+    r"|몇\s*(개의|개|종류).*부재"
+    r"|bim.*조회|bim.*목록|bim.*현황|bim.*통계|bim.*부재"
+    r"|어떤.*부재|부재.*어떤|부재.*있"
+    r"|내\s*프로젝트|내\s*bim",
+    re.IGNORECASE,
+)
+
 _BIM_KEYWORDS = re.compile(
     r"기둥|IfcColumn|보(?!\w)|IfcBeam|벽|IfcWall|슬래브|IfcSlab|교각|IfcPier"
     r"|추가|생성|만들|삭제|제거|수정|변경|프로젝트\s*(생성|만들|추가)"
@@ -29,9 +40,10 @@ _BIM_KEYWORDS = re.compile(
 )
 
 _SYSTEM_PROMPT = SystemMessage(content=(
-    "사용자 메시지를 다음 중 하나로 분류하세요: rag_db, bim_builder, chat\n"
+    "사용자 메시지를 다음 중 하나로 분류하세요: rag_db, bim_builder, bim_query, chat\n"
     "- rag_db: 센서/에너지/EMS 데이터 조회 또는 건물 상태 확인\n"
     "- bim_builder: BIM 요소(기둥, 보, 벽, 슬래브 등) 생성/수정/삭제\n"
+    "- bim_query: BIM 프로젝트 목록 조회, 부재 수/통계/구성 확인\n"
     "- chat: 일반 대화\n"
     "단 하나의 단어만 응답하세요."
 ))
@@ -45,7 +57,9 @@ def analyze_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
 
-    # 키워드 매칭 (빠른 경로)
+    # 키워드 매칭 (빠른 경로) — bim_query를 bim_builder보다 먼저 체크
+    if _BIM_QUERY_KEYWORDS.search(user_text):
+        return {"intent": "bim_query"}
     if _BIM_KEYWORDS.search(user_text):
         return {"intent": "bim_builder"}
     if _RAG_DB_KEYWORDS.search(user_text):
@@ -58,7 +72,9 @@ def analyze_node(state: AgentState) -> dict:
             HumanMessage(content=user_text),
         ])
         raw = response.content.strip().lower()
-        if "bim" in raw:
+        if "bim_query" in raw or "query" in raw:
+            intent = "bim_query"
+        elif "bim" in raw:
             intent = "bim_builder"
         elif "rag" in raw or "db" in raw or "data" in raw:
             intent = "rag_db"

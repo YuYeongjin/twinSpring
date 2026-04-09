@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   LineChart, Line,
+  BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import AxiosCustom from '../../axios/AxiosCustom';
@@ -14,10 +15,17 @@ const CAPABILITIES = [
   { icon: '🌡', title: '센서 데이터 조회', desc: '온도·습도 실시간 현황 및 이력 분석' },
   { icon: '📊', title: '데이터 시각화',   desc: '조회 결과를 라인 차트·지표 카드로 즉시 표시' },
   { icon: '🏗', title: 'BIM 요소 생성',   desc: '기둥·보·벽·슬래브 등 자연어로 생성/수정/삭제' },
+  { icon: '📋', title: 'BIM 프로젝트 조회', desc: '프로젝트 목록·부재 수·타입 통계 대화형 조회' },
   { icon: '🖼', title: '이미지 분석',     desc: '사진 업로드 후 AI 비전 모델로 내용 분석' },
   { icon: '🎤', title: '음성 대화',       desc: '마이크로 질문하고 TTS로 답변 청취' },
-  { icon: '📄', title: '문서 내보내기',   desc: '대화 내용 및 센서 데이터를 CSV·TXT로 다운로드' },
+  { icon: '📄', title: '문서 내보내기',   desc: '대화 내용·센서·BIM 데이터를 CSV·TXT로 다운로드' },
 ];
+
+// 부재 타입 한국어
+const ELEMENT_TYPE_KOR = {
+  IfcColumn: '기둥', IfcBeam: '보', IfcWall: '벽', IfcSlab: '슬래브', IfcPier: '교각',
+};
+const ELEMENT_COLORS = ['#2196f3', '#4caf50', '#ff9800', '#e91e63', '#9c27b0', '#00bcd4'];
 
 // 조회 옵션
 const METRIC_OPTIONS = [
@@ -65,8 +73,15 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
   const [selectedMetric, setSelectedMetric] = useState('both');
   const [selectedCount, setSelectedCount] = useState(20);
 
+  // ── BIM 데이터 상태 ──
+  const [bimProjects, setBimProjects]   = useState([]);
+  const [bimStats, setBimStats]         = useState([]);     // [{elementType, elementCount}, ...]
+  const [bimTotal, setBimTotal]         = useState(0);
+  const [bimTargetProject, setBimTargetProject] = useState(null); // {projectId, projectName}
+  const [bimLoading, setBimLoading]     = useState(false);
+
   // ── 우측 패널 탭 ──
-  const [activeTab, setActiveTab] = useState('data'); // 'data' | 'caps' | 'export'
+  const [activeTab, setActiveTab] = useState('data'); // 'data' | 'bim' | 'caps' | 'export'
 
   // ── STT 초기화 ──
   useEffect(() => {
@@ -123,10 +138,30 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
     }
   }, [selectedCount]);
 
-  // 마운트 시 최신 데이터 로드
+  // 마운트 시 최신 데이터 + BIM 프로젝트 목록 로드
   useEffect(() => {
     fetchSensorData(20);
+    AxiosCustom.get('/api/bim/db-projects')
+      .then(res => setBimProjects(Array.isArray(res.data) ? res.data : []))
+      .catch(() => {});
   }, [fetchSensorData]);
+
+  // BIM 통계 조회
+  const fetchBimStats = useCallback(async (projectId) => {
+    if (!projectId) return;
+    setBimLoading(true);
+    try {
+      const res = await AxiosCustom.get(`/api/bim/stats/${projectId}`);
+      const stats = Array.isArray(res.data) ? res.data : [];
+      setBimStats(stats);
+      setBimTotal(stats.reduce((sum, s) => sum + (Number(s.elementCount) || 0), 0));
+    } catch {
+      setBimStats([]);
+      setBimTotal(0);
+    } finally {
+      setBimLoading(false);
+    }
+  }, []);
 
   // ── TTS ──
   const speak = useCallback((text) => {
@@ -197,7 +232,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
         data = res.data;
       }
 
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response, intent: data.intent }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.response, intent: data.intent, bimData: data.bimData }]);
       speak(data.response);
 
       // 데이터 조회 응답이면 → 데이터 탭으로 전환 + 센서 새로고침
@@ -207,6 +242,21 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
       }
       if (data.intent === 'bim_builder' && onBimUpdate) {
         onBimUpdate();
+      }
+      // BIM 조회 응답이면 → BIM 탭 전환 + 통계 데이터 업데이트
+      if (data.intent === 'bim_query') {
+        setActiveTab('bim');
+        if (data.bimData) {
+          if (data.bimData.projects) setBimProjects(data.bimData.projects);
+          if (data.bimData.stats)    setBimStats(data.bimData.stats);
+          if (data.bimData.total != null) setBimTotal(data.bimData.total);
+          if (data.bimData.targetProjectId) {
+            const proj = (data.bimData.projects || []).find(
+              p => p.projectId === data.bimData.targetProjectId
+            );
+            setBimTargetProject(proj || { projectId: data.bimData.targetProjectId });
+          }
+        }
       }
     } catch {
       setMessages(prev => [...prev, {
@@ -379,8 +429,9 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
           {/* 탭 */}
           <div className="flex border-b border-[#253347]">
             {[
-              { id: 'data',   label: '📊 데이터' },
-              { id: 'caps',   label: '🧠 능력'   },
+              { id: 'data',   label: '📊 센서' },
+              { id: 'bim',    label: '🏗 BIM'  },
+              { id: 'caps',   label: '🧠 능력'  },
               { id: 'export', label: '📄 내보내기' },
             ].map(tab => (
               <button
@@ -412,13 +463,35 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
                 onQuery={() => fetchSensorData(selectedCount)}
               />
             )}
+            {activeTab === 'bim' && (
+              <BimPanel
+                projects={bimProjects}
+                stats={bimStats}
+                total={bimTotal}
+                targetProject={bimTargetProject}
+                loading={bimLoading}
+                onSelectProject={(proj) => {
+                  setBimTargetProject(proj);
+                  fetchBimStats(proj.projectId);
+                }}
+                onOpenProject={(proj) => {
+                  if (onBimUpdate) onBimUpdate();
+                }}
+              />
+            )}
             {activeTab === 'caps' && <CapsPanel />}
             {activeTab === 'export' && (
               <ExportPanel
                 onExportChat={exportChat}
                 onExportSensor={exportSensorCSV}
+                onExportBim={() => {
+                  if (bimTargetProject) {
+                    window.open(`/api/bim/export/${bimTargetProject.projectId}`, '_blank');
+                  }
+                }}
                 messageCount={messages.length}
                 sensorCount={rawLogs.length}
+                bimProjectName={bimTargetProject?.projectName || null}
               />
             )}
           </div>
@@ -607,10 +680,10 @@ function CapsPanel() {
 // ────────────────────────────────────────────────────
 // 내보내기 패널
 // ────────────────────────────────────────────────────
-function ExportPanel({ onExportChat, onExportSensor, messageCount, sensorCount }) {
+function ExportPanel({ onExportChat, onExportSensor, onExportBim, messageCount, sensorCount, bimProjectName }) {
   return (
     <div className="p-4 space-y-4">
-      <p className="text-xs text-gray-500">대화 내용 및 센서 데이터를 파일로 내려받습니다.</p>
+      <p className="text-xs text-gray-500">대화 내용 및 데이터를 파일로 내려받습니다.</p>
 
       <ExportItem
         icon="💬"
@@ -628,6 +701,14 @@ function ExportPanel({ onExportChat, onExportSensor, messageCount, sensorCount }
         onClick={onExportSensor}
         disabled={sensorCount === 0}
       />
+      <ExportItem
+        icon="🏗"
+        title="BIM 부재 CSV"
+        desc={bimProjectName ? `${bimProjectName} 부재 데이터` : 'BIM 탭에서 프로젝트 선택 후 사용'}
+        label="CSV 다운로드"
+        onClick={onExportBim}
+        disabled={!bimProjectName}
+      />
 
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] mt-2">
         <p className="text-xs text-gray-400 font-semibold mb-2">💡 사용 팁</p>
@@ -635,8 +716,8 @@ function ExportPanel({ onExportChat, onExportSensor, messageCount, sensorCount }
           <li>🎤 마이크 버튼으로 음성 질문</li>
           <li>📎 이미지 첨부 후 AI 분석 요청</li>
           <li>🔊 TTS 켜면 AI 답변을 음성으로</li>
-          <li>데이터 탭에서 항목·개수 선택 후 조회</li>
-          <li>AI에게 "온도 알려줘" → 차트 자동 갱신</li>
+          <li>"내 BIM 프로젝트 목록" → BIM 탭 자동 전환</li>
+          <li>BIM 탭에서 프로젝트 클릭 → 부재 통계 차트</li>
         </ul>
       </div>
     </div>
@@ -665,11 +746,140 @@ function ExportItem({ icon, title, desc, label, onClick, disabled }) {
 }
 
 // ────────────────────────────────────────────────────
+// BIM 패널 (프로젝트 바로가기 + 부재 통계 차트)
+// ────────────────────────────────────────────────────
+function BimPanel({ projects, stats, total, targetProject, loading, onSelectProject, onOpenProject }) {
+  const TYPE_COLORS = {
+    IfcColumn: '#2196f3', IfcBeam: '#4caf50', IfcWall: '#ff9800',
+    IfcSlab: '#e91e63', IfcPier: '#9c27b0',
+  };
+
+  // recharts용 데이터
+  const chartData = stats.map(s => ({
+    name: ELEMENT_TYPE_KOR[s.elementType] || s.elementType,
+    수량: Number(s.elementCount) || 0,
+    type: s.elementType,
+  }));
+
+  return (
+    <div className="p-3 space-y-3">
+      {/* ── 프로젝트 바로가기 ── */}
+      <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
+        <p className="text-xs font-semibold text-gray-300 mb-2">
+          🏗 프로젝트 목록 ({projects.length}개)
+        </p>
+        {projects.length === 0 ? (
+          <p className="text-xs text-gray-500 text-center py-3">
+            프로젝트가 없습니다.<br />
+            <span className="opacity-60">"내 BIM 프로젝트 목록"을 물어보세요</span>
+          </p>
+        ) : (
+          <div className="space-y-1.5 max-h-44 overflow-y-auto">
+            {projects.map(p => {
+              const isSelected = targetProject?.projectId === p.projectId;
+              const isBuilding = p.structureType === 'Building';
+              return (
+                <button
+                  key={p.projectId}
+                  onClick={() => onSelectProject(p)}
+                  className="w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all"
+                  style={{
+                    backgroundColor: isSelected ? '#1e3a5f' : '#1c2a3a',
+                    border: `1px solid ${isSelected ? '#2a5080' : '#253347'}`,
+                  }}
+                >
+                  <span className="text-base shrink-0">{isBuilding ? '🏢' : '🌉'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-200 truncate">{p.projectName}</p>
+                    <p className="text-xs text-gray-500">{p.structureType}</p>
+                  </div>
+                  {isSelected && (
+                    <span className="text-xs text-accent-blue shrink-0">선택됨</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── 부재 통계 ── */}
+      {targetProject && (
+        <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-gray-300">
+              📊 {targetProject.projectName} 부재 통계
+            </p>
+            {loading ? (
+              <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
+            ) : (
+              <span className="text-xs text-gray-500">총 {total}개</span>
+            )}
+          </div>
+
+          {/* KPI: 부재 타입별 카드 */}
+          {!loading && stats.length > 0 && (
+            <>
+              <div className="grid grid-cols-3 gap-1.5 mb-3">
+                {stats.map(s => (
+                  <div
+                    key={s.elementType}
+                    className="rounded-lg p-2 text-center"
+                    style={{
+                      backgroundColor: '#0d1b2a',
+                      borderLeft: `3px solid ${TYPE_COLORS[s.elementType] || '#60a5fa'}`,
+                    }}
+                  >
+                    <p className="text-xs text-gray-500">{ELEMENT_TYPE_KOR[s.elementType] || s.elementType}</p>
+                    <p className="text-sm font-bold" style={{ color: TYPE_COLORS[s.elementType] || '#60a5fa' }}>
+                      {s.elementCount}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* 바 차트 */}
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#253347" />
+                  <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#8896a4' }} />
+                  <YAxis tick={{ fontSize: 9, fill: '#8896a4' }} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 11, borderRadius: 8 }}
+                    labelStyle={{ color: '#e2e8f0' }}
+                  />
+                  <Bar dataKey="수량" radius={[4, 4, 0, 0]}>
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={TYPE_COLORS[entry.type] || ELEMENT_COLORS[i % ELEMENT_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </>
+          )}
+
+          {!loading && stats.length === 0 && (
+            <p className="text-xs text-gray-500 text-center py-3">부재 데이터가 없습니다.</p>
+          )}
+        </div>
+      )}
+
+      {!targetProject && (
+        <p className="text-xs text-gray-500 text-center py-4">
+          위에서 프로젝트를 선택하면<br />부재 통계를 확인할 수 있습니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────
 // 메시지 버블
 // ────────────────────────────────────────────────────
 const INTENT_BADGE = {
   rag_db:      { label: '데이터 조회', color: 'text-green-400 bg-green-900/40 border-green-800/50'     },
   bim_builder: { label: 'BIM 작업',   color: 'text-blue-400 bg-blue-900/40 border-blue-800/50'       },
+  bim_query:   { label: 'BIM 조회',   color: 'text-cyan-400 bg-cyan-900/40 border-cyan-800/50'        },
   vision:      { label: '이미지 분석', color: 'text-purple-400 bg-purple-900/40 border-purple-800/50' },
   chat: null,
 };
@@ -677,9 +887,11 @@ const INTENT_BADGE = {
 function AgentMessageBubble({ msg }) {
   const isUser = msg.role === 'user';
   const badge = INTENT_BADGE[msg.intent];
+  const bimData = msg.bimData;
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] flex flex-col gap-1 ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`max-w-[85%] flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
         {!isUser && badge && (
           <span className={`text-xs px-2 py-0.5 rounded-full border ${badge.color}`}>{badge.label}</span>
         )}
@@ -695,7 +907,84 @@ function AgentMessageBubble({ msg }) {
         >
           {msg.content}
         </div>
+
+        {/* BIM 조회 인라인 미니 테이블 */}
+        {!isUser && msg.intent === 'bim_query' && bimData && (
+          <BimInlineSummary bimData={bimData} />
+        )}
       </div>
+    </div>
+  );
+}
+
+function BimInlineSummary({ bimData }) {
+  const { projects, stats, total, targetProjectId } = bimData;
+  const TYPE_COLORS = {
+    IfcColumn: '#2196f3', IfcBeam: '#4caf50', IfcWall: '#ff9800',
+    IfcSlab: '#e91e63', IfcPier: '#9c27b0',
+  };
+
+  return (
+    <div className="w-full space-y-2">
+      {/* 프로젝트 목록 미니 테이블 */}
+      {projects && projects.length > 0 && (
+        <div className="bg-[#162032] rounded-xl border border-[#253347] overflow-hidden">
+          <div className="px-3 py-2 border-b border-[#253347]">
+            <span className="text-xs font-semibold text-gray-300">🏗 BIM 프로젝트 ({projects.length}개)</span>
+          </div>
+          <div className="divide-y divide-[#253347]">
+            {projects.slice(0, 5).map(p => (
+              <div key={p.projectId} className="flex items-center gap-2 px-3 py-1.5">
+                <span className="text-sm">{p.structureType === 'Building' ? '🏢' : '🌉'}</span>
+                <span className="text-xs text-gray-200 flex-1 truncate">{p.projectName}</span>
+                <span className="text-xs text-gray-500">{p.structureType}</span>
+              </div>
+            ))}
+            {projects.length > 5 && (
+              <div className="px-3 py-1.5 text-xs text-gray-500 text-center">
+                ...외 {projects.length - 5}개
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 부재 통계 미니 테이블 */}
+      {stats && stats.length > 0 && (
+        <div className="bg-[#162032] rounded-xl border border-[#253347] overflow-hidden">
+          <div className="px-3 py-2 border-b border-[#253347]">
+            <span className="text-xs font-semibold text-gray-300">
+              📊 부재 통계 — 총 {total || 0}개
+            </span>
+          </div>
+          <div className="divide-y divide-[#253347]">
+            {stats.map(s => {
+              const pct = total > 0 ? Math.round((Number(s.elementCount) / total) * 100) : 0;
+              return (
+                <div key={s.elementType} className="flex items-center gap-2 px-3 py-1.5">
+                  <span className="text-xs text-gray-400 w-12 shrink-0">
+                    {ELEMENT_TYPE_KOR[s.elementType] || s.elementType}
+                  </span>
+                  <div className="flex-1 h-1.5 bg-[#253347] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: TYPE_COLORS[s.elementType] || '#60a5fa',
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold shrink-0"
+                    style={{ color: TYPE_COLORS[s.elementType] || '#60a5fa' }}>
+                    {s.elementCount}
+                  </span>
+                  <span className="text-xs text-gray-600 w-8 text-right shrink-0">{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -734,5 +1023,5 @@ function downloadBlob(blob, filename) {
 }
 
 const QUICK_PROMPTS = [
-  '현재 온도?', '온습도 현황', '기둥 추가', '피라미드 만들어', '이미지 분석해줘',
+  '내 BIM 프로젝트 목록', '부재 수 알려줘', '현재 온도?', '기둥 추가', '피라미드 만들어',
 ];

@@ -59,4 +59,9 @@ public interface BimService {
     BimLineDTO createLine(BimLineDTO line);
     void deleteLine(String lineId);
     void deleteLinesByProject(String projectId);
+
+    // ── BIM 통계 / 내보내기 ────────────────────────────────────────
+    List<BimProjectDTO> getBimProjectsFromDb();
+    List<Map<String, Object>> getBimElementStats(String projectId);
+    String exportBimElementsCsv(String projectId);
 }
