@@ -84,23 +84,34 @@
 
     <!-- ============================================================
          BIM 선 (bim_line)
-         필요 DDL:
+         최초 생성 DDL:
          CREATE TABLE bim_line (
-             line_id    VARCHAR(64)  NOT NULL PRIMARY KEY,
-             project_id VARCHAR(64)  NOT NULL,
-             start_x    DOUBLE       NOT NULL DEFAULT 0,
-             start_y    DOUBLE       NOT NULL DEFAULT 0,
-             start_z    DOUBLE       NOT NULL DEFAULT 0,
-             end_x      DOUBLE       NOT NULL DEFAULT 0,
-             end_y      DOUBLE       NOT NULL DEFAULT 0,
-             end_z      DOUBLE       NOT NULL DEFAULT 0,
-             color      VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
-             line_width DOUBLE       NOT NULL DEFAULT 2,
-             created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             line_id      VARCHAR(64)  NOT NULL PRIMARY KEY,
+             project_id   VARCHAR(64)  NOT NULL,
+             start_x      DOUBLE       NOT NULL DEFAULT 0,
+             start_y      DOUBLE       NOT NULL DEFAULT 0,
+             start_z      DOUBLE       NOT NULL DEFAULT 0,
+             end_x        DOUBLE       NOT NULL DEFAULT 0,
+             end_y        DOUBLE       NOT NULL DEFAULT 0,
+             end_z        DOUBLE       NOT NULL DEFAULT 0,
+             color        VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
+             line_width   DOUBLE       NOT NULL DEFAULT 2,
+             points_json  TEXT         NULL,
+             closed       TINYINT(1)   NOT NULL DEFAULT 0,
+             shape_height DOUBLE       NOT NULL DEFAULT 0,
+             created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
              INDEX idx_bim_line_project (project_id)
          );
+
+         기존 테이블에 컬럼 추가 시 (ALTER):
+         ALTER TABLE bim_line
+           ADD COLUMN points_json  TEXT       NULL,
+           ADD COLUMN closed       TINYINT(1) NOT NULL DEFAULT 0,
+           ADD COLUMN shape_height DOUBLE     NOT NULL DEFAULT 0;
          ============================================================ -->
 
+    <!-- ★ ALTER TABLE 실행 전: 기본 컬럼만 사용 (에러 방지)
+         ALTER TABLE 실행 후: 아래 주석 SQL로 교체하면 다중점/도형이 DB에 영구 저장됨 -->
     <select id="getLinesByProject" parameterType="string" resultType="map">
         SELECT line_id    AS lineId,
                project_id AS projectId,
@@ -112,6 +123,11 @@
                end_z      AS endZ,
                color,
                line_width AS lineWidth
+               <!-- ALTER TABLE 완료 후 아래 3줄 주석 해제:
+               ,points_json  AS pointsJson
+               ,closed
+               ,shape_height AS shapeHeight
+               -->
         FROM bim_line
         WHERE project_id = #{projectId}
         ORDER BY created_at ASC
@@ -120,7 +136,31 @@
     <insert id="insertLine" parameterType="map">
         INSERT INTO bim_line (line_id, project_id, start_x, start_y, start_z, end_x, end_y, end_z, color, line_width)
         VALUES (#{lineId}, #{projectId}, #{startX}, #{startY}, #{startZ}, #{endX}, #{endY}, #{endZ}, #{color}, #{lineWidth})
+        <!-- ALTER TABLE 완료 후 위 2줄을 아래로 교체:
+        INSERT INTO bim_line (line_id, project_id, start_x, start_y, start_z, end_x, end_y, end_z,
+                               color, line_width, points_json, closed, shape_height)
+        VALUES (#{lineId}, #{projectId}, #{startX}, #{startY}, #{startZ}, #{endX}, #{endY}, #{endZ},
+                #{color}, #{lineWidth}, #{pointsJson,jdbcType=VARCHAR}, #{closed}, #{shapeHeight})
+        -->
     </insert>
+
+    <update id="updateLine" parameterType="map">
+        UPDATE bim_line
+        SET start_x    = #{startX},
+            start_y    = #{startY},
+            start_z    = #{startZ},
+            end_x      = #{endX},
+            end_y      = #{endY},
+            end_z      = #{endZ},
+            color      = #{color},
+            line_width = #{lineWidth}
+            <!-- ALTER TABLE 완료 후 아래 3줄 주석 해제:
+            ,points_json  = #{pointsJson,jdbcType=VARCHAR}
+            ,closed       = #{closed}
+            ,shape_height = #{shapeHeight}
+            -->
+        WHERE line_id = #{lineId}
+    </update>
 
     <delete id="deleteLine" parameterType="string">
         DELETE FROM bim_line WHERE line_id = #{lineId}
