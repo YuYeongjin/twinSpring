@@ -112,6 +112,196 @@ const MATERIAL_OPTIONS = {
 };
 
 // ================================================================
+// LinePropertyPanel — 선 선택 시 표시되는 편집 패널
+// ================================================================
+
+function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
+    const [form, setForm] = React.useState(null);
+
+    // 선택된 선이 바뀌면 폼 초기화
+    React.useEffect(() => {
+        if (!line) { setForm(null); return; }
+        // points 파싱
+        let pts;
+        if (line.pointsJson) {
+            try {
+                pts = typeof line.pointsJson === 'string'
+                    ? JSON.parse(line.pointsJson)
+                    : line.pointsJson;
+            } catch (_) { pts = [line.start, line.end]; }
+        } else {
+            pts = [line.start, line.end];
+        }
+        setForm({
+            color:       line.color       ?? '#60a5fa',
+            lineWidth:   line.lineWidth    ?? 2,
+            closed:      !!line.closed,
+            shapeHeight: line.shapeHeight  ?? 0,
+            points:      pts.map(p => [...p]), // 깊은 복사
+        });
+    }, [line?.lineId]); // lineId 바뀔 때만
+
+    if (!line || !form) return null;
+
+    const inputCls = "w-full rounded-md border border-space-600 bg-space-700/80 px-2 py-1.5 text-sm text-white focus:ring-1 focus:ring-cyan-500 outline-none";
+
+    const commit = (next) => {
+        setForm(next);
+        // 3D 뷰어 즉시 반영
+        onUpdate(line.lineId, {
+            color:       next.color,
+            lineWidth:   next.lineWidth,
+            closed:      next.closed,
+            shapeHeight: next.shapeHeight,
+            pointsJson:  JSON.stringify(next.points),
+            start:       next.points[0],
+            end:         next.points[next.points.length - 1],
+        });
+    };
+
+    const updatePt = (idx, axis, val) => {
+        const pts = form.points.map(p => [...p]);
+        const ai  = { x: 0, y: 1, z: 2 }[axis];
+        pts[idx][ai] = parseFloat(val) || 0;
+        commit({ ...form, points: pts });
+    };
+
+    const addPoint = () => {
+        const last = form.points[form.points.length - 1];
+        commit({ ...form, points: [...form.points, [...last]] });
+    };
+
+    const removePoint = (idx) => {
+        if (form.points.length <= 2) return;
+        commit({ ...form, points: form.points.filter((_, i) => i !== idx) });
+    };
+
+    const isShape = form.closed && form.points.length >= 3;
+
+    return (
+        <div className="space-y-3 rounded-xl border border-cyan-800/50 bg-cyan-900/10 p-3 text-sm">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-cyan-300">선 편집</span>
+                <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xs">✕</button>
+            </div>
+
+            {/* 색상 / 두께 */}
+            <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                    <label className="text-xs text-gray-400 whitespace-nowrap">색상</label>
+                    <input
+                        type="color"
+                        value={form.color}
+                        onChange={e => commit({ ...form, color: e.target.value })}
+                        className="w-8 h-7 rounded cursor-pointer border border-space-600 bg-transparent p-0.5"
+                    />
+                </div>
+                <div className="flex items-center gap-1.5 flex-1">
+                    <label className="text-xs text-gray-400 whitespace-nowrap">두께</label>
+                    <input
+                        type="number" min="1" max="20" step="0.5"
+                        value={form.lineWidth}
+                        onChange={e => commit({ ...form, lineWidth: parseFloat(e.target.value) || 2 })}
+                        className={inputCls}
+                    />
+                </div>
+            </div>
+
+            {/* 꼭짓점 목록 */}
+            <div>
+                <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-gray-400">
+                        꼭짓점 ({form.points.length}개)
+                    </label>
+                    <button
+                        onClick={addPoint}
+                        className="text-xs px-2 py-0.5 rounded bg-cyan-700/50 text-cyan-300 hover:bg-cyan-600/60 transition"
+                    >
+                        + 점 추가
+                    </button>
+                </div>
+                <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
+                    {form.points.map((pt, idx) => (
+                        <div key={idx} className="flex items-center gap-1">
+                            <span className="text-xs text-gray-500 w-4 shrink-0">{idx === 0 ? 'P1' : idx === form.points.length - 1 ? `P${idx+1}` : `P${idx+1}`}</span>
+                            {['x','y','z'].map(ax => (
+                                <input
+                                    key={ax}
+                                    type="number" step="0.1"
+                                    value={pt[{x:0,y:1,z:2}[ax]]}
+                                    onChange={e => updatePt(idx, ax, e.target.value)}
+                                    className="flex-1 min-w-0 rounded border border-space-600 bg-space-700/80 px-1 py-1 text-xs text-white focus:ring-1 focus:ring-cyan-500 outline-none"
+                                    title={ax.toUpperCase()}
+                                    placeholder={ax}
+                                />
+                            ))}
+                            <button
+                                onClick={() => removePoint(idx)}
+                                disabled={form.points.length <= 2}
+                                className="text-gray-600 hover:text-red-400 disabled:opacity-30 transition text-xs shrink-0 px-1"
+                                title="점 삭제"
+                            >✕</button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* 도형 옵션 (3개 이상 점) */}
+            {form.points.length >= 3 && (
+                <div className="space-y-2 pt-1 border-t border-space-600/40">
+                    <p className="text-xs text-gray-400 font-medium">도형 옵션</p>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={form.closed}
+                            onChange={e => commit({ ...form, closed: e.target.checked })}
+                            className="accent-cyan-500"
+                        />
+                        <span className="text-xs text-gray-300">닫힌 다각형 (도형 닫기)</span>
+                    </label>
+                    {isShape && (
+                        <div className="flex items-center gap-2">
+                            <label className="text-xs text-gray-400 whitespace-nowrap">높이 (m)</label>
+                            <input
+                                type="number" min="0" step="0.1"
+                                value={form.shapeHeight}
+                                onChange={e => commit({ ...form, shapeHeight: parseFloat(e.target.value) || 0 })}
+                                className={inputCls}
+                                placeholder="0 = 평면"
+                            />
+                        </div>
+                    )}
+                    {isShape && (
+                        <p className="text-xs text-cyan-400/80 italic">
+                            {form.shapeHeight > 0
+                                ? `3D 솔리드 도형 (높이 ${form.shapeHeight}m)`
+                                : '닫힌 다각형 (평면)'}
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* 저장 / 삭제 버튼 */}
+            <div className="flex gap-2 pt-1">
+                <button
+                    onClick={() => onSave({ ...line, ...form, pointsJson: JSON.stringify(form.points) })}
+                    className="flex-1 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition"
+                >
+                    💾 저장
+                </button>
+                <button
+                    onClick={() => onDelete(line.lineId)}
+                    className="px-3 py-1.5 rounded-md bg-red-700/60 text-red-300 hover:bg-red-600/80 transition text-xs font-semibold"
+                >
+                    🗑
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ================================================================
 // PropertyPanel
 // ================================================================
 
@@ -295,6 +485,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // 좌측 패널 탭: 'edit' | 'line'
     const [leftTab, setLeftTab] = useState('edit');
 
+    // ── 스냅 (꼭짓점 자동 흡착) ────────────────────────────────────
+    const [snapEnabled, setSnapEnabled] = useState(true);
+
     // ── 패널 드래그 리사이즈 ───────────────────────────────────────
     const [leftPanelPct, setLeftPanelPct]   = useState(13); // 5~20%
     const [rightPanelPct, setRightPanelPct] = useState(18); // 5~20%
@@ -364,11 +557,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             .then(res => {
                 // DB row → 프론트 형식 변환
                 const loaded = (res.data || []).map(d => ({
-                    lineId: d.lineId,
-                    start:  [d.startX, d.startY, d.startZ],
-                    end:    [d.endX,   d.endY,   d.endZ],
-                    color:  d.color,
-                    lineWidth: d.lineWidth,
+                    lineId:      d.lineId,
+                    start:       [d.startX, d.startY, d.startZ],
+                    end:         [d.endX,   d.endY,   d.endZ],
+                    color:       d.color,
+                    lineWidth:   d.lineWidth,
+                    pointsJson:  d.pointsJson  ?? null,
+                    closed:      !!d.closed,
+                    shapeHeight: d.shapeHeight ?? 0,
                 }));
                 setLines(loaded);
             })
@@ -388,11 +584,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             .then(res => {
                 const d = res.data;
                 setLines(prev => [...prev, {
-                    lineId: d.lineId,
-                    start:  [d.startX, d.startY, d.startZ],
-                    end:    [d.endX,   d.endY,   d.endZ],
-                    color:  d.color,
-                    lineWidth: d.lineWidth,
+                    lineId:      d.lineId,
+                    start:       [d.startX, d.startY, d.startZ],
+                    end:         [d.endX,   d.endY,   d.endZ],
+                    color:       d.color,
+                    lineWidth:   d.lineWidth,
+                    pointsJson:  null,
+                    closed:      false,
+                    shapeHeight: 0,
                 }]);
             })
             .catch(err => console.error('선 저장 실패:', err));
@@ -421,6 +620,39 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const cancelLineDraw = useCallback(() => {
         setLineStart(null);
     }, []);
+
+    /** 선 데이터 즉시 업데이트 (3D 뷰어 실시간 반영) */
+    const updateLineData = useCallback((lineId, updates) => {
+        setLines(prev => prev.map(l => l.lineId === lineId ? { ...l, ...updates } : l));
+    }, []);
+
+    /** 선 데이터 서버에 저장 (PUT) */
+    const saveUpdateLine = useCallback((lineData) => {
+        // points 배열 → pointsJson 직렬화
+        const pointsArr = lineData.pointsJson
+            ? (typeof lineData.pointsJson === 'string'
+                ? JSON.parse(lineData.pointsJson)
+                : lineData.pointsJson)
+            : [lineData.start, lineData.end];
+
+        const body = {
+            lineId:      lineData.lineId,
+            projectId:   selectedProject?.projectId,
+            startX:      pointsArr[0][0],
+            startY:      pointsArr[0][1],
+            startZ:      pointsArr[0][2],
+            endX:        pointsArr[pointsArr.length - 1][0],
+            endY:        pointsArr[pointsArr.length - 1][1],
+            endZ:        pointsArr[pointsArr.length - 1][2],
+            color:       lineData.color,
+            lineWidth:   lineData.lineWidth,
+            pointsJson:  JSON.stringify(pointsArr),
+            closed:      lineData.closed,
+            shapeHeight: lineData.shapeHeight,
+        };
+        AxiosCustom.put(`${API_BASE}/line`, body)
+            .catch(err => console.error('선 수정 실패:', err));
+    }, [selectedProject]);
 
     const handleLineClick = useCallback((point) => {
         const pos = [
@@ -653,6 +885,22 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         {showLeftPanel ? '◀' : '▶'} <span className="hidden sm:inline">편집</span>
                     </button>
 
+                    {/* 스냅 토글 */}
+                    <button
+                        onClick={() => setSnapEnabled(v => !v)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                            snapEnabled
+                                ? 'bg-yellow-700/60 text-yellow-300 border border-yellow-600/60'
+                                : 'bg-space-700/70 text-gray-400 border border-space-600'
+                        }`}
+                        title={snapEnabled ? '스냅 ON — 꼭짓점 자동 흡착 활성 (클릭하여 OFF)' : '스냅 OFF — 클릭하여 켜기'}
+                    >
+                        🧲 <span className="hidden sm:inline">{snapEnabled ? 'SNAP' : 'SNAP'}</span>
+                        <span className={`text-xs ml-0.5 ${snapEnabled ? 'text-yellow-400' : 'text-gray-600'}`}>
+                            {snapEnabled ? 'ON' : 'OFF'}
+                        </span>
+                    </button>
+
                     {/* 레이어 패널 토글 */}
                     <button
                         onClick={() => setShowLayerPanel(v => !v)}
@@ -783,6 +1031,18 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
                     {leftTab === 'line' && (
                         <Card title="선 작도" className="flex-1">
+                            {/* 선 선택 시 편집 패널 */}
+                            {selectedLineId && (
+                                <div className="mb-3">
+                                    <LinePropertyPanel
+                                        line={lines.find(l => l.lineId === selectedLineId)}
+                                        onUpdate={updateLineData}
+                                        onSave={saveUpdateLine}
+                                        onDelete={deleteLine}
+                                        onClose={() => setSelectedLineId(null)}
+                                    />
+                                </div>
+                            )}
                             <LinePanel
                                 lineDrawMode={lineDrawMode}
                                 setLineDrawMode={setLineDrawMode}
@@ -872,6 +1132,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         if (!isSelectMode) {
                                             setSelectedElement(null);
                                             setSelectedElements(new Set());
+                                            // 선 작도 중이 아닐 때 선 선택 해제
+                                            if (lineDrawMode === 'off') setSelectedLineId(null);
                                         }
                                     }}
                                 >
@@ -894,10 +1156,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             pushUndo={pushUndo}
                                             lines={lines}
                                             selectedLineId={selectedLineId}
-                                            onLineSelect={setSelectedLineId}
+                                            onLineSelect={(id) => {
+                                                setSelectedLineId(id);
+                                                if (id) setLeftTab('line');
+                                            }}
                                             lineDrawMode={lineDrawMode}
                                             lineDrawHeight={lineDrawHeight}
+                                            lineStart={lineStart}
+                                            lineColor={lineColor}
+                                            lineWidth={lineWidth}
                                             onLineClick={handleLineClick}
+                                            snapEnabled={snapEnabled}
                                         />
                                     </View>
 
@@ -951,6 +1220,24 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     </div>
                                 )}
 
+                                {/* ── 선택된 선 정보 오버레이 ── */}
+                                {selectedLineId && !selectedElement && (() => {
+                                    const sl = lines.find(l => l.lineId === selectedLineId);
+                                    if (!sl) return null;
+                                    const pts = sl.pointsJson
+                                        ? (typeof sl.pointsJson === 'string' ? JSON.parse(sl.pointsJson) : sl.pointsJson)
+                                        : [sl.start, sl.end];
+                                    return (
+                                        <div className="absolute bottom-3 left-3 bg-space-900/80 border border-cyan-700/60 rounded-lg px-3 py-2 text-xs text-gray-300 z-20">
+                                            <span className="text-cyan-400 font-bold">선</span>
+                                            <span className="ml-2 text-gray-400">{pts.length}개 꼭짓점</span>
+                                            {sl.closed && <span className="ml-2 text-cyan-300">닫힘</span>}
+                                            {sl.shapeHeight > 0 && <span className="ml-2 text-teal-300">높이 {sl.shapeHeight}m</span>}
+                                            <span className="ml-3 text-gray-500">좌측 패널에서 편집</span>
+                                        </div>
+                                    );
+                                })()}
+
                                 {/* ── 배치 모드 커서 힌트 ── */}
                                 {pendingElement && (
                                     <div className="absolute bottom-3 right-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20 mr-44">
@@ -963,8 +1250,16 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     <div className="absolute bottom-3 left-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20">
                                         {!lineStart
                                             ? '⏳ 첫 번째 점을 클릭하세요'
-                                            : `✓ 시작점 선택됨 — 두 번째 점을 클릭하세요`}
+                                            : '✓ 시작점 선택됨 — 두 번째 점을 클릭하세요'}
+                                        {snapEnabled && <span className="ml-2 text-yellow-400">🧲 스냅 ON</span>}
                                         &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> 취소
+                                    </div>
+                                )}
+
+                                {/* ── 배치 모드 스냅 힌트 ── */}
+                                {pendingElement && snapEnabled && (
+                                    <div className="absolute bottom-14 right-3 bg-space-900/70 border border-yellow-700/40 rounded-lg px-2 py-1 text-xs text-yellow-400 z-20 mr-44">
+                                        🧲 스냅 ON
                                     </div>
                                 )}
                             </div>

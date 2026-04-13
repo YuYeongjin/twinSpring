@@ -34,6 +34,8 @@ public interface BimDAO {
 
     void insertLine(Map<String, Object> line);
 
+    void updateLine(Map<String, Object> line);
+
     void deleteLine(@Param("lineId") String lineId);
 
     void deleteLinesByProject(@Param("projectId") String projectId);

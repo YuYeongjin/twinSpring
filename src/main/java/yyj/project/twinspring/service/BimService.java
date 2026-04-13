@@ -57,6 +57,7 @@ public interface BimService {
     // ── 선 (로컬 MariaDB) ──────────────────────────────────────────
     List<BimLineDTO> getLinesByProject(String projectId);
     BimLineDTO createLine(BimLineDTO line);
+    BimLineDTO updateLine(BimLineDTO line);
     void deleteLine(String lineId);
     void deleteLinesByProject(String projectId);
 

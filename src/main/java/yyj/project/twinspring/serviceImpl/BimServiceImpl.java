@@ -354,19 +354,32 @@ public class BimServiceImpl implements BimService {
         if (line.getLineId() == null || line.getLineId().isBlank()) {
             line.setLineId("line-" + UUID.randomUUID().toString().substring(0, 12));
         }
-        Map<String, Object> params = new HashMap<>();
-        params.put("lineId",    line.getLineId());
-        params.put("projectId", line.getProjectId());
-        params.put("startX",    line.getStartX());
-        params.put("startY",    line.getStartY());
-        params.put("startZ",    line.getStartZ());
-        params.put("endX",      line.getEndX());
-        params.put("endY",      line.getEndY());
-        params.put("endZ",      line.getEndZ());
-        params.put("color",     line.getColor() != null ? line.getColor() : "#60a5fa");
-        params.put("lineWidth", line.getLineWidth() > 0 ? line.getLineWidth() : 2.0);
-        bimDAO.insertLine(params);
+        bimDAO.insertLine(buildLineParams(line));
         return line;
+    }
+
+    @Override
+    public BimLineDTO updateLine(BimLineDTO line) {
+        bimDAO.updateLine(buildLineParams(line));
+        return line;
+    }
+
+    private Map<String, Object> buildLineParams(BimLineDTO line) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("lineId",      line.getLineId());
+        params.put("projectId",   line.getProjectId());
+        params.put("startX",      line.getStartX());
+        params.put("startY",      line.getStartY());
+        params.put("startZ",      line.getStartZ());
+        params.put("endX",        line.getEndX());
+        params.put("endY",        line.getEndY());
+        params.put("endZ",        line.getEndZ());
+        params.put("color",       line.getColor() != null ? line.getColor() : "#60a5fa");
+        params.put("lineWidth",   line.getLineWidth() > 0 ? line.getLineWidth() : 2.0);
+        params.put("pointsJson",  line.getPointsJson());
+        params.put("closed",      line.isClosed());
+        params.put("shapeHeight", line.getShapeHeight());
+        return params;
     }
 
     @Override

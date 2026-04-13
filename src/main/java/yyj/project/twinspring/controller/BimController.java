@@ -182,6 +182,11 @@ public class BimController {
         return ResponseEntity.status(HttpStatus.CREATED).body(bimService.createLine(line));
     }
 
+    @PutMapping("/line")
+    public ResponseEntity<BimLineDTO> updateLine(@RequestBody BimLineDTO line) {
+        return ResponseEntity.ok(bimService.updateLine(line));
+    }
+
     @DeleteMapping("/line/{lineId}")
     public ResponseEntity<Void> deleteLine(@PathVariable String lineId) {
         bimService.deleteLine(lineId);
