@@ -3,6 +3,7 @@ Node 2: RAG + Database 조회 노드 (Ollama - gemma3:12b)
 """
 
 import re
+from datetime import datetime
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from state import AgentState
 from llm_config import llm_chat
@@ -33,21 +34,82 @@ def _detect_targets(text: str) -> list[str]:
     return targets or ["sensor", "energy"]
 
 
-def _fetch_db_context(targets: list[str]) -> str:
+def _fmt_time(val) -> str:
+    """timestamp → 'HH:MM' 문자열 변환 (datetime / str 모두 처리)"""
+    if val is None:
+        return ""
+    if isinstance(val, datetime):
+        return val.strftime("%H:%M")
+    try:
+        return datetime.fromisoformat(str(val)).strftime("%H:%M")
+    except Exception:
+        return str(val)[:16]
+
+
+def _fetch_db_context(targets: list[str]) -> tuple[str, dict]:
+    """DB 조회 결과를 (텍스트 컨텍스트, 구조화 딕셔너리) 형태로 반환"""
     parts = []
+    structured: dict = {}
+
     if "sensor" in targets:
-        rows = query_sensor_data(limit=5)
+        rows = query_sensor_data(limit=20)
         parts.append(f"[Sensor]\n{_rows_to_text(rows)}")
+        structured["sensor"] = [
+            {
+                "time": _fmt_time(r.get("timestamp")),
+                "temperature": _safe_float(r.get("temperature") or r.get("temp")),
+                "humidity": _safe_float(r.get("humidity")),
+            }
+            for r in reversed(rows)   # 오래된 것부터 표시
+        ]
+        if rows:
+            latest = rows[0]
+            structured["latest"] = {
+                "temperature": _safe_float(latest.get("temperature") or latest.get("temp")),
+                "humidity": _safe_float(latest.get("humidity")),
+                "timestamp": _fmt_time(latest.get("timestamp")),
+            }
+
     if "energy" in targets:
-        rows = query_energy_data(limit=5)
+        rows = query_energy_data(limit=20)
         parts.append(f"[Energy]\n{_rows_to_text(rows)}")
+        if rows:
+            # 에너지 필드는 테이블 구조에 따라 다를 수 있으므로 첫 번째 행 키 기준
+            sample = rows[0]
+            kw_key   = next((k for k in sample if "kw" in k.lower() and "kwh" not in k.lower()), None)
+            kwh_key  = next((k for k in sample if "kwh" in k.lower()), None)
+            volt_key = next((k for k in sample if "volt" in k.lower() or "voltage" in k.lower()), None)
+            amp_key  = next((k for k in sample if "amp" in k.lower() or "current" in k.lower()), None)
+            structured["energy"] = [
+                {
+                    "time": _fmt_time(r.get("timestamp")),
+                    "kw":      _safe_float(r.get(kw_key))   if kw_key   else None,
+                    "kwh":     _safe_float(r.get(kwh_key))  if kwh_key  else None,
+                    "voltage": _safe_float(r.get(volt_key)) if volt_key else None,
+                    "current": _safe_float(r.get(amp_key))  if amp_key  else None,
+                }
+                for r in reversed(rows)
+            ]
+
     if "alert" in targets:
-        rows = query_ems_alerts(limit=5)
+        rows = query_ems_alerts(limit=10)
         parts.append(f"[Alerts]\n{_rows_to_text(rows)}")
+        structured["alerts"] = [
+            {
+                "time":     _fmt_time(r.get("created_at") or r.get("timestamp")),
+                "message":  str(r.get("message") or r.get("alert_message") or ""),
+                "severity": str(r.get("severity") or r.get("level") or "info"),
+            }
+            for r in rows
+        ]
+
     if "threshold" in targets:
         rows = query_ems_thresholds()
         parts.append(f"[Thresholds]\n{_rows_to_text(rows)}")
-    return "\n\n".join(parts) if parts else "No data found."
+        structured["thresholds"] = [dict(r) for r in rows]
+
+    context_text = "\n\n".join(parts) if parts else "No data found."
+    return context_text, structured
 
 
 def _rows_to_text(rows: list[dict]) -> str:
@@ -60,18 +122,27 @@ def _rows_to_text(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _safe_float(val) -> float | None:
+    if val is None:
+        return None
+    try:
+        return round(float(val), 2)
+    except (TypeError, ValueError):
+        return None
+
+
 def rag_db_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
 
-    # 1. DB 조회
+    # 1. DB 조회 (텍스트 + 구조화 데이터)
     targets = _detect_targets(user_text)
-    db_context = _fetch_db_context(targets)
+    db_context, sensor_data = _fetch_db_context(targets)
 
     # 2. RAG 검색
     rag_context = search_as_text(user_text, k=3)
 
-    # 3. 컨텍스트를 간결하게 조합
+    # 3. 컨텍스트 조합
     combined = f"Data:\n{db_context}\n\nDocs:\n{rag_context}"
 
     try:
@@ -87,4 +158,5 @@ def rag_db_node(state: AgentState) -> dict:
         "messages": [AIMessage(content=content)],
         "query_result": db_context,
         "context": rag_context,
+        "sensor_data": sensor_data,
     }

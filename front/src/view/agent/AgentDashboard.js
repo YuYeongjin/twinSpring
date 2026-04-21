@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   LineChart, Line,
   BarChart, Bar, Cell,
+  AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import AxiosCustom from '../../axios/AxiosCustom';
@@ -13,7 +14,8 @@ const API_CHAT = '/api/chat';
 // ────────────────────────────────────────────────────
 const CAPABILITIES = [
   { icon: '🌡', title: '센서 데이터 조회', desc: '온도·습도 실시간 현황 및 이력 분석' },
-  { icon: '📊', title: '데이터 시각화',   desc: '조회 결과를 라인 차트·지표 카드로 즉시 표시' },
+  { icon: '⚡', title: '에너지 데이터 조회', desc: '전력·전압·전류·kWh 이력 분석' },
+  { icon: '📊', title: '데이터 시각화',   desc: '조회 결과를 라인/에리어/바 차트로 즉시 표시' },
   { icon: '🏗', title: 'BIM 요소 생성',   desc: '기둥·보·벽·슬래브 등 자연어로 생성/수정/삭제' },
   { icon: '📋', title: 'BIM 프로젝트 조회', desc: '프로젝트 목록·부재 수·타입 통계 대화형 조회' },
   { icon: '🖼', title: '이미지 분석',     desc: '사진 업로드 후 AI 비전 모델로 내용 분석' },
@@ -21,17 +23,16 @@ const CAPABILITIES = [
   { icon: '📄', title: '문서 내보내기',   desc: '대화 내용·센서·BIM 데이터를 CSV·TXT로 다운로드' },
 ];
 
-// 부재 타입 한국어
 const ELEMENT_TYPE_KOR = {
   IfcColumn: '기둥', IfcBeam: '보', IfcWall: '벽', IfcSlab: '슬래브', IfcPier: '교각',
 };
 const ELEMENT_COLORS = ['#2196f3', '#4caf50', '#ff9800', '#e91e63', '#9c27b0', '#00bcd4'];
 
-// 조회 옵션
 const METRIC_OPTIONS = [
   { value: 'both',        label: '온도 + 습도' },
   { value: 'temperature', label: '온도만' },
   { value: 'humidity',    label: '습도만' },
+  { value: 'energy',      label: '에너지' },
 ];
 const COUNT_OPTIONS = [10, 20, 50, 100];
 
@@ -64,8 +65,9 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
 
   // ── 센서 데이터 상태 ──
   const [latestSensor, setLatestSensor] = useState(null);
-  const [sensorLogs, setSensorLogs] = useState([]);      // 차트용 (포맷된)
-  const [rawLogs, setRawLogs] = useState([]);             // 내보내기용 (원본)
+  const [sensorLogs, setSensorLogs] = useState([]);
+  const [energyLogs, setEnergyLogs] = useState([]);
+  const [rawLogs, setRawLogs] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
 
@@ -75,13 +77,13 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
 
   // ── BIM 데이터 상태 ──
   const [bimProjects, setBimProjects]   = useState([]);
-  const [bimStats, setBimStats]         = useState([]);     // [{elementType, elementCount}, ...]
+  const [bimStats, setBimStats]         = useState([]);
   const [bimTotal, setBimTotal]         = useState(0);
-  const [bimTargetProject, setBimTargetProject] = useState(null); // {projectId, projectName}
+  const [bimTargetProject, setBimTargetProject] = useState(null);
   const [bimLoading, setBimLoading]     = useState(false);
 
   // ── 우측 패널 탭 ──
-  const [activeTab, setActiveTab] = useState('data'); // 'data' | 'bim' | 'caps' | 'export'
+  const [activeTab, setActiveTab] = useState('data');
 
   // ── STT 초기화 ──
   useEffect(() => {
@@ -100,7 +102,6 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
     recognitionRef.current = rec;
   }, []);
 
-  // ── 스크롤 ──
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -113,32 +114,26 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
         AxiosCustom.get('/api/sensor/latest'),
         AxiosCustom.get('/api/sensor/logs'),
       ]);
-
-      if (latestRes.status === 'fulfilled') {
-        setLatestSensor(latestRes.value.data);
-      }
+      if (latestRes.status === 'fulfilled') setLatestSensor(latestRes.value.data);
       if (logsRes.status === 'fulfilled') {
         const raw = Array.isArray(logsRes.value.data) ? logsRes.value.data : [];
         const sliced = raw.slice(-count);
         setRawLogs(sliced);
-        const formatted = sliced.map((d, i) => ({
+        setSensorLogs(sliced.map((d, i) => ({
           name: d.timestamp
             ? new Date(d.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
             : `${i + 1}`,
           온도: d.temperature ?? d.temp ?? null,
           습도: d.humidity ?? null,
-        }));
-        setSensorLogs(formatted);
+        })));
         setLastFetched(new Date().toLocaleTimeString('ko-KR'));
       }
-    } catch {
-      // fetch 실패 무시
-    } finally {
+    } catch { /* 무시 */ } finally {
       setDataLoading(false);
     }
   }, [selectedCount]);
 
-  // 마운트 시 최신 데이터 + BIM 프로젝트 목록 로드
+  // 마운트 시 초기 데이터 로드
   useEffect(() => {
     fetchSensorData(20);
     AxiosCustom.get('/api/bim/db-projects')
@@ -146,7 +141,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
       .catch(() => {});
   }, [fetchSensorData]);
 
-  // BIM 통계 조회
+  // ── BIM 통계 조회 ──
   const fetchBimStats = useCallback(async (projectId) => {
     if (!projectId) return;
     setBimLoading(true);
@@ -156,8 +151,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
       setBimStats(stats);
       setBimTotal(stats.reduce((sum, s) => sum + (Number(s.elementCount) || 0), 0));
     } catch {
-      setBimStats([]);
-      setBimTotal(0);
+      setBimStats([]); setBimTotal(0);
     } finally {
       setBimLoading(false);
     }
@@ -168,37 +162,53 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
     if (!ttsEnabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = 'ko-KR';
-    utt.rate = 1.0;
+    utt.lang = 'ko-KR'; utt.rate = 1.0;
     window.speechSynthesis.speak(utt);
   }, [ttsEnabled]);
 
   const toggleListening = () => {
-    if (!recognitionRef.current) {
-      alert('이 브라우저는 음성 인식을 지원하지 않습니다.');
-      return;
-    }
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      recognitionRef.current.start();
-      setIsListening(true);
-    }
+    if (!recognitionRef.current) { alert('이 브라우저는 음성 인식을 지원하지 않습니다.'); return; }
+    if (isListening) { recognitionRef.current.stop(); }
+    else { recognitionRef.current.start(); setIsListening(true); }
   };
 
   // ── 이미지 ──
   const handleImageSelect = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      setImagePreview(reader.result);
-      setImageBase64(reader.result);
-    };
+    reader.onload = () => { setImagePreview(reader.result); setImageBase64(reader.result); };
     reader.readAsDataURL(file);
     e.target.value = '';
   };
   const clearImage = () => { setImagePreview(null); setImageBase64(null); };
+
+  // ── sensorData 구조화 응답으로 차트 업데이트 ──
+  const applySensorData = useCallback((sd) => {
+    if (!sd) return;
+    // 센서 로그
+    if (Array.isArray(sd.sensor) && sd.sensor.length > 0) {
+      setSensorLogs(sd.sensor.map(r => ({
+        name: r.time || '',
+        온도: r.temperature ?? null,
+        습도: r.humidity ?? null,
+      })));
+    }
+    // 최신값
+    if (sd.latest) {
+      setLatestSensor(prev => ({ ...(prev || {}), ...sd.latest }));
+    }
+    // 에너지 로그
+    if (Array.isArray(sd.energy) && sd.energy.length > 0) {
+      setEnergyLogs(sd.energy.map(r => ({
+        name: r.time || '',
+        kW:      r.kw      ?? null,
+        kWh:     r.kwh     ?? null,
+        전압: r.voltage  ?? null,
+        전류: r.current  ?? null,
+      })));
+    }
+    setLastFetched(new Date().toLocaleTimeString('ko-KR'));
+  }, []);
 
   // ── 메시지 전송 ──
   const sendMessage = async () => {
@@ -216,34 +226,41 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
       let data;
       if (capturedImage) {
         const res = await AxiosCustom.post(`${API_CHAT}/multimodal`, {
-          sessionId,
-          message: userContent,
-          imageBase64: capturedImage,
+          sessionId, message: userContent, imageBase64: capturedImage,
         });
         data = res.data;
       } else {
         const history = messages.map(m => ({ role: m.role, content: m.content }));
         const res = await AxiosCustom.post(`${API_CHAT}/message`, {
-          sessionId,
-          message: text,
+          sessionId, message: text,
           projectId: selectedProject?.projectId || null,
           history,
         });
         data = res.data;
       }
 
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response, intent: data.intent, bimData: data.bimData }]);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.response,
+        intent: data.intent,
+        bimData: data.bimData,
+        sensorData: data.sensorData,
+      }]);
       speak(data.response);
 
-      // 데이터 조회 응답이면 → 데이터 탭으로 전환 + 센서 새로고침
       if (data.intent === 'rag_db') {
         setActiveTab('data');
-        fetchSensorData(selectedCount);
+        if (data.sensorData) {
+          applySensorData(data.sensorData);
+        } else {
+          fetchSensorData(selectedCount);
+        }
+        // 에너지 데이터가 있으면 에너지 탭으로 자동 전환
+        if (data.sensorData?.energy?.length > 0) {
+          setSelectedMetric('energy');
+        }
       }
-      if (data.intent === 'bim_builder' && onBimUpdate) {
-        onBimUpdate();
-      }
-      // BIM 조회 응답이면 → BIM 탭 전환 + 통계 데이터 업데이트
+      if (data.intent === 'bim_builder' && onBimUpdate) onBimUpdate();
       if (data.intent === 'bim_query') {
         setActiveTab('bim');
         if (data.bimData) {
@@ -260,9 +277,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
       }
     } catch {
       setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: '오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
-        intent: 'chat',
+        role: 'assistant', content: '오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', intent: 'chat',
       }]);
     } finally {
       setLoading(false);
@@ -271,33 +286,19 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
 
   const clearHistory = async () => {
     await AxiosCustom.delete(`${API_CHAT}/history/${sessionId}`).catch(() => {});
-    setMessages([{
-      role: 'assistant',
-      content: '대화 이력을 초기화했습니다. 새로운 대화를 시작해보세요!',
-      intent: 'chat',
-    }]);
+    setMessages([{ role: 'assistant', content: '대화 이력을 초기화했습니다. 새로운 대화를 시작해보세요!', intent: 'chat' }]);
   };
 
-  // ── 내보내기 ──
   const exportChat = () => {
-    const lines = messages.map(m =>
-      `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}`
-    ).join('\n\n');
-    downloadBlob(
-      new Blob([lines], { type: 'text/plain;charset=utf-8' }),
-      `agent-chat-${today()}.txt`,
-    );
+    const lines = messages.map(m => `[${m.role === 'user' ? '사용자' : 'AI'}] ${m.content}`).join('\n\n');
+    downloadBlob(new Blob([lines], { type: 'text/plain;charset=utf-8' }), `agent-chat-${today()}.txt`);
   };
-
   const exportSensorCSV = () => {
     if (!rawLogs.length) return;
     const keys = ['timestamp', 'location', 'temperature', 'humidity'];
     const header = keys.join(',');
     const rows = rawLogs.map(r => keys.map(k => r[k] ?? '').join(','));
-    downloadBlob(
-      new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8' }),
-      `sensor-${today()}.csv`,
-    );
+    downloadBlob(new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8' }), `sensor-${today()}.csv`);
   };
 
   // ─────────────────────────────────────────────────
@@ -305,7 +306,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
   // ─────────────────────────────────────────────────
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
-      {/* ── 상단 정보 바 ── */}
+      {/* 상단 정보 바 */}
       <div className="flex items-center gap-3 mb-3 px-1">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-accent-green animate-pulse" />
@@ -319,7 +320,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
         <span className="text-xs text-gray-500 ml-auto">음성 · 이미지 · 데이터 조회 · BIM 생성</span>
       </div>
 
-      {/* ── 메인 레이아웃 ── */}
+      {/* 메인 레이아웃 */}
       <div className="flex gap-4 flex-1 min-h-0">
 
         {/* ════ 좌측: 채팅 패널 ════ */}
@@ -361,9 +362,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
                 <button
                   onClick={clearImage}
                   className="absolute -top-2 -right-2 w-5 h-5 bg-red-600 rounded-full text-white text-xs flex items-center justify-center hover:bg-red-500 shadow"
-                >
-                  ✕
-                </button>
+                >✕</button>
               </div>
             </div>
           )}
@@ -391,9 +390,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
                 onClick={() => imageInputRef.current?.click()}
                 title="이미지 첨부"
                 className="w-9 h-9 flex items-center justify-center rounded-lg bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 transition-colors text-base shrink-0"
-              >
-                📎
-              </button>
+              >📎</button>
               <button
                 onClick={toggleListening}
                 title={isListening ? '녹음 중지' : '음성 입력'}
@@ -402,9 +399,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
                     ? 'bg-red-600/30 text-red-400 border border-red-600/50 animate-pulse'
                     : 'bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200'
                 }`}
-              >
-                🎤
-              </button>
+              >🎤</button>
               <input
                 type="text"
                 value={input}
@@ -417,9 +412,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
                 onClick={sendMessage}
                 disabled={loading || (!input.trim() && !imageBase64)}
                 className="px-5 py-2.5 rounded-xl bg-accent-blue text-white text-sm font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors shrink-0"
-              >
-                전송
-              </button>
+              >전송</button>
             </div>
           </div>
         </div>
@@ -454,6 +447,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
               <DataPanel
                 latestSensor={latestSensor}
                 sensorLogs={sensorLogs}
+                energyLogs={energyLogs}
                 loading={dataLoading}
                 lastFetched={lastFetched}
                 selectedMetric={selectedMetric}
@@ -470,13 +464,8 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
                 total={bimTotal}
                 targetProject={bimTargetProject}
                 loading={bimLoading}
-                onSelectProject={(proj) => {
-                  setBimTargetProject(proj);
-                  fetchBimStats(proj.projectId);
-                }}
-                onOpenProject={(proj) => {
-                  if (onBimUpdate) onBimUpdate();
-                }}
+                onSelectProject={(proj) => { setBimTargetProject(proj); fetchBimStats(proj.projectId); }}
+                onOpenProject={() => { if (onBimUpdate) onBimUpdate(); }}
               />
             )}
             {activeTab === 'caps' && <CapsPanel />}
@@ -485,9 +474,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
                 onExportChat={exportChat}
                 onExportSensor={exportSensorCSV}
                 onExportBim={() => {
-                  if (bimTargetProject) {
-                    window.open(`/api/bim/export/${bimTargetProject.projectId}`, '_blank');
-                  }
+                  if (bimTargetProject) window.open(`/api/bim/export/${bimTargetProject.projectId}`, '_blank');
                 }}
                 messageCount={messages.length}
                 sensorCount={rawLogs.length}
@@ -502,31 +489,36 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
 }
 
 // ────────────────────────────────────────────────────
-// 데이터 조회 + 차트 패널
+// 데이터 패널 (센서 + 에너지 차트)
 // ────────────────────────────────────────────────────
 function DataPanel({
-  latestSensor, sensorLogs, loading, lastFetched,
+  latestSensor, sensorLogs, energyLogs, loading, lastFetched,
   selectedMetric, setSelectedMetric,
   selectedCount, setSelectedCount,
   onQuery,
 }) {
-  // 차트에 표시할 Line 결정
-  const showTemp = selectedMetric === 'both' || selectedMetric === 'temperature';
-  const showHum  = selectedMetric === 'both' || selectedMetric === 'humidity';
+  const showTemp   = selectedMetric === 'both' || selectedMetric === 'temperature';
+  const showHum    = selectedMetric === 'both' || selectedMetric === 'humidity';
+  const showEnergy = selectedMetric === 'energy';
+
+  // 에너지 데이터에서 실제로 값 있는 필드 탐색
+  const energyFields = energyLogs.length > 0
+    ? ['kW', 'kWh', '전압', '전류'].filter(k => energyLogs.some(r => r[k] != null))
+    : [];
+  const energyColors = { kW: '#ff9800', kWh: '#e91e63', '전압': '#9c27b0', '전류': '#00bcd4' };
 
   return (
     <div className="p-3 space-y-3">
-      {/* ── KPI 카드 ── */}
+      {/* KPI 카드 */}
       <div className="grid grid-cols-2 gap-2">
         <KpiCard label="현재 온도" value={latestSensor?.temperature} unit="°C" color="#2196f3" />
         <KpiCard label="현재 습도" value={latestSensor?.humidity}    unit="%"  color="#4caf50" />
       </div>
 
-      {/* ── 데이터 조회 컨트롤 ── */}
+      {/* 데이터 조회 컨트롤 */}
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] space-y-3">
         <p className="text-xs font-semibold text-gray-300">데이터 조회</p>
 
-        {/* 조회 항목 선택 */}
         <div>
           <p className="text-xs text-gray-500 mb-1.5">조회 항목</p>
           <div className="flex gap-1 flex-wrap">
@@ -546,7 +538,6 @@ function DataPanel({
           </div>
         </div>
 
-        {/* 조회 개수 선택 */}
         <div>
           <p className="text-xs text-gray-500 mb-1.5">데이터 개수</p>
           <div className="flex gap-1">
@@ -566,20 +557,14 @@ function DataPanel({
           </div>
         </div>
 
-        {/* 조회 버튼 */}
         <button
           onClick={onQuery}
           disabled={loading}
           className="w-full py-2 rounded-xl bg-accent-blue text-white text-xs font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors flex items-center justify-center gap-1.5"
         >
           {loading ? (
-            <>
-              <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-              조회 중...
-            </>
-          ) : (
-            <>📊 조회 및 그래프 생성</>
-          )}
+            <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />조회 중...</>
+          ) : <>📊 조회 및 그래프 생성</>}
         </button>
 
         {lastFetched && (
@@ -587,55 +572,93 @@ function DataPanel({
         )}
       </div>
 
-      {/* ── 센서 차트 ── */}
-      {sensorLogs.length > 0 ? (
+      {/* ── 센서 차트 (온도/습도) ── */}
+      {!showEnergy && sensorLogs.length > 0 && (
         <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
           <p className="text-xs font-semibold text-gray-400 mb-3">
-            센서 이력 — 최근 {sensorLogs.length}건
+            🌡 센서 이력 — 최근 {sensorLogs.length}건
           </p>
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={sensorLogs} margin={{ top: 4, right: 8, bottom: 4, left: -20 }}>
+            <AreaChart data={sensorLogs} margin={{ top: 4, right: 8, bottom: 4, left: -20 }}>
+              <defs>
+                <linearGradient id="tempGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#2196f3" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#2196f3" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="humGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#4caf50" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#4caf50" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#253347" />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 9, fill: '#8896a4' }}
-                interval="preserveStartEnd"
-              />
+              <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#8896a4' }} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 9, fill: '#8896a4' }} />
-              <Tooltip
-                contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 11, borderRadius: 8 }}
-                labelStyle={{ color: '#e2e8f0' }}
-              />
+              <Tooltip contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 11, borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
               {showTemp && (
-                <Line
-                  type="monotone"
-                  dataKey="온도"
-                  stroke="#2196f3"
-                  dot={sensorLogs.length <= 20}
-                  strokeWidth={2}
-                  activeDot={{ r: 4 }}
-                />
+                <Area type="monotone" dataKey="온도" stroke="#2196f3" fill="url(#tempGrad)"
+                  dot={sensorLogs.length <= 20} strokeWidth={2} activeDot={{ r: 4 }} />
               )}
               {showHum && (
-                <Line
-                  type="monotone"
-                  dataKey="습도"
-                  stroke="#4caf50"
-                  dot={sensorLogs.length <= 20}
-                  strokeWidth={2}
-                  activeDot={{ r: 4 }}
-                />
+                <Area type="monotone" dataKey="습도" stroke="#4caf50" fill="url(#humGrad)"
+                  dot={sensorLogs.length <= 20} strokeWidth={2} activeDot={{ r: 4 }} />
               )}
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── 에너지 차트 ── */}
+      {showEnergy && energyLogs.length > 0 && (
+        <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
+          <p className="text-xs font-semibold text-gray-400 mb-3">
+            ⚡ 에너지 이력 — 최근 {energyLogs.length}건
+          </p>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={energyLogs} margin={{ top: 4, right: 8, bottom: 4, left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#253347" />
+              <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#8896a4' }} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 9, fill: '#8896a4' }} />
+              <Tooltip contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 11, borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
+              {energyFields.map(field => (
+                <Line key={field} type="monotone" dataKey={field}
+                  stroke={energyColors[field] || '#60a5fa'}
+                  dot={energyLogs.length <= 20} strokeWidth={2} activeDot={{ r: 4 }} />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </div>
-      ) : (
-        !loading && (
-          <p className="text-xs text-gray-500 text-center py-6">
-            위에서 조회 항목을 선택하고 [조회 및 그래프 생성]을 눌러보세요.
-          </p>
-        )
+      )}
+
+      {/* 에너지 KPI 카드 */}
+      {showEnergy && energyLogs.length > 0 && (() => {
+        const latest = energyLogs[energyLogs.length - 1];
+        const cards = [
+          { label: '현재 kW',  val: latest?.kW,   unit: 'kW',  color: '#ff9800' },
+          { label: '누적 kWh', val: latest?.kWh,  unit: 'kWh', color: '#e91e63' },
+          { label: '전압',     val: latest?.전압, unit: 'V',   color: '#9c27b0' },
+          { label: '전류',     val: latest?.전류, unit: 'A',   color: '#00bcd4' },
+        ].filter(c => c.val != null);
+        return cards.length > 0 ? (
+          <div className="grid grid-cols-2 gap-2">
+            {cards.map(c => <KpiCard key={c.label} label={c.label} value={c.val} unit={c.unit} color={c.color} />)}
+          </div>
+        ) : null;
+      })()}
+
+      {/* 비어있을 때 안내 */}
+      {!loading && sensorLogs.length === 0 && !showEnergy && (
+        <p className="text-xs text-gray-500 text-center py-6">
+          위에서 조회 항목을 선택하고 [조회 및 그래프 생성]을 눌러보세요.
+          <br /><span className="opacity-60">또는 대화창에서 "온도 그래프 보여줘" 라고 해보세요.</span>
+        </p>
+      )}
+      {!loading && energyLogs.length === 0 && showEnergy && (
+        <p className="text-xs text-gray-500 text-center py-6">
+          에너지 데이터가 없습니다.<br />
+          <span className="opacity-60">대화창에서 "에너지 데이터 보여줘" 라고 해보세요.</span>
+        </p>
       )}
     </div>
   );
@@ -662,10 +685,7 @@ function CapsPanel() {
     <div className="p-3 space-y-2">
       <p className="text-xs text-gray-500 mb-3">이 에이전트가 할 수 있는 것들:</p>
       {CAPABILITIES.map((cap, i) => (
-        <div
-          key={i}
-          className="flex gap-3 items-start bg-[#162032] rounded-xl px-3 py-3 border border-[#253347] hover:border-accent-blue/40 transition-colors"
-        >
+        <div key={i} className="flex gap-3 items-start bg-[#162032] rounded-xl px-3 py-3 border border-[#253347] hover:border-accent-blue/40 transition-colors">
           <span className="text-xl shrink-0">{cap.icon}</span>
           <div>
             <p className="text-xs font-semibold text-gray-200">{cap.title}</p>
@@ -684,39 +704,17 @@ function ExportPanel({ onExportChat, onExportSensor, onExportBim, messageCount, 
   return (
     <div className="p-4 space-y-4">
       <p className="text-xs text-gray-500">대화 내용 및 데이터를 파일로 내려받습니다.</p>
-
-      <ExportItem
-        icon="💬"
-        title="대화 내보내기"
-        desc={`현재 대화 ${messageCount}건 → TXT`}
-        label="다운로드"
-        onClick={onExportChat}
-        disabled={messageCount === 0}
-      />
-      <ExportItem
-        icon="🌡"
-        title="센서 데이터 CSV"
-        desc={`조회된 센서 로그 ${sensorCount}건`}
-        label="CSV 다운로드"
-        onClick={onExportSensor}
-        disabled={sensorCount === 0}
-      />
-      <ExportItem
-        icon="🏗"
-        title="BIM 부재 CSV"
-        desc={bimProjectName ? `${bimProjectName} 부재 데이터` : 'BIM 탭에서 프로젝트 선택 후 사용'}
-        label="CSV 다운로드"
-        onClick={onExportBim}
-        disabled={!bimProjectName}
-      />
-
+      <ExportItem icon="💬" title="대화 내보내기" desc={`현재 대화 ${messageCount}건 → TXT`} label="다운로드" onClick={onExportChat} disabled={messageCount === 0} />
+      <ExportItem icon="🌡" title="센서 데이터 CSV" desc={`조회된 센서 로그 ${sensorCount}건`} label="CSV 다운로드" onClick={onExportSensor} disabled={sensorCount === 0} />
+      <ExportItem icon="🏗" title="BIM 부재 CSV" desc={bimProjectName ? `${bimProjectName} 부재 데이터` : 'BIM 탭에서 프로젝트 선택 후 사용'} label="CSV 다운로드" onClick={onExportBim} disabled={!bimProjectName} />
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] mt-2">
         <p className="text-xs text-gray-400 font-semibold mb-2">💡 사용 팁</p>
         <ul className="text-xs text-gray-500 space-y-1.5 list-disc list-inside">
           <li>🎤 마이크 버튼으로 음성 질문</li>
           <li>📎 이미지 첨부 후 AI 분석 요청</li>
           <li>🔊 TTS 켜면 AI 답변을 음성으로</li>
-          <li>"내 BIM 프로젝트 목록" → BIM 탭 자동 전환</li>
+          <li>"온도 그래프 보여줘" → 센서 탭 자동 전환</li>
+          <li>"에너지 사용량 보여줘" → 에너지 차트</li>
           <li>BIM 탭에서 프로젝트 클릭 → 부재 통계 차트</li>
         </ul>
       </div>
@@ -734,11 +732,8 @@ function ExportItem({ icon, title, desc, label, onClick, disabled }) {
           <p className="text-xs text-gray-500">{desc}</p>
         </div>
       </div>
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        className="text-xs px-3 py-1.5 rounded-lg bg-accent-blue/20 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
-      >
+      <button onClick={onClick} disabled={disabled}
+        className="text-xs px-3 py-1.5 rounded-lg bg-accent-blue/20 text-accent-blue border border-accent-blue/30 hover:bg-accent-blue/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0">
         {label}
       </button>
     </div>
@@ -746,15 +741,13 @@ function ExportItem({ icon, title, desc, label, onClick, disabled }) {
 }
 
 // ────────────────────────────────────────────────────
-// BIM 패널 (프로젝트 바로가기 + 부재 통계 차트)
+// BIM 패널
 // ────────────────────────────────────────────────────
-function BimPanel({ projects, stats, total, targetProject, loading, onSelectProject, onOpenProject }) {
+function BimPanel({ projects, stats, total, targetProject, loading, onSelectProject }) {
   const TYPE_COLORS = {
     IfcColumn: '#2196f3', IfcBeam: '#4caf50', IfcWall: '#ff9800',
     IfcSlab: '#e91e63', IfcPier: '#9c27b0',
   };
-
-  // recharts용 데이터
   const chartData = stats.map(s => ({
     name: ELEMENT_TYPE_KOR[s.elementType] || s.elementType,
     수량: Number(s.elementCount) || 0,
@@ -763,39 +756,24 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
 
   return (
     <div className="p-3 space-y-3">
-      {/* ── 프로젝트 바로가기 ── */}
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
-        <p className="text-xs font-semibold text-gray-300 mb-2">
-          🏗 프로젝트 목록 ({projects.length}개)
-        </p>
+        <p className="text-xs font-semibold text-gray-300 mb-2">🏗 프로젝트 목록 ({projects.length}개)</p>
         {projects.length === 0 ? (
-          <p className="text-xs text-gray-500 text-center py-3">
-            프로젝트가 없습니다.<br />
-            <span className="opacity-60">"내 BIM 프로젝트 목록"을 물어보세요</span>
-          </p>
+          <p className="text-xs text-gray-500 text-center py-3">프로젝트가 없습니다.<br /><span className="opacity-60">"내 BIM 프로젝트 목록"을 물어보세요</span></p>
         ) : (
           <div className="space-y-1.5 max-h-44 overflow-y-auto">
             {projects.map(p => {
               const isSelected = targetProject?.projectId === p.projectId;
-              const isBuilding = p.structureType === 'Building';
               return (
-                <button
-                  key={p.projectId}
-                  onClick={() => onSelectProject(p)}
+                <button key={p.projectId} onClick={() => onSelectProject(p)}
                   className="w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all"
-                  style={{
-                    backgroundColor: isSelected ? '#1e3a5f' : '#1c2a3a',
-                    border: `1px solid ${isSelected ? '#2a5080' : '#253347'}`,
-                  }}
-                >
-                  <span className="text-base shrink-0">{isBuilding ? '🏢' : '🌉'}</span>
+                  style={{ backgroundColor: isSelected ? '#1e3a5f' : '#1c2a3a', border: `1px solid ${isSelected ? '#2a5080' : '#253347'}` }}>
+                  <span className="text-base shrink-0">{p.structureType === 'Building' ? '🏢' : '🌉'}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-gray-200 truncate">{p.projectName}</p>
                     <p className="text-xs text-gray-500">{p.structureType}</p>
                   </div>
-                  {isSelected && (
-                    <span className="text-xs text-accent-blue shrink-0">선택됨</span>
-                  )}
+                  {isSelected && <span className="text-xs text-accent-blue shrink-0">선택됨</span>}
                 </button>
               );
             })}
@@ -803,51 +781,32 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
         )}
       </div>
 
-      {/* ── 부재 통계 ── */}
       {targetProject && (
         <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-300">
-              📊 {targetProject.projectName} 부재 통계
-            </p>
-            {loading ? (
-              <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
-            ) : (
-              <span className="text-xs text-gray-500">총 {total}개</span>
-            )}
+            <p className="text-xs font-semibold text-gray-300">📊 {targetProject.projectName} 부재 통계</p>
+            {loading
+              ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
+              : <span className="text-xs text-gray-500">총 {total}개</span>}
           </div>
 
-          {/* KPI: 부재 타입별 카드 */}
           {!loading && stats.length > 0 && (
             <>
               <div className="grid grid-cols-3 gap-1.5 mb-3">
                 {stats.map(s => (
-                  <div
-                    key={s.elementType}
-                    className="rounded-lg p-2 text-center"
-                    style={{
-                      backgroundColor: '#0d1b2a',
-                      borderLeft: `3px solid ${TYPE_COLORS[s.elementType] || '#60a5fa'}`,
-                    }}
-                  >
+                  <div key={s.elementType} className="rounded-lg p-2 text-center"
+                    style={{ backgroundColor: '#0d1b2a', borderLeft: `3px solid ${TYPE_COLORS[s.elementType] || '#60a5fa'}` }}>
                     <p className="text-xs text-gray-500">{ELEMENT_TYPE_KOR[s.elementType] || s.elementType}</p>
-                    <p className="text-sm font-bold" style={{ color: TYPE_COLORS[s.elementType] || '#60a5fa' }}>
-                      {s.elementCount}
-                    </p>
+                    <p className="text-sm font-bold" style={{ color: TYPE_COLORS[s.elementType] || '#60a5fa' }}>{s.elementCount}</p>
                   </div>
                 ))}
               </div>
-
-              {/* 바 차트 */}
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: -20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#253347" />
                   <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#8896a4' }} />
                   <YAxis tick={{ fontSize: 9, fill: '#8896a4' }} allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 11, borderRadius: 8 }}
-                    labelStyle={{ color: '#e2e8f0' }}
-                  />
+                  <Tooltip contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 11, borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} />
                   <Bar dataKey="수량" radius={[4, 4, 0, 0]}>
                     {chartData.map((entry, i) => (
                       <Cell key={i} fill={TYPE_COLORS[entry.type] || ELEMENT_COLORS[i % ELEMENT_COLORS.length]} />
@@ -857,7 +816,6 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
               </ResponsiveContainer>
             </>
           )}
-
           {!loading && stats.length === 0 && (
             <p className="text-xs text-gray-500 text-center py-3">부재 데이터가 없습니다.</p>
           )}
@@ -887,38 +845,159 @@ const INTENT_BADGE = {
 function AgentMessageBubble({ msg }) {
   const isUser = msg.role === 'user';
   const badge = INTENT_BADGE[msg.intent];
-  const bimData = msg.bimData;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[85%] flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`max-w-[90%] flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
         {!isUser && badge && (
           <span className={`text-xs px-2 py-0.5 rounded-full border ${badge.color}`}>{badge.label}</span>
         )}
         {msg.image && (
           <img src={msg.image} alt="첨부" className="rounded-2xl max-h-48 object-cover border border-[#253347] shadow" />
         )}
-        <div
-          className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed ${
-            isUser
-              ? 'bg-accent-blue text-white rounded-br-sm'
-              : 'bg-[#253347] text-gray-200 rounded-bl-sm'
-          }`}
-        >
+        <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed ${
+          isUser ? 'bg-accent-blue text-white rounded-br-sm' : 'bg-[#253347] text-gray-200 rounded-bl-sm'
+        }`}>
           {msg.content}
         </div>
 
-        {/* BIM 조회 인라인 미니 테이블 */}
-        {!isUser && msg.intent === 'bim_query' && bimData && (
-          <BimInlineSummary bimData={bimData} />
+        {/* 센서 데이터 인라인 차트 */}
+        {!isUser && msg.intent === 'rag_db' && msg.sensorData && (
+          <SensorInlineChart sensorData={msg.sensorData} />
+        )}
+
+        {/* BIM 조회 인라인 요약 */}
+        {!isUser && msg.intent === 'bim_query' && msg.bimData && (
+          <BimInlineSummary bimData={msg.bimData} />
         )}
       </div>
     </div>
   );
 }
 
+// ────────────────────────────────────────────────────
+// 센서 인라인 차트 (채팅 버블 내)
+// ────────────────────────────────────────────────────
+function SensorInlineChart({ sensorData }) {
+  const { sensor = [], energy = [], latest, alerts = [] } = sensorData;
+
+  const sensorRows = sensor.map(r => ({
+    name: r.time || '',
+    온도: r.temperature ?? null,
+    습도: r.humidity ?? null,
+  }));
+
+  const energyRows = energy.map(r => ({
+    name: r.time || '',
+    kW:   r.kw      ?? null,
+    kWh:  r.kwh     ?? null,
+    전압: r.voltage  ?? null,
+    전류: r.current  ?? null,
+  }));
+  const energyFields = energyRows.length > 0
+    ? ['kW', 'kWh', '전압', '전류'].filter(k => energyRows.some(r => r[k] != null))
+    : [];
+  const energyColors = { kW: '#ff9800', kWh: '#e91e63', '전압': '#9c27b0', '전류': '#00bcd4' };
+
+  return (
+    <div className="w-full space-y-2 mt-1">
+      {/* 최신값 KPI */}
+      {latest && (
+        <div className="grid grid-cols-2 gap-1.5">
+          {latest.temperature != null && (
+            <div className="rounded-lg px-3 py-2 bg-[#162032] border border-[#253347]" style={{ borderLeft: '3px solid #2196f3' }}>
+              <p className="text-xs text-gray-500">온도</p>
+              <p className="text-base font-bold text-blue-400">{Number(latest.temperature).toFixed(1)}<span className="text-xs text-gray-400 ml-1">°C</span></p>
+            </div>
+          )}
+          {latest.humidity != null && (
+            <div className="rounded-lg px-3 py-2 bg-[#162032] border border-[#253347]" style={{ borderLeft: '3px solid #4caf50' }}>
+              <p className="text-xs text-gray-500">습도</p>
+              <p className="text-base font-bold text-green-400">{Number(latest.humidity).toFixed(1)}<span className="text-xs text-gray-400 ml-1">%</span></p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 센서 Area 차트 */}
+      {sensorRows.length > 1 && (
+        <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
+          <p className="text-xs font-semibold text-gray-400 mb-2">🌡 온도·습도 이력 ({sensorRows.length}건)</p>
+          <ResponsiveContainer width="100%" height={160}>
+            <AreaChart data={sensorRows} margin={{ top: 4, right: 8, bottom: 4, left: -24 }}>
+              <defs>
+                <linearGradient id="inlineTempGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#2196f3" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#2196f3" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="inlineHumGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#4caf50" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#4caf50" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#253347" />
+              <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#8896a4' }} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 8, fill: '#8896a4' }} />
+              <Tooltip contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 10, borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} />
+              <Legend wrapperStyle={{ fontSize: 9 }} />
+              {sensorRows.some(r => r.온도 != null) && (
+                <Area type="monotone" dataKey="온도" stroke="#2196f3" fill="url(#inlineTempGrad)"
+                  dot={false} strokeWidth={2} activeDot={{ r: 3 }} />
+              )}
+              {sensorRows.some(r => r.습도 != null) && (
+                <Area type="monotone" dataKey="습도" stroke="#4caf50" fill="url(#inlineHumGrad)"
+                  dot={false} strokeWidth={2} activeDot={{ r: 3 }} />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* 에너지 Line 차트 */}
+      {energyRows.length > 1 && energyFields.length > 0 && (
+        <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
+          <p className="text-xs font-semibold text-gray-400 mb-2">⚡ 에너지 이력 ({energyRows.length}건)</p>
+          <ResponsiveContainer width="100%" height={140}>
+            <LineChart data={energyRows} margin={{ top: 4, right: 8, bottom: 4, left: -24 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#253347" />
+              <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#8896a4' }} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 8, fill: '#8896a4' }} />
+              <Tooltip contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 10, borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} />
+              <Legend wrapperStyle={{ fontSize: 9 }} />
+              {energyFields.map(f => (
+                <Line key={f} type="monotone" dataKey={f} stroke={energyColors[f] || '#60a5fa'}
+                  dot={false} strokeWidth={2} activeDot={{ r: 3 }} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* 알림 목록 */}
+      {alerts.length > 0 && (
+        <div className="bg-[#162032] rounded-xl border border-[#253347] overflow-hidden">
+          <div className="px-3 py-2 border-b border-[#253347]">
+            <span className="text-xs font-semibold text-yellow-400">⚠ 알림 ({alerts.length}건)</span>
+          </div>
+          <div className="divide-y divide-[#253347] max-h-32 overflow-y-auto">
+            {alerts.slice(0, 5).map((a, i) => (
+              <div key={i} className="flex items-start gap-2 px-3 py-1.5">
+                <span className="text-xs text-gray-500 shrink-0 mt-0.5">{a.time}</span>
+                <span className="text-xs text-gray-300 flex-1">{a.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────
+// BIM 인라인 요약
+// ────────────────────────────────────────────────────
 function BimInlineSummary({ bimData }) {
-  const { projects, stats, total, targetProjectId } = bimData;
+  const { projects, stats, total } = bimData;
   const TYPE_COLORS = {
     IfcColumn: '#2196f3', IfcBeam: '#4caf50', IfcWall: '#ff9800',
     IfcSlab: '#e91e63', IfcPier: '#9c27b0',
@@ -926,7 +1005,6 @@ function BimInlineSummary({ bimData }) {
 
   return (
     <div className="w-full space-y-2">
-      {/* 프로젝트 목록 미니 테이블 */}
       {projects && projects.length > 0 && (
         <div className="bg-[#162032] rounded-xl border border-[#253347] overflow-hidden">
           <div className="px-3 py-2 border-b border-[#253347]">
@@ -941,43 +1019,27 @@ function BimInlineSummary({ bimData }) {
               </div>
             ))}
             {projects.length > 5 && (
-              <div className="px-3 py-1.5 text-xs text-gray-500 text-center">
-                ...외 {projects.length - 5}개
-              </div>
+              <div className="px-3 py-1.5 text-xs text-gray-500 text-center">...외 {projects.length - 5}개</div>
             )}
           </div>
         </div>
       )}
 
-      {/* 부재 통계 미니 테이블 */}
       {stats && stats.length > 0 && (
         <div className="bg-[#162032] rounded-xl border border-[#253347] overflow-hidden">
           <div className="px-3 py-2 border-b border-[#253347]">
-            <span className="text-xs font-semibold text-gray-300">
-              📊 부재 통계 — 총 {total || 0}개
-            </span>
+            <span className="text-xs font-semibold text-gray-300">📊 부재 통계 — 총 {total || 0}개</span>
           </div>
           <div className="divide-y divide-[#253347]">
             {stats.map(s => {
               const pct = total > 0 ? Math.round((Number(s.elementCount) / total) * 100) : 0;
               return (
                 <div key={s.elementType} className="flex items-center gap-2 px-3 py-1.5">
-                  <span className="text-xs text-gray-400 w-12 shrink-0">
-                    {ELEMENT_TYPE_KOR[s.elementType] || s.elementType}
-                  </span>
+                  <span className="text-xs text-gray-400 w-12 shrink-0">{ELEMENT_TYPE_KOR[s.elementType] || s.elementType}</span>
                   <div className="flex-1 h-1.5 bg-[#253347] rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundColor: TYPE_COLORS[s.elementType] || '#60a5fa',
-                      }}
-                    />
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: TYPE_COLORS[s.elementType] || '#60a5fa' }} />
                   </div>
-                  <span className="text-xs font-semibold shrink-0"
-                    style={{ color: TYPE_COLORS[s.elementType] || '#60a5fa' }}>
-                    {s.elementCount}
-                  </span>
+                  <span className="text-xs font-semibold shrink-0" style={{ color: TYPE_COLORS[s.elementType] || '#60a5fa' }}>{s.elementCount}</span>
                   <span className="text-xs text-gray-600 w-8 text-right shrink-0">{pct}%</span>
                 </div>
               );
@@ -994,11 +1056,7 @@ function AgentTypingIndicator() {
     <div className="flex justify-start">
       <div className="bg-[#253347] rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center">
         {[0, 1, 2].map(i => (
-          <div
-            key={i}
-            className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"
-            style={{ animationDelay: `${i * 0.15}s` }}
-          />
+          <div key={i} className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
         ))}
         <span className="text-xs text-gray-500 ml-1">AI 처리 중...</span>
       </div>
@@ -1009,19 +1067,15 @@ function AgentTypingIndicator() {
 // ────────────────────────────────────────────────────
 // 유틸
 // ────────────────────────────────────────────────────
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
+function today() { return new Date().toISOString().slice(0, 10); }
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
+  a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
 
 const QUICK_PROMPTS = [
-  '내 BIM 프로젝트 목록', '부재 수 알려줘', '현재 온도?', '기둥 추가', '피라미드 만들어',
+  '온도 그래프 보여줘', '에너지 사용량 조회', '내 BIM 프로젝트 목록', '부재 수 알려줘', '기둥 추가',
 ];
