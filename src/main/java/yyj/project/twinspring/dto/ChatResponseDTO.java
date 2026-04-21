@@ -10,7 +10,8 @@ public class ChatResponseDTO {
     private String response;
     private String intent;      // "rag_db" | "bim_builder" | "bim_query" | "chat"
     private String sessionId;
-    private Map<String, Object> bimData;  // bim_query 구조화 데이터
+    private Map<String, Object> bimData;    // bim_query 구조화 데이터
+    private Map<String, Object> sensorData; // rag_db 구조화 데이터 (센서·에너지)
 
     public ChatResponseDTO() {}
 
@@ -31,4 +32,7 @@ public class ChatResponseDTO {
 
     public Map<String, Object> getBimData() { return bimData; }
     public void setBimData(Map<String, Object> bimData) { this.bimData = bimData; }
+
+    public Map<String, Object> getSensorData() { return sensorData; }
+    public void setSensorData(Map<String, Object> sensorData) { this.sensorData = sensorData; }
 }

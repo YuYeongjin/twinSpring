@@ -44,7 +44,8 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     intent: str | None = None
-    bimData: dict | None = None   # bim_query 노드에서 반환하는 구조화 데이터
+    bimData: dict | None = None       # bim_query 노드에서 반환하는 구조화 데이터
+    sensorData: dict | None = None    # rag_db 노드에서 반환하는 센서/에너지 데이터
 
 class MultimodalRequest(BaseModel):
     message: str = "이 이미지를 분석해주세요."
@@ -103,6 +104,7 @@ def chat(req: ChatRequest):
         response=last_content,
         intent=result.get("intent"),
         bimData=result.get("bim_data"),
+        sensorData=result.get("sensor_data"),
     )
 
 

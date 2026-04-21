@@ -11,3 +11,4 @@ class AgentState(TypedDict):
     bim_project_id: str | None    # 현재 선택된 BIM 프로젝트 ID
     pending_action: dict | None   # 다단계 BIM 대화에서 대기 중인 액션
     bim_data: dict | None         # bim_query 노드 구조화 데이터 (프론트 시각화용)
+    sensor_data: dict | None      # rag_db 노드 구조화 데이터 (프론트 차트용)
