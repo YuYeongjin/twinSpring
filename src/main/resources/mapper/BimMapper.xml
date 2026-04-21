@@ -184,6 +184,23 @@
         ORDER BY project_name ASC
     </select>
 
+    <!-- 프로젝트 이름 수정 -->
+    <update id="updateProjectName" parameterType="map">
+        UPDATE bim_project
+        SET project_name = #{projectName}
+        WHERE project_id = #{projectId}
+    </update>
+
+    <!-- 프로젝트 단건 조회 -->
+    <select id="getProjectById" parameterType="string" resultType="map">
+        SELECT project_id    AS projectId,
+               project_name  AS projectName,
+               structure_type AS structureType,
+               span_count    AS spanCount
+        FROM bim_project
+        WHERE project_id = #{projectId}
+    </select>
+
     <!-- 프로젝트별 부재 타입 통계 (count by element_type) -->
     <select id="getElementStatsByProject" parameterType="string" resultType="map">
         SELECT element_type AS elementType,

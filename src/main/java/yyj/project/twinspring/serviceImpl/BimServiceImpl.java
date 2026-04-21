@@ -398,6 +398,42 @@ public class BimServiceImpl implements BimService {
         try { return Double.parseDouble(val.toString()); } catch (NumberFormatException e) { return 0.0; }
     }
 
+    // ── 프로젝트 이름 수정 ─────────────────────────────────────────
+
+    @Override
+    public Mono<BimProjectDTO> renameProject(String projectId, String newName) {
+        // 1) 로컬 MariaDB 업데이트
+        Map<String, Object> params = new HashMap<>();
+        params.put("projectId",   projectId);
+        params.put("projectName", newName);
+        try {
+            bimDAO.updateProjectName(params);
+            log.info("로컬 DB 프로젝트 이름 수정: projectId={}, newName={}", projectId, newName);
+        } catch (Exception e) {
+            log.warn("로컬 DB 이름 수정 실패 (무시): {}", e.getMessage());
+        }
+
+        // 2) C# 서버에도 이름 수정 요청 (best-effort)
+        BimProjectDTO patchBody = new BimProjectDTO();
+        patchBody.setProjectId(projectId);
+        patchBody.setProjectName(newName);
+
+        return webClient.put()
+                .uri("/api/bim/project/{projectId}/name", projectId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(patchBody)
+                .retrieve()
+                .bodyToMono(BimProjectDTO.class)
+                .onErrorResume(e -> {
+                    log.warn("C# 서버 이름 수정 실패 (무시): {}", e.getMessage());
+                    // C# 실패 시 로컬 DB 결과를 반환
+                    BimProjectDTO fallback = new BimProjectDTO();
+                    fallback.setProjectId(projectId);
+                    fallback.setProjectName(newName);
+                    return Mono.just(fallback);
+                });
+    }
+
     // ── BIM 통계 / 내보내기 ────────────────────────────────────────
 
     @Override

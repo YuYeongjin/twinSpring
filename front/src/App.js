@@ -39,6 +39,23 @@ function App() {
   }, []);
 
   // ---------------------------------------------------------------
+  // 프로젝트 이름 변경 (BimProjectList에서 사용)
+  // ---------------------------------------------------------------
+  const renameProject = useCallback((projectId, newName, callback) => {
+    AxiosCustom.put(`/api/bim/project/${projectId}/name`, { projectName: newName })
+      .then(() => {
+        setProjectList(prev =>
+          prev.map(p => p.projectId === projectId ? { ...p, projectName: newName } : p)
+        );
+        if (callback) callback(true);
+      })
+      .catch(error => {
+        console.error('프로젝트 이름 변경 실패:', error);
+        if (callback) callback(false);
+      });
+  }, []);
+
+  // ---------------------------------------------------------------
   // 신규 프로젝트 생성 (BimProjectList에서 사용)
   // ---------------------------------------------------------------
   const addNewProject = useCallback((type, name, callback) => {
@@ -135,6 +152,7 @@ function App() {
           projectList={projectList}
           onProjectSelect={handleProjectSelect}
           onCreateProject={addNewProject}
+          onRenameProject={renameProject}
         />
       );
     }
