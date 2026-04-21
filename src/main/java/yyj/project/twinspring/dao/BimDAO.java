@@ -43,6 +43,10 @@ public interface BimDAO {
     // ── BIM 통계 / 조회 (MariaDB 직접) ─────────────────────────────
     List<Map<String, Object>> getAllProjects();
 
+    Map<String, Object> getProjectById(@Param("projectId") String projectId);
+
+    void updateProjectName(Map<String, Object> params);
+
     List<Map<String, Object>> getElementStatsByProject(@Param("projectId") String projectId);
 
     List<Map<String, Object>> getElementsByProject(@Param("projectId") String projectId);

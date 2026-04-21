@@ -226,6 +226,22 @@ public class BimController {
                 .body(bytes);
     }
 
+    /**
+     * 프로젝트 이름 수정 API
+     * 요청 바디: { "projectName": "새 이름" }
+     */
+    @PutMapping("/project/{projectId}/name")
+    public Mono<ResponseEntity<BimProjectDTO>> renameProject(
+            @PathVariable String projectId,
+            @RequestBody Map<String, String> body) {
+        String newName = body.get("projectName");
+        if (newName == null || newName.isBlank()) {
+            return Mono.just(ResponseEntity.badRequest().<BimProjectDTO>build());
+        }
+        return bimService.renameProject(projectId, newName.trim())
+                .map(updated -> ResponseEntity.ok(updated));
+    }
+
     @PostMapping("/project")
     public Mono<ResponseEntity<BimProjectDTO>> newProject(@RequestBody Map<String,String> project){
         System.out.println("PROJECT CREATE : " + project);

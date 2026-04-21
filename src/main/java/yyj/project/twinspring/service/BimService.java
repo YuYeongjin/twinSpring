@@ -61,6 +61,9 @@ public interface BimService {
     void deleteLine(String lineId);
     void deleteLinesByProject(String projectId);
 
+    // ── 프로젝트 이름 수정 ─────────────────────────────────────────
+    Mono<BimProjectDTO> renameProject(String projectId, String newName);
+
     // ── BIM 통계 / 내보내기 ────────────────────────────────────────
     List<BimProjectDTO> getBimProjectsFromDb();
     List<Map<String, Object>> getBimElementStats(String projectId);
