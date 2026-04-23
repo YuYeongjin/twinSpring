@@ -10,6 +10,7 @@ import BimDashboardAPI from './BimDashboardAPI';
 import { ENV_PRESETS, DEFAULT_ENV_ID } from './component/SkyEnvironment';
 import MiniMapCanvas from './component/MiniMapCanvas';
 import AxiosCustom from '../../axios/AxiosCustom';
+import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
 
 const API_BASE = '/api/bim';
 
@@ -728,6 +729,24 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         [resolvedModelData]
     );
 
+    // ── 내보내기 (resolvedModelData 이후에 선언) ──────────────────
+    const [exporting, setExporting] = useState(false);
+
+    const handleExportExcel = useCallback(() => {
+        if (!modelData?.length) return;
+        exportQuantityToExcel(resolvedModelData, selectedProject?.projectName || 'BIM');
+    }, [resolvedModelData, modelData, selectedProject]);
+
+    const handleExportPDF = useCallback(async () => {
+        if (!modelData?.length) return;
+        setExporting(true);
+        try {
+            await exportToPDF(resolvedModelData, selectedProject?.projectName || 'BIM');
+        } finally {
+            setExporting(false);
+        }
+    }, [resolvedModelData, modelData, selectedProject]);
+
     // ================================================================
     // 러버밴드 선택 박스 (선택 모드에서만 활성)
     // ================================================================
@@ -918,6 +937,31 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             </span>
                         )}
                     </button>
+
+                    {/* ── 내보내기 버튼 그룹 ── */}
+                    <div className="flex items-center gap-1 border-l border-space-600 pl-2 ml-1">
+                        <button
+                            onClick={handleExportExcel}
+                            disabled={!modelData?.length}
+                            title="수량산출서 Excel 다운로드"
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition
+                                       bg-emerald-800/50 text-emerald-300 border border-emerald-700/50
+                                       hover:bg-emerald-700/60 disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                            📊 <span className="hidden sm:inline">수량산출</span>
+                        </button>
+                        <button
+                            onClick={handleExportPDF}
+                            disabled={!modelData?.length || exporting}
+                            title="BIM 도면 PDF 다운로드"
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition
+                                       bg-purple-800/50 text-purple-300 border border-purple-700/50
+                                       hover:bg-purple-700/60 disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                            {exporting ? '⏳' : '📄'} <span className="hidden sm:inline">{exporting ? '생성중...' : 'PDF도면'}</span>
+                        </button>
+                    </div>
+
                     <span className="text-xs text-gray-600 hidden xl:block">
                         T:이동&nbsp;R:회전&nbsp;S:크기&nbsp;Q:선택&nbsp;Del:삭제&nbsp;Ctrl+Z:취소
                     </span>
@@ -1127,6 +1171,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     eventSource={mainViewRef}
                                     className="!absolute inset-0 rounded-xl pointer-events-none z-0"
                                     camera={{ position: [15, 12, 15], fov: 55 }}
+                                    gl={{ preserveDrawingBuffer: true }}
                                     shadows
                                     onPointerMissed={() => {
                                         if (!isSelectMode) {

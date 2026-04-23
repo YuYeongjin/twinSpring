@@ -6,6 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import AxiosCustom from '../../axios/AxiosCustom';
+import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
 
 const API_CHAT = '/api/chat';
 
@@ -301,6 +302,31 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
     downloadBlob(new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8' }), `sensor-${today()}.csv`);
   };
 
+  const [bimExporting, setBimExporting] = useState(false);
+
+  const handleBimExcelExport = async () => {
+    if (!bimTargetProject) return;
+    try {
+      const res = await AxiosCustom.get(`/api/bim/project/${bimTargetProject.projectId}`);
+      exportQuantityToExcel(res.data, bimTargetProject.projectName);
+    } catch (e) {
+      console.error('Excel export failed', e);
+    }
+  };
+
+  const handleBimPdfExport = async () => {
+    if (!bimTargetProject) return;
+    setBimExporting(true);
+    try {
+      const res = await AxiosCustom.get(`/api/bim/project/${bimTargetProject.projectId}`);
+      await exportToPDF(res.data, bimTargetProject.projectName);
+    } catch (e) {
+      console.error('PDF export failed', e);
+    } finally {
+      setBimExporting(false);
+    }
+  };
+
   // ─────────────────────────────────────────────────
   // 렌더
   // ─────────────────────────────────────────────────
@@ -473,12 +499,15 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
               <ExportPanel
                 onExportChat={exportChat}
                 onExportSensor={exportSensorCSV}
-                onExportBim={() => {
+                onExportBimCsv={() => {
                   if (bimTargetProject) window.open(`/api/bim/export/${bimTargetProject.projectId}`, '_blank');
                 }}
+                onExportBimExcel={handleBimExcelExport}
+                onExportBimPdf={handleBimPdfExport}
                 messageCount={messages.length}
                 sensorCount={rawLogs.length}
                 bimProjectName={bimTargetProject?.projectName || null}
+                bimExporting={bimExporting}
               />
             )}
           </div>
@@ -700,22 +729,65 @@ function CapsPanel() {
 // ────────────────────────────────────────────────────
 // 내보내기 패널
 // ────────────────────────────────────────────────────
-function ExportPanel({ onExportChat, onExportSensor, onExportBim, messageCount, sensorCount, bimProjectName }) {
+function ExportPanel({
+  onExportChat, onExportSensor,
+  onExportBimCsv, onExportBimExcel, onExportBimPdf,
+  messageCount, sensorCount, bimProjectName, bimExporting,
+}) {
+  const bimDesc = bimProjectName ? `${bimProjectName}` : 'BIM 탭에서 프로젝트를 선택하세요';
   return (
-    <div className="p-4 space-y-4">
-      <p className="text-xs text-gray-500">대화 내용 및 데이터를 파일로 내려받습니다.</p>
+    <div className="p-4 space-y-3">
+      <p className="text-xs text-gray-500 mb-1">대화 내용 및 데이터를 파일로 내려받습니다.</p>
+
+      {/* 대화 / 센서 */}
       <ExportItem icon="💬" title="대화 내보내기" desc={`현재 대화 ${messageCount}건 → TXT`} label="다운로드" onClick={onExportChat} disabled={messageCount === 0} />
-      <ExportItem icon="🌡" title="센서 데이터 CSV" desc={`조회된 센서 로그 ${sensorCount}건`} label="CSV 다운로드" onClick={onExportSensor} disabled={sensorCount === 0} />
-      <ExportItem icon="🏗" title="BIM 부재 CSV" desc={bimProjectName ? `${bimProjectName} 부재 데이터` : 'BIM 탭에서 프로젝트 선택 후 사용'} label="CSV 다운로드" onClick={onExportBim} disabled={!bimProjectName} />
-      <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] mt-2">
+      <ExportItem icon="🌡" title="센서 데이터 CSV" desc={`조회된 센서 로그 ${sensorCount}건`} label="CSV" onClick={onExportSensor} disabled={sensorCount === 0} />
+
+      {/* BIM 수량산출서 */}
+      <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] space-y-2">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-lg">🏗</span>
+          <div>
+            <p className="text-xs font-semibold text-gray-200">BIM 부재 내보내기</p>
+            <p className="text-xs text-gray-500">{bimDesc}</p>
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={onExportBimCsv}
+            disabled={!bimProjectName}
+            className="flex-1 text-xs px-2 py-1.5 rounded-lg bg-[#253347] text-gray-300 border border-[#334155]
+                       hover:bg-[#2d4060] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            📋 CSV
+          </button>
+          <button
+            onClick={onExportBimExcel}
+            disabled={!bimProjectName}
+            className="flex-1 text-xs px-2 py-1.5 rounded-lg bg-emerald-800/40 text-emerald-300 border border-emerald-700/50
+                       hover:bg-emerald-700/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            📊 수량산출서
+          </button>
+          <button
+            onClick={onExportBimPdf}
+            disabled={!bimProjectName || bimExporting}
+            className="flex-1 text-xs px-2 py-1.5 rounded-lg bg-purple-800/40 text-purple-300 border border-purple-700/50
+                       hover:bg-purple-700/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            {bimExporting ? '⏳ 생성중...' : '📄 PDF 도면'}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] mt-1">
         <p className="text-xs text-gray-400 font-semibold mb-2">💡 사용 팁</p>
         <ul className="text-xs text-gray-500 space-y-1.5 list-disc list-inside">
+          <li>BIM 탭에서 프로젝트 선택 후 수량산출서 / PDF 다운로드</li>
+          <li>수량산출서(Excel): 요약 + 전체 부재 목록 2개 시트</li>
+          <li>PDF 도면: 보고서 + 3D 뷰 스크린샷 (BIM 편집기 사용 시)</li>
           <li>🎤 마이크 버튼으로 음성 질문</li>
           <li>📎 이미지 첨부 후 AI 분석 요청</li>
-          <li>🔊 TTS 켜면 AI 답변을 음성으로</li>
-          <li>"온도 그래프 보여줘" → 센서 탭 자동 전환</li>
-          <li>"에너지 사용량 보여줘" → 에너지 차트</li>
-          <li>BIM 탭에서 프로젝트 클릭 → 부재 통계 차트</li>
         </ul>
       </div>
     </div>
