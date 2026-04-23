@@ -5,7 +5,6 @@ import BimDashboard from './view/bim/BimDashboard';
 import BimProjectList from './view/bim/BimProjectList';
 import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
-// import EmsDashboard from './view/ems/EmsDashboard';
 import ChatView from './view/chat/ChatView';
 import AgentDashboard from './view/agent/AgentDashboard';
 import { useCallback, useEffect, useState } from 'react';
@@ -128,12 +127,10 @@ function App() {
         <AgentDashboard
           selectedProject={selectedProject}
           onBimUpdate={refreshModelData}
+          modelData={modelData}
         />
       );
     }
-    // if (viewComponent === 'ems') {
-    //   return <EmsDashboard setViceComponent={setViceComponent} />;
-    // }
     if (viewComponent === 'bim') {
       return (
         <BimDashboard
