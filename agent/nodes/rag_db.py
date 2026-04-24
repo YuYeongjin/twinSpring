@@ -9,9 +9,6 @@ from state import AgentState
 from llm_config import llm_chat
 from tools.db_tool import (
     query_sensor_data,
-    query_energy_data,
-    query_ems_alerts,
-    query_ems_thresholds,
 )
 from tools.rag_tool import search_as_text
 
@@ -70,44 +67,7 @@ def _fetch_db_context(targets: list[str]) -> tuple[str, dict]:
                 "timestamp": _fmt_time(latest.get("timestamp")),
             }
 
-    if "energy" in targets:
-        rows = query_energy_data(limit=20)
-        parts.append(f"[Energy]\n{_rows_to_text(rows)}")
-        if rows:
-            # 에너지 필드는 테이블 구조에 따라 다를 수 있으므로 첫 번째 행 키 기준
-            sample = rows[0]
-            kw_key   = next((k for k in sample if "kw" in k.lower() and "kwh" not in k.lower()), None)
-            kwh_key  = next((k for k in sample if "kwh" in k.lower()), None)
-            volt_key = next((k for k in sample if "volt" in k.lower() or "voltage" in k.lower()), None)
-            amp_key  = next((k for k in sample if "amp" in k.lower() or "current" in k.lower()), None)
-            structured["energy"] = [
-                {
-                    "time": _fmt_time(r.get("timestamp")),
-                    "kw":      _safe_float(r.get(kw_key))   if kw_key   else None,
-                    "kwh":     _safe_float(r.get(kwh_key))  if kwh_key  else None,
-                    "voltage": _safe_float(r.get(volt_key)) if volt_key else None,
-                    "current": _safe_float(r.get(amp_key))  if amp_key  else None,
-                }
-                for r in reversed(rows)
-            ]
-
-    if "alert" in targets:
-        rows = query_ems_alerts(limit=10)
-        parts.append(f"[Alerts]\n{_rows_to_text(rows)}")
-        structured["alerts"] = [
-            {
-                "time":     _fmt_time(r.get("created_at") or r.get("timestamp")),
-                "message":  str(r.get("message") or r.get("alert_message") or ""),
-                "severity": str(r.get("severity") or r.get("level") or "info"),
-            }
-            for r in rows
-        ]
-
-    if "threshold" in targets:
-        rows = query_ems_thresholds()
-        parts.append(f"[Thresholds]\n{_rows_to_text(rows)}")
-        structured["thresholds"] = [dict(r) for r in rows]
-
+  
     context_text = "\n\n".join(parts) if parts else "No data found."
     return context_text, structured
 

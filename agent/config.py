@@ -5,7 +5,7 @@ load_dotenv()
 
 # LLM (Ollama)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "gemma3:12b")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemma4:26b")
 
 # Database (MariaDB)
 DB_HOST = os.getenv("DB_HOST", "localhost")
