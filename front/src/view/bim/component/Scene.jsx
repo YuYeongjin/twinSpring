@@ -211,6 +211,81 @@ function ElementResizeHandles({
 }
 
 // ================================================================
+// 꼭짓점 스냅 인디케이터 (항상 표시 — 마우스 근처 꼭짓점 강조)
+// ================================================================
+function VertexSnapIndicator({ snapVertices, snapEnabled }) {
+    const { camera, raycaster, mouse } = useThree();
+    const groupRef = useRef();
+
+    useFrame(() => {
+        if (!groupRef.current) return;
+        if (!snapEnabled || !snapVertices.length) {
+            groupRef.current.visible = false;
+            return;
+        }
+
+        raycaster.setFromCamera(mouse, camera);
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const hit   = new THREE.Vector3();
+        if (!raycaster.ray.intersectPlane(plane, hit)) return;
+
+        const nearest = findSnapVertex(hit.x, hit.z, snapVertices);
+        groupRef.current.visible = !!nearest;
+        if (nearest) {
+            groupRef.current.position.set(
+                nearest[0],
+                (nearest[1] ?? 0) + 0.03,
+                nearest[2],
+            );
+        }
+    });
+
+    return (
+        <group ref={groupRef} visible={false}>
+            {/* 외부 링 (XZ 수평) */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[0.28, 0.055, 10, 40]} />
+                <meshBasicMaterial color="#ffd700" depthTest={false} />
+            </mesh>
+            {/* 내부 작은 링 */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[0.12, 0.035, 8, 32]} />
+                <meshBasicMaterial color="#ff8c00" depthTest={false} />
+            </mesh>
+            {/* 중심 점 */}
+            <mesh>
+                <sphereGeometry args={[0.07, 10, 10]} />
+                <meshBasicMaterial color="#ffffff" depthTest={false} />
+            </mesh>
+            {/* 십자선 X */}
+            <line>
+                <bufferGeometry>
+                    <bufferAttribute
+                        attach="attributes-position"
+                        array={new Float32Array([-0.55, 0.01, 0,  0.55, 0.01, 0])}
+                        count={2}
+                        itemSize={3}
+                    />
+                </bufferGeometry>
+                <lineBasicMaterial color="#ffd700" depthTest={false} />
+            </line>
+            {/* 십자선 Z */}
+            <line>
+                <bufferGeometry>
+                    <bufferAttribute
+                        attach="attributes-position"
+                        array={new Float32Array([0, 0.01, -0.55,  0, 0.01, 0.55])}
+                        count={2}
+                        itemSize={3}
+                    />
+                </bufferGeometry>
+                <lineBasicMaterial color="#ffd700" depthTest={false} />
+            </line>
+        </group>
+    );
+}
+
+// ================================================================
 // 배치 고스트 (스마트 스냅 — 센터 + 코너)
 // ================================================================
 function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled }) {
@@ -519,14 +594,15 @@ export default function Scene({
 
             <OrbitControls ref={orbitRef} enabled={orbitEnabled} enableZoom makeDefault />
 
-            <ambientLight intensity={envPreset?.light?.ambientIntensity ?? 0.7} />
+            {/* CAD 흑백 도면을 위해 전반적 조도를 높이고 그림자 광원을 부드럽게 */}
+            <ambientLight intensity={envPreset?.light?.ambientIntensity ?? 1.1} />
             <directionalLight
                 position={envPreset?.light?.dirPos ?? [10,10,10]}
                 color={envPreset?.light?.dirColor ?? '#ffffff'}
-                intensity={envPreset?.light?.dirIntensity ?? 1.0}
+                intensity={envPreset?.light?.dirIntensity ?? 0.7}
                 castShadow shadow-mapSize={[2048,2048]}
             />
-            <directionalLight position={[-10,5,-10]} intensity={(envPreset?.light?.dirIntensity??1.0)*0.2} />
+            <directionalLight position={[-10,5,-10]} intensity={(envPreset?.light?.dirIntensity??0.7)*0.35} />
 
             {/* TransformControls */}
             {selectedElement?.meshRef?.current && !isResizeDragging && (
@@ -561,6 +637,14 @@ export default function Scene({
                     snapVertices={snapVertices}
                     snapEnabled={snapEnabled}
                     onDragStateChange={setIsResizeDragging}
+                />
+            )}
+
+            {/* 꼭짓점 스냅 인디케이터 — 배치·선 작도 모드 제외한 일반 뷰에서 표시 */}
+            {!pendingElement && lineDrawMode !== 'click' && (
+                <VertexSnapIndicator
+                    snapVertices={snapVertices}
+                    snapEnabled={snapEnabled}
                 />
             )}
 
