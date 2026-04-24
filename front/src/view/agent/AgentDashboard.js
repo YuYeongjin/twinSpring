@@ -15,7 +15,6 @@ const API_CHAT = '/api/chat';
 // ────────────────────────────────────────────────────
 const CAPABILITIES = [
   { icon: '🌡', title: '센서 데이터 조회', desc: '온도·습도 실시간 현황 및 이력 분석' },
-  { icon: '⚡', title: '에너지 데이터 조회', desc: '전력·전압·전류·kWh 이력 분석' },
   { icon: '📊', title: '데이터 시각화',   desc: '조회 결과를 라인/에리어/바 차트로 즉시 표시' },
   { icon: '🏗', title: 'BIM 요소 생성',   desc: '기둥·보·벽·슬래브 등 자연어로 생성/수정/삭제' },
   { icon: '📋', title: 'BIM 프로젝트 조회', desc: '프로젝트 목록·부재 수·타입 통계 대화형 조회' },
@@ -33,7 +32,6 @@ const METRIC_OPTIONS = [
   { value: 'both',        label: '온도 + 습도' },
   { value: 'temperature', label: '온도만' },
   { value: 'humidity',    label: '습도만' },
-  { value: 'energy',      label: '에너지' },
 ];
 const COUNT_OPTIONS = [10, 20, 50, 100];
 
@@ -67,7 +65,6 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
   // ── 센서 데이터 상태 ──
   const [latestSensor, setLatestSensor] = useState(null);
   const [sensorLogs, setSensorLogs] = useState([]);
-  const [energyLogs, setEnergyLogs] = useState([]);
   const [rawLogs, setRawLogs] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
@@ -186,7 +183,6 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
   // ── sensorData 구조화 응답으로 차트 업데이트 ──
   const applySensorData = useCallback((sd) => {
     if (!sd) return;
-    // 센서 로그
     if (Array.isArray(sd.sensor) && sd.sensor.length > 0) {
       setSensorLogs(sd.sensor.map(r => ({
         name: r.time || '',
@@ -194,19 +190,8 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
         습도: r.humidity ?? null,
       })));
     }
-    // 최신값
     if (sd.latest) {
       setLatestSensor(prev => ({ ...(prev || {}), ...sd.latest }));
-    }
-    // 에너지 로그
-    if (Array.isArray(sd.energy) && sd.energy.length > 0) {
-      setEnergyLogs(sd.energy.map(r => ({
-        name: r.time || '',
-        kW:      r.kw      ?? null,
-        kWh:     r.kwh     ?? null,
-        전압: r.voltage  ?? null,
-        전류: r.current  ?? null,
-      })));
     }
     setLastFetched(new Date().toLocaleTimeString('ko-KR'));
   }, []);
@@ -255,10 +240,6 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
           applySensorData(data.sensorData);
         } else {
           fetchSensorData(selectedCount);
-        }
-        // 에너지 데이터가 있으면 에너지 탭으로 자동 전환
-        if (data.sensorData?.energy?.length > 0) {
-          setSelectedMetric('energy');
         }
       }
       if (data.intent === 'bim_builder' && onBimUpdate) onBimUpdate();
@@ -473,7 +454,6 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
               <DataPanel
                 latestSensor={latestSensor}
                 sensorLogs={sensorLogs}
-                energyLogs={energyLogs}
                 loading={dataLoading}
                 lastFetched={lastFetched}
                 selectedMetric={selectedMetric}
@@ -521,20 +501,13 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
 // 데이터 패널 (센서 + 에너지 차트)
 // ────────────────────────────────────────────────────
 function DataPanel({
-  latestSensor, sensorLogs, energyLogs, loading, lastFetched,
+  latestSensor, sensorLogs, loading, lastFetched,
   selectedMetric, setSelectedMetric,
   selectedCount, setSelectedCount,
   onQuery,
 }) {
-  const showTemp   = selectedMetric === 'both' || selectedMetric === 'temperature';
-  const showHum    = selectedMetric === 'both' || selectedMetric === 'humidity';
-  const showEnergy = selectedMetric === 'energy';
-
-  // 에너지 데이터에서 실제로 값 있는 필드 탐색
-  const energyFields = energyLogs.length > 0
-    ? ['kW', 'kWh', '전압', '전류'].filter(k => energyLogs.some(r => r[k] != null))
-    : [];
-  const energyColors = { kW: '#ff9800', kWh: '#e91e63', '전압': '#9c27b0', '전류': '#00bcd4' };
+  const showTemp = selectedMetric === 'both' || selectedMetric === 'temperature';
+  const showHum  = selectedMetric === 'both' || selectedMetric === 'humidity';
 
   return (
     <div className="p-3 space-y-3">
@@ -602,7 +575,7 @@ function DataPanel({
       </div>
 
       {/* ── 센서 차트 (온도/습도) ── */}
-      {!showEnergy && sensorLogs.length > 0 && (
+      {sensorLogs && sensorLogs.length > 0 && (
         <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
           <p className="text-xs font-semibold text-gray-400 mb-3">
             🌡 센서 이력 — 최근 {sensorLogs.length}건
@@ -637,56 +610,11 @@ function DataPanel({
         </div>
       )}
 
-      {/* ── 에너지 차트 ── */}
-      {showEnergy && energyLogs.length > 0 && (
-        <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
-          <p className="text-xs font-semibold text-gray-400 mb-3">
-            ⚡ 에너지 이력 — 최근 {energyLogs.length}건
-          </p>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={energyLogs} margin={{ top: 4, right: 8, bottom: 4, left: -20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#253347" />
-              <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#8896a4' }} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 9, fill: '#8896a4' }} />
-              <Tooltip contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 11, borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
-              {energyFields.map(field => (
-                <Line key={field} type="monotone" dataKey={field}
-                  stroke={energyColors[field] || '#60a5fa'}
-                  dot={energyLogs.length <= 20} strokeWidth={2} activeDot={{ r: 4 }} />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* 에너지 KPI 카드 */}
-      {showEnergy && energyLogs.length > 0 && (() => {
-        const latest = energyLogs[energyLogs.length - 1];
-        const cards = [
-          { label: '현재 kW',  val: latest?.kW,   unit: 'kW',  color: '#ff9800' },
-          { label: '누적 kWh', val: latest?.kWh,  unit: 'kWh', color: '#e91e63' },
-          { label: '전압',     val: latest?.전압, unit: 'V',   color: '#9c27b0' },
-          { label: '전류',     val: latest?.전류, unit: 'A',   color: '#00bcd4' },
-        ].filter(c => c.val != null);
-        return cards.length > 0 ? (
-          <div className="grid grid-cols-2 gap-2">
-            {cards.map(c => <KpiCard key={c.label} label={c.label} value={c.val} unit={c.unit} color={c.color} />)}
-          </div>
-        ) : null;
-      })()}
-
       {/* 비어있을 때 안내 */}
-      {!loading && sensorLogs.length === 0 && !showEnergy && (
+      {!loading && sensorLogs.length === 0 && (
         <p className="text-xs text-gray-500 text-center py-6">
           위에서 조회 항목을 선택하고 [조회 및 그래프 생성]을 눌러보세요.
           <br /><span className="opacity-60">또는 대화창에서 "온도 그래프 보여줘" 라고 해보세요.</span>
-        </p>
-      )}
-      {!loading && energyLogs.length === 0 && showEnergy && (
-        <p className="text-xs text-gray-500 text-center py-6">
-          에너지 데이터가 없습니다.<br />
-          <span className="opacity-60">대화창에서 "에너지 데이터 보여줘" 라고 해보세요.</span>
         </p>
       )}
     </div>
@@ -951,25 +879,13 @@ function AgentMessageBubble({ msg }) {
 // 센서 인라인 차트 (채팅 버블 내)
 // ────────────────────────────────────────────────────
 function SensorInlineChart({ sensorData }) {
-  const { sensor = [], energy = [], latest, alerts = [] } = sensorData;
+  const { sensor = [], latest, alerts = [] } = sensorData;
 
   const sensorRows = sensor.map(r => ({
     name: r.time || '',
     온도: r.temperature ?? null,
     습도: r.humidity ?? null,
   }));
-
-  const energyRows = energy.map(r => ({
-    name: r.time || '',
-    kW:   r.kw      ?? null,
-    kWh:  r.kwh     ?? null,
-    전압: r.voltage  ?? null,
-    전류: r.current  ?? null,
-  }));
-  const energyFields = energyRows.length > 0
-    ? ['kW', 'kWh', '전압', '전류'].filter(k => energyRows.some(r => r[k] != null))
-    : [];
-  const energyColors = { kW: '#ff9800', kWh: '#e91e63', '전압': '#9c27b0', '전류': '#00bcd4' };
 
   return (
     <div className="w-full space-y-2 mt-1">
@@ -1021,26 +937,6 @@ function SensorInlineChart({ sensorData }) {
                   dot={false} strokeWidth={2} activeDot={{ r: 3 }} />
               )}
             </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* 에너지 Line 차트 */}
-      {energyRows.length > 1 && energyFields.length > 0 && (
-        <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
-          <p className="text-xs font-semibold text-gray-400 mb-2">⚡ 에너지 이력 ({energyRows.length}건)</p>
-          <ResponsiveContainer width="100%" height={140}>
-            <LineChart data={energyRows} margin={{ top: 4, right: 8, bottom: 4, left: -24 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#253347" />
-              <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#8896a4' }} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 8, fill: '#8896a4' }} />
-              <Tooltip contentStyle={{ background: '#1c2a3a', border: '1px solid #253347', fontSize: 10, borderRadius: 8 }} labelStyle={{ color: '#e2e8f0' }} />
-              <Legend wrapperStyle={{ fontSize: 9 }} />
-              {energyFields.map(f => (
-                <Line key={f} type="monotone" dataKey={f} stroke={energyColors[f] || '#60a5fa'}
-                  dot={false} strokeWidth={2} activeDot={{ r: 3 }} />
-              ))}
-            </LineChart>
           </ResponsiveContainer>
         </div>
       )}
@@ -1149,5 +1045,5 @@ function downloadBlob(blob, filename) {
 }
 
 const QUICK_PROMPTS = [
-  '온도 그래프 보여줘', '에너지 사용량 조회', '내 BIM 프로젝트 목록', '부재 수 알려줘', '기둥 추가',
+  '온도 그래프 보여줘', '내 BIM 프로젝트 목록', '부재 수 알려줘', '기둥 추가',
 ];

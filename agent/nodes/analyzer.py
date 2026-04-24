@@ -13,8 +13,8 @@ from state import AgentState
 from llm_config import llm_precise
 
 _RAG_DB_KEYWORDS = re.compile(
-    r"온도|습도|센서|에너지|전력|전압|전류|kwh|kw|알림|경보|알람|임계|threshold"
-    r"|현재\s*(상태|값|데이터)|최근|조회|확인|얼마|몇\s*(도|volt|kw)",
+    r"온도|습도|센서|알림|경보|알람|임계|threshold"
+    r"|현재\s*(상태|값|데이터)|최근|조회|확인|얼마|몇\s*도",
     re.IGNORECASE,
 )
 
@@ -41,7 +41,7 @@ _BIM_KEYWORDS = re.compile(
 
 _SYSTEM_PROMPT = SystemMessage(content=(
     "사용자 메시지를 다음 중 하나로 분류하세요: rag_db, bim_builder, bim_query, chat\n"
-    "- rag_db: 센서/에너지/EMS 데이터 조회 또는 건물 상태 확인\n"
+    "- rag_db: 센서 데이터 조회 또는 건물 상태 확인\n"
     "- bim_builder: BIM 요소(기둥, 보, 벽, 슬래브 등) 생성/수정/삭제\n"
     "- bim_query: BIM 프로젝트 목록 조회, 부재 수/통계/구성 확인\n"
     "- chat: 일반 대화\n"

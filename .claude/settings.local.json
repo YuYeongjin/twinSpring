@@ -10,7 +10,13 @@
       "Bash(python -c ':*)",
       "Bash(npm install *)",
       "Bash(node -e \"require\\('xlsx'\\); require\\('jspdf'\\); require\\('html2canvas'\\); console.log\\('OK'\\)\")",
-      "Bash(npx react-scripts *)"
+      "Bash(npx react-scripts *)",
+      "Bash(rm \"front/src/view/SatelliteDashboard.js\" \"front/src/view/SatelliteAPI.js\")",
+      "Bash(rm \"iot/sensor.py\")",
+      "Bash(rm \"src/main/java/yyj/project/twinspring/controller/SensorController.java\")",
+      "Bash(rm \"src/main/java/yyj/project/twinspring/service/MqttService.java\")",
+      "Bash(rm \"src/main/java/yyj/project/twinspring/serviceImpl/MqttServiceImpl.java\")",
+      "Bash(git restore *)"
     ]
   }
 }

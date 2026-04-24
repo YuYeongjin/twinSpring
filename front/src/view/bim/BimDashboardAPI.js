@@ -96,6 +96,11 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // ================================================================
     const handleElementSelect = (data, ref, shiftKey = false) => {
         if (pendingElement) return;
+        if (!data) {
+            setSelectedElement(null);
+            setSelectedElements(new Set());
+            return;
+        }
 
         if (shiftKey) {
             setSelectedElements(prev => {

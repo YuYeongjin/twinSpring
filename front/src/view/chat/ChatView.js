@@ -13,7 +13,7 @@ export default function ChatView({ selectedProject, onBimUpdate }) {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: '안녕하세요! 디지털 트윈 AI 어시스턴트입니다.\n센서 데이터, 에너지 현황 조회, BIM 요소 생성 등을 도와드릴 수 있어요.',
+      content: '안녕하세요! 디지털 트윈 AI 어시스턴트입니다.\n센서 데이터 조회, BIM 요소 생성 등을 도와드릴 수 있어요.',
       intent: 'chat',
     },
   ]);
@@ -340,4 +340,4 @@ function TypingIndicator() {
   );
 }
 
-const QUICK_PROMPTS = ['현재 온도?', '에너지 현황', '기둥 추가', '알림 확인'];
+const QUICK_PROMPTS = ['현재 온도?', '기둥 추가', '알림 확인'];

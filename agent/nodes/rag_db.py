@@ -14,7 +14,6 @@ from tools.rag_tool import search_as_text
 
 _KEYWORDS = {
     "sensor":    re.compile(r"센서|온도|습도|dht|sensor|temperature|humidity", re.I),
-    "energy":    re.compile(r"에너지|전력|전압|전류|kwh|kw|energy|power|voltage", re.I),
     "alert":     re.compile(r"알림|경보|alert|alarm|경고|위험|critical|warning", re.I),
     "threshold": re.compile(r"임계|threshold|기준값|설정값", re.I),
 }
@@ -28,7 +27,7 @@ _SYSTEM = SystemMessage(content=(
 
 def _detect_targets(text: str) -> list[str]:
     targets = [k for k, pat in _KEYWORDS.items() if pat.search(text)]
-    return targets or ["sensor", "energy"]
+    return targets or ["sensor"]
 
 
 def _fmt_time(val) -> str:

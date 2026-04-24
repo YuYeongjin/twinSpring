@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo } from 'react';
-import { Box } from '@react-three/drei';
+import { Box, Edges } from '@react-three/drei';
 
 export const parseVectorData = (dataString, defaultValue = [0, 0, 0]) => {
   if (!dataString) return defaultValue;
@@ -15,6 +15,7 @@ export const parseVectorData = (dataString, defaultValue = [0, 0, 0]) => {
   return defaultValue;
 };
 
+// PlacementGhost 에서 계속 사용 (색상 참조용)
 export const getBaseColor = (elementType) => {
   switch (elementType) {
     case 'IfcColumn': return '#8B4513';
@@ -25,6 +26,16 @@ export const getBaseColor = (elementType) => {
     case 'IfcPier':   return '#D2691E';
     default:          return '#ff4444';
   }
+};
+
+// CAD 도면 스타일: 요소 타입별 미세한 회색 음영
+const CAD_FACE_COLOR = {
+  IfcColumn: '#e8e8e8',
+  IfcBeam:   '#f0f0f0',
+  IfcMember: '#f0f0f0',
+  IfcWall:   '#f5f5f5',
+  IfcSlab:   '#ececec',
+  IfcPier:   '#e5e5e5',
 };
 
 export function BimElement({ element, onElementSelect, isPlacementMode }) {
@@ -48,26 +59,28 @@ export function BimElement({ element, onElementSelect, isPlacementMode }) {
   }, [element.positionX, element.positionY, element.positionZ,
       element.sizeX, element.sizeY, element.sizeZ]);
 
-  // 색상 우선순위 (선택/호버 상태는 resolvedColor 위에 덮어씀)
-  // element.resolvedColor: 커스텀색 > 레이어색 > null(기본색)
-  const baseColor  = element.resolvedColor || getBaseColor(element.elementType);
-  const selected   = element.selected;       // 단일 선택 (cyan)
-  const multiSel   = element.multiSelected;  // 다중 선택 (gold)
+  const selected = element.selected;
+  const multiSel = element.multiSelected;
+
+  // 면 색상: 기본 흑백(CAD), 선택/호버 시 미세한 색조만 추가
+  const faceColor = selected ? '#dff0ff'
+    : multiSel ? '#fffbe0'
+    : hovered  ? '#eaf5ff'
+    : (CAD_FACE_COLOR[element.elementType] ?? '#f2f2f2');
+
+  // 외곽선 색상: 기본 짙은 회색, 상태별 강조
+  const edgeColor = selected ? '#00e5ff'
+    : multiSel ? '#ffd700'
+    : hovered  ? '#1e90ff'
+    : '#303030';
 
   const handleClick = (e) => {
-    // 배치 모드 중에는 클릭이 바닥 평면으로 통과하도록 stopPropagation 생략
     if (isPlacementMode) return;
     e.stopPropagation();
     if (onElementSelect) {
       onElementSelect(element, meshRef, e.shiftKey);
     }
   };
-
-  // 색상 우선순위: 단일선택(cyan) > 다중선택(gold) > 호버(hotpink) > 레이어/커스텀/기본색
-  const color = selected ? '#00e5ff'
-    : multiSel ? '#ffd700'
-    : hovered  ? '#ff69b4'
-    : baseColor;
 
   const rotation = useMemo(() => [
     Number(element.rotationX) || 0,
@@ -89,12 +102,19 @@ export function BimElement({ element, onElementSelect, isPlacementMode }) {
       userData={{ elementId: element.elementId, rawSize: size }}
     >
       <meshStandardMaterial
-        color={color}
-        opacity={(selected || multiSel || hovered) ? 0.85 : 1}
+        color={faceColor}
+        roughness={0.55}
+        metalness={0.0}
+        opacity={selected || multiSel ? 0.95 : hovered ? 0.92 : 0.88}
         transparent
-        // 다중 선택 시 외곽선 효과를 위해 emissive 추가
-        emissive={multiSel && !selected ? '#b8860b' : '#000000'}
-        emissiveIntensity={multiSel && !selected ? 0.3 : 0}
+        emissive={multiSel && !selected ? '#c8a800' : '#000000'}
+        emissiveIntensity={multiSel && !selected ? 0.06 : 0}
+      />
+      {/* CAD 스타일 외곽선 */}
+      <Edges
+        threshold={15}
+        color={edgeColor}
+        linewidth={selected || hovered ? 2.5 : 1.5}
       />
     </Box>
   );

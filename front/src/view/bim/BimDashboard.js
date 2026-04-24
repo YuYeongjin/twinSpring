@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { View } from '@react-three/drei';
 import * as THREE from 'three';
 import Scene from './component/Scene';
+import Plan2DView from './component/Plan2DView';
 import ControlPanel from './component/ControlPanel';
 import LayerPanel from './component/LayerPanel';
 import LinePanel from './component/LinePanel';
@@ -489,6 +490,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ── 스냅 (꼭짓점 자동 흡착) ────────────────────────────────────
     const [snapEnabled, setSnapEnabled] = useState(true);
 
+    // ── 뷰 모드 ────────────────────────────────────────────────────
+    const [viewMode, setViewMode] = useState('3d'); // '3d' | '2d'
+
     // ── 패널 드래그 리사이즈 ───────────────────────────────────────
     const [leftPanelPct, setLeftPanelPct]   = useState(13); // 5~20%
     const [rightPanelPct, setRightPanelPct] = useState(18); // 5~20%
@@ -888,8 +892,21 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 )}
 
                 <div className="ml-auto flex items-center gap-1.5 md:gap-2 flex-wrap justify-end">
+                    {/* 2D / 3D 뷰 토글 */}
+                    <button
+                        onClick={() => setViewMode(v => v === '3d' ? '2d' : '3d')}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                            viewMode === '2d'
+                                ? 'bg-emerald-700/60 text-emerald-300 border border-emerald-600/60'
+                                : 'bg-space-700/70 text-gray-400 border border-space-600'
+                        }`}
+                        title={viewMode === '2d' ? '3D 뷰로 전환' : '2D 평면도로 전환'}
+                    >
+                        {viewMode === '2d' ? '⬜ 2D' : '⬡ 3D'}
+                    </button>
+
                     {/* 환경 선택 */}
-                    <EnvSelector currentId={envId} onChange={setEnvId} />
+                    {viewMode === '3d' && <EnvSelector currentId={envId} onChange={setEnvId} />}
 
                     {/* 좌측 패널 토글 */}
                     <button
@@ -1131,7 +1148,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 {/* ── 중앙 3D 뷰어 ── */}
                 <div className="flex-1 min-w-0 flex flex-col gap-3 md:h-full" style={{ paddingLeft: showLeftPanel && isDesktop ? 4 : 0, paddingRight: showLayerPanel && isDesktop ? 4 : 0 }}>
                     <Card
-                        title={`3D BIM Viewer — ${currentProjectId ?? '프로젝트'} (부재 ${visibleModelData.length}개)`}
+                        title={`${viewMode === '2d' ? '2D 평면도' : '3D BIM Viewer'} — ${currentProjectId ?? '프로젝트'} (부재 ${visibleModelData.length}개)`}
                         right={
                             <div className="flex gap-1.5 items-center flex-wrap">
                                 <Chip color="orange">
@@ -1157,12 +1174,21 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 className="w-full flex-1 relative"
                                 style={{
                                     minHeight: '55vw',
-                                    cursor: pendingElement ? 'crosshair'
+                                    cursor: viewMode === '2d' ? 'default'
+                                          : pendingElement ? 'crosshair'
                                           : isSelectMode  ? 'crosshair'
                                           : lineDrawMode === 'click' ? 'crosshair'
                                           : 'default',
                                 }}
                             >
+                                {viewMode === '2d' ? (
+                                    <Plan2DView
+                                        modelData={visibleModelData}
+                                        lines={lines}
+                                        selectedElement={selectedElement}
+                                        onElementSelect={handleElementSelect}
+                                    />
+                                ) : (<>
 
                                 {/* R3F 이벤트 소스 div */}
                                 <div ref={mainViewRef} className="absolute inset-0 z-10 touch-none" />
@@ -1307,6 +1333,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         🧲 스냅 ON
                                     </div>
                                 )}
+                                </>)}
                             </div>
                         )}
                     </Card>
