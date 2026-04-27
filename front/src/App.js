@@ -7,6 +7,7 @@ import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
 import ChatView from './view/chat/ChatView';
 import AgentDashboard from './view/agent/AgentDashboard';
+import SimulationDashboard from './view/simulation/SimulationDashboard';
 import { useCallback, useEffect, useState } from 'react';
 
 function App() {
@@ -122,6 +123,14 @@ function App() {
   // 뷰 렌더링
   // ---------------------------------------------------------------
   const renderView = () => {
+    if (viewComponent === 'simulation') {
+      return (
+        <SimulationDashboard
+          selectedProject={selectedProject}
+          modelData={modelData}
+        />
+      );
+    }
     if (viewComponent === 'agent') {
       return (
         <AgentDashboard

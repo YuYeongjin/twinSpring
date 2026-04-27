@@ -42,6 +42,7 @@ builder.Services.AddDbContext<BimDbContext>(options =>
 
 // 3. BIM 서비스 등록 (DbContext 주입이 가능하도록 Scoped으로 등록)
 builder.Services.AddScoped<BimService>();
+builder.Services.AddScoped<SimulationService>();
 
 // =========================================================================
 // Build and Configure (앱 빌드 및 파이프라인 구성)
@@ -80,7 +81,15 @@ app.MapGet("/weatherforecast", () =>
 .WithName("GetWeatherForecast");
 
 app.UseAuthorization();
-app.MapControllers(); // 컨트롤러 (BimController) 라우팅 활성화
+app.MapControllers();
+
+// simulation_excavator 테이블 자동 생성
+using (var scope = app.Services.CreateScope())
+{
+    var simService = scope.ServiceProvider.GetRequiredService<SimulationService>();
+    await simService.EnsureTableAsync();
+}
+
 app.Run();
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)

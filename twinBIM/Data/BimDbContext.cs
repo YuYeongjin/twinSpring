@@ -7,6 +7,7 @@ namespace BimProcessorApi.Data
     {
         public DbSet<Project> Projects { get; set; }
         public DbSet<Element> Elements { get; set; }
+        public DbSet<ExcavatorState> ExcavatorStates { get; set; }
 
         public BimDbContext(DbContextOptions<BimDbContext> options) : base(options)
         {
