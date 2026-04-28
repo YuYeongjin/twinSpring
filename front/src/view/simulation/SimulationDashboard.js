@@ -416,7 +416,7 @@ function DustParticles({ particlesRef }) {
 }
 
 // ── 메인 대시보드 ──────────────────────────────────────────────────────────────
-export default function SimulationDashboard({ selectedProject, modelData }) {
+export default function SimulationDashboard({ selectedProject, modelData, setViceComponent }) {
 
   const [state, setState] = useState({ ...DEFAULT_STATE });
   const keysRef    = useRef(new Set());
@@ -621,7 +621,33 @@ export default function SimulationDashboard({ selectedProject, modelData }) {
   const isDumping = state.bucketAngle < -65 && soilDisplay > 0.02;
 
   return (
-    <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 130px)', gap: '10px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+
+      {/* ── 프로젝트 헤더 ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '12px',
+        padding: '8px 4px 12px', borderBottom: '1px solid #1e3a5f', marginBottom: '10px',
+      }}>
+        {setViceComponent && (
+          <button
+            onClick={() => setViceComponent('simulation-projects')}
+            style={{ color: '#8896a4', fontSize: '13px', background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            ← 목록
+          </button>
+        )}
+        <span style={{ color: '#f5a623', fontSize: '15px', fontWeight: 700 }}>
+          🚜 {selectedProject?.projectName ?? '시뮬레이션'}
+        </span>
+        <span style={{
+          fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
+          backgroundColor: '#1a2a0a', color: '#f5a623', border: '1px solid #f5a62340',
+        }}>
+          Excavator
+        </span>
+      </div>
+
+    <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px' }}>
 
       {/* ── 왼쪽 상태 패널 ── */}
       <div style={{
@@ -930,6 +956,7 @@ export default function SimulationDashboard({ selectedProject, modelData }) {
           ))}
         </div>
       </div>
+    </div>
     </div>
   );
 }

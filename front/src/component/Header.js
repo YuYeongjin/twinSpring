@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
-  { id: "",             label: "IoT",         icon: "📡" },
-  { id: "bim-projects", label: "BIM",         icon: "🏗" },
-  { id: "agent",        label: "Agent",       icon: "🤖" },
-  { id: "simulation",   label: "Simulation",  icon: "🚜" },
+  { id: "",                    label: "IoT",        icon: "📡" },
+  { id: "bim-projects",        label: "BIM",        icon: "🏗" },
+  { id: "agent",               label: "Agent",      icon: "🤖" },
+  { id: "simulation-projects", label: "Simulation", icon: "🚜" },
 ];
 
 export default function Header({ viewComponent, setViceComponent }) {
@@ -23,10 +23,9 @@ export default function Header({ viewComponent, setViceComponent }) {
     return () => clearInterval(id);
   }, []);
 
-  // 활성 탭 판단
-  const activeTab = viewComponent === "bim" ? "bim-projects"
-    : viewComponent === "agent" ? "agent"
-    : viewComponent === "simulation" ? "simulation"
+  // 활성 탭 판단 — 하위 뷰에서도 상위 탭이 활성 표시
+  const activeTab = viewComponent === "bim"        ? "bim-projects"
+    : viewComponent === "simulation"               ? "simulation-projects"
     : viewComponent;
 
   return (
