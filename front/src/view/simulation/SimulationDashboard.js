@@ -84,16 +84,16 @@ function vertH(hm, c, r) {
   return n ? s / n : 0;
 }
 
-// 높이값 → 버텍스 색상 (굴착 = 진한 갈색, 성토 = 밝은 황토)
+// 높이값 → 버텍스 색상 (굴착 = 짙은 적갈색 점토, 성토 = 진한 황토)
 function hToRGB(h) {
   if (h < 0) {
-    const t = Math.min(1, -h / 2.5);
-    // 황토 → 진한 점토
-    return [0.48 - t * 0.28, 0.42 - t * 0.32, 0.29 - t * 0.22];
+    const t = Math.min(1, -h / MAX_DIG);
+    // 표면 황토 → 깊은 적갈색 생토 (굴착 깊을수록 진해짐)
+    return [0.46 - t * 0.22, 0.34 - t * 0.22, 0.20 - t * 0.14];
   }
-  const t = Math.min(1, h / 2.0);
-  // 황토 → 밝은 모래
-  return [0.48 + t * 0.12, 0.42 + t * 0.08, 0.29 + t * 0.05];
+  const t = Math.min(1, h / MAX_FILL);
+  // 황토 → 짙은 갈색 (성토 = 압축 안된 흙)
+  return [0.50 - t * 0.10, 0.38 - t * 0.10, 0.22 - t * 0.06];
 }
 
 // 지형 BufferGeometry 초기 생성 (높이 = 0인 평탄 지형)
@@ -154,32 +154,34 @@ function updateTerrainGeo(geo, hm) {
   geo.computeVertexNormals();
 }
 
-// 굴착: 버킷 접촉 좌표 중심으로 Gaussian 분포로 흙 제거
+// 굴착: 버킷 접촉 좌표 중심으로 Gaussian 분포로 흙 제거 (넓고 빠르게)
 function applyExcavation(hm, col, row, amount) {
-  for (let dr = -2; dr <= 2; dr++) {
-    for (let dc = -2; dc <= 2; dc++) {
+  const R = 3.5;
+  for (let dr = -4; dr <= 4; dr++) {
+    for (let dc = -4; dc <= 4; dc++) {
       const d = Math.sqrt(dr * dr + dc * dc);
-      if (d > 2.2) continue;
+      if (d > R) continue;
       const c = col + dc, r = row + dr;
       if (c < 0 || c >= GRID_COLS || r < 0 || r >= GRID_ROWS) continue;
-      const w = Math.exp(-d * d / 1.6);
+      const w = Math.exp(-d * d / 2.8);
       hm[r * GRID_COLS + c] = Math.max(-MAX_DIG, hm[r * GRID_COLS + c] - amount * w);
     }
   }
 }
 
-// 덤핑: 버킷이 흙을 쏟을 때 해당 좌표에 파라볼라 분포로 흙 쌓기
+// 덤핑: 버킷이 흙을 쏟을 때 해당 좌표에 첨예한 봉우리 형태로 흙 쌓기
 function applyFill(hm, col, row, volume) {
-  const R = 3;
+  const R = 2.6;
   let totalW = 0;
   const cells = [];
-  for (let dr = -R; dr <= R; dr++) {
-    for (let dc = -R; dc <= R; dc++) {
+  for (let dr = -3; dr <= 3; dr++) {
+    for (let dc = -3; dc <= 3; dc++) {
       const d = Math.sqrt(dr * dr + dc * dc);
       if (d > R) continue;
       const c = col + dc, r = row + dr;
       if (c < 0 || c >= GRID_COLS || r < 0 || r >= GRID_ROWS) continue;
-      const w = Math.pow(1 - d / R, 2);
+      // 3제곱 감쇠 → 중심에 집중된 뾰족한 봉우리
+      const w = Math.pow(1 - d / R, 3);
       totalW += w;
       cells.push({ c, r, w });
     }
@@ -188,6 +190,24 @@ function applyFill(hm, col, row, volume) {
   for (const { c, r, w } of cells) {
     hm[r * GRID_COLS + c] = Math.min(MAX_FILL, hm[r * GRID_COLS + c] + (volume * w) / totalW);
   }
+}
+
+// ── 파티클 시스템 ─────────────────────────────────────────────────────────────
+const MAX_PARTICLES = 400;
+
+function createParticle(x, y, z, type) {
+  const speed = type === 'dump' ? 1.8 : 2.8;
+  return {
+    x, y: y + 0.15, z,
+    vx: (Math.random() - 0.5) * speed,
+    vy: type === 'dump'
+      ? -(Math.random() * 1.2 + 0.3)   // 덤핑: 아래로 떨어짐
+      : (Math.random() * 2.5 + 0.6),    // 굴착: 위로 튀어오름
+    vz: (Math.random() - 0.5) * speed,
+    life: 0.5 + Math.random() * 0.7,
+    maxLife: 1.2,
+    type,
+  };
 }
 
 // ── TerrainMesh 컴포넌트 ───────────────────────────────────────────────────────
@@ -403,16 +423,60 @@ function ConstructionOverlay({ bimElements }) {
   );
 }
 
-// ── 굴착 먼지 파티클 ───────────────────────────────────────────────────────────
-function DustParticles({ particlesRef }) {
+// ── 흙 파티클 3D 렌더러 ────────────────────────────────────────────────────────
+function SoilParticles({ particlesRef }) {
+  const geo = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    const pos = new Float32Array(MAX_PARTICLES * 3);
+    const col = new Float32Array(MAX_PARTICLES * 3);
+    for (let i = 0; i < MAX_PARTICLES; i++) pos[i * 3 + 1] = -9999;
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('color',    new THREE.BufferAttribute(col, 3));
+    return g;
+  }, []);
+
   useFrame((_, delta) => {
-    const p = particlesRef.current;
-    for (let i = p.length - 1; i >= 0; i--) {
-      p[i].life -= delta;
-      if (p[i].life <= 0) p.splice(i, 1);
+    const ps = particlesRef.current;
+    for (let i = ps.length - 1; i >= 0; i--) {
+      const p = ps[i];
+      p.life -= delta;
+      if (p.life <= 0) { ps.splice(i, 1); continue; }
+      p.x  += p.vx * delta;
+      p.y  += p.vy * delta;
+      p.z  += p.vz * delta;
+      p.vy -= 13.0 * delta; // 중력
+      if (p.y < 0.05) p.y = 0.05; // 지면에서 멈춤
     }
+
+    const posA = geo.attributes.position;
+    const colA = geo.attributes.color;
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      if (i < ps.length) {
+        const p = ps[i];
+        posA.setXYZ(i, p.x, p.y, p.z);
+        const t = p.life / p.maxLife;
+        if (p.type === 'dump') {
+          // 덤핑: 진한 갈색
+          colA.setXYZ(i, 0.52 + t * 0.06, 0.32 + t * 0.04, 0.14);
+        } else {
+          // 굴착: 황토 먼지
+          colA.setXYZ(i, 0.68 + t * 0.10, 0.50 + t * 0.06, 0.26);
+        }
+      } else {
+        posA.setXYZ(i, 0, -9999, 0);
+        colA.setXYZ(i, 0, 0, 0);
+      }
+    }
+    posA.needsUpdate = true;
+    colA.needsUpdate = true;
   });
-  return null; // 파티클은 별도 mesh 없이 CSS/overlay 처리
+
+  return (
+    <points>
+      <primitive object={geo} attach="geometry" />
+      <pointsMaterial size={0.26} vertexColors sizeAttenuation transparent opacity={0.88} />
+    </points>
+  );
 }
 
 // ── 메인 대시보드 ──────────────────────────────────────────────────────────────
@@ -434,6 +498,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
   // 덤핑 상태 중복 방지
   const dumpingRef = useRef(false);
+
+  // 흙 파티클 풀
+  const particlesRef = useRef([]);
 
   // 서버 동기화
   const [syncStatus, setSyncStatus] = useState('idle');
@@ -508,30 +575,36 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     return () => clearInterval(id);
   }, []);
 
-  // ── 순기구학 계산 ──
+  // ── 순기구학 계산 (차체 회전 + 선회 각도 합산, 붐 피벗 오프셋 적용) ──
   const calcKinematics = useCallback((s) => {
-    const boomRad   = s.boomAngle  * D2R;
-    const armRad    = s.armAngle   * D2R;
-    const bucketRad = s.bucketAngle * D2R;
-    const swingRad  = s.swingAngle  * D2R;
-    const boomTipZ  = BOOM_LEN * Math.cos(boomRad);
-    const boomTipY  = BOOM_LEN * Math.sin(boomRad);
+    const boomRad      = s.boomAngle   * D2R;
+    const armRad       = s.armAngle    * D2R;
+    const bucketRad    = s.bucketAngle * D2R;
+    // 월드 방향 = 차체 회전 + 선회 각도
+    const totalRad     = (s.bodyRotation + s.swingAngle) * D2R;
+
     const armAbsRad    = boomRad - armRad;
-    const armTipZ      = boomTipZ + ARM_LEN * Math.cos(armAbsRad);
-    const armTipY      = boomTipY + ARM_LEN * Math.sin(armAbsRad);
     const bucketAbsRad = armAbsRad - bucketRad;
-    const bucketTipZ   = armTipZ   + 0.75 * Math.cos(bucketAbsRad);
-    const bucketTipY   = armTipY   + 0.75 * Math.sin(bucketAbsRad);
-    const cosSwing = Math.cos(swingRad);
-    const sinSwing = Math.sin(swingRad);
-    const worldX = s.positionX + sinSwing * bucketTipZ;
-    const worldY = s.positionY + 2.1 + bucketTipY;
-    const worldZ = s.positionZ + cosSwing * bucketTipZ;
+
+    // 붐 피벗 기준 로컬 오프셋 (BOOM_PIVOT = [0, 1.4, 1.9])
+    const localZ = BOOM_PIVOT[2]
+                 + BOOM_LEN * Math.cos(boomRad)
+                 + ARM_LEN  * Math.cos(armAbsRad)
+                 + 0.75     * Math.cos(bucketAbsRad);
+    const localY = BOOM_PIVOT[1]
+                 + BOOM_LEN * Math.sin(boomRad)
+                 + ARM_LEN  * Math.sin(armAbsRad)
+                 + 0.75     * Math.sin(bucketAbsRad);
+
+    const worldX = s.positionX + Math.sin(totalRad) * localZ;
+    const worldY = s.positionY + 0.72 + localY;  // 0.72 = 선회체 높이
+    const worldZ = s.positionZ + Math.cos(totalRad) * localZ;
+
     return {
-      tipX: worldX.toFixed(2),
-      tipY: worldY.toFixed(2),
-      tipZ: worldZ.toFixed(2),
-      reach: Math.abs(bucketTipZ).toFixed(2),
+      tipX:  worldX.toFixed(2),
+      tipY:  worldY.toFixed(2),
+      tipZ:  worldZ.toFixed(2),
+      reach: Math.abs(localZ).toFixed(2),
     };
   }, []);
 
@@ -557,12 +630,19 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     if (digDepth > 0.05 && soilInBucketRef.current < MAX_BUCKET) {
       const cell = worldToCell(tipX, tipZ);
       if (cell.valid) {
-        // 깊이에 비례한 굴착 속도 (최대 0.01m/frame)
-        const rate = Math.min(0.01, digDepth * 0.006);
+        // 깊이에 비례한 굴착 속도 (최대 0.08m/frame → 이전 대비 8배 빠름)
+        const rate = Math.min(0.08, digDepth * 0.055);
         applyExcavation(heightMapRef.current, cell.col, cell.row, rate);
-        soilInBucketRef.current = Math.min(MAX_BUCKET, soilInBucketRef.current + rate * 0.75);
+        soilInBucketRef.current = Math.min(MAX_BUCKET, soilInBucketRef.current + rate * 0.9);
         terrainDirtyRef.current = true;
         setSoilDisplay(soilInBucketRef.current);
+        // 굴착 파티클 방출
+        if (particlesRef.current.length < MAX_PARTICLES) {
+          const emit = Math.min(5, MAX_PARTICLES - particlesRef.current.length);
+          for (let i = 0; i < emit; i++) {
+            particlesRef.current.push(createParticle(tipX, Math.max(tipY, 0.1), tipZ, 'dig'));
+          }
+        }
       }
     }
 
@@ -570,12 +650,19 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     if (state.bucketAngle < -65 && tipY > 0.4 && soilInBucketRef.current > 0.02) {
       const cell = worldToCell(tipX, tipZ);
       if (cell.valid) {
-        const dumpRate = 0.05;  // frame당 덤핑 속도
+        const dumpRate = 0.18;  // frame당 덤핑 속도 (이전 대비 3.6배 빠름)
         const amount   = Math.min(dumpRate, soilInBucketRef.current);
-        applyFill(heightMapRef.current, cell.col, cell.row, amount * 0.85);
+        applyFill(heightMapRef.current, cell.col, cell.row, amount * 0.92);
         soilInBucketRef.current = Math.max(0, soilInBucketRef.current - amount);
         terrainDirtyRef.current = true;
         setSoilDisplay(soilInBucketRef.current);
+        // 덤핑 파티클 방출
+        if (particlesRef.current.length < MAX_PARTICLES) {
+          const emit = Math.min(7, MAX_PARTICLES - particlesRef.current.length);
+          for (let i = 0; i < emit; i++) {
+            particlesRef.current.push(createParticle(tipX, tipY, tipZ, 'dump'));
+          }
+        }
       }
     }
   }, [state, calcKinematics]);
@@ -806,7 +893,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             borderRadius: '10px', padding: '8px 20px', fontSize: '13px',
             color: isDigging ? '#fbbf24' : '#34d399', fontWeight: 700, pointerEvents: 'none',
           }}>
-            {isDigging ? `⛏ 굴착 중 — 깊이 ${kinematics.depth}m | 적재 ${soilDisplay.toFixed(1)} m³` : `🪣 덤핑 — 잔여 ${soilDisplay.toFixed(1)} m³`}
+            {isDigging
+              ? `⛏ 굴착 중 — 깊이 ${kinematics.depth}m | 적재 ${soilDisplay.toFixed(1)} m³`
+              : `🪣 덤핑 — (${kinematics?.tipX ?? 0}, ${kinematics?.tipZ ?? 0}) | 잔여 ${soilDisplay.toFixed(1)} m³`}
           </div>
         )}
 
@@ -826,6 +915,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
           <ConstructionOverlay bimElements={modelData} />
           <ExcavatorModel state={state} soilInBucket={soilDisplay} />
+          {/* 흙 파티클 */}
+          <SoilParticles particlesRef={particlesRef} />
 
           <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.02} />
           <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
