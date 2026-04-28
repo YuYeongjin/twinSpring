@@ -77,6 +77,11 @@ public class ChatServiceImpl implements ChatService {
         } else {
             context.putNull("projectId");
         }
+        if (request.getSimulationProjectId() != null) {
+            context.put("simulationProjectId", request.getSimulationProjectId());
+        } else {
+            context.putNull("simulationProjectId");
+        }
 
         // Python Agent 호출
         String agentResponse;

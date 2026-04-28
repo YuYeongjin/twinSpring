@@ -198,6 +198,7 @@ function App() {
           selectedProject={selectedProject}
           onBimUpdate={refreshModelData}
           modelData={modelData}
+          selectedSimulationProject={selectedSimulationProject}
         />
       );
     }
@@ -254,7 +255,11 @@ function App() {
       <Footer />
 
       {viewComponent !== 'agent' && (
-        <ChatView selectedProject={selectedProject} onBimUpdate={refreshModelData} />
+        <ChatView
+          selectedProject={selectedProject}
+          onBimUpdate={refreshModelData}
+          selectedSimulationProject={selectedSimulationProject}
+        />
       )}
     </div>
   );

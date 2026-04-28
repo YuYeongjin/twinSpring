@@ -8,7 +8,7 @@ const API_BASE = `/api/chat`;
  * - 모든 뷰에서 우측 하단에 고정 표시 (Agent 화면 제외)
  * - 음성 입력(STT) / 음성 출력(TTS) / 이미지 업로드 지원
  */
-export default function ChatView({ selectedProject, onBimUpdate }) {
+export default function ChatView({ selectedProject, onBimUpdate, selectedSimulationProject }) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -122,6 +122,7 @@ export default function ChatView({ selectedProject, onBimUpdate }) {
           sessionId,
           message: text,
           projectId: selectedProject?.projectId || null,
+          simulationProjectId: selectedSimulationProject?.projectId || null,
           history,
         });
         data = res.data;

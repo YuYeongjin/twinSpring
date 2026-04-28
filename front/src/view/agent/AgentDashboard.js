@@ -18,6 +18,7 @@ const CAPABILITIES = [
   { icon: '📊', title: '데이터 시각화',   desc: '조회 결과를 라인/에리어/바 차트로 즉시 표시' },
   { icon: '🏗', title: 'BIM 요소 생성',   desc: '기둥·보·벽·슬래브 등 자연어로 생성/수정/삭제' },
   { icon: '📋', title: 'BIM 프로젝트 조회', desc: '프로젝트 목록·부재 수·타입 통계 대화형 조회' },
+  { icon: '🚜', title: '시뮬레이션 제어', desc: '굴착기 자세·각도·위치·프리셋을 자연어로 제어' },
   { icon: '🖼', title: '이미지 분석',     desc: '사진 업로드 후 AI 비전 모델로 내용 분석' },
   { icon: '🎤', title: '음성 대화',       desc: '마이크로 질문하고 TTS로 답변 청취' },
   { icon: '📄', title: '문서 내보내기',   desc: '대화 내용·센서·BIM 데이터를 CSV·TXT로 다운로드' },
@@ -38,7 +39,7 @@ const COUNT_OPTIONS = [10, 20, 50, 100];
 // ────────────────────────────────────────────────────
 // 메인 컴포넌트
 // ────────────────────────────────────────────────────
-export default function AgentDashboard({ selectedProject, onBimUpdate }) {
+export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject }) {
   // ── 채팅 상태 ──
   const [messages, setMessages] = useState([
     {
@@ -220,6 +221,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate }) {
         const res = await AxiosCustom.post(`${API_CHAT}/message`, {
           sessionId, message: text,
           projectId: selectedProject?.projectId || null,
+          simulationProjectId: selectedSimulationProject?.projectId || null,
           history,
         });
         data = res.data;

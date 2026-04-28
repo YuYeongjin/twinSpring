@@ -10,7 +10,8 @@ public class ChatRequestDTO {
     private String sessionId;
     private String message;
     private List<ChatMessageDTO> history;
-    private String projectId;   // 현재 선택된 BIM 프로젝트 ID (nullable)
+    private String projectId;             // 현재 선택된 BIM 프로젝트 ID (nullable)
+    private String simulationProjectId;   // 현재 선택된 시뮬레이션 프로젝트 ID (nullable)
 
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
@@ -23,4 +24,7 @@ public class ChatRequestDTO {
 
     public String getProjectId() { return projectId; }
     public void setProjectId(String projectId) { this.projectId = projectId; }
+
+    public String getSimulationProjectId() { return simulationProjectId; }
+    public void setSimulationProjectId(String simulationProjectId) { this.simulationProjectId = simulationProjectId; }
 }

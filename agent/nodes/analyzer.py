@@ -39,11 +39,27 @@ _BIM_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# 시뮬레이션 제어 키워드
+_SIMULATION_KEYWORDS = re.compile(
+    r"굴착기|굴삭기|excavator"
+    r"|붐\s*(각도|올려|내려|설정|변경)|boom\s*(angle|up|down)"
+    r"|암\s*(각도|굴절|설정|변경)|arm\s*(angle|bend)"
+    r"|버킷\s*(각도|설정|변경|열어|닫아)|bucket\s*(angle)"
+    r"|선회\s*(각도|설정|변경)|swing\s*(angle)"
+    r"|dig\s*자세|dump\s*자세|travel\s*자세|idle\s*자세"
+    r"|굴착\s*(자세|모드|프리셋)|덤핑\s*(자세|모드|프리셋)"
+    r"|이동\s*(자세|모드)|대기\s*(자세|모드)"
+    r"|시뮬레이션\s*(상태|제어|조회|초기화)"
+    r"|굴착기\s*(상태|초기화|리셋|위치|이동)",
+    re.IGNORECASE,
+)
+
 _SYSTEM_PROMPT = SystemMessage(content=(
-    "사용자 메시지를 다음 중 하나로 분류하세요: rag_db, bim_builder, bim_query, chat\n"
+    "사용자 메시지를 다음 중 하나로 분류하세요: rag_db, bim_builder, bim_query, simulation_controller, chat\n"
     "- rag_db: 센서 데이터 조회 또는 건물 상태 확인\n"
     "- bim_builder: BIM 요소(기둥, 보, 벽, 슬래브 등) 생성/수정/삭제\n"
     "- bim_query: BIM 프로젝트 목록 조회, 부재 수/통계/구성 확인\n"
+    "- simulation_controller: 굴착기 시뮬레이션 제어 (각도 설정, 프리셋, 초기화, 상태 조회)\n"
     "- chat: 일반 대화\n"
     "단 하나의 단어만 응답하세요."
 ))
@@ -57,7 +73,9 @@ def analyze_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
 
-    # 키워드 매칭 (빠른 경로) — bim_query를 bim_builder보다 먼저 체크
+    # 키워드 매칭 (빠른 경로) — 우선순위 순서대로 체크
+    if _SIMULATION_KEYWORDS.search(user_text):
+        return {"intent": "simulation_controller"}
     if _BIM_QUERY_KEYWORDS.search(user_text):
         return {"intent": "bim_query"}
     if _BIM_KEYWORDS.search(user_text):
@@ -72,7 +90,9 @@ def analyze_node(state: AgentState) -> dict:
             HumanMessage(content=user_text),
         ])
         raw = response.content.strip().lower()
-        if "bim_query" in raw or "query" in raw:
+        if "simulation" in raw or "excavator" in raw:
+            intent = "simulation_controller"
+        elif "bim_query" in raw or "query" in raw:
             intent = "bim_query"
         elif "bim" in raw:
             intent = "bim_builder"
