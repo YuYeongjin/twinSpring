@@ -111,3 +111,13 @@ CREATE TABLE IF NOT EXISTS bim_line
     created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_bim_line_project (project_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ================================================================
+-- 시뮬레이션 프로젝트 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS simulation_project
+(
+    project_id   VARCHAR(64)  NOT NULL PRIMARY KEY,
+    project_name VARCHAR(200) NOT NULL,
+    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

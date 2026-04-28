@@ -8,6 +8,7 @@ import ElementEditPanel from './view/bim/component/ElementEditPanel';
 import ChatView from './view/chat/ChatView';
 import AgentDashboard from './view/agent/AgentDashboard';
 import SimulationDashboard from './view/simulation/SimulationDashboard';
+import SimulationProjectList from './view/simulation/SimulationProjectList';
 import { useCallback, useEffect, useState } from 'react';
 
 function App() {
@@ -25,8 +26,12 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [projectList, setProjectList] = useState([]);
 
+  // ── 시뮬레이션 프로젝트 ────────────────────────────────────────
+  const [simulationProjectList, setSimulationProjectList] = useState([]);
+  const [selectedSimulationProject, setSelectedSimulationProject] = useState(null);
+
   // ---------------------------------------------------------------
-  // 프로젝트 목록 새로 고침
+  // BIM 프로젝트 목록 새로 고침
   // ---------------------------------------------------------------
   const refreshProjectList = useCallback(() => {
     return AxiosCustom.get('/api/bim/projects')
@@ -39,7 +44,7 @@ function App() {
   }, []);
 
   // ---------------------------------------------------------------
-  // 프로젝트 이름 변경 (BimProjectList에서 사용)
+  // BIM 프로젝트 이름 변경
   // ---------------------------------------------------------------
   const renameProject = useCallback((projectId, newName, callback) => {
     AxiosCustom.put(`/api/bim/project/${projectId}/name`, { projectName: newName })
@@ -56,7 +61,7 @@ function App() {
   }, []);
 
   // ---------------------------------------------------------------
-  // 신규 프로젝트 생성 (BimProjectList에서 사용)
+  // BIM 신규 프로젝트 생성
   // ---------------------------------------------------------------
   const addNewProject = useCallback((type, name, callback) => {
     AxiosCustom.post('/api/bim/project', {
@@ -73,7 +78,7 @@ function App() {
   }, [refreshProjectList]);
 
   // ---------------------------------------------------------------
-  // 프로젝트 선택 → BIM 모델 데이터 로딩
+  // BIM 프로젝트 선택 → BIM 모델 데이터 로딩
   // ---------------------------------------------------------------
   function handleProjectSelect(projectData) {
     setSelectedProject(projectData);
@@ -95,7 +100,6 @@ function App() {
     }
   };
 
-  // AI가 BIM 부재를 생성/수정/삭제한 후 3D 뷰어 즉시 갱신
   const refreshModelData = useCallback(() => {
     if (!selectedProject) return;
     AxiosCustom.get(`/api/bim/project/${selectedProject.projectId}`)
@@ -103,10 +107,55 @@ function App() {
       .catch(error => console.error('모델 갱신 실패:', error));
   }, [selectedProject]);
 
-  // 초기 프로젝트 목록 로딩
+  // ---------------------------------------------------------------
+  // 시뮬레이션 프로젝트 목록 새로 고침
+  // ---------------------------------------------------------------
+  const refreshSimulationProjectList = useCallback(() => {
+    return AxiosCustom.get('/api/simulation/projects')
+      .then(response => setSimulationProjectList(response.data))
+      .catch(error => console.error('시뮬레이션 프로젝트 목록 로딩 실패:', error));
+  }, []);
+
+  // ---------------------------------------------------------------
+  // 시뮬레이션 신규 프로젝트 생성
+  // ---------------------------------------------------------------
+  const addSimulationProject = useCallback((name, callback) => {
+    AxiosCustom.post('/api/simulation/project', { projectName: name })
+      .then(() => refreshSimulationProjectList())
+      .then(() => { if (callback) callback(); })
+      .catch(error => {
+        console.error('시뮬레이션 프로젝트 생성 실패:', error);
+        if (callback) callback();
+      });
+  }, [refreshSimulationProjectList]);
+
+  // ---------------------------------------------------------------
+  // 시뮬레이션 프로젝트 이름 변경
+  // ---------------------------------------------------------------
+  const renameSimulationProject = useCallback((projectId, newName, callback) => {
+    AxiosCustom.put(`/api/simulation/project/${projectId}/name`, { projectName: newName })
+      .then(() => {
+        setSimulationProjectList(prev =>
+          prev.map(p => p.projectId === projectId ? { ...p, projectName: newName } : p)
+        );
+        if (selectedSimulationProject?.projectId === projectId) {
+          setSelectedSimulationProject(prev => ({ ...prev, projectName: newName }));
+        }
+        if (callback) callback(true);
+      })
+      .catch(error => {
+        console.error('시뮬레이션 프로젝트 이름 변경 실패:', error);
+        if (callback) callback(false);
+      });
+  }, [selectedSimulationProject]);
+
+  // 초기 로딩
   useEffect(() => {
-    refreshProjectList().finally(() => setLoading(false));
-  }, [refreshProjectList]);
+    Promise.all([
+      refreshProjectList(),
+      refreshSimulationProjectList(),
+    ]).finally(() => setLoading(false));
+  }, [refreshProjectList, refreshSimulationProjectList]);
 
   if (loading) {
     return (
@@ -123,11 +172,23 @@ function App() {
   // 뷰 렌더링
   // ---------------------------------------------------------------
   const renderView = () => {
+    if (viewComponent === 'simulation-projects') {
+      return (
+        <SimulationProjectList
+          setViceComponent={setViceComponent}
+          projectList={simulationProjectList}
+          onProjectSelect={setSelectedSimulationProject}
+          onCreateProject={addSimulationProject}
+          onRenameProject={renameSimulationProject}
+        />
+      );
+    }
     if (viewComponent === 'simulation') {
       return (
         <SimulationDashboard
-          selectedProject={selectedProject}
+          selectedProject={selectedSimulationProject}
           modelData={modelData}
+          setViceComponent={setViceComponent}
         />
       );
     }
@@ -192,7 +253,6 @@ function App() {
 
       <Footer />
 
-      {/* AI 채팅 어시스턴트 — Agent 전용 화면 제외 모든 뷰에서 표시 */}
       {viewComponent !== 'agent' && (
         <ChatView selectedProject={selectedProject} onBimUpdate={refreshModelData} />
       )}
