@@ -33,7 +33,8 @@ class HistoryMessage(BaseModel):
     content: str
 
 class ChatContext(BaseModel):
-    projectId: str | None = None
+    projectId: str | None = None               # BIM 프로젝트 ID
+    simulationProjectId: str | None = None     # 시뮬레이션 프로젝트 ID
 
 class ChatRequest(BaseModel):
     message: str
@@ -78,7 +79,8 @@ def chat(req: ChatRequest):
         "intent": None,
         "query_result": None,
         "context": None,
-        "bim_project_id": req.context.projectId,
+        "bim_project_id":        req.context.projectId,
+        "simulation_project_id": req.context.simulationProjectId,
         "pending_action": pending_action,
     }
 
@@ -86,7 +88,6 @@ def chat(req: ChatRequest):
         result = graph.invoke(initial_state)
     except Exception as e:
         traceback.print_exc()
-        # pending_action은 유지 (다음 요청에서 재시도 가능하도록)
         return ChatResponse(
             response="처리 중 오류가 발생했습니다. 다시 시도해 주세요.",
             intent="chat",
@@ -112,7 +113,6 @@ def chat(req: ChatRequest):
 def chat_multimodal(req: MultimodalRequest):
     """이미지 + 텍스트를 Ollama 비전 모델로 분석합니다."""
     try:
-        # data URL 접두사 제거 (예: "data:image/jpeg;base64,...")
         img_b64 = req.image_base64
         if "," in img_b64:
             img_b64 = img_b64.split(",", 1)[1]
