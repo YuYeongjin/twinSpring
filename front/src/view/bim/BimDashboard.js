@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { View } from '@react-three/drei';
 import * as THREE from 'three';
 import Scene from './component/Scene';
 import Plan2DView from './component/Plan2DView';

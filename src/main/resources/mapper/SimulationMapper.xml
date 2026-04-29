@@ -26,4 +26,47 @@
         WHERE project_id = #{projectId}
     </delete>
 
+    <select id="getSimulationState" parameterType="string" resultType="map">
+        SELECT excavator_id        AS excavatorId,
+               position_x         AS positionX,
+               position_y         AS positionY,
+               position_z         AS positionZ,
+               body_rotation      AS bodyRotation,
+               swing_angle        AS swingAngle,
+               boom_angle         AS boomAngle,
+               arm_angle          AS armAngle,
+               bucket_angle       AS bucketAngle,
+               operation_mode     AS operationMode,
+               soil_in_bucket     AS soilInBucket,
+               selected_machine_id AS selectedMachineId,
+               height_map_data    AS heightMapData
+        FROM simulation_state
+        WHERE excavator_id = #{excavatorId}
+    </select>
+
+    <insert id="upsertSimulationState" parameterType="map">
+        INSERT INTO simulation_state (
+            excavator_id, position_x, position_y, position_z,
+            body_rotation, swing_angle, boom_angle, arm_angle, bucket_angle,
+            operation_mode, soil_in_bucket, selected_machine_id, height_map_data
+        ) VALUES (
+            #{excavatorId}, #{positionX}, #{positionY}, #{positionZ},
+            #{bodyRotation}, #{swingAngle}, #{boomAngle}, #{armAngle}, #{bucketAngle},
+            #{operationMode}, #{soilInBucket}, #{selectedMachineId}, #{heightMapData}
+        )
+        ON DUPLICATE KEY UPDATE
+            position_x          = VALUES(position_x),
+            position_y          = VALUES(position_y),
+            position_z          = VALUES(position_z),
+            body_rotation       = VALUES(body_rotation),
+            swing_angle         = VALUES(swing_angle),
+            boom_angle          = VALUES(boom_angle),
+            arm_angle           = VALUES(arm_angle),
+            bucket_angle        = VALUES(bucket_angle),
+            operation_mode      = VALUES(operation_mode),
+            soil_in_bucket      = VALUES(soil_in_bucket),
+            selected_machine_id = VALUES(selected_machine_id),
+            height_map_data     = VALUES(height_map_data)
+    </insert>
+
 </mapper>

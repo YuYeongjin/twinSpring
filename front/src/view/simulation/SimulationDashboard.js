@@ -318,21 +318,64 @@ function TrackRollers({ side }) {
   );
 }
 
-// ── 굴착기 3D 모델 (장비 사양 기반 스케일링) ────────────────────────────────────
+// ── 굴착기 3D 모델 (장비 사양 기반 스케일링 + 지형 추종 기울기) ──────────────────
 // 차체 전체를 bodyScale로 균일 확대/축소.
 // 붐/암은 scaled space 내에서 실제 길이/s 로 표현 → 월드 공간에서 실제 길이.
-function ExcavatorModel({ state, soilInBucket, machine }) {
+// useFrame으로 매 프레임 지형 높이·기울기를 계산해 그룹에 직접 반영.
+function ExcavatorModel({ state, soilInBucket, machine, heightMapRef }) {
   const s   = machine.bodyScale;
-  const BL  = machine.boomLen  / s;   // 스케일 공간의 붐 길이
-  const AL  = machine.armLen   / s;   // 스케일 공간의 암 길이
-  const buL = machine.bucketLen / s;  // 스케일 공간의 버킷 티스 도달
+  const BL  = machine.boomLen  / s;
+  const AL  = machine.armLen   / s;
+  const buL = machine.bucketLen / s;
   const soilFill = Math.min(1, soilInBucket / machine.bucketCapacity);
 
+  const groupRef = useRef();
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
+
+  // 트랙 반-폭/반-길이 (월드 공간, bodyScale 반영)
+  const tHX = 2.1  * s;   // 좌우 절반
+  const tHZ = 2.75 * s;   // 전후 절반
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const cur    = stateRef.current;
+    const px     = cur.positionX;
+    const pz     = cur.positionZ;
+    const bodyRad = cur.bodyRotation * D2R;
+    const cosR   = Math.cos(bodyRad);
+    const sinR   = Math.sin(bodyRad);
+
+    const hm = heightMapRef?.current;
+    if (hm) {
+      // 차체 로컬 좌표 (lx, lz) → 월드 좌표로 변환해 지형 높이 샘플
+      const sc = (lx, lz) =>
+        sampleH(hm, px + sinR * lz + cosR * lx, pz + cosR * lz - sinR * lx);
+
+      const hFL = sc(-tHX,  tHZ);  // 좌전
+      const hFR = sc( tHX,  tHZ);  // 우전
+      const hBL = sc(-tHX, -tHZ);  // 좌후
+      const hBR = sc( tHX, -tHZ);  // 우후
+
+      const centerH = (hFL + hFR + hBL + hBR) / 4;
+      // pitch: 전후 기울기 (차체 X축 회전)
+      const pitch = Math.atan2((hFL + hFR) / 2 - (hBL + hBR) / 2, tHZ * 2);
+      // roll: 좌우 기울기 (차체 Z축 회전, 오른쪽이 높으면 양수)
+      const roll  = Math.atan2((hFR + hBR) / 2 - (hFL + hBL) / 2, tHX * 2);
+
+      groupRef.current.position.set(px, centerH, pz);
+      // YXZ 순서: yaw(Y) → pitch(X) → roll(Z), 차체 로컬 기준
+      // positive X rotation = 앞이 내려감 → 앞이 높으면 -pitch(nose up)
+      // positive Z rotation = 오른쪽이 올라감 → 오른쪽이 높으면 +roll
+      groupRef.current.rotation.set(-pitch, bodyRad, roll, 'YXZ');
+    } else {
+      groupRef.current.position.set(px, 0, pz);
+      groupRef.current.rotation.set(0, bodyRad, 0);
+    }
+  });
+
   return (
-    <group
-      position={[state.positionX, 0, state.positionZ]}
-      rotation={[0, state.bodyRotation * D2R, 0]}
-    >
+    <group ref={groupRef}>
       {/* 전체 차체를 bodyScale로 스케일 */}
       <group scale={[s, s, s]}>
 
@@ -580,6 +623,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   // 장비 선택
   const [selectedMachineId, setSelectedMachineId] = useState(DEFAULT_MACHINE.id);
   const machineRef = useRef(DEFAULT_MACHINE);
+  const selectedMachineIdRef = useRef(DEFAULT_MACHINE.id);
+  useEffect(() => { selectedMachineIdRef.current = selectedMachineId; }, [selectedMachineId]);
 
   // 덤핑 상태 중복 방지
   const dumpingRef = useRef(false);
@@ -658,7 +703,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     return () => client.deactivate();
   }, []);
 
-  // 서버에서 초기 상태 로드 (지형 데이터 포함)
+  // 서버에서 초기 상태 로드 (지형 + 장비 선택 포함)
   useEffect(() => {
     AxiosCustom.get('/api/simulation/excavator')
       .then(res => {
@@ -671,6 +716,12 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         if (res.data.soilInBucket != null) {
           soilInBucketRef.current = res.data.soilInBucket;
           setSoilDisplay(res.data.soilInBucket);
+        }
+        if (res.data.selectedMachineId && MACHINE_CONFIGS[res.data.selectedMachineId]) {
+          const m = MACHINE_CONFIGS[res.data.selectedMachineId];
+          setSelectedMachineId(res.data.selectedMachineId);
+          selectedMachineIdRef.current = res.data.selectedMachineId;
+          machineRef.current = m;
         }
       })
       .catch(() => {});
@@ -724,7 +775,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, []);
 
-  // ── 자동 서버 동기화 (2초, 지형 데이터 포함) ──
+  // ── 자동 서버 동기화 (2초, 지형 + 장비 선택 포함) ──
   useEffect(() => {
     const id = setInterval(() => {
       setSyncStatus('syncing');
@@ -732,6 +783,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         ...stateRef.current,
         soilInBucket: soilInBucketRef.current,
         heightMapData: serializeTerrain(heightMapRef.current),
+        selectedMachineId: selectedMachineIdRef.current,
       };
       AxiosCustom.put('/api/simulation/excavator', payload)
         .then(() => setSyncStatus('synced'))
@@ -862,6 +914,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       ...state,
       soilInBucket: soilInBucketRef.current,
       heightMapData: serializeTerrain(heightMapRef.current),
+      selectedMachineId,
     };
     AxiosCustom.put('/api/simulation/excavator', payload)
       .then(() => setSyncStatus('synced'))
@@ -1161,7 +1214,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           {/* 동적 지형 메시 */}
           <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
           <ConstructionOverlay bimElements={modelData} />
-          <ExcavatorModel state={state} soilInBucket={soilDisplay} machine={MACHINE_CONFIGS[selectedMachineId]} />
+          <ExcavatorModel state={state} soilInBucket={soilDisplay} machine={MACHINE_CONFIGS[selectedMachineId]} heightMapRef={heightMapRef} />
           {/* 흙 파티클 */}
           <SoilParticles particlesRef={particlesRef} />
 

@@ -16,4 +16,8 @@ public interface SimulationDAO {
     void updateSimulationProjectName(Map<String, Object> params);
 
     void deleteSimulationProject(@Param("projectId") String projectId);
+
+    Map<String, Object> getSimulationState(@Param("excavatorId") String excavatorId);
+
+    void upsertSimulationState(Map<String, Object> params);
 }
