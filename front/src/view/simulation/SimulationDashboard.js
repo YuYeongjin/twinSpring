@@ -2,7 +2,9 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sky, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
-import AxiosCustom from '../../axios/AxiosCustom';
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
+import AxiosCustom, { WS_BASE } from '../../axios/AxiosCustom';
 
 // ── 공통 상수 ──────────────────────────────────────────────────────────────────
 const D2R = Math.PI / 180;
@@ -61,6 +63,15 @@ const MACHINE_CONFIGS = {
   },
 };
 const DEFAULT_MACHINE = MACHINE_CONFIGS['0.6W'];
+
+// 온·습도 이상 감지 기본 임계값
+const DEFAULT_THRESHOLDS = { tempMin: 5, tempMax: 40, humMin: 20, humMax: 85 };
+
+// 알림 심각도별 색상
+const ALERT_COLORS = {
+  danger:  { bg: 'rgba(127,29,29,0.95)', border: '#ef4444', text: '#fca5a5', glow: '#ef444480' },
+  warning: { bg: 'rgba(92,60,0,0.95)',   border: '#f59e0b', text: '#fde68a', glow: '#f59e0b60' },
+};
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -580,8 +591,72 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const [syncStatus, setSyncStatus] = useState('idle');
   const [kinematics, setKinematics] = useState(null);
 
+  // IoT 센서 모니터링
+  const [sensor, setSensor]           = useState(null);
+  const [sensorWs, setSensorWs]       = useState('idle'); // 'idle'|'connecting'|'connected'|'disconnected'|'error'
+  const [thresholds, setThresholds]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sim_thresholds')) || DEFAULT_THRESHOLDS; }
+    catch { return DEFAULT_THRESHOLDS; }
+  });
+  const [activeAlerts, setActiveAlerts]   = useState([]);  // 현재 임계값 초과 중인 항목
+  const [alertHistory, setAlertHistory]   = useState([]);  // 최근 알림 기록 (최대 20건)
+  const [alertPulse, setAlertPulse]       = useState(true);
+  const stompClientRef  = useRef(null);
+  const thresholdsRef   = useRef(thresholds);
+
   // stateRef 항상 최신 유지
   useEffect(() => { stateRef.current = state; }, [state]);
+
+  // 임계값 ref 동기화 + localStorage 저장
+  useEffect(() => {
+    thresholdsRef.current = thresholds;
+    try { localStorage.setItem('sim_thresholds', JSON.stringify(thresholds)); } catch {}
+  }, [thresholds]);
+
+  // 활성 알림이 있을 때 펄스 토글 (0.8초 간격)
+  useEffect(() => {
+    if (activeAlerts.length === 0) return;
+    const id = setInterval(() => setAlertPulse(p => !p), 800);
+    return () => clearInterval(id);
+  }, [activeAlerts.length]);
+
+  // WebSocket: IoT 센서 데이터 구독 및 이상 감지
+  useEffect(() => {
+    const client = new Client({
+      webSocketFactory: () => new SockJS(`${WS_BASE}/ws/sensor`),
+      reconnectDelay: 5000,
+      onConnect: () => {
+        setSensorWs('connected');
+        client.subscribe('/topic/sensor', (msg) => {
+          try {
+            const d = JSON.parse(msg.body);
+            setSensor(d);
+            const t = thresholdsRef.current;
+            const ts = new Date().toLocaleTimeString('ko-KR');
+            const triggered = [];
+            if (d.temperature > t.tempMax)
+              triggered.push({ id: 'TEMP_HIGH', level: 'danger',  text: `온도 상한 초과: ${d.temperature}°C (허용 최대 ${t.tempMax}°C)`, ts });
+            if (d.temperature < t.tempMin)
+              triggered.push({ id: 'TEMP_LOW',  level: 'danger',  text: `온도 하한 이탈: ${d.temperature}°C (허용 최저 ${t.tempMin}°C)`, ts });
+            if (d.humidity > t.humMax)
+              triggered.push({ id: 'HUM_HIGH',  level: 'warning', text: `습도 상한 초과: ${d.humidity}% (허용 최대 ${t.humMax}%)`, ts });
+            if (d.humidity < t.humMin)
+              triggered.push({ id: 'HUM_LOW',   level: 'warning', text: `습도 하한 이탈: ${d.humidity}% (허용 최저 ${t.humMin}%)`, ts });
+            setActiveAlerts(triggered);
+            if (triggered.length > 0)
+              setAlertHistory(prev => [...triggered.map(a => ({ ...a, uid: `${a.id}_${Date.now()}` })), ...prev].slice(0, 20));
+          } catch {}
+        });
+      },
+      onDisconnect:     () => setSensorWs('disconnected'),
+      onStompError:     () => setSensorWs('error'),
+      onWebSocketClose: () => setSensorWs('disconnected'),
+    });
+    setSensorWs('connecting');
+    client.activate();
+    stompClientRef.current = client;
+    return () => client.deactivate();
+  }, []);
 
   // 서버에서 초기 상태 로드 (지형 데이터 포함)
   useEffect(() => {
@@ -949,6 +1024,52 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             {syncStatus === 'syncing' ? '동기화 중...' : syncStatus === 'synced' ? 'C# 서버 동기화됨' : syncStatus === 'error' ? '동기화 실패' : '대기 중'}
           </div>
         </div>
+
+        {/* IoT 센서 모니터링 */}
+        <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
+          <div style={{ color: secColor, marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>🌡 IoT 센서</span>
+            <span style={{ color: sensorWs === 'connected' ? '#4ade80' : sensorWs === 'error' ? '#f87171' : '#facc15', fontSize: '9px' }}>
+              {sensorWs === 'connected' ? '● 연결' : sensorWs === 'connecting' ? '○ 연결 중' : sensorWs === 'error' ? '✗ 오류' : '○ 대기'}
+            </span>
+          </div>
+          {sensor ? (
+            <>
+              {[
+                ['온도', `${sensor.temperature}°C`, sensor.temperature > thresholds.tempMax || sensor.temperature < thresholds.tempMin ? '#f87171' : '#4ade80'],
+                ['습도', `${sensor.humidity}%`,     sensor.humidity > thresholds.humMax || sensor.humidity < thresholds.humMin ? '#f87171' : '#4ade80'],
+                ['위치', sensor.location,            '#e2e8f0'],
+              ].map(([label, value, color]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                  <span style={{ color: secColor }}>{label}</span>
+                  <span style={{ color, fontFamily: 'monospace', fontWeight: 700 }}>{value}</span>
+                </div>
+              ))}
+            </>
+          ) : (
+            <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '4px 0' }}>데이터 대기 중...</div>
+          )}
+        </div>
+
+        {/* 알림 기록 */}
+        {alertHistory.length > 0 && (
+          <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
+            <div style={{ color: secColor, marginBottom: '6px' }}>📋 알림 기록</div>
+            <div style={{ maxHeight: '100px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {alertHistory.map((a) => (
+                <div key={a.uid} style={{ display: 'flex', gap: '4px', alignItems: 'flex-start' }}>
+                  <span style={{ color: a.level === 'danger' ? '#f87171' : '#fbbf24', flexShrink: 0 }}>
+                    {a.level === 'danger' ? '🚨' : '⚠️'}
+                  </span>
+                  <div>
+                    <div style={{ color: a.level === 'danger' ? '#fca5a5' : '#fde68a', lineHeight: 1.4 }}>{a.text}</div>
+                    <div style={{ color: '#3a4a5a' }}>{a.ts}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── 중앙 3D 캔버스 ── */}
@@ -982,6 +1103,33 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         }}>
           🚜 {MACHINE_CONFIGS[selectedMachineId].label} 굴착기
         </div>
+
+        {/* 이상 감지 알림 오버레이 */}
+        {activeAlerts.length > 0 && (
+          <div style={{
+            position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 20, display: 'flex', flexDirection: 'column', gap: '5px',
+            maxWidth: '460px', width: 'calc(100% - 48px)',
+          }}>
+            {activeAlerts.map(alert => {
+              const c = ALERT_COLORS[alert.level];
+              return (
+                <div key={alert.id} style={{
+                  background: c.bg,
+                  border: `${alertPulse ? 2 : 1}px solid ${c.border}`,
+                  borderRadius: '9px', padding: '8px 14px',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  color: c.text, fontSize: '12px', fontWeight: 700,
+                  boxShadow: alertPulse ? `0 0 16px ${c.glow}` : 'none',
+                  transition: 'box-shadow 0.3s, border-width 0.3s',
+                }}>
+                  <span>{alert.level === 'danger' ? '🚨' : '⚠️'} {alert.text}</span>
+                  <span style={{ fontSize: '10px', color: '#94a3b8', marginLeft: '10px', flexShrink: 0 }}>{alert.ts}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* 굴착/덤핑 상태 HUD */}
         {(isDigging || isDumping) && (
@@ -1144,6 +1292,63 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </button>
           <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '8px', color: '#f87171', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
             ↺ 전체 초기화
+          </button>
+        </div>
+
+        {/* 이상 감지 임계값 설정 */}
+        <div>
+          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px', letterSpacing: '0.04em' }}>
+            🚨 이상 감지 임계값
+            {activeAlerts.length > 0 && (
+              <span style={{ marginLeft: '6px', color: activeAlerts.some(a => a.level === 'danger') ? '#f87171' : '#fbbf24', fontWeight: 700 }}>
+                ({activeAlerts.length}건 초과)
+              </span>
+            )}
+          </div>
+
+          {/* 온도 */}
+          <div style={{ marginBottom: '10px' }}>
+            <div style={{ color: '#fb923c', fontSize: '10px', marginBottom: '5px' }}>🌡 온도 허용 범위 (°C)</div>
+            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>최저</span>
+              <input type="number" value={thresholds.tempMin}
+                onChange={e => setThresholds(prev => ({ ...prev, tempMin: parseFloat(e.target.value) || 0 }))}
+                style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>최고</span>
+              <input type="number" value={thresholds.tempMax}
+                onChange={e => setThresholds(prev => ({ ...prev, tempMax: parseFloat(e.target.value) || 0 }))}
+                style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px', fontSize: '9px', color: '#3a4a5a' }}>
+              <span>현재: {sensor ? `${sensor.temperature}°C` : '--'}</span>
+              <span>범위: {thresholds.tempMin}° ~ {thresholds.tempMax}°</span>
+            </div>
+          </div>
+
+          {/* 습도 */}
+          <div>
+            <div style={{ color: accentBlue, fontSize: '10px', marginBottom: '5px' }}>💧 습도 허용 범위 (%)</div>
+            <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>최저</span>
+              <input type="number" value={thresholds.humMin}
+                onChange={e => setThresholds(prev => ({ ...prev, humMin: parseFloat(e.target.value) || 0 }))}
+                style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>최고</span>
+              <input type="number" value={thresholds.humMax}
+                onChange={e => setThresholds(prev => ({ ...prev, humMax: parseFloat(e.target.value) || 0 }))}
+                style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px', fontSize: '9px', color: '#3a4a5a' }}>
+              <span>현재: {sensor ? `${sensor.humidity}%` : '--'}</span>
+              <span>범위: {thresholds.humMin}% ~ {thresholds.humMax}%</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setThresholds(DEFAULT_THRESHOLDS)}
+            style={{ marginTop: '8px', width: '100%', background: '#162032', border: '1px solid #253347', borderRadius: '6px', color: '#8896a4', fontSize: '10px', padding: '5px', cursor: 'pointer' }}
+          >
+            기본값 복원
           </button>
         </div>
 
