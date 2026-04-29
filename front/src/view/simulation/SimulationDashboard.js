@@ -715,10 +715,6 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     if (digDepth > 0.05 && soilInBucketRef.current < maxBucket) {
       const cell = worldToCell(tipX, tipZ);
       if (cell.valid) {
-        // 깊이에 비례한 굴착 속도 (최대 0.01m/frame)
-        // const rate = Math.min(0.01, digDepth * 0.006);
-        const removed = applyExcavation(heightMapRef.current, cell.col, cell.row, rate);
-        soilInBucketRef.current = Math.min(MAX_BUCKET, soilInBucketRef.current + removed);
         const rate = Math.min(machine.digRate, digDepth * 0.055);
         applyExcavation(heightMapRef.current, cell.col, cell.row, rate, machine.digRadius);
         soilInBucketRef.current = Math.min(maxBucket, soilInBucketRef.current + rate * 0.9);
