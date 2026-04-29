@@ -121,3 +121,24 @@ CREATE TABLE IF NOT EXISTS simulation_project
     project_name VARCHAR(200) NOT NULL,
     created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ================================================================
+-- 시뮬레이션 상태 테이블 (지형 + 장비 선택 포함)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS simulation_state
+(
+    excavator_id        VARCHAR(64)   NOT NULL PRIMARY KEY,
+    position_x          DOUBLE        NOT NULL DEFAULT 0,
+    position_y          DOUBLE        NOT NULL DEFAULT 0,
+    position_z          DOUBLE        NOT NULL DEFAULT 0,
+    body_rotation       DOUBLE        NOT NULL DEFAULT 0,
+    swing_angle         DOUBLE        NOT NULL DEFAULT 0,
+    boom_angle          DOUBLE        NOT NULL DEFAULT 35,
+    arm_angle           DOUBLE        NOT NULL DEFAULT 60,
+    bucket_angle        DOUBLE        NOT NULL DEFAULT -25,
+    operation_mode      VARCHAR(20)   NOT NULL DEFAULT 'IDLE',
+    soil_in_bucket      DOUBLE        NOT NULL DEFAULT 0,
+    selected_machine_id VARCHAR(20)   NOT NULL DEFAULT '0.6W',
+    height_map_data     LONGTEXT      NULL,
+    updated_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

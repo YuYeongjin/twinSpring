@@ -34,31 +34,46 @@ public class SimulationDTO {
     @JsonProperty("operationMode")
     private String operationMode;
 
+    @JsonProperty("soilInBucket")
+    private Double soilInBucket;
+
+    @JsonProperty("selectedMachineId")
+    private String selectedMachineId;
+
+    @JsonProperty("heightMapData")
+    private String heightMapData;
+
     public SimulationDTO() {}
 
     // ── Getters ──────────────────────────────────────────────────────────────
 
-    public String getExcavatorId()   { return excavatorId; }
-    public double getPositionX()     { return positionX; }
-    public double getPositionY()     { return positionY; }
-    public double getPositionZ()     { return positionZ; }
-    public double getBodyRotation()  { return bodyRotation; }
-    public double getSwingAngle()    { return swingAngle; }
-    public double getBoomAngle()     { return boomAngle; }
-    public double getArmAngle()      { return armAngle; }
-    public double getBucketAngle()   { return bucketAngle; }
-    public String getOperationMode() { return operationMode; }
+    public String getExcavatorId()      { return excavatorId; }
+    public double getPositionX()        { return positionX; }
+    public double getPositionY()        { return positionY; }
+    public double getPositionZ()        { return positionZ; }
+    public double getBodyRotation()     { return bodyRotation; }
+    public double getSwingAngle()       { return swingAngle; }
+    public double getBoomAngle()        { return boomAngle; }
+    public double getArmAngle()         { return armAngle; }
+    public double getBucketAngle()      { return bucketAngle; }
+    public String getOperationMode()    { return operationMode; }
+    public Double getSoilInBucket()     { return soilInBucket; }
+    public String getSelectedMachineId(){ return selectedMachineId; }
+    public String getHeightMapData()    { return heightMapData; }
 
     // ── Setters ──────────────────────────────────────────────────────────────
 
-    public void setExcavatorId(String excavatorId)     { this.excavatorId = excavatorId; }
-    public void setPositionX(double positionX)         { this.positionX = positionX; }
-    public void setPositionY(double positionY)         { this.positionY = positionY; }
-    public void setPositionZ(double positionZ)         { this.positionZ = positionZ; }
-    public void setBodyRotation(double bodyRotation)   { this.bodyRotation = bodyRotation; }
-    public void setSwingAngle(double swingAngle)       { this.swingAngle = swingAngle; }
-    public void setBoomAngle(double boomAngle)         { this.boomAngle = boomAngle; }
-    public void setArmAngle(double armAngle)           { this.armAngle = armAngle; }
-    public void setBucketAngle(double bucketAngle)     { this.bucketAngle = bucketAngle; }
-    public void setOperationMode(String operationMode) { this.operationMode = operationMode; }
+    public void setExcavatorId(String excavatorId)         { this.excavatorId = excavatorId; }
+    public void setPositionX(double positionX)             { this.positionX = positionX; }
+    public void setPositionY(double positionY)             { this.positionY = positionY; }
+    public void setPositionZ(double positionZ)             { this.positionZ = positionZ; }
+    public void setBodyRotation(double bodyRotation)       { this.bodyRotation = bodyRotation; }
+    public void setSwingAngle(double swingAngle)           { this.swingAngle = swingAngle; }
+    public void setBoomAngle(double boomAngle)             { this.boomAngle = boomAngle; }
+    public void setArmAngle(double armAngle)               { this.armAngle = armAngle; }
+    public void setBucketAngle(double bucketAngle)         { this.bucketAngle = bucketAngle; }
+    public void setOperationMode(String operationMode)     { this.operationMode = operationMode; }
+    public void setSoilInBucket(Double soilInBucket)       { this.soilInBucket = soilInBucket; }
+    public void setSelectedMachineId(String selectedMachineId) { this.selectedMachineId = selectedMachineId; }
+    public void setHeightMapData(String heightMapData)     { this.heightMapData = heightMapData; }
 }
