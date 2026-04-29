@@ -69,7 +69,7 @@ public class SimulationServiceImpl implements SimulationService {
         dto.setExcavatorId(excavatorId);
         dto.setBoomAngle(35.0);
         dto.setArmAngle(60.0);
-        dto.setBucketAngle(-20.0);
+        dto.setBucketAngle(-25.0);
         dto.setOperationMode("IDLE");
         return dto;
     }

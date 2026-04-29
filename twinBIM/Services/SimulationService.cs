@@ -39,7 +39,7 @@ namespace BimProcessorApi.Services
                     swing_angle    DOUBLE         NOT NULL DEFAULT 0,
                     boom_angle     DOUBLE         NOT NULL DEFAULT 35,
                     arm_angle      DOUBLE         NOT NULL DEFAULT 60,
-                    bucket_angle   DOUBLE         NOT NULL DEFAULT -20,
+                    bucket_angle   DOUBLE         NOT NULL DEFAULT -25,
                     operation_mode VARCHAR(30)    NOT NULL DEFAULT 'IDLE',
                     soil_in_bucket DOUBLE         NOT NULL DEFAULT 0,
                     height_map_data MEDIUMTEXT    NULL,
@@ -150,7 +150,7 @@ namespace BimProcessorApi.Services
                 ExcavatorId   = excavatorId,
                 PositionX     = 0, PositionY = 0, PositionZ = 0,
                 BodyRotation  = 0, SwingAngle = 0,
-                BoomAngle     = 35, ArmAngle = 60, BucketAngle = -20,
+                BoomAngle     = 35, ArmAngle = 60, BucketAngle = -25,
                 OperationMode = "IDLE",
             });
         }
