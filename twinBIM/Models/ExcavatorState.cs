@@ -48,6 +48,14 @@ namespace BimProcessorApi.Models
         [JsonPropertyName("operationMode")]
         public string OperationMode { get; set; } = "IDLE";
 
+        [Column("soil_in_bucket")]
+        [JsonPropertyName("soilInBucket")]
+        public double SoilInBucket { get; set; } = 0.0;
+
+        [Column("height_map_data")]
+        [JsonPropertyName("heightMapData")]
+        public string? HeightMapData { get; set; } = null;
+
         [Column("updated_at")]
         [JsonPropertyName("updatedAt")]
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

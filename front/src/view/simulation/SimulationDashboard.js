@@ -154,8 +154,10 @@ function updateTerrainGeo(geo, hm) {
   geo.computeVertexNormals();
 }
 
-// 굴착: 버킷 접촉 좌표 중심으로 Gaussian 분포로 흙 제거
+// 굴착: 버킷 접촉 좌표 중심으로 Gaussian 분포로 흙 제거 (정규화 가중치, 실제 제거량 반환)
 function applyExcavation(hm, col, row, amount) {
+  const cells = [];
+  let totalW = 0;
   for (let dr = -2; dr <= 2; dr++) {
     for (let dc = -2; dc <= 2; dc++) {
       const d = Math.sqrt(dr * dr + dc * dc);
@@ -163,9 +165,38 @@ function applyExcavation(hm, col, row, amount) {
       const c = col + dc, r = row + dr;
       if (c < 0 || c >= GRID_COLS || r < 0 || r >= GRID_ROWS) continue;
       const w = Math.exp(-d * d / 1.6);
-      hm[r * GRID_COLS + c] = Math.max(-MAX_DIG, hm[r * GRID_COLS + c] - amount * w);
+      totalW += w;
+      cells.push({ c, r, w });
     }
   }
+  if (totalW < 0.001) return 0;
+  let actualRemoved = 0;
+  for (const { c, r, w } of cells) {
+    const norm = w / totalW;
+    const prev = hm[r * GRID_COLS + c];
+    const next = Math.max(-MAX_DIG, prev - amount * norm);
+    hm[r * GRID_COLS + c] = next;
+    actualRemoved += prev - next;
+  }
+  return actualRemoved;
+}
+
+// 지형 데이터 직렬화/역직렬화 (Float32Array ↔ base64)
+function serializeTerrain(hm) {
+  const bytes = new Uint8Array(hm.buffer);
+  let b64 = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    b64 += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+  }
+  return btoa(b64);
+}
+
+function deserializeTerrain(b64, hm) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const floats = new Float32Array(bytes.buffer);
+  if (floats.length === hm.length) hm.set(floats);
 }
 
 // 덤핑: 버킷이 흙을 쏟을 때 해당 좌표에 파라볼라 분포로 흙 쌓기
@@ -442,10 +473,21 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   // stateRef 항상 최신 유지
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // 서버에서 초기 상태 로드
+  // 서버에서 초기 상태 로드 (지형 데이터 포함)
   useEffect(() => {
     AxiosCustom.get('/api/simulation/excavator')
-      .then(res => { if (res.data) setState(prev => ({ ...prev, ...res.data })); })
+      .then(res => {
+        if (!res.data) return;
+        setState(prev => ({ ...prev, ...res.data }));
+        if (res.data.heightMapData) {
+          deserializeTerrain(res.data.heightMapData, heightMapRef.current);
+          terrainDirtyRef.current = true;
+        }
+        if (res.data.soilInBucket != null) {
+          soilInBucketRef.current = res.data.soilInBucket;
+          setSoilDisplay(res.data.soilInBucket);
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -497,11 +539,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, []);
 
-  // ── 자동 서버 동기화 (2초) ──
+  // ── 자동 서버 동기화 (2초, 지형 데이터 포함) ──
   useEffect(() => {
     const id = setInterval(() => {
       setSyncStatus('syncing');
-      AxiosCustom.put('/api/simulation/excavator', stateRef.current)
+      const payload = {
+        ...stateRef.current,
+        soilInBucket: soilInBucketRef.current,
+        heightMapData: serializeTerrain(heightMapRef.current),
+      };
+      AxiosCustom.put('/api/simulation/excavator', payload)
         .then(() => setSyncStatus('synced'))
         .catch(() => setSyncStatus('error'));
     }, 2000);
@@ -559,8 +606,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       if (cell.valid) {
         // 깊이에 비례한 굴착 속도 (최대 0.01m/frame)
         const rate = Math.min(0.01, digDepth * 0.006);
-        applyExcavation(heightMapRef.current, cell.col, cell.row, rate);
-        soilInBucketRef.current = Math.min(MAX_BUCKET, soilInBucketRef.current + rate * 0.75);
+        const removed = applyExcavation(heightMapRef.current, cell.col, cell.row, rate);
+        soilInBucketRef.current = Math.min(MAX_BUCKET, soilInBucketRef.current + removed);
         terrainDirtyRef.current = true;
         setSoilDisplay(soilInBucketRef.current);
       }
@@ -570,9 +617,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     if (state.bucketAngle < -65 && tipY > 0.4 && soilInBucketRef.current > 0.02) {
       const cell = worldToCell(tipX, tipZ);
       if (cell.valid) {
-        const dumpRate = 0.05;  // frame당 덤핑 속도
+        const dumpRate = 0.05;
         const amount   = Math.min(dumpRate, soilInBucketRef.current);
-        applyFill(heightMapRef.current, cell.col, cell.row, amount * 0.85);
+        applyFill(heightMapRef.current, cell.col, cell.row, amount);
         soilInBucketRef.current = Math.max(0, soilInBucketRef.current - amount);
         terrainDirtyRef.current = true;
         setSoilDisplay(soilInBucketRef.current);
@@ -602,7 +649,12 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
   const handleSave = () => {
     setSyncStatus('syncing');
-    AxiosCustom.put('/api/simulation/excavator', state)
+    const payload = {
+      ...state,
+      soilInBucket: soilInBucketRef.current,
+      heightMapData: serializeTerrain(heightMapRef.current),
+    };
+    AxiosCustom.put('/api/simulation/excavator', payload)
       .then(() => setSyncStatus('synced'))
       .catch(() => setSyncStatus('error'));
   };

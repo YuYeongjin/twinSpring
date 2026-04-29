@@ -41,9 +41,14 @@ namespace BimProcessorApi.Services
                     arm_angle      DOUBLE         NOT NULL DEFAULT 60,
                     bucket_angle   DOUBLE         NOT NULL DEFAULT -20,
                     operation_mode VARCHAR(30)    NOT NULL DEFAULT 'IDLE',
+                    soil_in_bucket DOUBLE         NOT NULL DEFAULT 0,
+                    height_map_data MEDIUMTEXT    NULL,
                     updated_at     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             ");
+            // 기존 테이블에 컬럼이 없을 경우 추가 (MySQL은 IF NOT EXISTS 미지원으로 try-catch)
+            try { await _context.Database.ExecuteSqlRawAsync("ALTER TABLE simulation_excavator ADD COLUMN soil_in_bucket DOUBLE NOT NULL DEFAULT 0"); } catch { }
+            try { await _context.Database.ExecuteSqlRawAsync("ALTER TABLE simulation_excavator ADD COLUMN height_map_data MEDIUMTEXT NULL"); } catch { }
         }
 
         public async Task<ExcavatorState> GetStateAsync(string excavatorId = "EX-001")
@@ -86,6 +91,8 @@ namespace BimProcessorApi.Services
             existing.ArmAngle      = newState.ArmAngle;
             existing.BucketAngle   = newState.BucketAngle;
             existing.OperationMode = newState.OperationMode;
+            existing.SoilInBucket  = newState.SoilInBucket;
+            existing.HeightMapData = newState.HeightMapData;
             existing.UpdatedAt     = newState.UpdatedAt;
 
             await _context.SaveChangesAsync();
