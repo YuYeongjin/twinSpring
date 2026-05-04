@@ -1187,6 +1187,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         lines={lines}
                                         selectedElement={selectedElement}
                                         onElementSelect={handleElementSelect}
+                                        pendingElement={pendingElement}
+                                        onPlacementConfirm={({ x, z }) => confirmPlacement({ x, z }, currentProjectId)}
+                                        lineDrawMode={lineDrawMode}
+                                        lineStart={lineStart}
+                                        onLineClick={handleLineClick}
+                                        snapEnabled={snapEnabled}
                                     />
                                 ) : (<>
 

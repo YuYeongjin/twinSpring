@@ -313,7 +313,11 @@ export default function Plan2DView({
   }, [modelData, lines, selectedElement, lineDrawMode, lineStart, pendingElement, snapEnabled]);
 
   // ── 초기 fit ──────────────────────────────────────────────────────
-  useEffect(() => { fittedRef.current = false; }, [modelData]);
+  // 데이터가 완전히 비워질 때(프로젝트 전환)만 재fit 허용.
+  // 부재 추가/수정 시에는 fittedRef를 유지해 뷰가 점프하지 않도록 함.
+  useEffect(() => {
+    if (modelData.length === 0) fittedRef.current = false;
+  }, [modelData]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -371,9 +375,14 @@ export default function Plan2DView({
 
   // ── 포인터 이벤트 ─────────────────────────────────────────────────
   const handlePointerDown = useCallback((e) => {
+    // 부재 배치 · 선 작도 모드에서는 드래그(패닝) 비활성화
+    if (pendingElement || lineDrawMode === 'click') {
+      dragRef.current = { active: false, lx: e.clientX, ly: e.clientY, moved: false };
+      return;
+    }
     dragRef.current = { active: true, lx: e.clientX, ly: e.clientY, moved: false };
     if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing';
-  }, []);
+  }, [pendingElement, lineDrawMode]);
 
   const handlePointerMove = useCallback((e) => {
     const canvas = canvasRef.current;
