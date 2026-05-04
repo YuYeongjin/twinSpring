@@ -9,6 +9,7 @@ import ChatView from './view/chat/ChatView';
 import AgentDashboard from './view/agent/AgentDashboard';
 import SimulationDashboard from './view/simulation/SimulationDashboard';
 import SimulationProjectList from './view/simulation/SimulationProjectList';
+import StructuralDashboard from './view/structural/StructuralDashboard';
 import { useCallback, useEffect, useState } from 'react';
 
 function App() {
@@ -221,6 +222,14 @@ function App() {
           onProjectSelect={handleProjectSelect}
           onCreateProject={addNewProject}
           onRenameProject={renameProject}
+        />
+      );
+    }
+    if (viewComponent === 'structural') {
+      return (
+        <StructuralDashboard
+          selectedProject={selectedProject}
+          modelData={modelData}
         />
       );
     }
