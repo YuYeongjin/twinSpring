@@ -41,3 +41,29 @@ agent/__pycache__/**
 agent/nodes/__pycache__/**
 agent/tools/__pycache__/**
 agent/.env
+
+
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[MemoryCaptures]/
+/[Aa]sset[Mm]eta[Dd]ata/
+/[Ll]ibrary/
+/[Tt]emp/
+# Unity3D generated meta files
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+# Unity3D Generated File Types
+*.unitypackage
+# AssetStore Packages
+/[Aa]ssets/AssetStoreTools*
+# Visual Studio / Rider generated files
+.vs/
+.rider/
+*.csproj
+*.sln
+*.suo
