@@ -1,13 +1,11 @@
 <configuration>
-    <!-- Spring Boot 기본 콘솔 설정 유지 -->
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
-    <!-- 접근 로그 전용 파일 appender (JSON 형식) -->
     <appender name="ACCESS_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/access.log</file>
+        <file>/app/logs/access.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>logs/access-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <fileNamePattern>/app/logs/access-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
             <maxFileSize>10MB</maxFileSize>
             <totalSizeCap>300MB</totalSizeCap>
             <maxHistory>14</maxHistory>
@@ -20,12 +18,10 @@
         </encoder>
     </appender>
 
-    <!-- 기본 로그: 콘솔만 -->
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
     </root>
 
-    <!-- 접근 로그: 콘솔 + 파일 둘 다 -->
     <logger name="yyj.project.twinspring.config.AccessLoggingFilter" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="ACCESS_FILE"/>
