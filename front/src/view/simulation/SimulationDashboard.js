@@ -501,7 +501,7 @@ function ExcavatorModel({ state, soilInBucket, machine, heightMapRef }) {
 }
 
 // ── 건설 현장 오버레이 (지면은 TerrainMesh가 담당, 여기선 시설물만) ─────────────
-function ConstructionOverlay({ bimElements }) {
+function ConstructionOverlay() {
   return (
     <>
       {/* 공사 울타리 */}
@@ -526,23 +526,6 @@ function ConstructionOverlay({ bimElements }) {
           <meshStandardMaterial color="#aaaaaa" roughness={0.7} />
         </mesh>
       ))}
-      {/* BIM 부재 */}
-      {bimElements && bimElements.map(el => {
-        const px = (el.positionX || 0) * 0.1;
-        const py = (el.positionY || 0) * 0.1 + (el.sizeY || 1) * 0.1 / 2;
-        const pz = (el.positionZ || 0) * 0.1;
-        const sx = (el.sizeX || 1) * 0.1;
-        const sy = (el.sizeY || 1) * 0.1;
-        const sz = (el.sizeZ || 1) * 0.1;
-        const color = el.elementType === 'IfcWall' ? '#ccccaa'
-          : el.elementType === 'IfcColumn' ? '#aaccaa' : '#aaaacc';
-        return (
-          <mesh key={el.elementId} position={[px - 25, py, pz - 15]} castShadow receiveShadow>
-            <boxGeometry args={[sx, sy, sz]} />
-            <meshStandardMaterial color={color} transparent opacity={0.55} />
-          </mesh>
-        );
-      })}
     </>
   );
 }
@@ -634,6 +617,14 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
   // 서버 동기화
   const [syncStatus, setSyncStatus] = useState('idle');
+
+  // 모바일 감지 (width < 768px)
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
   const [kinematics, setKinematics] = useState(null);
 
   // IoT 센서 모니터링
@@ -961,7 +952,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         </span>
       </div>
 
-    <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px' }}>
+    {!isMobile && <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px' }}>
 
       {/* ── 왼쪽 상태 패널 ── */}
       <div style={{
@@ -1126,7 +1117,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       </div>
 
       {/* ── 중앙 3D 캔버스 ── */}
-      <div style={{ flex: 1, borderRadius: '12px', overflow: 'hidden', border: panelBorder, position: 'relative' }}>
+      <div style={{ flex: 1, height: '100%', borderRadius: '12px', overflow: 'hidden', border: panelBorder, position: 'relative' }}>
         {/* 키보드 가이드 */}
         <div style={{
           position: 'absolute', top: '12px', left: '12px', zIndex: 10,
@@ -1199,7 +1190,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </div>
         )}
 
-        <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }} style={{ background: '#1a2a3a' }}>
+        <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }} style={{ background: '#1a2a3a', width: '100%', height: '100%' }}>
           <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
           <ambientLight intensity={0.55} />
           <directionalLight
@@ -1213,7 +1204,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
           {/* 동적 지형 메시 */}
           <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
-          <ConstructionOverlay bimElements={modelData} />
+          <ConstructionOverlay />
           <ExcavatorModel state={state} soilInBucket={soilDisplay} machine={MACHINE_CONFIGS[selectedMachineId]} heightMapRef={heightMapRef} />
           {/* 흙 파티클 */}
           <SoilParticles particlesRef={particlesRef} />
@@ -1446,7 +1437,189 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           ))}
         </div>
       </div>
-    </div>
+    </div>}
+
+    {/* ── 모바일 컨트롤 대시보드 ── */}
+    {isMobile && (
+      <div style={{ padding: '4px 0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+        {/* 이상 감지 알림 */}
+        {activeAlerts.map(alert => {
+          const c = ALERT_COLORS[alert.level];
+          return (
+            <div key={alert.id} style={{ background: c.bg, border: `2px solid ${c.border}`, borderRadius: '10px', padding: '10px 14px', color: c.text, fontSize: '12px', fontWeight: 700, boxShadow: `0 0 12px ${c.glow}` }}>
+              {alert.level === 'danger' ? '🚨' : '⚠️'} {alert.text}
+            </div>
+          );
+        })}
+
+        {/* 상태 헤더 */}
+        <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #253347' }}>
+          <div>
+            <div style={{ color: '#8896a4', fontSize: '10px', marginBottom: '3px' }}>작동 모드</div>
+            <div style={{ color: '#f5a623', fontWeight: 700, fontSize: '18px' }}>● {state.operationMode}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#8896a4', fontSize: '10px', marginBottom: '3px' }}>버킷 적재량</div>
+            <div style={{ color: '#fb923c', fontFamily: 'monospace', fontSize: '14px', fontWeight: 700 }}>
+              {soilDisplay.toFixed(2)} / {MACHINE_CONFIGS[selectedMachineId].bucketCapacity} m³
+            </div>
+            <div style={{ color: syncStatus === 'synced' ? '#4ade80' : syncStatus === 'error' ? '#f87171' : '#8896a4', fontSize: '10px', marginTop: '2px' }}>
+              {syncStatus === 'synced' ? '✓ 동기화됨' : syncStatus === 'syncing' ? '⟳ 동기화 중' : syncStatus === 'error' ? '✗ 오류' : '○ 대기'}
+            </div>
+          </div>
+        </div>
+        <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }} style={{ background: '#1a2a3a', width: '100%', height: 'clamp(300px, 25vh, 500px)', borderRadius: '12px' }}>
+          <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
+          <ambientLight intensity={0.55} />
+          <directionalLight
+              position={[60, 70, 40]} intensity={1.3} castShadow
+              shadow-mapSize-width={2048} shadow-mapSize-height={2048}
+              shadow-camera-far={200} shadow-camera-left={-70}
+              shadow-camera-right={70} shadow-camera-top={70} shadow-camera-bottom={-70}
+          />
+          <pointLight position={[-20, 8, -20]} intensity={0.25} color="#ff9944" />
+          <pointLight position={[25, 6, 25]}   intensity={0.2}  color="#4488ff" />
+
+          {/* 동적 지형 메시 */}
+          <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
+          <ConstructionOverlay />
+          <ExcavatorModel state={state} soilInBucket={soilDisplay} machine={MACHINE_CONFIGS[selectedMachineId]} heightMapRef={heightMapRef} />
+          {/* 흙 파티클 */}
+          <SoilParticles particlesRef={particlesRef} />
+
+          <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.02} />
+          <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
+            <GizmoViewport labelColor="white" axisHeadScale={0.85} />
+          </GizmoHelper>
+        </Canvas>
+        {/* 작업 프리셋 */}
+        {/* <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>
+          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '10px', fontWeight: 600 }}>🎮 작업 프리셋</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            {Object.entries(PRESETS).map(([name]) => {
+              const active = state.operationMode === name;
+              const icons = { IDLE: '⏸', DIG: '⛏', DUMP: '🪣', TRAVEL: '🚗' };
+              return (
+                <button key={name} onClick={() => applyPreset(name)} style={{ background: active ? '#1e3a5f' : '#162032', border: `2px solid ${active ? '#60a5fa' : '#253347'}`, borderRadius: '10px', color: active ? '#60a5fa' : '#8896a4', padding: '12px 8px', fontSize: '13px', cursor: 'pointer', fontWeight: 700, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', transition: 'all 0.15s' }}>
+                  <span style={{ fontSize: '22px' }}>{icons[name]}</span>
+                  {PRESET_LABELS[name]}
+                </button>
+              );
+            })}
+          </div>
+        </div> */}
+
+        {/* 관절 슬라이더 */}
+        <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>
+          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '12px', fontWeight: 600 }}>🦾 관절 세부 제어</div>
+          {[
+            { label: '붐 (Boom)',     key: 'boomAngle',    ...JOINT_LIMITS.boomAngle,   color: '#60a5fa' },
+            { label: '암 (Arm)',      key: 'armAngle',     ...JOINT_LIMITS.armAngle,    color: '#34d399' },
+            { label: '버킷 (Bucket)',  key: 'bucketAngle',  ...JOINT_LIMITS.bucketAngle, color: '#fb923c' },
+            { label: '선회 (Swing)',   key: 'swingAngle',   min: -180, max: 180,          color: '#a78bfa' },
+            { label: '차체 회전',     key: 'bodyRotation',  min: -180, max: 180,          color: '#94a3b8' },
+          ].map(({ label, key, min, max, color }) => (
+            <div key={key} style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                <span style={{ color: '#8896a4', fontSize: '12px' }}>{label}</span>
+                <span style={{ color, fontFamily: 'monospace', fontWeight: 700, fontSize: '13px' }}>{Math.round(state[key])}°</span>
+              </div>
+              <input type="range" min={min} max={max} step={0.5} value={state[key]}
+                onChange={e => setJoint(key, parseFloat(e.target.value))}
+                style={{ width: '100%', accentColor: color, cursor: 'pointer', height: '6px' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#3a4a5a', fontSize: '10px', marginTop: '2px' }}>
+                <span>{min}°</span><span>{max}°</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 버킷 게이지 + 키네마틱스 */}
+        <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>
+          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '8px', fontWeight: 600 }}>🪣 버킷 적재 현황</div>
+          <div style={{ background: '#1e2e3e', borderRadius: '6px', height: '12px', overflow: 'hidden', marginBottom: '8px' }}>
+            <div style={{ width: `${(soilDisplay / MACHINE_CONFIGS[selectedMachineId].bucketCapacity) * 100}%`, height: '100%', background: soilDisplay > MACHINE_CONFIGS[selectedMachineId].bucketCapacity * 0.8 ? '#f87171' : soilDisplay > MACHINE_CONFIGS[selectedMachineId].bucketCapacity * 0.4 ? '#fb923c' : '#6b4416', transition: 'width 0.1s', borderRadius: '6px' }} />
+          </div>
+          {kinematics && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', fontSize: '11px' }}>
+              {[['수평 도달', `${kinematics.reach}m`, '#34d399'], ['굴착 깊이', `${kinematics.depth}m`, '#fb923c'], ['지형 높이', `${kinematics.terrainH}m`, '#94a3b8']].map(([l, v, c]) => (
+                <div key={l} style={{ background: '#162032', borderRadius: '6px', padding: '6px', textAlign: 'center' }}>
+                  <div style={{ color: '#4a5a6a', marginBottom: '2px', fontSize: '9px' }}>{l}</div>
+                  <div style={{ color: c, fontFamily: 'monospace', fontWeight: 700 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 위치 + IoT 센서 */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div style={{ background: '#111e2e', borderRadius: '12px', padding: '12px', border: '1px solid #253347', fontSize: '11px' }}>
+            <div style={{ color: '#8896a4', marginBottom: '6px', fontWeight: 600 }}>📍 위치 (m)</div>
+            {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
+              <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                <span style={{ color: '#8896a4' }}>{l}</span>
+                <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{Number(v).toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: '#111e2e', borderRadius: '12px', padding: '12px', border: '1px solid #253347', fontSize: '11px' }}>
+            <div style={{ color: '#8896a4', marginBottom: '6px', fontWeight: 600 }}>🌡 IoT 센서</div>
+            {[
+              ['온도', sensor ? `${sensor.temperature}°C` : '--', sensor && (sensor.temperature > thresholds.tempMax || sensor.temperature < thresholds.tempMin) ? '#f87171' : '#4ade80'],
+              ['습도', sensor ? `${sensor.humidity}%` : '--',    sensor && (sensor.humidity > thresholds.humMax    || sensor.humidity < thresholds.humMin)    ? '#f87171' : '#4ade80'],
+            ].map(([l, v, c]) => (
+              <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ color: '#8896a4' }}>{l}</span>
+                <span style={{ color: sensor ? c : '#3a4a5a', fontFamily: 'monospace', fontWeight: 700 }}>{v}</span>
+              </div>
+            ))}
+            <div style={{ fontSize: '9px', color: sensorWs === 'connected' ? '#4ade80' : '#8896a4', marginTop: '4px' }}>
+              {sensorWs === 'connected' ? '● 연결됨' : sensorWs === 'connecting' ? '○ 연결 중' : '○ 대기'}
+            </div>
+          </div>
+        </div>
+
+        {/* 장비 선택 */}
+        <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>
+          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '10px', fontWeight: 600 }}>⚙ 장비 선택</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {Object.values(MACHINE_CONFIGS).map(mc => {
+              const active = selectedMachineId === mc.id;
+              return (
+                <button key={mc.id} onClick={() => handleMachineChange(mc.id)} style={{ background: active ? '#0f2a18' : '#162032', border: `1px solid ${active ? '#22c55e' : '#253347'}`, borderRadius: '10px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', width: '100%' }}>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ color: active ? '#4ade80' : '#e2e8f0', fontWeight: 700, fontSize: '13px' }}>{mc.label}</div>
+                    <div style={{ color: active ? '#86efac' : '#8896a4', fontSize: '11px' }}>{mc.subLabel} — {mc.weight}</div>
+                  </div>
+                  <div style={{ color: active ? '#4ade80' : '#3a4a5a', fontSize: '12px', fontFamily: 'monospace', fontWeight: 700 }}>
+                    {mc.bucketCapacity} m³
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 액션 버튼 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '10px', color: '#4ade80', padding: '14px', fontSize: '14px', cursor: 'pointer', fontWeight: 600 }}>
+            💾 상태 저장 (C# 서버)
+          </button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '10px', color: '#fbbf24', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🗑 지형 초기화</button>
+            <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '10px', color: '#f87171', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>↺ 전체 초기화</button>
+          </div>
+        </div>
+
+        {/* 안내 */}
+        <div style={{ background: '#0a1520', border: '1px solid #1a3040', borderRadius: '10px', padding: '12px 14px', fontSize: '11px', color: '#4a6a5a', lineHeight: 1.6 }}>
+          💡 <strong style={{ color: '#6a9a7a' }}>3D 굴착 시뮬레이션</strong>은 PC에서 키보드로 조작합니다.<br/>
+          모바일에서는 슬라이더·프리셋으로 자세를 제어하고 서버에 저장할 수 있습니다.
+        </div>
+      </div>
+    )}
     </div>
   );
 }

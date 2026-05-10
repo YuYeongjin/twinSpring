@@ -312,9 +312,11 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 
   // ─────────────────────────────────────────────────
   // 렌더
+  const [mobilePanel, setMobilePanel] = useState('chat');
+
   // ─────────────────────────────────────────────────
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
+    <div className="flex flex-col lg:h-[calc(100vh-120px)]">
       {/* 상단 정보 바 */}
       <div className="flex items-center gap-3 mb-3 px-1">
         <div className="flex items-center gap-2">
@@ -322,18 +324,36 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           <span className="text-sm font-semibold text-gray-200">AI Agent Studio</span>
         </div>
         {selectedProject && (
-          <span className="text-xs text-accent-blue bg-[#1e3a5f] border border-[#2a5080] px-2 py-0.5 rounded-full">
+          <span className="text-xs text-accent-blue bg-[#1e3a5f] border border-[#2a5080] px-2 py-0.5 rounded-full truncate max-w-[120px]">
             BIM: {selectedProject.projectName}
           </span>
         )}
-        <span className="text-xs text-gray-500 ml-auto">음성 · 이미지 · 데이터 조회 · BIM 생성</span>
+        <span className="text-xs text-gray-500 ml-auto hidden sm:inline">음성 · 이미지 · 데이터 조회 · BIM 생성</span>
+      </div>
+
+      {/* 모바일 전용 패널 탭 전환 */}
+      <div className="lg:hidden flex gap-1 mb-3 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
+        {[{ id: 'chat', label: '💬 대화' }, { id: 'tools', label: '🛠 도구' }].map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => setMobilePanel(id)}
+            className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
+            style={{
+              backgroundColor: mobilePanel === id ? '#1e3a5f' : 'transparent',
+              color: mobilePanel === id ? '#60a5fa' : '#8896a4',
+              border: mobilePanel === id ? '1px solid #2a5080' : '1px solid transparent',
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* 메인 레이아웃 */}
-      <div className="flex gap-4 flex-1 min-h-0">
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
 
         {/* ════ 좌측: 채팅 패널 ════ */}
-        <div className="flex flex-col flex-1 min-w-0 bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden">
+        <div className={`flex-col flex-1 min-w-0 bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden ${mobilePanel === 'chat' ? 'flex' : 'hidden lg:flex'}`}>
           {/* 채팅 헤더 */}
           <div className="flex items-center justify-between px-4 py-3 bg-[#162032] border-b border-[#253347]">
             <span className="text-sm font-semibold text-gray-200">대화</span>
@@ -355,7 +375,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           </div>
 
           {/* 메시지 영역 */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0">
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-[50vh] lg:min-h-0">
             {messages.map((msg, i) => (
               <AgentMessageBubble key={i} msg={msg} />
             ))}
@@ -427,7 +447,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
         </div>
 
         {/* ════ 우측: 도구 패널 ════ */}
-        <div className="w-80 xl:w-96 flex flex-col bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden shrink-0">
+        <div className={`flex-col bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden lg:w-80 xl:w-96 lg:shrink-0 ${mobilePanel === 'tools' ? 'flex' : 'hidden lg:flex'}`}>
           {/* 탭 */}
           <div className="flex border-b border-[#253347]">
             {[
@@ -451,7 +471,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           </div>
 
           {/* 탭 콘텐츠 */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="flex-1 overflow-y-auto min-h-[60vh] lg:min-h-0">
             {activeTab === 'data' && (
               <DataPanel
                 latestSensor={latestSensor}

@@ -177,25 +177,24 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
     <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-4 space-y-4">
 
       {/* ================================================================
-          1. 상단 디바이스 상태 바 (ThingsBoard의 Dashboard Header)
+          1. 상단 디바이스 상태 바
           ================================================================ */}
-      <div className={`${TB.card} px-5 py-3 flex items-center justify-between`}>
+      <div className={`${TB.card} px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0`}>
         {/* 디바이스 정보 */}
-        <div className="flex items-center gap-4">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xl"
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <div className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-xl"
             style={{ backgroundColor: "#1e3a5f" }}>📡</div>
-          <div>
+          <div className="min-w-0">
             <div className="text-sm font-bold text-white">IoT Sensor Dashboard</div>
-            <div className="text-xs" style={{ color: TB.text2 }}>
-              위치: {latest?.location ?? "—"} &nbsp;|&nbsp; 마지막 수신: {lastSeen}
+            <div className="text-xs truncate" style={{ color: TB.text2 }}>
+              위치: {latest?.location ?? "—"} &nbsp;|&nbsp; {lastSeen}
             </div>
           </div>
           <StatusBadge status={wsStatus} />
         </div>
 
         {/* 우측 컨트롤 */}
-        <div className="flex items-center gap-2">
-          {/* 운영 모드 토글 */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           <button
             onClick={() => setMode(prev => prev === "NORMAL" ? "SAFE" : "NORMAL")}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition"
@@ -356,53 +355,58 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
           </span>
         }
       >
-        {/* 테이블 헤더 */}
-        <div className="grid grid-cols-5 gap-2 text-xs font-semibold pb-2 mb-1"
-          style={{ color: TB.text2, borderBottom: "1px solid #253347" }}>
-          <span>#</span>
-          <span>수신 시각</span>
-          <span>위치</span>
-          <span className="text-center">온도 (°C)</span>
-          <span className="text-center">습도 (%)</span>
-        </div>
-
-        {/* 테이블 바디 — 최근 15건, 최신이 위 */}
-        <div className="space-y-0.5 max-h-52 overflow-y-auto">
-          {[...data].reverse().slice(0, 15).map((d, i) => {
-            const tempVal = Number(d.temperature);
-            const tempHigh = tempVal > 35;
-            const humVal = Number(d.humidity);
-            const humHigh = humVal > 80;
-            return (
-              <div
-                key={i}
-                className="grid grid-cols-5 gap-2 text-xs py-1.5 px-1 rounded transition"
-                style={{
-                  backgroundColor: i % 2 === 0 ? "#152030" : "transparent",
-                  color: TB.text1,
-                }}
-              >
-                <span style={{ color: TB.text2 }}>{data.length - i}</span>
-                <span style={{ color: TB.text2 }}>
-                  {d.timestamp?.replace("T", " ")?.slice(0, 19) ?? "—"}
-                </span>
-                <span className="truncate">{d.location ?? "—"}</span>
-                <span className="text-center font-semibold"
-                  style={{ color: tempHigh ? TB.danger : TB.warning }}>
-                  {tempHigh && "⚠ "}{tempVal.toFixed(1)}
-                </span>
-                <span className="text-center font-semibold"
-                  style={{ color: humHigh ? TB.danger : TB.accent }}>
-                  {humHigh && "⚠ "}{humVal.toFixed(1)}
-                </span>
-              </div>
-            );
-          })}
-          {!data.length && (
-            <div className="text-center py-8 text-xs" style={{ color: TB.text2 }}>
-              데이터 수신 대기 중…
+        {/* 모바일 가로 스크롤 래퍼 */}
+        <div className="overflow-x-auto -mx-4 px-4">
+          <div className="min-w-[440px]">
+            {/* 테이블 헤더 */}
+            <div className="grid grid-cols-5 gap-2 text-xs font-semibold pb-2 mb-1"
+              style={{ color: TB.text2, borderBottom: "1px solid #253347" }}>
+              <span>#</span>
+              <span>수신 시각</span>
+              <span>위치</span>
+              <span className="text-center">온도 (°C)</span>
+              <span className="text-center">습도 (%)</span>
             </div>
-          )}
+
+            {/* 테이블 바디 — 최근 15건, 최신이 위 */}
+            <div className="space-y-0.5 max-h-52 overflow-y-auto">
+              {[...data].reverse().slice(0, 15).map((d, i) => {
+                const tempVal = Number(d.temperature);
+                const tempHigh = tempVal > 35;
+                const humVal = Number(d.humidity);
+                const humHigh = humVal > 80;
+                return (
+                  <div
+                    key={i}
+                    className="grid grid-cols-5 gap-2 text-xs py-1.5 px-1 rounded transition"
+                    style={{
+                      backgroundColor: i % 2 === 0 ? "#152030" : "transparent",
+                      color: TB.text1,
+                    }}
+                  >
+                    <span style={{ color: TB.text2 }}>{data.length - i}</span>
+                    <span style={{ color: TB.text2 }}>
+                      {d.timestamp?.replace("T", " ")?.slice(0, 19) ?? "—"}
+                    </span>
+                    <span className="truncate">{d.location ?? "—"}</span>
+                    <span className="text-center font-semibold"
+                      style={{ color: tempHigh ? TB.danger : TB.warning }}>
+                      {tempHigh && "⚠ "}{tempVal.toFixed(1)}
+                    </span>
+                    <span className="text-center font-semibold"
+                      style={{ color: humHigh ? TB.danger : TB.accent }}>
+                      {humHigh && "⚠ "}{humVal.toFixed(1)}
+                    </span>
+                  </div>
+                );
+              })}
+              {!data.length && (
+                <div className="text-center py-8 text-xs" style={{ color: TB.text2 }}>
+                  데이터 수신 대기 중…
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </Widget>
     </div>

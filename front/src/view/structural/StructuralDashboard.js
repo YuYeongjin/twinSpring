@@ -217,7 +217,7 @@ function StressBox({ element, result, isSelected, onSelect }) {
 
 function StressViewer3D({ modelData, resultMap, selectedId, onSelect }) {
   return (
-    <Canvas camera={{ position: [15, 15, 15], fov: 50 }} style={{ background: '#0b0f1a' }}>
+    <Canvas camera={{ position: [15, 15, 15], fov: 50 }} style={{ background: '#0b0f1a',height: 'clamp(300px, 60vh, 600px)'}}>
       <ambientLight intensity={0.55} />
       <directionalLight position={[10, 15, 5]} intensity={0.85} castShadow />
       <directionalLight position={[-5, 8, -5]} intensity={0.25} />
@@ -401,6 +401,8 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
 
   const selectedResult = selectedId ? resultMap[selectedId] : null;
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   // ── 렌더 ─────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4" style={{ minHeight: 'calc(100vh - 120px)' }}>
@@ -436,11 +438,25 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
         </div>
       </div>
 
+      {/* 모바일 설정 토글 버튼 */}
+      <button
+        onClick={() => setSettingsOpen(v => !v)}
+        className="lg:hidden flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors self-start"
+        style={{
+          backgroundColor: settingsOpen ? "#1e3a5f" : "#0f1422",
+          border: settingsOpen ? "1px solid #2a5080" : "1px solid #141a2a",
+          color: settingsOpen ? "#60a5fa" : "#8896a4",
+        }}
+      >
+        <span>{settingsOpen ? "▲" : "▼"}</span>
+        {settingsOpen ? "설정 접기" : "⚙ 환경·하중·재료 설정"}
+      </button>
+
       {/* 메인 레이아웃 */}
-      <div className="flex gap-3 flex-1">
+      <div className="flex flex-col lg:flex-row gap-3 flex-1">
 
         {/* ── 왼쪽: 설정 패널 ────────────────────────────────────── */}
-        <div className="w-64 shrink-0 flex flex-col gap-3">
+        <div className={`lg:w-64 lg:shrink-0 flex flex-col gap-3 ${settingsOpen ? 'flex' : 'hidden lg:flex'}`}>
 
           {/* 환경 조건 */}
           <Card title="🌍 환경 조건">
@@ -561,7 +577,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           {/* 3D 뷰 */}
           {viewMode === '3d' && (
             <div className="flex-1 rounded-2xl overflow-hidden border border-[#141a2a] relative"
-              style={{ minHeight: 480 }}>
+              style={{ minHeight: 'clamp(300px, 55vh, 700px)' }}>
               {!modelData.length ? (
                 <div className="flex flex-col items-center justify-center h-full bg-[#0f1422] text-gray-500 gap-3">
                   <div className="text-5xl">🏗</div>
@@ -609,7 +625,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           {/* 결과 테이블 */}
           {viewMode === 'table' && (
             <div className="flex-1 bg-[#0f1422] border border-[#141a2a] rounded-2xl overflow-hidden"
-              style={{ minHeight: 480 }}>
+              style={{ minHeight: 'clamp(300px, 55vh, 700px)' }}>
               {!results ? (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-2">
                   <div className="text-3xl">📋</div>

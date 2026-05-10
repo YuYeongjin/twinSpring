@@ -16,7 +16,16 @@
       "Bash(rm \"src/main/java/yyj/project/twinspring/controller/SensorController.java\")",
       "Bash(rm \"src/main/java/yyj/project/twinspring/service/MqttService.java\")",
       "Bash(rm \"src/main/java/yyj/project/twinspring/serviceImpl/MqttServiceImpl.java\")",
-      "Bash(git restore *)"
+      "Bash(git restore *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\" -Recurse -Directory)",
+      "Bash(Select-Object -First 50)",
+      "Bash(Format-Table FullName)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\" -Directory | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\front\\\\src\" -Recurse | Where-Object { $_.Extension -in @\\('.js', '.jsx', '.tsx', '.ts', '.css', '.json'\\) } | ForEach-Object { $_.FullName.Replace\\('C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\front\\\\src', 'src'\\) })",
+      "Bash(npm start *)",
+      "Bash(tasklist /FI \"STATUS eq RUNNING\")",
+      "Bash(tasklist)",
+      "PowerShell(Start-Process \"msedge\" -ArgumentList \"http://localhost:3000\" -WindowStyle Normal)"
     ]
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const NAV_ITEMS = [
   { id: "",                    label: "IoT",        icon: "📡" },
@@ -9,47 +9,69 @@ const NAV_ITEMS = [
 ];
 
 export default function Header({ viewComponent, setViceComponent }) {
-
   const [time, setTime] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     const update = () => {
       const now = new Date();
       const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-      const iso = kst.toISOString().replace("T", " ").slice(0, 19);
-      setTime(iso);
+      setTime(kst.toISOString().replace("T", " ").slice(0, 19));
     };
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
   }, []);
 
-  // 활성 탭 판단 — 하위 뷰에서도 상위 탭이 활성 표시
+  // 메뉴 외부 클릭 시 닫기
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("touchstart", handleClick);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("touchstart", handleClick);
+    };
+  }, [menuOpen]);
+
   const activeTab = viewComponent === "bim"        ? "bim-projects"
     : viewComponent === "simulation"               ? "simulation-projects"
     : viewComponent;
 
+  const handleNavClick = (id) => {
+    setViceComponent(id);
+    setMenuOpen(false);
+  };
+
   return (
-    <header className="sticky top-0 z-30 backdrop-blur bg-space-900/80 border-b border-space-700">
-      <div className="mx-auto w-full px-4 py-3 flex items-center justify-between gap-4">
+    <header ref={menuRef} className="sticky top-0 z-30 backdrop-blur bg-space-900/80 border-b border-space-700"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+
+      <div className="mx-auto w-full px-4 py-3 flex items-center justify-between gap-3">
 
         {/* 로고 */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-accent-blue to-accent-green shadow-glow" />
-          <h1 className="text-xl font-semibold tracking-wide whitespace-nowrap">
-            Digital Twin • <span className="text-accent-blue">YJ-01</span>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-accent-blue to-accent-green shadow-glow" />
+          <h1 className="text-base sm:text-xl font-semibold tracking-wide whitespace-nowrap">
+            Digital Twin <span className="text-accent-blue">YJ-01</span>
           </h1>
         </div>
 
-        {/* 네비게이션 탭 */}
+        {/* 데스크탑 네비게이션 (md 이상) */}
         {setViceComponent && (
-          <nav className="flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
+          <nav className="hidden md:flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
             {NAV_ITEMS.map(({ id, label, icon }) => {
               const isActive = activeTab === id;
               return (
                 <button
                   key={id}
-                  onClick={() => setViceComponent(id)}
+                  onClick={() => handleNavClick(id)}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
                   style={{
                     backgroundColor: isActive ? "#1e3a5f" : "transparent",
@@ -66,11 +88,57 @@ export default function Header({ viewComponent, setViceComponent }) {
           </nav>
         )}
 
-        {/* 시계 */}
-        <div className="text-sm text-gray-400 whitespace-nowrap shrink-0">
-          KST {time}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* 시계 — 데스크탑만 */}
+          <div className="hidden sm:block text-xs sm:text-sm text-gray-400 whitespace-nowrap">
+            KST {time}
+          </div>
+
+          {/* 햄버거 버튼 — 모바일만 */}
+          {setViceComponent && (
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg transition-colors"
+              style={{ backgroundColor: menuOpen ? "#1e3a5f" : "transparent", border: "1px solid #253347" }}
+              aria-label="메뉴 열기/닫기"
+              aria-expanded={menuOpen}
+            >
+              <span className="text-gray-300 text-lg leading-none select-none">
+                {menuOpen ? "✕" : "☰"}
+              </span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* 모바일 드롭다운 메뉴 */}
+      {menuOpen && setViceComponent && (
+        <nav className="md:hidden border-t border-space-700 bg-[#0a1525]/97 backdrop-blur-lg">
+          {NAV_ITEMS.map(({ id, label, icon }) => {
+            const isActive = activeTab === id;
+            return (
+              <button
+                key={id}
+                onClick={() => handleNavClick(id)}
+                className="w-full flex items-center gap-4 px-6 py-4 text-sm font-semibold transition-colors border-b border-[#1a2a3a] last:border-0 active:bg-[#1e3a5f]"
+                style={{
+                  backgroundColor: isActive ? "#1a3050" : "transparent",
+                  color: isActive ? "#60a5fa" : "#8896a4",
+                }}
+              >
+                <span className="text-2xl w-8 text-center">{icon}</span>
+                <span className="flex-1 text-left text-base">{label}</span>
+                {isActive && (
+                  <span className="w-2 h-2 rounded-full bg-accent-blue" />
+                )}
+              </button>
+            );
+          })}
+          <div className="px-6 py-3 text-xs text-gray-500 border-t border-[#1a2a3a]">
+            KST {time}
+          </div>
+        </nav>
+      )}
     </header>
   );
 }

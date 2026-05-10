@@ -158,25 +158,34 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
 
   return (
     <>
-      {/* 플로팅 버튼 */}
+      {/* 플로팅 버튼 — 패널 열리면 모바일에서 숨김 */}
       <button
         onClick={() => setIsOpen(o => !o)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-accent-blue shadow-glow flex items-center justify-center text-white text-2xl hover:scale-110 transition-transform"
+        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-accent-blue shadow-glow items-center justify-center text-white text-2xl hover:scale-110 transition-transform ${isOpen ? 'hidden sm:flex' : 'flex'}`}
+        style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
         title="AI 어시스턴트"
       >
-        {isOpen ? '✕' : '🤖'}
+        🤖
       </button>
 
-      {/* 채팅 패널 */}
+      {/* 채팅 패널
+          모바일: 전체 너비 바텀시트 (bottom-0, inset-x-0, h-[72vh], rounded-t-2xl)
+          데스크탑: 기존 플로팅 패널 (bottom-24 right-6, w-96, h-[600px], rounded-2xl) */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-96 h-[600px] flex flex-col rounded-2xl shadow-2xl border border-space-700 bg-space-900 overflow-hidden">
+        <div className="fixed z-50 flex flex-col shadow-2xl border border-space-700 bg-space-900 overflow-hidden bottom-0 inset-x-0 h-[72vh] rounded-t-2xl sm:bottom-24 sm:left-auto sm:right-6 sm:w-96 sm:h-[600px] sm:rounded-2xl">
+
+          {/* 모바일 드래그 힌트 바 */}
+          <div className="sm:hidden flex justify-center pt-2 pb-1 bg-space-800">
+            <div className="w-10 h-1 rounded-full bg-gray-600" />
+          </div>
+
           {/* 헤더 */}
           <div className="flex items-center justify-between px-4 py-3 bg-space-800 border-b border-space-700">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
               <span className="font-semibold text-sm text-gray-200">AI Agent</span>
               {selectedProject && (
-                <span className="text-xs text-accent-blue bg-space-700 px-2 py-0.5 rounded-full">
+                <span className="text-xs text-accent-blue bg-space-700 px-2 py-0.5 rounded-full truncate max-w-[100px]">
                   {selectedProject.projectName}
                 </span>
               )}
@@ -196,6 +205,14 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
                 title="대화 초기화"
               >
                 초기화
+              </button>
+              {/* 모바일 전용 닫기 버튼 */}
+              <button
+                onClick={() => setIsOpen(false)}
+                className="sm:hidden text-gray-400 hover:text-gray-200 transition-colors text-base px-1 py-0.5"
+                title="닫기"
+              >
+                ✕
               </button>
             </div>
           </div>
@@ -225,7 +242,8 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
           )}
 
           {/* 입력창 */}
-          <div className="px-3 py-3 bg-space-800 border-t border-space-700">
+          <div className="px-3 py-3 bg-space-800 border-t border-space-700"
+            style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}>
             {/* 빠른 질문 버튼 */}
             <div className="flex gap-1 mb-2 flex-wrap">
               {QUICK_PROMPTS.map(q => (
