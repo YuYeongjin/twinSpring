@@ -482,8 +482,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const mainViewRef = useRef(null);
 
     // ── 패널 표시 여부 ─────────────────────────────────────────────
-    const [showLayerPanel, setShowLayerPanel] = useState(true);
-    const [showLeftPanel, setShowLeftPanel] = useState(true);
+    const [showLayerPanel, setShowLayerPanel] = useState(typeof window !== 'undefined' && window.innerWidth >= 768);
+    const [showLeftPanel, setShowLeftPanel] = useState(typeof window !== 'undefined' && window.innerWidth >= 768);
     // 좌측 패널 탭: 'edit' | 'line'
     const [leftTab, setLeftTab] = useState('edit');
 
@@ -1173,7 +1173,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             <div
                                 className="w-full flex-1 relative"
                                 style={{
-                                    minHeight: '55vw',
+                                    minHeight: 'clamp(300px, 60vh, 700px)',
                                     cursor: viewMode === '2d' ? 'default'
                                           : pendingElement ? 'crosshair'
                                           : isSelectMode  ? 'crosshair'

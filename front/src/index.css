@@ -15,10 +15,24 @@ code {
     monospace;
 }
 
+html, body {
+  overflow-x: hidden;
+}
+
+/* PWA safe area — iPhone 노치/홈바 대응 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* 터치 기기 탭 하이라이트 제거 */
 * {
+  -webkit-tap-highlight-color: transparent;
   scrollbar-width: thin;
   scrollbar-color: #374151 #111827;
 }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
 *::-webkit-scrollbar-thumb { background: #374151; border-radius: 8px; }
 *::-webkit-scrollbar-track { background: #111827; }
