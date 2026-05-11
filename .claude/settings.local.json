@@ -25,7 +25,10 @@
       "Bash(npm start *)",
       "Bash(tasklist /FI \"STATUS eq RUNNING\")",
       "Bash(tasklist)",
-      "PowerShell(Start-Process \"msedge\" -ArgumentList \"http://localhost:3000\" -WindowStyle Normal)"
+      "PowerShell(Start-Process \"msedge\" -ArgumentList \"http://localhost:3000\" -WindowStyle Normal)",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet build *)",
+      "Bash(node -e \"const pkg = require\\('./node_modules/@react-three/rapier/package.json'\\); console.log\\('rapier version:', pkg.version\\);\")"
     ]
   }
 }
