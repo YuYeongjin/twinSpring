@@ -1,10 +1,16 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sky, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { Physics } from '@react-three/rapier';
 import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import AxiosCustom, { WS_BASE } from '../../axios/AxiosCustom';
+import {
+  TerrainRapierCollider,
+  ExcavatorCollider,
+  usePhysicsEvaluation,
+} from './component/ExcavationPhysics';
 
 // ── 공통 상수 ──────────────────────────────────────────────────────────────────
 const D2R = Math.PI / 180;
@@ -322,7 +328,7 @@ function TrackRollers({ side }) {
 // 차체 전체를 bodyScale로 균일 확대/축소.
 // 붐/암은 scaled space 내에서 실제 길이/s 로 표현 → 월드 공간에서 실제 길이.
 // useFrame으로 매 프레임 지형 높이·기울기를 계산해 그룹에 직접 반영.
-function ExcavatorModel({ state, soilInBucket, machine, heightMapRef }) {
+function ExcavatorModel({ state, soilInBucket, machine, heightMapRef, wobbleRef }) {
   const s   = machine.bodyScale;
   const BL  = machine.boomLen  / s;
   const AL  = machine.armLen   / s;
@@ -337,7 +343,7 @@ function ExcavatorModel({ state, soilInBucket, machine, heightMapRef }) {
   const tHX = 2.1  * s;   // 좌우 절반
   const tHZ = 2.75 * s;   // 전후 절반
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!groupRef.current) return;
     const cur    = stateRef.current;
     const px     = cur.positionX;
@@ -364,13 +370,34 @@ function ExcavatorModel({ state, soilInBucket, machine, heightMapRef }) {
       const roll  = Math.atan2((hFR + hBR) / 2 - (hFL + hBL) / 2, tHX * 2);
 
       groupRef.current.position.set(px, centerH, pz);
-      // YXZ 순서: yaw(Y) → pitch(X) → roll(Z), 차체 로컬 기준
-      // positive X rotation = 앞이 내려감 → 앞이 높으면 -pitch(nose up)
-      // positive Z rotation = 오른쪽이 올라감 → 오른쪽이 높으면 +roll
-      groupRef.current.rotation.set(-pitch, bodyRad, roll, 'YXZ');
+
+      // BEPUphysics2 평가 결과에 따른 진동 오프셋
+      let finalPitch = -pitch;
+      let finalRoll  = roll;
+      const wb = wobbleRef?.current;
+      if (wb && wb.amplitude > 0.001) {
+        wb.time = (wb.time ?? 0) + delta;
+        const wobble = wb.amplitude * Math.sin(wb.time * wb.frequency * Math.PI * 2);
+        // 전도 방향(dirX, dirZ)으로 흔들림
+        finalPitch += wobble * (wb.dirZ ?? 1);
+        finalRoll  += wobble * (wb.dirX ?? 0);
+      }
+
+      groupRef.current.rotation.set(finalPitch, bodyRad, finalRoll, 'YXZ');
     } else {
       groupRef.current.position.set(px, 0, pz);
-      groupRef.current.rotation.set(0, bodyRad, 0);
+
+      let finalPitch = 0;
+      let finalRoll  = 0;
+      const wb = wobbleRef?.current;
+      if (wb && wb.amplitude > 0.001) {
+        wb.time = (wb.time ?? 0) + delta;
+        const wobble = wb.amplitude * Math.sin(wb.time * wb.frequency * Math.PI * 2);
+        finalPitch += wobble * (wb.dirZ ?? 1);
+        finalRoll  += wobble * (wb.dirX ?? 0);
+      }
+
+      groupRef.current.rotation.set(finalPitch, bodyRad, finalRoll, 'YXZ');
     }
   });
 
@@ -596,8 +623,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const stateRef   = useRef(state);
 
   // 지형 시스템
-  const heightMapRef   = useRef(new Float32Array(GRID_COLS * GRID_ROWS).fill(0));
+  const heightMapRef    = useRef(new Float32Array(GRID_COLS * GRID_ROWS).fill(0));
   const terrainDirtyRef = useRef(false);
+
+  // BEPUphysics2 / rapier 물리 시스템
+  // wobbleRef: ExcavatorModel이 직접 읽어 진동 애니메이션에 적용
+  const wobbleRef = useRef({ amplitude: 0, frequency: 2.5, dirX: 0, dirZ: 1, time: 0, dangerLevel: 'SAFE' });
+  // kinematicsRef: usePhysicsEvaluation 훅이 버킷 반력 계산에 사용
+  const kinematicsRef = useRef(null);
+  // 지형 변경 시 rapier HeightfieldCollider 재빌드 트리거
+  const [terrainPhysicsVersion, setTerrainPhysicsVersion] = useState(0);
 
   // 버킷 내 흙
   const soilInBucketRef = useRef(0);
@@ -642,6 +677,18 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
   // stateRef 항상 최신 유지
   useEffect(() => { stateRef.current = state; }, [state]);
+
+  // 지형이 변경된 후 3초마다 rapier HeightfieldCollider 갱신
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (terrainDirtyRef.current) setTerrainPhysicsVersion(v => v + 1);
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  // BEPUphysics2 물리 평가 훅 (C# 서버 폴링)
+  const physicsResult = usePhysicsEvaluation(
+    stateRef, machineRef, kinematicsRef, heightMapRef, wobbleRef);
 
   // 임계값 ref 동기화 + localStorage 저장
   useEffect(() => {
@@ -826,7 +873,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     const terrH    = sampleH(heightMapRef.current, tipX, tipZ);
     const digDepth = Math.max(0, terrH - tipY);
 
-    setKinematics({ ...km, depth: digDepth.toFixed(2), terrainH: terrH.toFixed(2) });
+    const kmFull = { ...km, depth: digDepth.toFixed(2), terrainH: terrH.toFixed(2) };
+    setKinematics(kmFull);
+    kinematicsRef.current = kmFull;
 
     // ── 굴착: 버킷이 지형 아래에 있을 때 흙 제거 ──
     const maxBucket = machine.bucketCapacity;
@@ -1069,6 +1118,51 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </div>
         </div>
 
+        {/* BEPUphysics2 물리 안정도 */}
+        <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
+          <div style={{ color: secColor, marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
+            <span>⚖ 물리 안정도</span>
+            {physicsResult && (
+              <span style={{
+                color: physicsResult.dangerLevel === 'DANGER' ? '#ef4444'
+                     : physicsResult.dangerLevel === 'WARNING' ? '#f59e0b' : '#4ade80',
+                fontWeight: 700,
+              }}>
+                {physicsResult.dangerLevel}
+              </span>
+            )}
+          </div>
+          {physicsResult ? (
+            <>
+              {/* 안정도 막대 */}
+              <div style={{ background: '#1e2e3e', borderRadius: '4px', height: '6px', overflow: 'hidden', marginBottom: '6px' }}>
+                <div style={{
+                  width: `${Math.max(0, physicsResult.stabilityMargin * 100)}%`,
+                  height: '100%',
+                  background: physicsResult.dangerLevel === 'DANGER' ? '#ef4444'
+                            : physicsResult.dangerLevel === 'WARNING' ? '#f59e0b' : '#4ade80',
+                  transition: 'width 0.3s, background 0.3s',
+                  borderRadius: '4px',
+                }} />
+              </div>
+              {[
+                ['안정 여유', `${(physicsResult.stabilityMargin * 100).toFixed(0)}%`],
+                ['CoM X / Y', `${physicsResult.comX?.toFixed(2)} / ${physicsResult.comY?.toFixed(2)}`],
+                ['진동 진폭', `${(physicsResult.wobbleAmplitude * 1000).toFixed(1)} mrad`],
+              ].map(([l, v]) => (
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                  <span style={{ color: secColor }}>{l}</span>
+                  <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{v}</span>
+                </div>
+              ))}
+            </>
+          ) : (
+            <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '4px 0' }}>
+              C# 물리 서버 연결 중...
+            </div>
+          )}
+        </div>
+
         {/* IoT 센서 모니터링 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
           <div style={{ color: secColor, marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1190,29 +1284,73 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </div>
         )}
 
+        {/* BEPUphysics2 안정성 경고 오버레이 */}
+        {physicsResult && physicsResult.dangerLevel !== 'SAFE' && (
+          <div style={{
+            position: 'absolute', bottom: '60px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 15, maxWidth: '480px', width: 'calc(100% - 48px)',
+            display: 'flex', flexDirection: 'column', gap: '4px', pointerEvents: 'none',
+          }}>
+            <div style={{
+              background: physicsResult.dangerLevel === 'DANGER'
+                ? 'rgba(127,29,29,0.96)' : 'rgba(92,60,0,0.96)',
+              border: `2px solid ${physicsResult.dangerLevel === 'DANGER' ? '#ef4444' : '#f59e0b'}`,
+              borderRadius: '10px', padding: '8px 16px',
+              color: physicsResult.dangerLevel === 'DANGER' ? '#fca5a5' : '#fde68a',
+              fontSize: '13px', fontWeight: 700,
+              boxShadow: `0 0 16px ${physicsResult.dangerLevel === 'DANGER' ? '#ef444840' : '#f59e0b40'}`,
+            }}>
+              {physicsResult.dangerLevel === 'DANGER' ? '⚠ 전도 위험' : '⚠ 안정성 경고'}
+              {' — '}안정도 {(physicsResult.stabilityMargin * 100).toFixed(0)}%
+              {' | '}CoM ({physicsResult.comX?.toFixed(1)}, {physicsResult.comY?.toFixed(1)})
+            </div>
+            {physicsResult.alerts?.map((a, i) => (
+              <div key={i} style={{
+                background: 'rgba(30,10,10,0.88)', border: '1px solid #7f1d1d',
+                borderRadius: '7px', padding: '5px 14px', color: '#fca5a5', fontSize: '11px',
+              }}>{a}</div>
+            ))}
+          </div>
+        )}
+
         <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }} style={{ background: '#1a2a3a', width: '100%', height: '100%' }}>
-          <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
-          <ambientLight intensity={0.55} />
-          <directionalLight
-            position={[60, 70, 40]} intensity={1.3} castShadow
-            shadow-mapSize-width={2048} shadow-mapSize-height={2048}
-            shadow-camera-far={200} shadow-camera-left={-70}
-            shadow-camera-right={70} shadow-camera-top={70} shadow-camera-bottom={-70}
-          />
-          <pointLight position={[-20, 8, -20]} intensity={0.25} color="#ff9944" />
-          <pointLight position={[25, 6, 25]}   intensity={0.2}  color="#4488ff" />
+          {/* @react-three/rapier Physics 컨텍스트: 지형 콜라이더 + 굴착기 충돌 프록시 */}
+          <Physics gravity={[0, -9.81, 0]} colliders={false}>
+            <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
+            <ambientLight intensity={0.55} />
+            <directionalLight
+              position={[60, 70, 40]} intensity={1.3} castShadow
+              shadow-mapSize-width={2048} shadow-mapSize-height={2048}
+              shadow-camera-far={200} shadow-camera-left={-70}
+              shadow-camera-right={70} shadow-camera-top={70} shadow-camera-bottom={-70}
+            />
+            <pointLight position={[-20, 8, -20]} intensity={0.25} color="#ff9944" />
+            <pointLight position={[25, 6, 25]}   intensity={0.2}  color="#4488ff" />
 
-          {/* 동적 지형 메시 */}
-          <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
-          <ConstructionOverlay />
-          <ExcavatorModel state={state} soilInBucket={soilDisplay} machine={MACHINE_CONFIGS[selectedMachineId]} heightMapRef={heightMapRef} />
-          {/* 흙 파티클 */}
-          <SoilParticles particlesRef={particlesRef} />
+            {/* rapier 지형 Heightfield 콜라이더 (3초마다 갱신) */}
+            <TerrainRapierCollider heightMapRef={heightMapRef} version={terrainPhysicsVersion} />
+            {/* rapier 굴착기 충돌 프록시 */}
+            <ExcavatorCollider stateRef={stateRef} machine={MACHINE_CONFIGS[selectedMachineId]} />
 
-          <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.02} />
-          <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
-            <GizmoViewport labelColor="white" axisHeadScale={0.85} />
-          </GizmoHelper>
+            {/* 동적 지형 메시 */}
+            <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
+            <ConstructionOverlay />
+            {/* wobbleRef 전달 → BEPUphysics2 진동 파라미터로 실시간 흔들림 적용 */}
+            <ExcavatorModel
+              state={state}
+              soilInBucket={soilDisplay}
+              machine={MACHINE_CONFIGS[selectedMachineId]}
+              heightMapRef={heightMapRef}
+              wobbleRef={wobbleRef}
+            />
+            {/* 흙 파티클 */}
+            <SoilParticles particlesRef={particlesRef} />
+
+            <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.02} />
+            <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
+              <GizmoViewport labelColor="white" axisHeadScale={0.85} />
+            </GizmoHelper>
+          </Physics>
         </Canvas>
       </div>
 
@@ -1470,28 +1608,39 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </div>
         </div>
         <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }} style={{ background: '#1a2a3a', width: '100%', height: 'clamp(300px, 25vh, 500px)', borderRadius: '12px' }}>
-          <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
-          <ambientLight intensity={0.55} />
-          <directionalLight
-              position={[60, 70, 40]} intensity={1.3} castShadow
-              shadow-mapSize-width={2048} shadow-mapSize-height={2048}
-              shadow-camera-far={200} shadow-camera-left={-70}
-              shadow-camera-right={70} shadow-camera-top={70} shadow-camera-bottom={-70}
-          />
-          <pointLight position={[-20, 8, -20]} intensity={0.25} color="#ff9944" />
-          <pointLight position={[25, 6, 25]}   intensity={0.2}  color="#4488ff" />
+          <Physics gravity={[0, -9.81, 0]} colliders={false}>
+            <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
+            <ambientLight intensity={0.55} />
+            <directionalLight
+                position={[60, 70, 40]} intensity={1.3} castShadow
+                shadow-mapSize-width={2048} shadow-mapSize-height={2048}
+                shadow-camera-far={200} shadow-camera-left={-70}
+                shadow-camera-right={70} shadow-camera-top={70} shadow-camera-bottom={-70}
+            />
+            <pointLight position={[-20, 8, -20]} intensity={0.25} color="#ff9944" />
+            <pointLight position={[25, 6, 25]}   intensity={0.2}  color="#4488ff" />
 
-          {/* 동적 지형 메시 */}
-          <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
-          <ConstructionOverlay />
-          <ExcavatorModel state={state} soilInBucket={soilDisplay} machine={MACHINE_CONFIGS[selectedMachineId]} heightMapRef={heightMapRef} />
-          {/* 흙 파티클 */}
-          <SoilParticles particlesRef={particlesRef} />
+            <TerrainRapierCollider heightMapRef={heightMapRef} version={terrainPhysicsVersion} />
+            <ExcavatorCollider stateRef={stateRef} machine={MACHINE_CONFIGS[selectedMachineId]} />
 
-          <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.02} />
-          <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
-            <GizmoViewport labelColor="white" axisHeadScale={0.85} />
-          </GizmoHelper>
+            {/* 동적 지형 메시 */}
+            <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
+            <ConstructionOverlay />
+            <ExcavatorModel
+              state={state}
+              soilInBucket={soilDisplay}
+              machine={MACHINE_CONFIGS[selectedMachineId]}
+              heightMapRef={heightMapRef}
+              wobbleRef={wobbleRef}
+            />
+            {/* 흙 파티클 */}
+            <SoilParticles particlesRef={particlesRef} />
+
+            <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.02} />
+            <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
+              <GizmoViewport labelColor="white" axisHeadScale={0.85} />
+            </GizmoHelper>
+          </Physics>
         </Canvas>
         {/* 작업 프리셋 */}
         {/* <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>

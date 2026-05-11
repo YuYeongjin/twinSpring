@@ -10,6 +10,11 @@ using Microsoft.Extensions.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// React 개발 서버(3000)에서 C# 서버(5112)로의 직접 호출 허용
+builder.Services.AddCors(opt => opt.AddPolicy("AllowFrontend", p =>
+    p.WithOrigins("http://localhost:3000", "http://localhost:8080")
+     .AllowAnyHeader()
+     .AllowAnyMethod()));
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -20,7 +25,6 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition =
             System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
-builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddAuthorization();
@@ -40,9 +44,11 @@ builder.Services.AddDbContext<BimDbContext>(options =>
     options.UseMySQL(connectionString)
 );
 
-// 3. BIM 서비스 등록 (DbContext 주입이 가능하도록 Scoped으로 등록)
+// 3. BIM 서비스 등록
 builder.Services.AddScoped<BimService>();
 builder.Services.AddScoped<SimulationService>();
+// PhysicsService: 요청마다 BEPUphysics2 시뮬레이션을 생성/해제하므로 Scoped
+builder.Services.AddScoped<PhysicsService>();
 
 // =========================================================================
 // Build and Configure (앱 빌드 및 파이프라인 구성)
@@ -58,6 +64,8 @@ if (app.Environment.IsDevelopment())
 }
 
 // app.UseHttpsRedirection(); // (주석 처리된 상태 유지)
+
+app.UseCors("AllowFrontend");
 
 var summaries = new[]
 {
