@@ -2,6 +2,8 @@ package yyj.project.twinspring.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
@@ -69,5 +71,16 @@ public class ChatController {
     public ResponseEntity<Void> clearHistory(@PathVariable String sessionId) {
         chatService.clearHistory(sessionId);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Agent 서버 헬스체크
+     */
+    @GetMapping("/status")
+    public ResponseEntity<Map<String, String>> agentStatus() {
+        boolean available = chatService.isAgentAvailable();
+        return available
+                ? ResponseEntity.ok(Map.of("status", "online"))
+                : ResponseEntity.status(503).body(Map.of("status", "offline"));
     }
 }

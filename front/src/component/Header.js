@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { id: "safe",                label: "Safe",       icon: "🦺" },
 ];
 
-export default function Header({ viewComponent, setViceComponent }) {
+export default function Header({ viewComponent, setViceComponent, agentAvailable }) {
   const [time, setTime] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -44,7 +44,10 @@ export default function Header({ viewComponent, setViceComponent }) {
     : viewComponent === "simulation"               ? "simulation-projects"
     : viewComponent;
 
+  const isTabDisabled = (id) => id === 'agent' && agentAvailable === false;
+
   const handleNavClick = (id) => {
+    if (isTabDisabled(id)) return;
     setViceComponent(id);
     setMenuOpen(false);
   };
@@ -68,20 +71,24 @@ export default function Header({ viewComponent, setViceComponent }) {
           <nav className="hidden md:flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
             {NAV_ITEMS.map(({ id, label, icon }) => {
               const isActive = activeTab === id;
+              const disabled = isTabDisabled(id);
               return (
                 <button
                   key={id}
                   onClick={() => handleNavClick(id)}
+                  disabled={disabled}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
                   style={{
                     backgroundColor: isActive ? "#1e3a5f" : "transparent",
-                    color: isActive ? "#60a5fa" : "#8896a4",
+                    color: disabled ? "#4a5568" : isActive ? "#60a5fa" : "#8896a4",
                     border: isActive ? "1px solid #2a5080" : "1px solid transparent",
                     boxShadow: isActive ? "0 0 8px #2196f330" : "none",
+                    cursor: disabled ? "not-allowed" : "pointer",
+                    opacity: disabled ? 0.5 : 1,
                   }}
                 >
                   <span className="text-base">{icon}</span>
-                  <span>{label}</span>
+                  <span>{label}{disabled ? " (offline)" : ""}</span>
                 </button>
               );
             })}
@@ -116,19 +123,23 @@ export default function Header({ viewComponent, setViceComponent }) {
         <nav className="md:hidden border-t border-space-700 bg-[#0a1525]/97 backdrop-blur-lg">
           {NAV_ITEMS.map(({ id, label, icon }) => {
             const isActive = activeTab === id;
+            const disabled = isTabDisabled(id);
             return (
               <button
                 key={id}
                 onClick={() => handleNavClick(id)}
+                disabled={disabled}
                 className="w-full flex items-center gap-4 px-6 py-4 text-sm font-semibold transition-colors border-b border-[#1a2a3a] last:border-0 active:bg-[#1e3a5f]"
                 style={{
                   backgroundColor: isActive ? "#1a3050" : "transparent",
-                  color: isActive ? "#60a5fa" : "#8896a4",
+                  color: disabled ? "#4a5568" : isActive ? "#60a5fa" : "#8896a4",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.5 : 1,
                 }}
               >
                 <span className="text-2xl w-8 text-center">{icon}</span>
-                <span className="flex-1 text-left text-base">{label}</span>
-                {isActive && (
+                <span className="flex-1 text-left text-base">{label}{disabled ? " (offline)" : ""}</span>
+                {isActive && !disabled && (
                   <span className="w-2 h-2 rounded-full bg-accent-blue" />
                 )}
               </button>

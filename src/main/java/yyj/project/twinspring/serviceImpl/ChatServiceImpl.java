@@ -10,6 +10,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+import java.time.Duration;
 import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
@@ -174,6 +177,19 @@ public class ChatServiceImpl implements ChatService {
                     .block();
         } catch (Exception e) {
             log.warn("Agent 세션 초기화 실패 (무시): {}", e.getMessage());
+        }
+    }
+
+    @Override
+    public boolean isAgentAvailable() {
+        try {
+            agentClient.get()
+                    .uri("/health")
+                    .exchangeToMono(cr -> Mono.just(cr.statusCode()))
+                    .block(Duration.ofSeconds(3));
+            return true;
+        } catch (Exception e) {
+            return false;
         }
     }
 }
