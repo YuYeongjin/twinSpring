@@ -674,6 +674,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const [alertPulse, setAlertPulse]       = useState(true);
   const stompClientRef  = useRef(null);
   const thresholdsRef   = useRef(thresholds);
+  const wasAlertingRef  = useRef(false);
 
   // stateRef 항상 최신 유지
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -726,8 +727,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             if (d.humidity < t.humMin)
               triggered.push({ id: 'HUM_LOW',   level: 'warning', text: `습도 하한 이탈: ${d.humidity}% (허용 최저 ${t.humMin}%)`, ts });
             setActiveAlerts(triggered);
-            if (triggered.length > 0)
+            if (triggered.length > 0) {
               setAlertHistory(prev => [...triggered.map(a => ({ ...a, uid: `${a.id}_${Date.now()}` })), ...prev].slice(0, 20));
+              if (!wasAlertingRef.current) {
+                wasAlertingRef.current = true;
+                AxiosCustom.post('/api/alert/led/on').catch(() => {});
+              }
+            } else if (wasAlertingRef.current) {
+              wasAlertingRef.current = false;
+              AxiosCustom.post('/api/alert/led/off').catch(() => {});
+            }
           } catch {}
         });
       },
