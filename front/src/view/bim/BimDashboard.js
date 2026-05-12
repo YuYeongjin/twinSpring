@@ -12,6 +12,7 @@ import { ENV_PRESETS, DEFAULT_ENV_ID } from './component/SkyEnvironment';
 import MiniMapCanvas from './component/MiniMapCanvas';
 import AxiosCustom from '../../axios/AxiosCustom';
 import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
+import StructuralDashboard from '../structural/StructuralDashboard';
 
 const API_BASE = '/api/bim';
 
@@ -492,6 +493,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     // ── 뷰 모드 ────────────────────────────────────────────────────
     const [viewMode, setViewMode] = useState('3d'); // '3d' | '2d'
+    const [bimSubView, setBimSubView] = useState('editor'); // 'editor' | 'structural'
 
     // ── 패널 드래그 리사이즈 ───────────────────────────────────────
     const [leftPanelPct, setLeftPanelPct]   = useState(13); // 5~20%
@@ -881,8 +883,30 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 <h2 className="text-lg md:text-xl font-light text-white">BIM 편집기</h2>
                 <Chip color="blue">Edit Mode</Chip>
 
+                {/* 서브 탭 */}
+                <div className="flex gap-1 bg-space-800/60 border border-space-700 rounded-xl p-1">
+                    {[
+                        { id: 'editor',     label: '편집기',  icon: '🏗' },
+                        { id: 'structural', label: '구조해석', icon: '🔩' },
+                    ].map(({ id, label, icon }) => (
+                        <button
+                            key={id}
+                            onClick={() => setBimSubView(id)}
+                            className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                            style={{
+                                backgroundColor: bimSubView === id ? '#1e3a5f' : 'transparent',
+                                color: bimSubView === id ? '#60a5fa' : '#8896a4',
+                                border: bimSubView === id ? '1px solid #2a5080' : '1px solid transparent',
+                            }}
+                        >
+                            <span>{icon}</span>
+                            <span className="hidden sm:inline">{label}</span>
+                        </button>
+                    ))}
+                </div>
+
                 {/* 다중 선택 삭제 버튼 */}
-                {totalSelectedCount > 1 && (
+                {bimSubView === 'editor' && totalSelectedCount > 1 && (
                     <button
                         onClick={deleteSelectedElements}
                         className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-red-700/60 text-red-300 hover:bg-red-600/80 transition"
@@ -892,6 +916,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 )}
 
                 <div className="ml-auto flex items-center gap-1.5 md:gap-2 flex-wrap justify-end">
+                    {bimSubView === 'editor' && (<>
                     {/* 2D / 3D 뷰 토글 */}
                     <button
                         onClick={() => setViewMode(v => v === '3d' ? '2d' : '3d')}
@@ -982,11 +1007,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     <span className="text-xs text-gray-600 hidden xl:block">
                         T:이동&nbsp;R:회전&nbsp;S:크기&nbsp;Q:선택&nbsp;Del:삭제&nbsp;Ctrl+Z:취소
                     </span>
+                    </>)}
                 </div>
             </div>
 
             {/* ── 배치 / 선택 모드 배너 ── */}
-            {pendingElement && (
+            {bimSubView === 'editor' && pendingElement && (
                 <div className="mb-2 px-3 py-2 rounded-xl flex items-center gap-2 text-sm flex-wrap"
                      style={{ backgroundColor: '#1a2f4a', border: '1px solid #2a5080' }}>
                     <span className="text-blue-400">📍</span>
@@ -1000,7 +1026,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     </button>
                 </div>
             )}
-            {isSelectMode && !pendingElement && (
+            {bimSubView === 'editor' && isSelectMode && !pendingElement && (
                 <div className="mb-2 px-3 py-2 rounded-xl flex items-center gap-2 text-sm flex-wrap"
                      style={{ backgroundColor: '#1f1040', border: '1px solid #5b21b6' }}>
                     <span className="text-violet-400">⬚</span>
@@ -1016,6 +1042,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 </div>
             )}
 
+            {bimSubView === 'structural' && (
+                <StructuralDashboard selectedProject={selectedProject} modelData={modelData} />
+            )}
+            {bimSubView === 'editor' && (
             <div
                 ref={panelContainerRef}
                 className="flex flex-col md:flex-row md:h-[calc(100vh-7rem)]"
@@ -1425,6 +1455,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 )}
 
             </div>
+            )}
         </div>
     );
 }
