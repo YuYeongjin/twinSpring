@@ -67,3 +67,6 @@ agent/.env
 *.csproj
 *.sln
 *.suo
+/detect/yolov8n.pt
+/detect/detect_server.log.pt
+/detect/detect_server_err.log.pt
