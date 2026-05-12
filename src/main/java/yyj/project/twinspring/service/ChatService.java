@@ -23,4 +23,7 @@ public interface ChatService {
 
     /** 세션의 대화 이력 초기화 */
     void clearHistory(String sessionId);
+
+    /** Agent 서버 헬스체크 */
+    boolean isAgentAvailable();
 }

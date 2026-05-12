@@ -31,6 +31,9 @@ function App() {
   const [simulationProjectList, setSimulationProjectList] = useState([]);
   const [selectedSimulationProject, setSelectedSimulationProject] = useState(null);
 
+  // ── Agent 헬스체크 ────────────────────────────────────────────
+  const [agentAvailable, setAgentAvailable] = useState(null);
+
   // ---------------------------------------------------------------
   // BIM 프로젝트 목록 새로 고침
   // ---------------------------------------------------------------
@@ -158,6 +161,12 @@ function App() {
     ]).finally(() => setLoading(false));
   }, [refreshProjectList, refreshSimulationProjectList]);
 
+  useEffect(() => {
+    AxiosCustom.get('/api/chat/status')
+      .then(() => setAgentAvailable(true))
+      .catch(() => setAgentAvailable(false));
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0d1b2a] flex items-center justify-center text-gray-400">
@@ -203,6 +212,7 @@ function App() {
           onBimUpdate={refreshModelData}
           modelData={modelData}
           selectedSimulationProject={selectedSimulationProject}
+          agentAvailable={agentAvailable}
         />
       );
     }
@@ -250,7 +260,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-space-900 text-gray-200">
-      <Header viewComponent={viewComponent} setViceComponent={setViceComponent} />
+      <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} />
 
       <main className="w-full px-2 sm:px-4 py-4 sm:py-6 pb-24 sm:pb-6 overflow-x-hidden">
         {renderView()}

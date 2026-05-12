@@ -39,7 +39,7 @@ const COUNT_OPTIONS = [10, 20, 50, 100];
 // ────────────────────────────────────────────────────
 // 메인 컴포넌트
 // ────────────────────────────────────────────────────
-export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject }) {
+export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject, agentAvailable }) {
   // ── 채팅 상태 ──
   const [messages, setMessages] = useState([
     {
@@ -315,6 +315,19 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   const [mobilePanel, setMobilePanel] = useState('chat');
 
   // ─────────────────────────────────────────────────
+  if (agentAvailable === false) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 gap-4">
+        <span className="text-5xl opacity-30">🤖</span>
+        <p className="text-gray-400 font-semibold">Agent server offline</p>
+        <p className="text-gray-600 text-sm">Start the agent server and reload the page.</p>
+        <code className="text-xs text-gray-500 bg-[#0d1b2a] border border-[#253347] px-3 py-1.5 rounded-lg">
+          cd agent &amp;&amp; python main.py
+        </code>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col lg:h-[calc(100vh-120px)]">
       {/* 상단 정보 바 */}
