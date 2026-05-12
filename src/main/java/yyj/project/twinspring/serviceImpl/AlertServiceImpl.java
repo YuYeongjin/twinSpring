@@ -16,7 +16,7 @@ public class AlertServiceImpl implements AlertService {
 
     public AlertServiceImpl(
             WebClient.Builder builder,
-            @Value("${raspi.alert.url:http://192.168.0.100:5000}") String raspiUrl
+            @Value("${raspi.alert.url:http://192.168.219.103:5050}") String raspiUrl
     ) {
         this.raspiClient = builder.baseUrl(raspiUrl).build();
         log.info("Raspberry Pi Alert URL: {}", raspiUrl);
