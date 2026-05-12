@@ -151,6 +151,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
     data, mode, setMode, batt, rssi,
     latest,
     wsStatus,
+    activeAlert, setActiveAlert,
   } = SatelliteAPI();
 
   // 히스토리에서 통계값 계산
@@ -175,6 +176,29 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
 
   return (
     <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-4 space-y-4">
+
+      {/* ================================================================
+          Alert Banner — 임계값 초과 시 표시
+          ================================================================ */}
+      {activeAlert && (
+        <div
+          className="flex items-start gap-3 px-4 py-3 rounded-xl border animate-pulse"
+          style={{ backgroundColor: "#3a0f0f", borderColor: TB.danger, color: TB.danger }}
+        >
+          <span className="text-xl shrink-0">🚨</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold">경고: 센서 임계값 초과 — 라즈베리파이 LED 점등 중</p>
+            {activeAlert.reason && (
+              <p className="text-xs mt-0.5" style={{ color: "#f87171" }}>{activeAlert.reason}</p>
+            )}
+            <p className="text-xs mt-0.5 opacity-60">{activeAlert.timestamp}</p>
+          </div>
+          <button
+            onClick={() => setActiveAlert(null)}
+            className="shrink-0 text-sm opacity-60 hover:opacity-100 transition-opacity"
+          >✕</button>
+        </div>
+      )}
 
       {/* ================================================================
           1. 상단 디바이스 상태 바

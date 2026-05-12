@@ -4,14 +4,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import yyj.project.twinspring.dao.SpotDAO;
 import yyj.project.twinspring.dto.SensorDTO;
+import yyj.project.twinspring.service.AlertService;
 import yyj.project.twinspring.service.MqttService;
 
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -19,19 +22,24 @@ import java.util.Map;
 public class MqttServiceImpl implements MqttService {
 
     private static final Logger log = LoggerFactory.getLogger(MqttServiceImpl.class);
-
-    // ObjectMapper는 스레드 안전하므로 재사용
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    // static 제거: 인스턴스 필드로 변경 (static이면 멀티인스턴스 환경에서 공유 상태 문제 발생)
     private volatile SensorDTO latestData = new SensorDTO();
+    private volatile boolean alertActive = false;
+
+    @Value("${alert.temp.max:35.0}") private double tempMax;
+    @Value("${alert.temp.min:0.0}")  private double tempMin;
+    @Value("${alert.hum.max:80.0}")  private double humMax;
+    @Value("${alert.hum.min:20.0}")  private double humMin;
 
     private final SpotDAO spotDAO;
     private final SimpMessagingTemplate template;
+    private final AlertService alertService;
 
-    public MqttServiceImpl(SpotDAO spotDAO, SimpMessagingTemplate template) {
+    public MqttServiceImpl(SpotDAO spotDAO, SimpMessagingTemplate template, AlertService alertService) {
         this.spotDAO = spotDAO;
         this.template = template;
+        this.alertService = alertService;
     }
 
     @Override
@@ -43,15 +51,15 @@ public class MqttServiceImpl implements MqttService {
                 SensorDTO data = objectMapper.treeToValue(root, SensorDTO.class);
                 OffsetDateTime odt = OffsetDateTime.parse(data.getTimestamp());
 
-                // 포맷터 정의 (T 대신 공백 사용)
                 String dbFriendlyTimestamp = odt.toLocalDateTime()
                         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS"));
-
                 data.setTimestamp(dbFriendlyTimestamp);
 
                 latestData = data;
                 spotDAO.insertData(data);
                 template.convertAndSend("/topic/sensor", data);
+
+                checkAndTriggerAlert(data);
             }
 
             if (!root.has("temperature") && !root.has("humidity")) {
@@ -61,6 +69,48 @@ public class MqttServiceImpl implements MqttService {
         } catch (Exception e) {
             log.error("MQTT 메시지 처리 실패. payload={}", payload, e);
         }
+    }
+
+    private void checkAndTriggerAlert(SensorDTO data) {
+        boolean tempAlert = data.getTemperature() > tempMax || data.getTemperature() < tempMin;
+        boolean humAlert  = data.getHumidity()    > humMax  || data.getHumidity()    < humMin;
+        boolean nowAlert  = tempAlert || humAlert;
+
+        if (nowAlert && !alertActive) {
+            alertActive = true;
+            alertService.ledOn();
+
+            Map<String, Object> msg = new HashMap<>();
+            msg.put("type", "alert");
+            msg.put("temperature", data.getTemperature());
+            msg.put("humidity", data.getHumidity());
+            msg.put("timestamp", data.getTimestamp());
+            msg.put("reason", buildReason(tempAlert, humAlert, data));
+            template.convertAndSend("/topic/alert", msg);
+
+            log.warn("[Alert] 임계값 초과 — temp={}, hum={}", data.getTemperature(), data.getHumidity());
+
+        } else if (!nowAlert && alertActive) {
+            alertActive = false;
+            alertService.ledOff();
+
+            Map<String, Object> msg = new HashMap<>();
+            msg.put("type", "resolved");
+            msg.put("temperature", data.getTemperature());
+            msg.put("humidity", data.getHumidity());
+            msg.put("timestamp", data.getTimestamp());
+            template.convertAndSend("/topic/alert", msg);
+
+            log.info("[Alert] 정상 복귀 — temp={}, hum={}", data.getTemperature(), data.getHumidity());
+        }
+    }
+
+    private String buildReason(boolean tempAlert, boolean humAlert, SensorDTO data) {
+        StringBuilder sb = new StringBuilder();
+        if (tempAlert) sb.append(String.format("온도 %.1f°C (허용: %.1f~%.1f)", data.getTemperature(), tempMin, tempMax));
+        if (tempAlert && humAlert) sb.append(" / ");
+        if (humAlert)  sb.append(String.format("습도 %.1f%% (허용: %.1f~%.1f)", data.getHumidity(), humMin, humMax));
+        return sb.toString();
     }
 
     @Override
@@ -75,7 +125,6 @@ public class MqttServiceImpl implements MqttService {
 
     @Override
     public Object test() {
-        // 테스트용: DB에서 최신 로그 반환
         return getLogs();
     }
 }
