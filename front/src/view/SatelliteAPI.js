@@ -13,6 +13,7 @@ export default function SatelliteAPI() {
   const [bimMenu, setBimMenu] = useState('default');
   // WebSocket 연결 상태: 'connecting' | 'connected' | 'disconnected' | 'error'
   const [wsStatus, setWsStatus] = useState('connecting');
+  const [activeAlert, setActiveAlert] = useState(null); // { type, reason, temperature, humidity, timestamp }
   const SOCKET_HTTP_URL = `${WS_BASE}/ws/sensor`;
   const API_BASE_URL = `/api/bim`;
 
@@ -49,6 +50,17 @@ export default function SatelliteAPI() {
             setData((prev) => [...prev, msg.body]);
           }
         });
+
+        client.subscribe("/topic/alert", (msg) => {
+          try {
+            const alert = JSON.parse(msg.body);
+            if (alert.type === "alert") {
+              setActiveAlert(alert);
+            } else if (alert.type === "resolved") {
+              setActiveAlert(null);
+            }
+          } catch {}
+        });
       },
       onDisconnect: () => {
         setWsStatus('disconnected');
@@ -84,5 +96,6 @@ export default function SatelliteAPI() {
     latest, addNewProject,
     bimMenu, setBimMenu,
     wsStatus,  // 'connecting' | 'connected' | 'disconnected' | 'error'
+    activeAlert, setActiveAlert,
   };
 }
