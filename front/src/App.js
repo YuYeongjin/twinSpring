@@ -9,6 +9,7 @@ import ChatView from './view/chat/ChatView';
 import AgentDashboard from './view/agent/AgentDashboard';
 import SimulationDashboard from './view/simulation/SimulationDashboard';
 import SimulationProjectList from './view/simulation/SimulationProjectList';
+import SafeDashboard from './view/safe/SafeDashboard';
 import { useCallback, useEffect, useState } from 'react';
 
 function App() {
@@ -191,6 +192,9 @@ function App() {
           setViceComponent={setViceComponent}
         />
       );
+    }
+    if (viewComponent === 'safe') {
+      return <SafeDashboard />;
     }
     if (viewComponent === 'agent') {
       return (

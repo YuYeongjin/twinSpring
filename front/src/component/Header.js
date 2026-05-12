@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { id: "bim-projects",        label: "BIM",        icon: "🏗" },
   { id: "agent",               label: "Agent",      icon: "🤖" },
   { id: "simulation-projects", label: "Simulation", icon: "🚜" },
+  { id: "safe",                label: "Safe",       icon: "🦺" },
 ];
 
 export default function Header({ viewComponent, setViceComponent }) {

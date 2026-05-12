@@ -33,7 +33,20 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\front\\\\src\" -Recurse -Include \"*.jsx\",\"*.js\",\"*.tsx\",\"*.ts\")",
-      "Bash(Select-Object -First 30 FullName)"
+      "Bash(Select-Object -First 30 FullName)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('proxy:', d.get\\('proxy','없음'\\)\\)\")",
+      "Bash(node -e \"const pkg = require\\('./package.json'\\); const deps = pkg.dependencies; console.log\\('fiber:', deps['@react-three/fiber']\\); console.log\\('drei:', deps['@react-three/drei']\\); console.log\\('three:', deps['three']\\);\")",
+      "Bash(node -e \"try { const d = require\\('./node_modules/@react-three/drei'\\); const keys = Object.keys\\(d\\).filter\\(k => ['Box','Plane','OrbitControls'].includes\\(k\\)\\); console.log\\('Available:', keys\\); } catch\\(e\\) { console.log\\('Error:', e.message\\); }\")",
+      "Bash(pip show *)",
+      "Bash(pip install *)",
+      "Bash(python detect.py)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(Start-Process -FilePath \"python\" -ArgumentList \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect.py\" -WorkingDirectory \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\" -RedirectStandardOutput \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect_server.log\" -RedirectStandardError \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect_server_err.log\" -WindowStyle Hidden -PassThru)",
+      "Bash(Select-Object -ExpandProperty Id)",
+      "PowerShell(Start-Process -FilePath \"python\" -ArgumentList \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect.py\" -WorkingDirectory \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\" -RedirectStandardOutput \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect_server.log\" -RedirectStandardError \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect_server_err.log\" -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id)",
+      "Bash(curl -s http://localhost:5001/status)",
+      "Bash(python -c \"import urllib.request; print\\(urllib.request.urlopen\\('http://localhost:5001/status'\\).read\\(\\).decode\\(\\)\\)\")",
+      "Bash(python -c ' *)"
     ]
   }
 }
