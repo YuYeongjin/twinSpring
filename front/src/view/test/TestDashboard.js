@@ -311,6 +311,14 @@ function Ground() {
 
 // ── Main TestDashboard ─────────────────────────────────────────────────────
 export default function TestDashboard() {
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const [state, setState] = useState({ ...DEFAULT_STATE });
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -480,15 +488,55 @@ export default function TestDashboard() {
   const secColor    = '#8896a4';
   const accentBlue  = '#60a5fa';
 
+  // ── Shared: 3D Canvas content ──────────────────────────────────────────────
+  const canvasContent = (
+    <>
+      <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.5} />
+      <ambientLight intensity={0.5} />
+      <directionalLight
+        position={[50, 60, 30]} intensity={1.2} castShadow
+        shadow-mapSize-width={2048} shadow-mapSize-height={2048}
+        shadow-camera-far={180} shadow-camera-left={-60}
+        shadow-camera-right={60} shadow-camera-top={60} shadow-camera-bottom={-60}
+      />
+      <pointLight position={[-20, 10, 5]} intensity={0.3} color="#ff9944" />
+      <Ground />
+      <gridHelper args={[80, 40, '#1a3a5f', '#0d2035']} position={[0, 0.01, 0]} />
+      {bimElements.map(elem => (
+        <TransparentBimElement
+          key={elem.elementId}
+          element={elem}
+          offsetX={bimOffset.x}
+          offsetZ={bimOffset.z}
+          isColliding={collidingIds.includes(elem.elementId)}
+        />
+      ))}
+      <ExcavatorModel stateRef={stateRef} machine={MACHINE} />
+      <CollisionDetector
+        stateRef={stateRef}
+        machine={MACHINE}
+        elementsRef={elementsRef}
+        offsetRef={offsetRef}
+        onCollisionRef={onCollisionRef}
+      />
+      <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.01} />
+      <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
+        <GizmoViewport labelColor="white" axisHeadScale={0.85} />
+      </GizmoHelper>
+    </>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
 
       {/* ── Header ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '12px',
+        display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
         padding: '8px 4px 12px', borderBottom: '1px solid #1e3a5f', marginBottom: '10px',
       }}>
-        <span style={{ color: '#f5a623', fontSize: '15px', fontWeight: 700 }}>🧪 Test — BIM + Simulation Collision Test</span>
+        <span style={{ color: '#f5a623', fontSize: isMobile ? '13px' : '15px', fontWeight: 700 }}>
+          🧪 Test — Collision Test
+        </span>
         <span style={{
           fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
           background: '#1a2a0a', color: '#f5a623', border: '1px solid #f5a62340',
@@ -497,7 +545,7 @@ export default function TestDashboard() {
           <span style={{
             background: alertPulse ? 'rgba(127,29,29,0.95)' : 'rgba(90,10,10,0.9)',
             border: `${alertPulse ? 2 : 1}px solid #ef4444`,
-            color: '#fca5a5', borderRadius: '8px', padding: '3px 14px',
+            color: '#fca5a5', borderRadius: '8px', padding: '3px 12px',
             fontSize: '12px', fontWeight: 700,
             boxShadow: alertPulse ? '0 0 12px #ef444450' : 'none',
             transition: 'all 0.3s',
@@ -507,343 +555,453 @@ export default function TestDashboard() {
         )}
       </div>
 
-      <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px' }}>
+      {/* ── Desktop Layout ── */}
+      {!isMobile && (
+        <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px' }}>
 
-        {/* ── Left panel: BIM project selector ── */}
-        <div style={{
-          width: '215px', flexShrink: 0, background: panelBg, border: panelBorder,
-          borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
-          gap: '10px', overflowY: 'auto', fontSize: '12px',
-        }}>
-          <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
-            🏗 BIM Project
+          {/* Left panel: BIM project selector */}
+          <div style={{
+            width: '215px', flexShrink: 0, background: panelBg, border: panelBorder,
+            borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
+            gap: '10px', overflowY: 'auto', fontSize: '12px',
+          }}>
+            <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
+              🏗 BIM Project
+            </div>
+
+            {bimProjects.length === 0 ? (
+              <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '20px 0', fontSize: '11px' }}>
+                No BIM Projects
+              </div>
+            ) : (
+              bimProjects.map(proj => {
+                const active = selectedProject?.projectId === proj.projectId;
+                return (
+                  <button
+                    key={proj.projectId}
+                    onClick={() => handleSelectProject(proj)}
+                    style={{
+                      background: active ? '#0f2040' : '#111e2e',
+                      border: `1px solid ${active ? accentBlue : '#253347'}`,
+                      borderRadius: '8px', padding: '8px 10px', cursor: 'pointer',
+                      textAlign: 'left', width: '100%', transition: 'all 0.15s',
+                    }}
+                  >
+                    <div style={{ color: active ? accentBlue : '#e2e8f0', fontWeight: active ? 700 : 400, fontSize: '12px' }}>
+                      {proj.projectName}
+                    </div>
+                    <div style={{ color: '#4a5568', fontSize: '10px', marginTop: '2px' }}>{proj.structureType}</div>
+                  </button>
+                );
+              })
+            )}
+
+            {selectedProject && (
+              <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
+                <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Loaded Elements</div>
+                {loadingBim
+                  ? <div style={{ color: '#facc15', fontSize: '11px' }}>Loading...</div>
+                  : <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '13px' }}>{bimElements.length}</div>
+                }
+              </div>
+            )}
+
+            <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
+              <div style={{ color: accentBlue, fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>⚙ Simulation</div>
+
+              <button
+                onClick={() => { const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next; }}
+                style={{
+                  width: '100%',
+                  background: autoPlay ? '#0f2a18' : '#111e2e',
+                  border: `1px solid ${autoPlay ? '#22c55e' : '#253347'}`,
+                  borderRadius: '8px', padding: '8px',
+                  color: autoPlay ? '#4ade80' : secColor,
+                  fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                }}
+              >
+                {autoPlay ? '⏹ Stop Auto Mode' : '▶ Start Auto Mode'}
+              </button>
+
+              <button
+                onClick={handleReset}
+                style={{
+                  width: '100%', background: '#111e2e', border: '1px solid #253347',
+                  borderRadius: '8px', padding: '8px', marginTop: '6px',
+                  color: secColor, fontSize: '12px', cursor: 'pointer',
+                }}
+              >
+                ↺ Reset
+              </button>
+            </div>
+
+            {collisionLog.length > 0 && (
+              <div style={{ background: '#1a0808', border: '1px solid #7f1d1d', borderRadius: '8px', padding: '9px' }}>
+                <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 700, marginBottom: '6px' }}>📋 Collision Log</div>
+                {collisionLog.map((log, i) => (
+                  <div key={i} style={{ fontSize: '10px', marginBottom: '5px', borderBottom: i < collisionLog.length-1 ? '1px solid #3a1a1a' : 'none', paddingBottom: '4px' }}>
+                    <span style={{ color: '#ef4444', fontWeight: 700 }}>🚨 Collision Detected</span>
+                    <br />
+                    <span style={{ color: '#4a5568' }}>{log.ts}</span>
+                    <br />
+                    <span style={{ color: '#fca5a5' }}>{log.ids.length} elements in contact</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {bimProjects.length === 0 ? (
-            <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '20px 0', fontSize: '11px' }}>
-              No BIM Projects
+          {/* Center: 3D Canvas */}
+          <div style={{
+            flex: 1, height: '100%', borderRadius: '12px', overflow: 'hidden',
+            border: colliding ? '2px solid #ef4444' : panelBorder,
+            position: 'relative',
+            boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 40px #ef444455' : 'none',
+            transition: 'box-shadow 0.3s, border-color 0.3s',
+          }}>
+            {colliding && (
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
+                background: alertPulse ? 'rgba(220,38,38,0.20)' : 'rgba(220,38,38,0.06)',
+                transition: 'background 0.4s', borderRadius: '10px',
+              }} />
+            )}
+            {colliding && (
+              <div style={{
+                position: 'absolute', top: '14px', left: '50%', transform: 'translateX(-50%)',
+                zIndex: 20, pointerEvents: 'none',
+                background: alertPulse ? 'rgba(127,29,29,0.97)' : 'rgba(100,20,20,0.94)',
+                border: `${alertPulse ? 2 : 1}px solid #ef4444`,
+                borderRadius: '10px', padding: '10px 28px',
+                color: '#fca5a5', fontSize: '14px', fontWeight: 700,
+                boxShadow: alertPulse ? '0 0 28px #ef444480, 0 0 60px #ef444430' : 'none',
+                transition: 'all 0.35s', whiteSpace: 'nowrap',
+              }}>
+                ⚠️ WARNING — Excavation equipment has contacted the structure!
+              </div>
+            )}
+            {!selectedProject && (
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 10, color: '#2a3a4a', textAlign: 'center', pointerEvents: 'none',
+              }}>
+                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏗</div>
+                <div style={{ fontSize: '14px' }}>Select a BIM project from the left panel</div>
+              </div>
+            )}
+            <div style={{
+              position: 'absolute', bottom: '12px', left: '12px', zIndex: 10, pointerEvents: 'none',
+              background: 'rgba(13,27,42,0.88)', border: '1px solid #253347',
+              borderRadius: '10px', padding: '10px 14px', fontSize: '11px',
+              color: secColor, lineHeight: 1.75,
+            }}>
+              <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px' }}>⌨ Keyboard Controls</div>
+              {[['W / S','Forward / Backward'],['A / D','Body Rotation'],['Q / E','Swing ±'],['R / F','Boom Up/Down'],['T / G','Arm Bend'],['Y / H','Bucket Rotate']].map(([k,v]) => (
+                <div key={k} style={{ display: 'flex', gap: '8px' }}>
+                  <span style={{ color: '#e2e8f0', minWidth: '52px', fontFamily: 'monospace' }}>{k}</span>
+                  <span>{v}</span>
+                </div>
+              ))}
             </div>
-          ) : (
-            bimProjects.map(proj => {
-              const active = selectedProject?.projectId === proj.projectId;
-              return (
-                <button
-                  key={proj.projectId}
-                  onClick={() => handleSelectProject(proj)}
-                  style={{
-                    background: active ? '#0f2040' : '#111e2e',
-                    border: `1px solid ${active ? accentBlue : '#253347'}`,
-                    borderRadius: '8px', padding: '8px 10px', cursor: 'pointer',
-                    textAlign: 'left', width: '100%', transition: 'all 0.15s',
-                  }}
-                >
-                  <div style={{ color: active ? accentBlue : '#e2e8f0', fontWeight: active ? 700 : 400, fontSize: '12px' }}>
-                    {proj.projectName}
-                  </div>
-                  <div style={{ color: '#4a5568', fontSize: '10px', marginTop: '2px' }}>{proj.structureType}</div>
-                </button>
-              );
-            })
-          )}
+            <div style={{
+              position: 'absolute', top: '12px', right: '12px', zIndex: 10, pointerEvents: 'none',
+              background: 'rgba(13,27,42,0.90)', border: '1px solid #253347',
+              borderRadius: '10px', padding: '8px 14px', fontSize: '12px', lineHeight: 1.7,
+            }}>
+              <div style={{ color: '#f5a623', fontWeight: 700 }}>🚜 0.6W Medium Excavator</div>
+              {selectedProject && <div style={{ color: secColor }}>🏗 {selectedProject.projectName}</div>}
+              <div style={{ color: autoPlay ? '#4ade80' : secColor, fontSize: '11px' }}>
+                {autoPlay ? '▶ Auto Mode Active' : '■ Manual Control'}
+              </div>
+              <div style={{ color: colliding ? '#ef4444' : '#4ade80', fontWeight: 700, marginTop: '4px' }}>
+                {colliding ? '● Collision' : '● Safe'}
+              </div>
+            </div>
 
-          {selectedProject && (
+            <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
+              {canvasContent}
+            </Canvas>
+          </div>
+
+          {/* Right panel: status monitor */}
+          <div style={{
+            width: '195px', flexShrink: 0, background: panelBg, border: panelBorder,
+            borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
+            gap: '10px', overflowY: 'auto', fontSize: '12px',
+          }}>
+            <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
+              📊 Status Monitor
+            </div>
+
+            <div style={{
+              background: colliding ? (alertPulse ? 'rgba(127,29,29,0.6)' : 'rgba(90,15,15,0.5)') : '#0d1e10',
+              border: `1px solid ${colliding ? '#ef4444' : '#1a4a1a'}`,
+              borderRadius: '8px', padding: '10px', transition: 'all 0.35s',
+            }}>
+              <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Collision Status</div>
+              <div style={{ color: colliding ? '#f87171' : '#4ade80', fontWeight: 700, fontSize: '16px' }}>
+                {colliding ? '🚨 Collision' : '✓ Safe'}
+              </div>
+              {colliding && <div style={{ color: '#fca5a5', fontSize: '10px', marginTop: '4px' }}>{collidingIds.length} elements in contact</div>}
+            </div>
+
             <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-              <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Loaded Elements</div>
-              {loadingBim
-                ? <div style={{ color: '#facc15', fontSize: '11px' }}>Loading...</div>
-                : <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '13px' }}>{bimElements.length}</div>
-              }
+              <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Excavator Position (m)</div>
+              {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                  <span style={{ color: secColor }}>{l}</span>
+                  <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{Number(v).toFixed(1)}</span>
+                </div>
+              ))}
             </div>
-          )}
 
-          <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
-            <div style={{ color: accentBlue, fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>⚙ Simulation</div>
+            <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
+              <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Joint Angles (°)</div>
+              {[
+                ['Body',   state.bodyRotation, '#94a3b8'],
+                ['Swing',  state.swingAngle,   '#a78bfa'],
+                ['Boom',   state.boomAngle,    accentBlue],
+                ['Arm',    state.armAngle,     '#34d399'],
+                ['Bucket', state.bucketAngle,  '#fb923c'],
+              ].map(([l, v, c]) => (
+                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                  <span style={{ color: secColor }}>{l}</span>
+                  <span style={{ color: c, fontFamily: 'monospace', fontWeight: 600 }}>{Math.round(v)}°</span>
+                </div>
+              ))}
+            </div>
 
+            <div style={{
+              background: autoPlay ? '#0f2a18' : '#111e2e',
+              border: `1px solid ${autoPlay ? '#22c55e44' : 'transparent'}`,
+              borderRadius: '8px', padding: '9px',
+            }}>
+              <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Auto Mode</div>
+              <div style={{ color: autoPlay ? '#4ade80' : '#3a4a5a', fontWeight: 700 }}>
+                {autoPlay ? `▶ Working (Phase ${autoPhaseRef.current + 1}/${AUTO_PHASES.length})` : '■ Stopped'}
+              </div>
+            </div>
+
+            {selectedProject && (
+              <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
+                <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>BIM Building</div>
+                <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '11px', wordBreak: 'break-all' }}>
+                  {selectedProject.projectName}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
+                  <span style={{ color: secColor, fontSize: '10px' }}>Elements</span>
+                  <span style={{ color: accentBlue, fontFamily: 'monospace' }}>{bimElements.length}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+                  <span style={{ color: secColor, fontSize: '10px' }}>Type</span>
+                  <span style={{ color: '#e2e8f0', fontSize: '10px' }}>{selectedProject.structureType}</span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
+              <div style={{ color: secColor, marginBottom: '6px', fontWeight: 700 }}>Legend</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <div style={{ width: '14px', height: '10px', background: '#6699dd', opacity: 0.5, border: '1px solid #4477bb', borderRadius: '2px' }} />
+                <span style={{ color: secColor }}>BIM Building (Transparent)</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <div style={{ width: '14px', height: '10px', background: '#ff7777', opacity: 0.7, border: '1px solid #ff3333', borderRadius: '2px' }} />
+                <span style={{ color: secColor }}>Colliding Element</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ width: '14px', height: '10px', background: '#f5a623', border: '1px solid #c07a0a', borderRadius: '2px' }} />
+                <span style={{ color: secColor }}>Excavator</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* ── Mobile Layout ── */}
+      {isMobile && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+
+          {/* BIM project selector row */}
+          <div style={{
+            background: panelBg, border: panelBorder,
+            borderRadius: '10px', padding: '10px 12px',
+          }}>
+            <div style={{ color: accentBlue, fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>
+              🏗 BIM Project
+            </div>
+            {bimProjects.length === 0 ? (
+              <div style={{ color: '#3a4a5a', fontSize: '11px' }}>No BIM Projects</div>
+            ) : (
+              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
+                {bimProjects.map(proj => {
+                  const active = selectedProject?.projectId === proj.projectId;
+                  return (
+                    <button
+                      key={proj.projectId}
+                      onClick={() => handleSelectProject(proj)}
+                      style={{
+                        flexShrink: 0,
+                        background: active ? '#0f2040' : '#111e2e',
+                        border: `1px solid ${active ? accentBlue : '#253347'}`,
+                        borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
+                        color: active ? accentBlue : '#e2e8f0',
+                        fontWeight: active ? 700 : 400, fontSize: '12px',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {proj.projectName}
+                      {loadingBim && active && ' …'}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {selectedProject && !loadingBim && (
+              <div style={{ marginTop: '6px', fontSize: '11px', color: secColor }}>
+                {bimElements.length} elements loaded
+              </div>
+            )}
+          </div>
+
+          {/* Auto / Reset controls */}
+          <div style={{ display: 'flex', gap: '8px' }}>
             <button
               onClick={() => { const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next; }}
               style={{
-                width: '100%',
+                flex: 1,
                 background: autoPlay ? '#0f2a18' : '#111e2e',
                 border: `1px solid ${autoPlay ? '#22c55e' : '#253347'}`,
-                borderRadius: '8px', padding: '8px',
+                borderRadius: '10px', padding: '11px 8px',
                 color: autoPlay ? '#4ade80' : secColor,
-                fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                fontWeight: 700, fontSize: '13px', cursor: 'pointer',
               }}
             >
-              {autoPlay ? '⏹ Stop Auto Mode' : '▶ Start Auto Mode'}
+              {autoPlay ? '⏹ Stop Auto' : '▶ Auto Mode'}
             </button>
-
             <button
               onClick={handleReset}
               style={{
-                width: '100%', background: '#111e2e', border: '1px solid #253347',
-                borderRadius: '8px', padding: '8px', marginTop: '6px',
-                color: secColor, fontSize: '12px', cursor: 'pointer',
+                background: '#111e2e', border: '1px solid #253347',
+                borderRadius: '10px', padding: '11px 18px',
+                color: secColor, fontSize: '13px', cursor: 'pointer',
               }}
             >
               ↺ Reset
             </button>
           </div>
 
-          {/* Collision Log */}
-          {collisionLog.length > 0 && (
-            <div style={{ background: '#1a0808', border: '1px solid #7f1d1d', borderRadius: '8px', padding: '9px' }}>
-              <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 700, marginBottom: '6px' }}>📋 Collision Log</div>
-              {collisionLog.map((log, i) => (
-                <div key={i} style={{ fontSize: '10px', marginBottom: '5px', borderBottom: i < collisionLog.length-1 ? '1px solid #3a1a1a' : 'none', paddingBottom: '4px' }}>
-                  <span style={{ color: '#ef4444', fontWeight: 700 }}>🚨 Collision Detected</span>
-                  <br />
-                  <span style={{ color: '#4a5568' }}>{log.ts}</span>
-                  <br />
-                  <span style={{ color: '#fca5a5' }}>{log.ids.length} elements in contact</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── Center: 3D Canvas ── */}
-        <div style={{
-          flex: 1, height: '100%', borderRadius: '12px', overflow: 'hidden',
-          border: colliding ? '2px solid #ef4444' : panelBorder,
-          position: 'relative',
-          boxShadow: colliding
-            ? `0 0 0 1px #ef4444, 0 0 40px #ef444455`
-            : 'none',
-          transition: 'box-shadow 0.3s, border-color 0.3s',
-        }}>
-
-          {/* Red flashing overlay */}
-          {colliding && (
-            <div style={{
-              position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
-              background: alertPulse
-                ? 'rgba(220, 38, 38, 0.20)'
-                : 'rgba(220, 38, 38, 0.06)',
-              transition: 'background 0.4s',
-              borderRadius: '10px',
-            }} />
-          )}
-
-          {/* Collision alert banner */}
-          {colliding && (
-            <div style={{
-              position: 'absolute', top: '14px', left: '50%', transform: 'translateX(-50%)',
-              zIndex: 20, pointerEvents: 'none',
-              background: alertPulse ? 'rgba(127,29,29,0.97)' : 'rgba(100,20,20,0.94)',
-              border: `${alertPulse ? 2 : 1}px solid #ef4444`,
-              borderRadius: '10px', padding: '10px 28px',
-              color: '#fca5a5', fontSize: '14px', fontWeight: 700,
-              boxShadow: alertPulse ? '0 0 28px #ef444480, 0 0 60px #ef444430' : 'none',
-              transition: 'all 0.35s', whiteSpace: 'nowrap',
-            }}>
-              ⚠️ WARNING — Excavation equipment has contacted the structure!
-            </div>
-          )}
-
-          {/* No project hint */}
-          {!selectedProject && (
-            <div style={{
-              position: 'absolute', top: '50%', left: '50%',
-              transform: 'translate(-50%, -50%)',
-              zIndex: 10, color: '#2a3a4a', textAlign: 'center', pointerEvents: 'none',
-            }}>
-              <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏗</div>
-              <div style={{ fontSize: '14px' }}>Select a BIM project from the left panel</div>
-            </div>
-          )}
-
-          {/* Keyboard guide */}
+          {/* 3D Canvas */}
           <div style={{
-            position: 'absolute', bottom: '12px', left: '12px', zIndex: 10, pointerEvents: 'none',
-            background: 'rgba(13,27,42,0.88)', border: '1px solid #253347',
-            borderRadius: '10px', padding: '10px 14px', fontSize: '11px',
-            color: secColor, lineHeight: 1.75,
+            width: '100%',
+            height: 'clamp(320px, 45vh, 500px)',
+            borderRadius: '12px', overflow: 'hidden',
+            border: colliding ? '2px solid #ef4444' : panelBorder,
+            position: 'relative',
+            boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 30px #ef444455' : 'none',
+            transition: 'box-shadow 0.3s, border-color 0.3s',
           }}>
-            <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px' }}>⌨ Keyboard Controls</div>
-            {[['W / S','Forward / Backward'],['A / D','Body Rotation'],['Q / E','Swing ±'],['R / F','Boom Up/Down'],['T / G','Arm Bend'],['Y / H','Bucket Rotate']].map(([k,v]) => (
-              <div key={k} style={{ display: 'flex', gap: '8px' }}>
-                <span style={{ color: '#e2e8f0', minWidth: '52px', fontFamily: 'monospace' }}>{k}</span>
-                <span>{v}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Top-right status badge */}
-          <div style={{
-            position: 'absolute', top: '12px', right: '12px', zIndex: 10, pointerEvents: 'none',
-            background: 'rgba(13,27,42,0.90)', border: '1px solid #253347',
-            borderRadius: '10px', padding: '8px 14px', fontSize: '12px', lineHeight: 1.7,
-          }}>
-            <div style={{ color: '#f5a623', fontWeight: 700 }}>🚜 0.6W Medium Excavator</div>
-            {selectedProject && (
-              <div style={{ color: secColor }}>🏗 {selectedProject.projectName}</div>
-            )}
-            <div style={{ color: autoPlay ? '#4ade80' : secColor, fontSize: '11px' }}>
-              {autoPlay ? '▶ Auto Mode Active' : '■ Manual Control'}
-            </div>
-            <div style={{
-              color: colliding ? '#ef4444' : '#4ade80',
-              fontWeight: 700, marginTop: '4px',
-            }}>
-              {colliding ? '● Collision' : '● Safe'}
-            </div>
-          </div>
-
-          <Canvas
-            shadows
-            camera={{ position: [18, 12, -12], fov: 52 }}
-            style={{ background: '#131f2e', width: '100%', height: '100%' }}
-          >
-            <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.5} />
-            <ambientLight intensity={0.5} />
-            <directionalLight
-              position={[50, 60, 30]} intensity={1.2} castShadow
-              shadow-mapSize-width={2048} shadow-mapSize-height={2048}
-              shadow-camera-far={180} shadow-camera-left={-60}
-              shadow-camera-right={60} shadow-camera-top={60} shadow-camera-bottom={-60}
-            />
-            <pointLight position={[-20, 10, 5]} intensity={0.3} color="#ff9944" />
-
-            <Ground />
-            <gridHelper args={[80, 40, '#1a3a5f', '#0d2035']} position={[0, 0.01, 0]} />
-
-            {/* BIM building (transparent) */}
-            {bimElements.map(elem => (
-              <TransparentBimElement
-                key={elem.elementId}
-                element={elem}
-                offsetX={bimOffset.x}
-                offsetZ={bimOffset.z}
-                isColliding={collidingIds.includes(elem.elementId)}
-              />
-            ))}
-
-            {/* Excavator */}
-            <ExcavatorModel stateRef={stateRef} machine={MACHINE} />
-
-            {/* Collision detector (no React state inside) */}
-            <CollisionDetector
-              stateRef={stateRef}
-              machine={MACHINE}
-              elementsRef={elementsRef}
-              offsetRef={offsetRef}
-              onCollisionRef={onCollisionRef}
-            />
-
-            <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.01} />
-            <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
-              <GizmoViewport labelColor="white" axisHeadScale={0.85} />
-            </GizmoHelper>
-          </Canvas>
-        </div>
-
-        {/* ── Right panel: status monitor ── */}
-        <div style={{
-          width: '195px', flexShrink: 0, background: panelBg, border: panelBorder,
-          borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
-          gap: '10px', overflowY: 'auto', fontSize: '12px',
-        }}>
-          <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
-            📊 Status Monitor
-          </div>
-
-          {/* Collision status */}
-          <div style={{
-            background: colliding
-              ? (alertPulse ? 'rgba(127,29,29,0.6)' : 'rgba(90,15,15,0.5)')
-              : '#0d1e10',
-            border: `1px solid ${colliding ? '#ef4444' : '#1a4a1a'}`,
-            borderRadius: '8px', padding: '10px', transition: 'all 0.35s',
-          }}>
-            <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Collision Status</div>
-            <div style={{ color: colliding ? '#f87171' : '#4ade80', fontWeight: 700, fontSize: '16px' }}>
-              {colliding ? '🚨 Collision' : '✓ Safe'}
-            </div>
             {colliding && (
-              <div style={{ color: '#fca5a5', fontSize: '10px', marginTop: '4px' }}>
-                {collidingIds.length} elements in contact
+              <div style={{
+                position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
+                background: alertPulse ? 'rgba(220,38,38,0.20)' : 'rgba(220,38,38,0.06)',
+                transition: 'background 0.4s', borderRadius: '10px',
+              }} />
+            )}
+            {colliding && (
+              <div style={{
+                position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
+                zIndex: 20, pointerEvents: 'none',
+                background: alertPulse ? 'rgba(127,29,29,0.97)' : 'rgba(100,20,20,0.94)',
+                border: `${alertPulse ? 2 : 1}px solid #ef4444`,
+                borderRadius: '8px', padding: '7px 16px',
+                color: '#fca5a5', fontSize: '12px', fontWeight: 700,
+                boxShadow: alertPulse ? '0 0 20px #ef444470' : 'none',
+                transition: 'all 0.35s', whiteSpace: 'nowrap',
+              }}>
+                ⚠️ Collision Detected!
               </div>
             )}
-          </div>
-
-          {/* Position */}
-          <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-            <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Excavator Position (m)</div>
-            {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
-              <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                <span style={{ color: secColor }}>{l}</span>
-                <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{Number(v).toFixed(1)}</span>
+            {!selectedProject && (
+              <div style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 10, color: '#2a3a4a', textAlign: 'center', pointerEvents: 'none',
+              }}>
+                <div style={{ fontSize: '36px', marginBottom: '10px' }}>🏗</div>
+                <div style={{ fontSize: '12px' }}>Select a BIM project above</div>
               </div>
-            ))}
-          </div>
-
-          {/* Joint angles */}
-          <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-            <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Joint Angles (°)</div>
-            {[
-              ['Body',   state.bodyRotation, '#94a3b8'],
-              ['Swing',  state.swingAngle,   '#a78bfa'],
-              ['Boom',   state.boomAngle,    accentBlue],
-              ['Arm',    state.armAngle,     '#34d399'],
-              ['Bucket', state.bucketAngle,  '#fb923c'],
-            ].map(([l, v, c]) => (
-              <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                <span style={{ color: secColor }}>{l}</span>
-                <span style={{ color: c, fontFamily: 'monospace', fontWeight: 600 }}>{Math.round(v)}°</span>
+            )}
+            {/* Top-right mini badge */}
+            <div style={{
+              position: 'absolute', top: '8px', right: '8px', zIndex: 10, pointerEvents: 'none',
+              background: 'rgba(13,27,42,0.90)', border: '1px solid #253347',
+              borderRadius: '8px', padding: '5px 10px', fontSize: '11px', lineHeight: 1.6,
+            }}>
+              <div style={{ color: autoPlay ? '#4ade80' : secColor }}>
+                {autoPlay ? '▶ Auto' : '■ Manual'}
               </div>
-            ))}
+              <div style={{ color: colliding ? '#ef4444' : '#4ade80', fontWeight: 700 }}>
+                {colliding ? '● Collision' : '● Safe'}
+              </div>
+            </div>
+
+            <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
+              {canvasContent}
+            </Canvas>
           </div>
 
-          {/* Auto-play status */}
+          {/* Status strip */}
           <div style={{
-            background: autoPlay ? '#0f2a18' : '#111e2e',
-            border: `1px solid ${autoPlay ? '#22c55e44' : 'transparent'}`,
-            borderRadius: '8px', padding: '9px',
+            background: colliding ? (alertPulse ? 'rgba(127,29,29,0.55)' : 'rgba(90,15,15,0.45)') : '#0d1e10',
+            border: `1px solid ${colliding ? '#ef4444' : '#1a4a1a'}`,
+            borderRadius: '10px', padding: '10px 14px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            transition: 'all 0.35s',
           }}>
-            <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Auto Mode</div>
-            <div style={{ color: autoPlay ? '#4ade80' : '#3a4a5a', fontWeight: 700 }}>
-              {autoPlay ? `▶ Working (Phase ${autoPhaseRef.current + 1}/${AUTO_PHASES.length})` : '■ Stopped'}
+            <div>
+              <div style={{ color: secColor, fontSize: '10px' }}>Collision Status</div>
+              <div style={{ color: colliding ? '#f87171' : '#4ade80', fontWeight: 700, fontSize: '15px' }}>
+                {colliding ? `🚨 ${collidingIds.length} elements hit` : '✓ Safe'}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ color: secColor, fontSize: '10px' }}>Auto Mode</div>
+              <div style={{ color: autoPlay ? '#4ade80' : '#3a4a5a', fontWeight: 700, fontSize: '13px' }}>
+                {autoPlay ? `Phase ${autoPhaseRef.current + 1}/${AUTO_PHASES.length}` : 'Off'}
+              </div>
             </div>
           </div>
 
-          {/* BIM info */}
-          {selectedProject && (
-            <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-              <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>BIM Building</div>
-              <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '11px', wordBreak: 'break-all' }}>
-                {selectedProject.projectName}
+          {/* Collision log (compact) */}
+          {collisionLog.length > 0 && (
+            <div style={{
+              background: '#1a0808', border: '1px solid #7f1d1d',
+              borderRadius: '10px', padding: '10px 12px',
+            }}>
+              <div style={{ color: '#fca5a5', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
+                📋 Collision Log
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                <span style={{ color: secColor, fontSize: '10px' }}>Elements</span>
-                <span style={{ color: accentBlue, fontFamily: 'monospace' }}>{bimElements.length}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
-                <span style={{ color: secColor, fontSize: '10px' }}>Type</span>
-                <span style={{ color: '#e2e8f0', fontSize: '10px' }}>{selectedProject.structureType}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {collisionLog.slice(0, 4).map((log, i) => (
+                  <div key={i} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    fontSize: '11px', paddingBottom: '4px',
+                    borderBottom: i < Math.min(collisionLog.length, 4) - 1 ? '1px solid #3a1a1a' : 'none',
+                  }}>
+                    <span style={{ color: '#ef4444', fontWeight: 700 }}>🚨 {log.ids.length} elements</span>
+                    <span style={{ color: '#4a5568' }}>{log.ts}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Legend */}
-          <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
-            <div style={{ color: secColor, marginBottom: '6px', fontWeight: 700 }}>Legend</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-              <div style={{ width: '14px', height: '10px', background: '#6699dd', opacity: 0.5, border: '1px solid #4477bb', borderRadius: '2px' }} />
-              <span style={{ color: secColor }}>BIM Building (Transparent)</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-              <div style={{ width: '14px', height: '10px', background: '#ff7777', opacity: 0.7, border: '1px solid #ff3333', borderRadius: '2px' }} />
-              <span style={{ color: secColor }}>Colliding Element</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{ width: '14px', height: '10px', background: '#f5a623', border: '1px solid #c07a0a', borderRadius: '2px' }} />
-              <span style={{ color: secColor }}>Excavator</span>
-            </div>
-          </div>
         </div>
+      )}
 
-      </div>
     </div>
   );
 }

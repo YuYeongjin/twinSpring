@@ -41,6 +41,16 @@ const PRESETS = {
 
 const PRESET_LABELS = { IDLE: 'Idle', DIG: 'Dig', DUMP: 'Dump', TRAVEL: 'Travel' };
 
+// ── 자동 시뮬레이션 사이클 페이즈 ────────────────────────────────────────────────
+const AUTO_SIM_PHASES = [
+  { name: 'Approach',  boomAngle: 15,  armAngle: 75,  bucketAngle: 5,   swingAngle: 0,   dz:  0.06, duration: 1600 },
+  { name: 'Dig',       boomAngle: 5,   armAngle: 110, bucketAngle: 12,  swingAngle: 0,   dz:  0,    duration: 1800 },
+  { name: 'Lift',      boomAngle: 55,  armAngle: 35,  bucketAngle: 5,   swingAngle: 0,   dz:  0,    duration: 1200 },
+  { name: 'Swing',     boomAngle: 65,  armAngle: 25,  bucketAngle: 5,   swingAngle: 85,  dz:  0,    duration: 1000 },
+  { name: 'Dump',      boomAngle: 65,  armAngle: 20,  bucketAngle: -82, swingAngle: 90,  dz:  0,    duration: 1200 },
+  { name: 'Return',    boomAngle: 35,  armAngle: 60,  bucketAngle: -25, swingAngle: 0,   dz:  0,    duration: 1400 },
+];
+
 // ── 장비 사양 정의 ─────────────────────────────────────────────────────────────
 // bodyScale: 차체 시각 스케일 (1.0 = 1W 기준)
 // boomLen/armLen/bucketLen: 월드 공간 실제 길이(m)
@@ -650,6 +660,12 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   // 흙 파티클 풀
   const particlesRef = useRef([]);
 
+  // 자동 시뮬레이션
+  const [autoSim, setAutoSim] = useState(false);
+  const autoSimRef   = useRef(false);
+  const autoPhaseRef = useRef(0);
+  const [autoPhaseLabel, setAutoPhaseLabel] = useState('');
+
   // 서버 동기화
   const [syncStatus, setSyncStatus] = useState('idle');
 
@@ -781,7 +797,15 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       'W','A','S','D','Q','E','R','F','T','G','Y','H',
       'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
     ]);
-    const onDown = e => { if (CONTROLLED.has(e.key)) e.preventDefault(); keysRef.current.add(e.key); setKeysDisplay(new Set(keysRef.current)); };
+    const onDown = e => {
+      if (CONTROLLED.has(e.key)) {
+        e.preventDefault();
+        // 키 입력 시 자동 시뮬레이션 중지
+        if (autoSimRef.current) { autoSimRef.current = false; setAutoSim(false); }
+      }
+      keysRef.current.add(e.key);
+      setKeysDisplay(new Set(keysRef.current));
+    };
     const onUp   = e => { keysRef.current.delete(e.key); setKeysDisplay(new Set(keysRef.current)); };
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup',   onUp);
@@ -821,6 +845,45 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     animRef.current = requestAnimationFrame(tick);
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, []);
+
+  // ── 자동 시뮬레이션 사이클 ──
+  useEffect(() => {
+    if (!autoSim) { setAutoPhaseLabel(''); return; }
+    autoPhaseRef.current = 0;
+    let rafId = null;
+    const LERP = 0.028;
+
+    const animTick = () => {
+      const phase = AUTO_SIM_PHASES[autoPhaseRef.current];
+      setState(prev => {
+        const s = { ...prev };
+        s.boomAngle   = s.boomAngle   + (phase.boomAngle   - s.boomAngle)   * LERP;
+        s.armAngle    = s.armAngle    + (phase.armAngle    - s.armAngle)    * LERP;
+        s.bucketAngle = s.bucketAngle + (phase.bucketAngle - s.bucketAngle) * LERP;
+        s.swingAngle  = s.swingAngle  + (phase.swingAngle  - s.swingAngle)  * LERP;
+        if (phase.dz) {
+          const cos = Math.cos(s.bodyRotation * D2R);
+          const sin = Math.sin(s.bodyRotation * D2R);
+          s.positionX += sin * phase.dz;
+          s.positionZ += cos * phase.dz;
+        }
+        return s;
+      });
+      rafId = requestAnimationFrame(animTick);
+    };
+    rafId = requestAnimationFrame(animTick);
+    setAutoPhaseLabel(AUTO_SIM_PHASES[0].name);
+
+    const phaseInterval = setInterval(() => {
+      autoPhaseRef.current = (autoPhaseRef.current + 1) % AUTO_SIM_PHASES.length;
+      setAutoPhaseLabel(AUTO_SIM_PHASES[autoPhaseRef.current].name);
+    }, AUTO_SIM_PHASES[autoPhaseRef.current]?.duration ?? 1500);
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      clearInterval(phaseInterval);
+    };
+  }, [autoSim]);
 
   // ── 자동 서버 동기화 (2초, 지형 + 장비 선택 포함) ──
   useEffect(() => {
@@ -1471,6 +1534,59 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               );
             })}
           </div>
+        </div>
+
+        {/* 자동 시뮬레이션 */}
+        <div>
+          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px', letterSpacing: '0.04em' }}>🤖 Auto Simulation</div>
+          <button
+            onClick={() => {
+              const next = !autoSim;
+              setAutoSim(next);
+              autoSimRef.current = next;
+              if (!next) setAutoPhaseLabel('');
+            }}
+            style={{
+              width: '100%',
+              background: autoSim ? '#0f2a18' : '#162032',
+              border: `1px solid ${autoSim ? '#22c55e' : '#253347'}`,
+              borderRadius: '8px', padding: '9px 10px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              cursor: 'pointer', transition: 'all 0.2s',
+            }}
+          >
+            <span style={{ color: autoSim ? '#4ade80' : secColor, fontWeight: 700, fontSize: '12px' }}>
+              {autoSim ? '⏹ Stop Auto' : '▶ Start Auto'}
+            </span>
+            {autoSim && autoPhaseLabel && (
+              <span style={{
+                background: '#0d3820', border: '1px solid #22c55e44',
+                borderRadius: '6px', padding: '2px 8px',
+                color: '#86efac', fontSize: '10px', fontWeight: 600,
+              }}>
+                {autoPhaseLabel}
+              </span>
+            )}
+          </button>
+          {autoSim && (
+            <div style={{ marginTop: '6px', display: 'flex', gap: '3px' }}>
+              {AUTO_SIM_PHASES.map((ph, i) => (
+                <div
+                  key={i}
+                  style={{
+                    flex: 1, height: '4px', borderRadius: '2px',
+                    background: autoPhaseRef.current === i ? '#4ade80' : '#1e2e3e',
+                    transition: 'background 0.3s',
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {autoSim && (
+            <div style={{ marginTop: '5px', fontSize: '10px', color: '#3a5a3a', textAlign: 'center' }}>
+              Press any key to stop
+            </div>
+          )}
         </div>
 
         {/* 버튼 */}

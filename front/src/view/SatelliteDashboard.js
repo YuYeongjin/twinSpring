@@ -201,6 +201,62 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
       )}
 
       {/* ================================================================
+          0. Quick Access — tab shortcut cards
+          ================================================================ */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          {
+            id: 'bim-projects',
+            icon: '🏗',
+            label: 'BIM',
+            color: '#7c3aed',
+            desc: '3D building model editor — create structures, layers, and run structural analysis.',
+          },
+          {
+            id: 'simulation-projects',
+            icon: '🚜',
+            label: 'Simulation',
+            color: '#f5a623',
+            desc: 'Excavator physics simulation with terrain deformation and real-time kinematics.',
+          },
+          {
+            id: 'safe',
+            icon: '🦺',
+            label: 'Safe',
+            color: '#22c55e',
+            desc: 'Safety monitoring — helmet detection and restricted area intrusion alerts.',
+          },
+          {
+            id: 'test',
+            icon: '🧪',
+            label: 'Collision Test',
+            color: '#38bdf8',
+            desc: 'BIM + Simulation combined — validate equipment clearance against building models.',
+          },
+        ].map(({ id, icon, label, color, desc }) => (
+          <button
+            key={id}
+            onClick={() => setViceComponent(id)}
+            className="flex flex-col gap-2 p-4 rounded-xl text-left transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+            style={{
+              background: '#131f2e',
+              border: `1px solid ${color}44`,
+              boxShadow: `0 0 0 0 ${color}`,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 0 14px ${color}28`; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = `${color}44`; e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{icon}</span>
+              <span className="text-sm font-bold text-white">{label}</span>
+              <span className="ml-auto text-xs opacity-50" style={{ color }}>→</span>
+            </div>
+            <p className="text-xs leading-relaxed" style={{ color: TB.text2 }}>{desc}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* ================================================================
           1. 상단 디바이스 상태 바
           ================================================================ */}
       <div className={`${TB.card} px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0`}>
