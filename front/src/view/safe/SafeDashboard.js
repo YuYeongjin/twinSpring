@@ -190,7 +190,7 @@ export default function SafeDashboard() {
       const form = new FormData();
       form.append('file', file);
       const res = await fetch(`${DETECT_URL}/detect`, { method: 'POST', body: form });
-      if (!res.ok) throw new Error(`탐지 서버 오류: ${res.status}`);
+      if (!res.ok) throw new Error(`Detection server error: ${res.status}`);
       const data = await res.json();
       setLastResult(data);
     } catch (e) {
@@ -212,12 +212,12 @@ export default function SafeDashboard() {
         >
           <span className="text-xl">🚨</span>
           <div className="flex-1">
-            <p className="text-red-300 font-semibold">위험 감지됨</p>
+            <p className="text-red-300 font-semibold">Danger Detected</p>
             {safeEvent?.message && (
               <p className="text-red-400 text-sm mt-0.5">{safeEvent.message}</p>
             )}
             {safeEvent?.filename && (
-              <p className="text-gray-500 text-xs mt-1">파일: {safeEvent.filename}</p>
+              <p className="text-gray-500 text-xs mt-1">File: {safeEvent.filename}</p>
             )}
           </div>
           <button
@@ -310,10 +310,10 @@ export default function SafeDashboard() {
           {/* WebSocket 이벤트 */}
           {safeEvent && (
             <div className="rounded-xl border p-4" style={{ borderColor: '#253347', background: '#0a1525' }}>
-              <p className="text-sm font-semibold text-gray-300 mb-2">마지막 WebSocket 이벤트</p>
+              <p className="text-sm font-semibold text-gray-300 mb-2">Last WebSocket Event</p>
               <div className="text-xs text-gray-400 space-y-1">
-                <div>헬멧 미착용: <span className={safeEvent.noHelmet ? 'text-red-400' : 'text-green-400'}>{safeEvent.noHelmet ? '감지' : '없음'}</span></div>
-                <div>출입금지: <span className={safeEvent.restricted ? 'text-red-400' : 'text-green-400'}>{safeEvent.restricted ? '감지' : '없음'}</span></div>
+                <div>No Helmet: <span className={safeEvent.noHelmet ? 'text-red-400' : 'text-green-400'}>{safeEvent.noHelmet ? 'Detected' : 'None'}</span></div>
+                <div>Restricted Area: <span className={safeEvent.restricted ? 'text-red-400' : 'text-green-400'}>{safeEvent.restricted ? 'Detected' : 'None'}</span></div>
                 <div className="text-gray-500 pt-1">{safeEvent.message}</div>
               </div>
             </div>

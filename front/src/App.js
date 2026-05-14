@@ -10,6 +10,7 @@ import AgentDashboard from './view/agent/AgentDashboard';
 import SimulationDashboard from './view/simulation/SimulationDashboard';
 import SimulationProjectList from './view/simulation/SimulationProjectList';
 import SafeDashboard from './view/safe/SafeDashboard';
+import TestDashboard from './view/test/TestDashboard';
 import { useCallback, useEffect, useState } from 'react';
 
 function App() {
@@ -172,7 +173,7 @@ function App() {
       <div className="min-h-screen bg-[#0d1b2a] flex items-center justify-center text-gray-400">
         <div className="text-center">
           <div className="text-4xl mb-4">🏗</div>
-          <div className="text-sm">Digital Twin 초기화 중…</div>
+          <div className="text-sm">Initializing Digital Twin…</div>
         </div>
       </div>
     );
@@ -204,6 +205,9 @@ function App() {
     }
     if (viewComponent === 'safe') {
       return <SafeDashboard />;
+    }
+    if (viewComponent === 'test') {
+      return <TestDashboard />;
     }
     if (viewComponent === 'agent') {
       return (

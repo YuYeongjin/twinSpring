@@ -46,7 +46,10 @@
       "PowerShell(Start-Process -FilePath \"python\" -ArgumentList \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect.py\" -WorkingDirectory \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\" -RedirectStandardOutput \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect_server.log\" -RedirectStandardError \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\detect\\\\detect_server_err.log\" -WindowStyle Hidden -PassThru | Select-Object -ExpandProperty Id)",
       "Bash(curl -s http://localhost:5001/status)",
       "Bash(python -c \"import urllib.request; print\\(urllib.request.urlopen\\('http://localhost:5001/status'\\).read\\(\\).decode\\(\\)\\)\")",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\" -Force)",
+      "Bash(Select-Object Name, FullName)",
+      "Bash(Format-Table -AutoSize)"
     ]
   }
 }

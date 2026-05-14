@@ -14,8 +14,8 @@ const TB = {
 };
 
 const PROJECT_TYPES = [
-  { type: "Bridge",   icon: "🌉", label: "교량 (Bridge)",   color: "#0ea5e9", bg: "#0c2a3a" },
-  { type: "Building", icon: "🏢", label: "건물 (Building)", color: "#8b5cf6", bg: "#1e1040" },
+  { type: "Bridge",   icon: "🌉", label: "Bridge",   color: "#0ea5e9", bg: "#0c2a3a" },
+  { type: "Building", icon: "🏢", label: "Building", color: "#8b5cf6", bg: "#1e1040" },
 ];
 
 /** 이름이 유효하지 않은 경우 (null, undefined, "", "null", "?", "??…") */
@@ -66,7 +66,7 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
           if (e.key === "Enter") handleSave();
           if (e.key === "Escape") onCancel();
         }}
-        placeholder="프로젝트 이름 입력..."
+        placeholder="Enter project name..."
         className="flex-1 px-2 py-1 rounded text-xs outline-none min-w-0"
         style={{
           backgroundColor: "#0d1b2a",
@@ -77,7 +77,7 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
       <button
         onClick={handleSave}
         disabled={!value.trim() || saving}
-        title="저장 (Enter)"
+        title="Save (Enter)"
         className="flex-shrink-0 px-2 py-1 rounded text-xs font-medium transition"
         style={{
           backgroundColor: value.trim() && !saving ? "#1d4ed8" : "#1c2a3a",
@@ -90,7 +90,7 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
       </button>
       <button
         onClick={onCancel}
-        title="취소 (Esc)"
+        title="Cancel (Esc)"
         className="flex-shrink-0 px-2 py-1 rounded text-xs transition"
         style={{
           backgroundColor: "#1c2a3a",
@@ -142,7 +142,7 @@ function ProjectCard({ item, onOpen, onRename }) {
               className="text-xs mb-1.5 flex items-center gap-1"
               style={{ color: TB.warning }}
             >
-              ⚠ 이름을 입력해주세요
+              ⚠ Please enter a name
             </div>
           )}
           <InlineNameEditor
@@ -164,7 +164,7 @@ function ProjectCard({ item, onOpen, onRename }) {
           {/* 연필 아이콘 — hover 시 표시 */}
           <button
             onClick={handleRenameClick}
-            title="이름 변경"
+            title="Rename"
             className="flex-shrink-0 opacity-0 group-hover/name:opacity-100 transition-opacity p-0.5 rounded"
             style={{ color: TB.text2 }}
           >
@@ -191,7 +191,7 @@ function ProjectCard({ item, onOpen, onRename }) {
             className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ color: TB.accent }}
           >
-            열기 →
+            Open →
           </button>
         </div>
       )}
@@ -206,7 +206,7 @@ function ProjectCard({ item, onOpen, onRename }) {
             border: `1px solid ${TB.warning}50`,
           }}
         >
-          ⚠ 이름 없음
+          ⚠ No Name
         </div>
       )}
     </div>
@@ -238,7 +238,7 @@ function CreateProjectForm({ onClose, onCreate }) {
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          신규 프로젝트 생성
+          Create New Project
         </h3>
         <button
           onClick={onClose}
@@ -252,7 +252,7 @@ function CreateProjectForm({ onClose, onCreate }) {
         {/* 프로젝트 유형 선택 */}
         <div className="flex-1">
           <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
-            프로젝트 유형
+            Project Type
           </label>
           <div className="flex gap-2">
             {PROJECT_TYPES.map(({ type, icon, label, color, bg }) => (
@@ -356,7 +356,7 @@ export default function BimProjectList({
                     border: `1px solid ${TB.warning}50`,
                   }}
                 >
-                  ⚠ 이름 없음 {invalidCount}개
+                  ⚠ No Name {invalidCount}개
                 </span>
               )}
             </p>

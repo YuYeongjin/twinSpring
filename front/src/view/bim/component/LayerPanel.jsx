@@ -63,7 +63,7 @@ function LayerRow({
                         className="flex-1 text-xs font-medium truncate cursor-text min-w-0"
                         style={{ color: layer.visible ? '#e2e8f0' : '#8896a4' }}
                         onDoubleClick={() => setIsEditingName(true)}
-                        title="더블클릭으로 이름 수정"
+                        title="Double-click to edit name"
                     >
                         {layer.layerName}
                     </span>
@@ -93,7 +93,7 @@ function LayerRow({
                     onClick={() => onUpdate(layer.layerId, { visible: !layer.visible })}
                     className="transition text-base leading-none"
                     style={{ color: layer.visible ? '#e2e8f0' : '#4b5563' }}
-                    title={layer.visible ? '숨기기' : '표시'}
+                    title={layer.visible ? 'Hide' : 'Show'}
                 >
                     {layer.visible ? '👁' : '🙈'}
                 </button>
@@ -101,12 +101,12 @@ function LayerRow({
                 {/* 삭제 */}
                 <button
                     onClick={() => {
-                        if (window.confirm(`레이어 "${layer.layerName}"을(를) 삭제하시겠습니까?`)) {
+                        if (window.confirm(`Delete layer "${layer.layerName}"?`)) {
                             onDelete(layer.layerId);
                         }
                     }}
                     className="text-gray-600 hover:text-red-400 transition text-xs leading-none"
-                    title="레이어 삭제"
+                    title="Delete Layer"
                 >
                     🗑
                 </button>
@@ -117,7 +117,7 @@ function LayerRow({
                 <div className="bg-[#0f1d2d]">
                     {elements.length === 0 ? (
                         <p className="px-4 py-2.5 text-xs text-gray-600 italic">
-                            이 레이어에 부재가 없습니다
+                            No members in this layer
                         </p>
                     ) : (
                         elements.map((el) => (
@@ -141,7 +141,7 @@ function LayerRow({
                                         onRemoveElement(layer.layerId, el.elementId);
                                     }}
                                     className="text-gray-700 hover:text-red-400 transition text-xs opacity-0 group-hover:opacity-100"
-                                    title="레이어에서 제거"
+                                    title="Remove from layer"
                                 >
                                     ✕
                                 </button>
@@ -199,15 +199,15 @@ export default function LayerPanel({
             {/* ── 헤더 ── */}
             <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    레이어
+                    Layer
                 </span>
                 <button
                     onClick={onAddLayer}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition text-white"
                     style={{ backgroundColor: '#1e3a5f', border: '1px solid #2a5080' }}
-                    title="새 레이어 추가"
+                    title="Add New Layer"
                 >
-                    + 레이어
+                    + Layer
                 </button>
             </div>
 
@@ -215,8 +215,8 @@ export default function LayerPanel({
             {layers.length === 0 ? (
                 <div className="rounded-xl p-5 text-center" style={{ border: '1px dashed #253347' }}>
                     <div className="text-3xl mb-2">🗂</div>
-                    <p className="text-xs text-gray-500">레이어 없음</p>
-                    <p className="text-xs text-gray-600 mt-0.5">+ 레이어 버튼으로 생성하세요</p>
+                    <p className="text-xs text-gray-500">No layers</p>
+                    <p className="text-xs text-gray-600 mt-0.5">Use the + Layer button to create one</p>
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -248,14 +248,14 @@ export default function LayerPanel({
                 >
                     <p className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
                         {isMulti
-                            ? `${allSelectedIds.size}개 선택됨`
-                            : '선택된 부재'}
+                            ? `${allSelectedIds.size} selected`
+                            : 'Selected Member'}
                     </p>
 
                     {/* 개별 색상 (단일 선택일 때만) */}
                     {selectedId && (
                         <div>
-                            <p className="text-xs text-gray-500 mb-2">부재 색상</p>
+                            <p className="text-xs text-gray-500 mb-2">Member Color</p>
                             <div className="flex items-center gap-2">
                                 <ColorDot
                                     color={elementColors[selectedId] || '#888888'}
@@ -265,14 +265,14 @@ export default function LayerPanel({
                                 <span className="text-xs font-mono text-gray-400 flex-1">
                                     {elementColors[selectedId]
                                         ? elementColors[selectedId].toUpperCase()
-                                        : '기본 색상'}
+                                        : 'Default Color'}
                                 </span>
                                 {elementColors[selectedId] && (
                                     <button
                                         onClick={() => onClearElementColor(selectedId)}
                                         className="text-xs text-gray-600 hover:text-gray-400 transition"
                                     >
-                                        초기화
+                                        Reset
                                     </button>
                                 )}
                             </div>
@@ -283,7 +283,7 @@ export default function LayerPanel({
                     {layers.length > 0 && (
                         <div>
                             <p className="text-xs text-gray-500 mb-2">
-                                {isMulti ? '일괄 레이어 지정' : '레이어 지정'}
+                                {isMulti ? 'Assign to Layer (bulk)' : 'Assign to Layer'}
                             </p>
                             <div className="space-y-1.5">
                                 {layers.map((layer) => {
@@ -331,10 +331,10 @@ export default function LayerPanel({
                                             <span className="flex-1 text-left truncate">{layer.layerName}</span>
                                             <span className="flex-shrink-0">
                                                 {isIn
-                                                    ? '✓ 포함'
+                                                    ? '✓ Included'
                                                     : partiallyIn
-                                                    ? '일부 포함'
-                                                    : `+ 추가`}
+                                                    ? 'Partial'
+                                                    : `+ Add`}
                                             </span>
                                         </button>
                                     );
@@ -345,7 +345,7 @@ export default function LayerPanel({
 
                     {layers.length === 0 && (
                         <p className="text-xs text-gray-600 text-center py-1">
-                            레이어를 먼저 생성하세요
+                            Create a layer first
                         </p>
                     )}
                 </div>

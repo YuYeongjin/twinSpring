@@ -39,7 +39,7 @@ const PRESETS = {
   TRAVEL: { boomAngle: 20, armAngle: 60,  bucketAngle: -30, swingAngle: 0  },
 };
 
-const PRESET_LABELS = { IDLE: '대기', DIG: '굴착', DUMP: '덤핑', TRAVEL: '이동' };
+const PRESET_LABELS = { IDLE: 'Idle', DIG: 'Dig', DUMP: 'Dump', TRAVEL: 'Travel' };
 
 // ── 장비 사양 정의 ─────────────────────────────────────────────────────────────
 // bodyScale: 차체 시각 스케일 (1.0 = 1W 기준)
@@ -47,21 +47,21 @@ const PRESET_LABELS = { IDLE: '대기', DIG: '굴착', DUMP: '덤핑', TRAVEL: '
 // 붐 피벗은 항상 [0, 1.4, 1.9] × bodyScale
 const MACHINE_CONFIGS = {
   '0.3W': {
-    id: '0.3W', label: '0.3W 소형', subLabel: '소형 굴착기 (미니)', weight: '3~6톤급',
+    id: '0.3W', label: '0.3W Small', subLabel: 'Small Excavator (Mini)', weight: '3~6 ton class',
     bodyScale: 0.55,
     boomLen: 2.8,  armLen: 1.4,  bucketLen: 0.48,  bucketCapacity: 0.3,
     digRate: 0.038, digRadius: 1.7,
     fillRate: 0.08, fillRadius: 1.4,
   },
   '0.6W': {
-    id: '0.6W', label: '0.6W 중형', subLabel: '중형 굴착기', weight: '12~20톤급',
+    id: '0.6W', label: '0.6W Medium', subLabel: 'Medium Excavator', weight: '12~20 ton class',
     bodyScale: 0.78,
     boomLen: 4.8,  armLen: 2.8,  bucketLen: 0.68,  bucketCapacity: 0.6,
     digRate: 0.065, digRadius: 2.8,
     fillRate: 0.14, fillRadius: 2.2,
   },
   '1W': {
-    id: '1W', label: '1W 대형', subLabel: '대형 굴착기', weight: '20~35톤급',
+    id: '1W', label: '1W Large', subLabel: 'Large Excavator', weight: '20~35 ton class',
     bodyScale: 1.0,
     boomLen: 6.0,  armLen: 3.8,  bucketLen: 0.85,  bucketCapacity: 1.0,
     digRate: 0.10,  digRadius: 3.8,
@@ -719,13 +719,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             const ts = new Date().toLocaleTimeString('ko-KR');
             const triggered = [];
             if (d.temperature > t.tempMax)
-              triggered.push({ id: 'TEMP_HIGH', level: 'danger',  text: `온도 상한 초과: ${d.temperature}°C (허용 최대 ${t.tempMax}°C)`, ts });
+              triggered.push({ id: 'TEMP_HIGH', level: 'danger',  text: `High Temp Alert: ${d.temperature}°C (Max allowed ${t.tempMax}°C)`, ts });
             if (d.temperature < t.tempMin)
-              triggered.push({ id: 'TEMP_LOW',  level: 'danger',  text: `온도 하한 이탈: ${d.temperature}°C (허용 최저 ${t.tempMin}°C)`, ts });
+              triggered.push({ id: 'TEMP_LOW',  level: 'danger',  text: `Low Temp Alert: ${d.temperature}°C (Min allowed ${t.tempMin}°C)`, ts });
             if (d.humidity > t.humMax)
-              triggered.push({ id: 'HUM_HIGH',  level: 'warning', text: `습도 상한 초과: ${d.humidity}% (허용 최대 ${t.humMax}%)`, ts });
+              triggered.push({ id: 'HUM_HIGH',  level: 'warning', text: `High Humidity Alert: ${d.humidity}% (Max allowed ${t.humMax}%)`, ts });
             if (d.humidity < t.humMin)
-              triggered.push({ id: 'HUM_LOW',   level: 'warning', text: `습도 하한 이탈: ${d.humidity}% (허용 최저 ${t.humMin}%)`, ts });
+              triggered.push({ id: 'HUM_LOW',   level: 'warning', text: `Low Humidity Alert: ${d.humidity}% (Min allowed ${t.humMin}%)`, ts });
             setActiveAlerts(triggered);
             if (triggered.length > 0) {
               setAlertHistory(prev => [...triggered.map(a => ({ ...a, uid: `${a.id}_${Date.now()}` })), ...prev].slice(0, 20));
@@ -996,11 +996,11 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             onClick={() => setViceComponent('simulation-projects')}
             style={{ color: '#8896a4', fontSize: '13px', background: 'none', border: 'none', cursor: 'pointer' }}
           >
-            ← 목록
+            ← List
           </button>
         )}
         <span style={{ color: '#f5a623', fontSize: '15px', fontWeight: 700 }}>
-          🚜 {selectedProject?.projectName ?? '시뮬레이션'}
+          🚜 {selectedProject?.projectName ?? 'Simulation'}
         </span>
         <span style={{
           fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
@@ -1019,7 +1019,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         gap: '10px', overflowY: 'auto', fontSize: '12px',
       }}>
         <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          🚧 장비 상태
+          🚧 Equipment Status
           <span style={{ marginLeft: 'auto', fontSize: '10px', color: syncColor }}>
             {syncStatus === 'syncing' ? '⟳' : syncStatus === 'synced' ? '✓' : syncStatus === 'error' ? '✗' : '○'}
           </span>
@@ -1031,16 +1031,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           border: isDigging ? '1px solid #8a5a00' : isDumping ? '1px solid #1a6040' : '1px solid transparent',
           borderRadius: '8px', padding: '9px', transition: 'all 0.3s',
         }}>
-          <div style={{ color: secColor, marginBottom: '4px', fontSize: '10px' }}>작동 모드</div>
+          <div style={{ color: secColor, marginBottom: '4px', fontSize: '10px' }}>Operation Mode</div>
           <div style={{ color: '#f5a623', fontWeight: 700, fontSize: '13px' }}>● {state.operationMode}</div>
           {isDigging && (
             <div style={{ marginTop: '6px', background: '#3a1a00', borderRadius: '5px', padding: '4px 8px', fontSize: '11px', color: '#fbbf24', fontWeight: 700 }}>
-              ⛏ 굴착 중 ({kinematics.depth}m)
+              ⛏ Digging ({kinematics.depth}m)
             </div>
           )}
           {isDumping && (
             <div style={{ marginTop: '6px', background: '#0d3020', borderRadius: '5px', padding: '4px 8px', fontSize: '11px', color: '#34d399', fontWeight: 700 }}>
-              🪣 덤핑 중
+              🪣 Dumping
             </div>
           )}
         </div>
@@ -1048,7 +1048,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 버킷 흙 게이지 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
           <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px', display: 'flex', justifyContent: 'space-between' }}>
-            <span>버킷 적재량</span>
+            <span>Bucket Load</span>
             <span style={{ color: '#fb923c', fontFamily: 'monospace' }}>{soilDisplay.toFixed(2)} / {MACHINE_CONFIGS[selectedMachineId].bucketCapacity} m³</span>
           </div>
           <div style={{ background: '#1e2e3e', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
@@ -1064,7 +1064,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 위치 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-          <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px' }}>위치 (m)</div>
+          <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px' }}>Position (m)</div>
           {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
             <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
               <span style={{ color: secColor }}>{l}</span>
@@ -1075,13 +1075,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 관절 각도 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-          <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px' }}>관절 각도 (°)</div>
+          <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px' }}>Joint Angles (°)</div>
           {[
-            ['차체 회전', state.bodyRotation, '#94a3b8'],
-            ['선회',     state.swingAngle,    '#a78bfa'],
-            ['붐',       state.boomAngle,     accentBlue],
-            ['암',       state.armAngle,      '#34d399'],
-            ['버킷',     state.bucketAngle,   '#fb923c'],
+            ['Body Rotation', state.bodyRotation, '#94a3b8'],
+            ['Swing',        state.swingAngle,    '#a78bfa'],
+            ['Boom',         state.boomAngle,     accentBlue],
+            ['Arm',          state.armAngle,      '#34d399'],
+            ['Bucket',       state.bucketAngle,   '#fb923c'],
           ].map(([l, v, c]) => (
             <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
               <span style={{ color: secColor }}>{l}</span>
@@ -1093,7 +1093,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 버킷 끝 위치 */}
         {kinematics && (
           <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-            <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px' }}>버킷 끝 위치</div>
+            <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px' }}>Bucket Tip Position</div>
             {[['X', kinematics.tipX], ['Y', kinematics.tipY], ['Z', kinematics.tipZ]].map(([l, v]) => (
               <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                 <span style={{ color: secColor }}>{l}</span>
@@ -1102,15 +1102,15 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             ))}
             <div style={{ borderTop: '1px solid #1e3a5f', marginTop: '6px', paddingTop: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                <span style={{ color: secColor }}>지형 높이</span>
+                <span style={{ color: secColor }}>Terrain Height</span>
                 <span style={{ color: '#94a3b8', fontFamily: 'monospace' }}>{kinematics.terrainH}m</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                <span style={{ color: secColor }}>수평 도달</span>
+                <span style={{ color: secColor }}>Horizontal Reach</span>
                 <span style={{ color: '#34d399', fontFamily: 'monospace' }}>{kinematics.reach}m</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: secColor }}>굴착 깊이</span>
+                <span style={{ color: secColor }}>Dig Depth</span>
                 <span style={{ color: '#fb923c', fontFamily: 'monospace' }}>{kinematics.depth}m</span>
               </div>
             </div>
@@ -1119,18 +1119,18 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 장비 정보 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
-          <div style={{ color: secColor, marginBottom: '4px' }}>장비 ID</div>
+          <div style={{ color: secColor, marginBottom: '4px' }}>Equipment ID</div>
           <div style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{state.excavatorId}</div>
-          <div style={{ color: secColor, marginTop: '6px', marginBottom: '4px' }}>동기화</div>
+          <div style={{ color: secColor, marginTop: '6px', marginBottom: '4px' }}>Sync</div>
           <div style={{ color: syncColor }}>
-            {syncStatus === 'syncing' ? '동기화 중...' : syncStatus === 'synced' ? 'C# 서버 동기화됨' : syncStatus === 'error' ? '동기화 실패' : '대기 중'}
+            {syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'synced' ? 'C# Server Synced' : syncStatus === 'error' ? 'Sync Failed' : 'Standby'}
           </div>
         </div>
 
         {/* BEPUphysics2 물리 안정도 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
           <div style={{ color: secColor, marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
-            <span>⚖ 물리 안정도</span>
+            <span>⚖ Physics Stability</span>
             {physicsResult && (
               <span style={{
                 color: physicsResult.dangerLevel === 'DANGER' ? '#ef4444'
@@ -1155,9 +1155,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
                 }} />
               </div>
               {[
-                ['안정 여유', `${(physicsResult.stabilityMargin * 100).toFixed(0)}%`],
+                ['Stability Margin', `${(physicsResult.stabilityMargin * 100).toFixed(0)}%`],
                 ['CoM X / Y', `${physicsResult.comX?.toFixed(2)} / ${physicsResult.comY?.toFixed(2)}`],
-                ['진동 진폭', `${(physicsResult.wobbleAmplitude * 1000).toFixed(1)} mrad`],
+                ['Vibration Amplitude', `${(physicsResult.wobbleAmplitude * 1000).toFixed(1)} mrad`],
               ].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                   <span style={{ color: secColor }}>{l}</span>
@@ -1167,7 +1167,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             </>
           ) : (
             <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '4px 0' }}>
-              C# 물리 서버 연결 중...
+              Connecting to C# Physics Server...
             </div>
           )}
         </div>
@@ -1175,17 +1175,17 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* IoT 센서 모니터링 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
           <div style={{ color: secColor, marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>🌡 IoT 센서</span>
+            <span>🌡 IoT Sensor</span>
             <span style={{ color: sensorWs === 'connected' ? '#4ade80' : sensorWs === 'error' ? '#f87171' : '#facc15', fontSize: '9px' }}>
-              {sensorWs === 'connected' ? '● 연결' : sensorWs === 'connecting' ? '○ 연결 중' : sensorWs === 'error' ? '✗ 오류' : '○ 대기'}
+              {sensorWs === 'connected' ? '● Connected' : sensorWs === 'connecting' ? '○ Connecting' : sensorWs === 'error' ? '✗ Error' : '○ Standby'}
             </span>
           </div>
           {sensor ? (
             <>
               {[
-                ['온도', `${sensor.temperature}°C`, sensor.temperature > thresholds.tempMax || sensor.temperature < thresholds.tempMin ? '#f87171' : '#4ade80'],
-                ['습도', `${sensor.humidity}%`,     sensor.humidity > thresholds.humMax || sensor.humidity < thresholds.humMin ? '#f87171' : '#4ade80'],
-                ['위치', sensor.location,            '#e2e8f0'],
+                ['Temperature', `${sensor.temperature}°C`, sensor.temperature > thresholds.tempMax || sensor.temperature < thresholds.tempMin ? '#f87171' : '#4ade80'],
+                ['Humidity',    `${sensor.humidity}%`,     sensor.humidity > thresholds.humMax || sensor.humidity < thresholds.humMin ? '#f87171' : '#4ade80'],
+                ['Location',    sensor.location,            '#e2e8f0'],
               ].map(([label, value, color]) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                   <span style={{ color: secColor }}>{label}</span>
@@ -1194,14 +1194,14 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               ))}
             </>
           ) : (
-            <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '4px 0' }}>데이터 대기 중...</div>
+            <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '4px 0' }}>Waiting for data...</div>
           )}
         </div>
 
         {/* 알림 기록 */}
         {alertHistory.length > 0 && (
           <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
-            <div style={{ color: secColor, marginBottom: '6px' }}>📋 알림 기록</div>
+            <div style={{ color: secColor, marginBottom: '6px' }}>📋 Alert Log</div>
             <div style={{ maxHeight: '100px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '3px' }}>
               {alertHistory.map((a) => (
                 <div key={a.uid} style={{ display: 'flex', gap: '4px', alignItems: 'flex-start' }}>
@@ -1228,16 +1228,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           borderRadius: '10px', padding: '10px 14px', fontSize: '11px',
           color: secColor, lineHeight: 1.7, pointerEvents: 'none',
         }}>
-          <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px', fontSize: '12px' }}>⌨ 키보드 조작</div>
-          {[['W / S','전진 / 후진'],['A / D','차체 회전'],['Q / E','선회 ±'],['R / F','붐 상/하'],['T / G','암 굴절'],['Y / H','버킷 회전']].map(([k,v]) => (
+          <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px', fontSize: '12px' }}>⌨ Keyboard Controls</div>
+          {[['W / S','Forward / Backward'],['A / D','Body Rotation'],['Q / E','Swing ±'],['R / F','Boom Up/Down'],['T / G','Arm Bend'],['Y / H','Bucket Rotate']].map(([k,v]) => (
             <div key={k} style={{ display: 'flex', gap: '6px' }}>
               <span style={{ color: '#e2e8f0', minWidth: '60px', fontFamily: 'monospace' }}>{k}</span>
               <span>{v}</span>
             </div>
           ))}
           <div style={{ marginTop: '6px', borderTop: '1px solid #253347', paddingTop: '6px', fontSize: '10px', color: '#fbbf24' }}>
-            버킷을 지면에 대고 T/G로 암 조작 → 굴착<br/>
-            Q/E로 선회 후 버킷 H로 열면 → 덤핑
+            Press T/G with bucket on ground → Dig<br/>
+            Swing with Q/E then open bucket with H → Dump
           </div>
         </div>
 
@@ -1248,7 +1248,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           borderRadius: '8px', padding: '6px 12px', fontSize: '12px',
           color: '#f5a623', fontWeight: 700, pointerEvents: 'none',
         }}>
-          🚜 {MACHINE_CONFIGS[selectedMachineId].label} 굴착기
+          🚜 {MACHINE_CONFIGS[selectedMachineId].label} Excavator
         </div>
 
         {/* 이상 감지 알림 오버레이 */}
@@ -1288,8 +1288,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             color: isDigging ? '#fbbf24' : '#34d399', fontWeight: 700, pointerEvents: 'none',
           }}>
             {isDigging
-              ? `⛏ 굴착 중 — 깊이 ${kinematics.depth}m | 적재 ${soilDisplay.toFixed(1)} m³`
-              : `🪣 덤핑 — (${kinematics?.tipX ?? 0}, ${kinematics?.tipZ ?? 0}) | 잔여 ${soilDisplay.toFixed(1)} m³`}
+              ? `⛏ Digging — depth ${kinematics.depth}m | load ${soilDisplay.toFixed(1)} m³`
+              : `🪣 Dump — (${kinematics?.tipX ?? 0}, ${kinematics?.tipZ ?? 0}) | remaining ${soilDisplay.toFixed(1)} m³`}
           </div>
         )}
 
@@ -1309,8 +1309,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               fontSize: '13px', fontWeight: 700,
               boxShadow: `0 0 16px ${physicsResult.dangerLevel === 'DANGER' ? '#ef444840' : '#f59e0b40'}`,
             }}>
-              {physicsResult.dangerLevel === 'DANGER' ? '⚠ 전도 위험' : '⚠ 안정성 경고'}
-              {' — '}안정도 {(physicsResult.stabilityMargin * 100).toFixed(0)}%
+              {physicsResult.dangerLevel === 'DANGER' ? '⚠ Tip-Over Risk' : '⚠ Stability Warning'}
+              {' — '}Stability {(physicsResult.stabilityMargin * 100).toFixed(0)}%
               {' | '}CoM ({physicsResult.comX?.toFixed(1)}, {physicsResult.comY?.toFixed(1)})
             </div>
             {physicsResult.alerts?.map((a, i) => (
@@ -1370,12 +1370,12 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         gap: '14px', overflowY: 'auto', fontSize: '12px',
       }}>
         <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
-          🎮 장비 조작
+          🎮 Manual Control
         </div>
 
         {/* 장비 선택 */}
         <div>
-          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px', letterSpacing: '0.04em' }}>⚙ 장비 선택</div>
+          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px', letterSpacing: '0.04em' }}>⚙ Equipment Select</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             {Object.values(MACHINE_CONFIGS).map(mc => {
               const active = selectedMachineId === mc.id;
@@ -1409,7 +1409,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 방향키 패드 */}
         <div>
-          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px' }}>이동 / 회전</div>
+          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px' }}>Travel / Rotate</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px', width: '130px', margin: '0 auto' }}>
             <button style={dirBtnStyle('w', keysDisplay)} onMouseDown={() => pressKey('w')} onMouseUp={() => releaseKey('w')} onMouseLeave={() => releaseKey('w')} onTouchStart={() => pressKey('w')} onTouchEnd={() => releaseKey('w')}>↑</button>
             <button style={{ ...dirBtnStyle('a', keysDisplay), gridColumn: 1, gridRow: 2 }} onMouseDown={() => pressKey('a')} onMouseUp={() => releaseKey('a')} onMouseLeave={() => releaseKey('a')} onTouchStart={() => pressKey('a')} onTouchEnd={() => releaseKey('a')}>↶</button>
@@ -1417,7 +1417,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             <button style={{ ...dirBtnStyle('d', keysDisplay), gridColumn: 3, gridRow: 2 }} onMouseDown={() => pressKey('d')} onMouseUp={() => releaseKey('d')} onMouseLeave={() => releaseKey('d')} onTouchStart={() => pressKey('d')} onTouchEnd={() => releaseKey('d')}>↷</button>
           </div>
           <div style={{ display: 'flex', gap: '6px', marginTop: '8px', justifyContent: 'center' }}>
-            {[['q','↺ 선회←'],['e','선회→ ↻']].map(([k, label]) => (
+            {[['q','↺ Swing←'],['e','Swing→ ↻']].map(([k, label]) => (
               <button key={k} style={jointBtnStyle(k, keysDisplay, '#a78bfa')}
                 onMouseDown={() => pressKey(k)} onMouseUp={() => releaseKey(k)} onMouseLeave={() => releaseKey(k)}
                 onTouchStart={() => pressKey(k)} onTouchEnd={() => releaseKey(k)}>{label}</button>
@@ -1427,7 +1427,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 관절 슬라이더 */}
         <div>
-          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px' }}>관절 세부 제어</div>
+          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px' }}>Joint Detail Control</div>
           {[
             { label: '붐 (Boom)',   key: 'boomAngle',   ...JOINT_LIMITS.boomAngle,   color: accentBlue,  keys: ['r','f'], keylabels: ['R↑','F↓'] },
             { label: '암 (Arm)',    key: 'armAngle',    ...JOINT_LIMITS.armAngle,    color: '#34d399',   keys: ['t','g'], keylabels: ['T↑','G↓'] },
@@ -1457,7 +1457,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 작업 프리셋 */}
         <div>
-          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px' }}>작업 프리셋</div>
+          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px' }}>Preset</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
             {Object.entries(PRESETS).map(([name]) => {
               const active = state.operationMode === name;
@@ -1476,20 +1476,20 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 버튼 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '8px', color: '#4ade80', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
-            💾 상태 저장 (C# 서버)
+            💾 Save State (C# Server)
           </button>
           <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '8px', color: '#fbbf24', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
-            🗑 지형 초기화
+            🗑 Clear Terrain
           </button>
           <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '8px', color: '#f87171', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
-            ↺ 전체 초기화
+            ↺ Full Reset
           </button>
         </div>
 
         {/* 이상 감지 임계값 설정 */}
         <div>
           <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px', letterSpacing: '0.04em' }}>
-            🚨 이상 감지 임계값
+            🚨 Alert Thresholds
             {activeAlerts.length > 0 && (
               <span style={{ marginLeft: '6px', color: activeAlerts.some(a => a.level === 'danger') ? '#f87171' : '#fbbf24', fontWeight: 700 }}>
                 ({activeAlerts.length}건 초과)
@@ -1499,13 +1499,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
           {/* 온도 */}
           <div style={{ marginBottom: '10px' }}>
-            <div style={{ color: '#fb923c', fontSize: '10px', marginBottom: '5px' }}>🌡 온도 허용 범위 (°C)</div>
+            <div style={{ color: '#fb923c', fontSize: '10px', marginBottom: '5px' }}>🌡 Temperature Range (°C)</div>
             <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>최저</span>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>Min</span>
               <input type="number" value={thresholds.tempMin}
                 onChange={e => setThresholds(prev => ({ ...prev, tempMin: parseFloat(e.target.value) || 0 }))}
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
-              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>최고</span>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>Max</span>
               <input type="number" value={thresholds.tempMax}
                 onChange={e => setThresholds(prev => ({ ...prev, tempMax: parseFloat(e.target.value) || 0 }))}
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
@@ -1518,13 +1518,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
           {/* 습도 */}
           <div>
-            <div style={{ color: accentBlue, fontSize: '10px', marginBottom: '5px' }}>💧 습도 허용 범위 (%)</div>
+            <div style={{ color: accentBlue, fontSize: '10px', marginBottom: '5px' }}>💧 Humidity Range (%)</div>
             <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>최저</span>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>Min</span>
               <input type="number" value={thresholds.humMin}
                 onChange={e => setThresholds(prev => ({ ...prev, humMin: parseFloat(e.target.value) || 0 }))}
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
-              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>최고</span>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>Max</span>
               <input type="number" value={thresholds.humMax}
                 onChange={e => setThresholds(prev => ({ ...prev, humMax: parseFloat(e.target.value) || 0 }))}
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
@@ -1539,7 +1539,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             onClick={() => setThresholds(DEFAULT_THRESHOLDS)}
             style={{ marginTop: '8px', width: '100%', background: '#162032', border: '1px solid #253347', borderRadius: '6px', color: '#8896a4', fontSize: '10px', padding: '5px', cursor: 'pointer' }}
           >
-            기본값 복원
+            Restore Defaults
           </button>
         </div>
 
@@ -1549,15 +1549,15 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           const maxReach = (mc.boomLen + mc.armLen + mc.bucketLen).toFixed(1);
           return (
             <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
-              <div style={{ color: secColor, marginBottom: '6px' }}>장비 규격 — {mc.label}</div>
+              <div style={{ color: secColor, marginBottom: '6px' }}>Equipment Specs — {mc.label}</div>
               {[
-                ['분류',     mc.subLabel],
-                ['무게급',   mc.weight],
-                ['붐 길이',  `${mc.boomLen}m`],
-                ['암 길이',  `${mc.armLen}m`],
-                ['최대 도달', `${maxReach}m`],
-                ['버킷 용량', `${mc.bucketCapacity} m³`],
-                ['굴착 반경', `${mc.digRadius}m`],
+                ['Class',       mc.subLabel],
+                ['Weight',      mc.weight],
+                ['Boom Length', `${mc.boomLen}m`],
+                ['Arm Length',  `${mc.armLen}m`],
+                ['Max Reach',   `${maxReach}m`],
+                ['Bucket Cap',  `${mc.bucketCapacity} m³`],
+                ['Dig Radius',  `${mc.digRadius}m`],
               ].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                   <span style={{ color: secColor }}>{l}</span>
@@ -1570,12 +1570,12 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 지형 정보 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
-          <div style={{ color: secColor, marginBottom: '6px' }}>지형 시스템</div>
+          <div style={{ color: secColor, marginBottom: '6px' }}>Terrain System</div>
           {[
-            ['그리드', `${GRID_COLS}×${GRID_ROWS}셀`],
-            ['해상도', `${CELL_M}m/셀`],
-            ['최대 굴착', `${MAX_DIG}m`],
-            ['최대 성토', `${MAX_FILL}m`],
+            ['Grid',      `${GRID_COLS}×${GRID_ROWS} cells`],
+            ['Resolution',`${CELL_M}m/cell`],
+            ['Max Dig',   `${MAX_DIG}m`],
+            ['Max Fill',  `${MAX_FILL}m`],
           ].map(([l, v]) => (
             <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
               <span style={{ color: secColor }}>{l}</span>
@@ -1603,16 +1603,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 상태 헤더 */}
         <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #253347' }}>
           <div>
-            <div style={{ color: '#8896a4', fontSize: '10px', marginBottom: '3px' }}>작동 모드</div>
+            <div style={{ color: '#8896a4', fontSize: '10px', marginBottom: '3px' }}>Operation Mode</div>
             <div style={{ color: '#f5a623', fontWeight: 700, fontSize: '18px' }}>● {state.operationMode}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#8896a4', fontSize: '10px', marginBottom: '3px' }}>버킷 적재량</div>
+            <div style={{ color: '#8896a4', fontSize: '10px', marginBottom: '3px' }}>Bucket Load</div>
             <div style={{ color: '#fb923c', fontFamily: 'monospace', fontSize: '14px', fontWeight: 700 }}>
               {soilDisplay.toFixed(2)} / {MACHINE_CONFIGS[selectedMachineId].bucketCapacity} m³
             </div>
             <div style={{ color: syncStatus === 'synced' ? '#4ade80' : syncStatus === 'error' ? '#f87171' : '#8896a4', fontSize: '10px', marginTop: '2px' }}>
-              {syncStatus === 'synced' ? '✓ 동기화됨' : syncStatus === 'syncing' ? '⟳ 동기화 중' : syncStatus === 'error' ? '✗ 오류' : '○ 대기'}
+              {syncStatus === 'synced' ? '✓ Synced' : syncStatus === 'syncing' ? '⟳ Syncing' : syncStatus === 'error' ? '✗ Error' : '○ Standby'}
             </div>
           </div>
         </div>
@@ -1670,13 +1670,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 관절 슬라이더 */}
         <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>
-          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '12px', fontWeight: 600 }}>🦾 관절 세부 제어</div>
+          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '12px', fontWeight: 600 }}>🦾 Joint Detail Control</div>
           {[
-            { label: '붐 (Boom)',     key: 'boomAngle',    ...JOINT_LIMITS.boomAngle,   color: '#60a5fa' },
-            { label: '암 (Arm)',      key: 'armAngle',     ...JOINT_LIMITS.armAngle,    color: '#34d399' },
-            { label: '버킷 (Bucket)',  key: 'bucketAngle',  ...JOINT_LIMITS.bucketAngle, color: '#fb923c' },
-            { label: '선회 (Swing)',   key: 'swingAngle',   min: -180, max: 180,          color: '#a78bfa' },
-            { label: '차체 회전',     key: 'bodyRotation',  min: -180, max: 180,          color: '#94a3b8' },
+            { label: 'Boom',          key: 'boomAngle',    ...JOINT_LIMITS.boomAngle,   color: '#60a5fa' },
+            { label: 'Arm',           key: 'armAngle',     ...JOINT_LIMITS.armAngle,    color: '#34d399' },
+            { label: 'Bucket',        key: 'bucketAngle',  ...JOINT_LIMITS.bucketAngle, color: '#fb923c' },
+            { label: 'Swing',         key: 'swingAngle',   min: -180, max: 180,          color: '#a78bfa' },
+            { label: 'Body Rotation', key: 'bodyRotation', min: -180, max: 180,          color: '#94a3b8' },
           ].map(({ label, key, min, max, color }) => (
             <div key={key} style={{ marginBottom: '14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
@@ -1695,13 +1695,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* 버킷 게이지 + 키네마틱스 */}
         <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>
-          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '8px', fontWeight: 600 }}>🪣 버킷 적재 현황</div>
+          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '8px', fontWeight: 600 }}>🪣 Bucket Load Status</div>
           <div style={{ background: '#1e2e3e', borderRadius: '6px', height: '12px', overflow: 'hidden', marginBottom: '8px' }}>
             <div style={{ width: `${(soilDisplay / MACHINE_CONFIGS[selectedMachineId].bucketCapacity) * 100}%`, height: '100%', background: soilDisplay > MACHINE_CONFIGS[selectedMachineId].bucketCapacity * 0.8 ? '#f87171' : soilDisplay > MACHINE_CONFIGS[selectedMachineId].bucketCapacity * 0.4 ? '#fb923c' : '#6b4416', transition: 'width 0.1s', borderRadius: '6px' }} />
           </div>
           {kinematics && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', fontSize: '11px' }}>
-              {[['수평 도달', `${kinematics.reach}m`, '#34d399'], ['굴착 깊이', `${kinematics.depth}m`, '#fb923c'], ['지형 높이', `${kinematics.terrainH}m`, '#94a3b8']].map(([l, v, c]) => (
+              {[['Horizontal Reach', `${kinematics.reach}m`, '#34d399'], ['Dig Depth', `${kinematics.depth}m`, '#fb923c'], ['Terrain Height', `${kinematics.terrainH}m`, '#94a3b8']].map(([l, v, c]) => (
                 <div key={l} style={{ background: '#162032', borderRadius: '6px', padding: '6px', textAlign: 'center' }}>
                   <div style={{ color: '#4a5a6a', marginBottom: '2px', fontSize: '9px' }}>{l}</div>
                   <div style={{ color: c, fontFamily: 'monospace', fontWeight: 700 }}>{v}</div>
@@ -1714,7 +1714,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 위치 + IoT 센서 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           <div style={{ background: '#111e2e', borderRadius: '12px', padding: '12px', border: '1px solid #253347', fontSize: '11px' }}>
-            <div style={{ color: '#8896a4', marginBottom: '6px', fontWeight: 600 }}>📍 위치 (m)</div>
+            <div style={{ color: '#8896a4', marginBottom: '6px', fontWeight: 600 }}>📍 Position (m)</div>
             {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
               <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                 <span style={{ color: '#8896a4' }}>{l}</span>
@@ -1723,10 +1723,10 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             ))}
           </div>
           <div style={{ background: '#111e2e', borderRadius: '12px', padding: '12px', border: '1px solid #253347', fontSize: '11px' }}>
-            <div style={{ color: '#8896a4', marginBottom: '6px', fontWeight: 600 }}>🌡 IoT 센서</div>
+            <div style={{ color: '#8896a4', marginBottom: '6px', fontWeight: 600 }}>🌡 IoT Sensor</div>
             {[
-              ['온도', sensor ? `${sensor.temperature}°C` : '--', sensor && (sensor.temperature > thresholds.tempMax || sensor.temperature < thresholds.tempMin) ? '#f87171' : '#4ade80'],
-              ['습도', sensor ? `${sensor.humidity}%` : '--',    sensor && (sensor.humidity > thresholds.humMax    || sensor.humidity < thresholds.humMin)    ? '#f87171' : '#4ade80'],
+              ['Temperature', sensor ? `${sensor.temperature}°C` : '--', sensor && (sensor.temperature > thresholds.tempMax || sensor.temperature < thresholds.tempMin) ? '#f87171' : '#4ade80'],
+              ['Humidity',    sensor ? `${sensor.humidity}%` : '--',     sensor && (sensor.humidity > thresholds.humMax    || sensor.humidity < thresholds.humMin)    ? '#f87171' : '#4ade80'],
             ].map(([l, v, c]) => (
               <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                 <span style={{ color: '#8896a4' }}>{l}</span>
@@ -1734,14 +1734,14 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               </div>
             ))}
             <div style={{ fontSize: '9px', color: sensorWs === 'connected' ? '#4ade80' : '#8896a4', marginTop: '4px' }}>
-              {sensorWs === 'connected' ? '● 연결됨' : sensorWs === 'connecting' ? '○ 연결 중' : '○ 대기'}
+              {sensorWs === 'connected' ? '● Connected' : sensorWs === 'connecting' ? '○ Connecting' : '○ Standby'}
             </div>
           </div>
         </div>
 
         {/* 장비 선택 */}
         <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>
-          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '10px', fontWeight: 600 }}>⚙ 장비 선택</div>
+          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '10px', fontWeight: 600 }}>⚙ Equipment Select</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {Object.values(MACHINE_CONFIGS).map(mc => {
               const active = selectedMachineId === mc.id;
@@ -1763,18 +1763,18 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 액션 버튼 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '10px', color: '#4ade80', padding: '14px', fontSize: '14px', cursor: 'pointer', fontWeight: 600 }}>
-            💾 상태 저장 (C# 서버)
+            💾 Save State (C# Server)
           </button>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '10px', color: '#fbbf24', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🗑 지형 초기화</button>
-            <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '10px', color: '#f87171', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>↺ 전체 초기화</button>
+            <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '10px', color: '#fbbf24', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🗑 Clear Terrain</button>
+            <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '10px', color: '#f87171', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>↺ Full Reset</button>
           </div>
         </div>
 
         {/* 안내 */}
         <div style={{ background: '#0a1520', border: '1px solid #1a3040', borderRadius: '10px', padding: '12px 14px', fontSize: '11px', color: '#4a6a5a', lineHeight: 1.6 }}>
-          💡 <strong style={{ color: '#6a9a7a' }}>3D 굴착 시뮬레이션</strong>은 PC에서 키보드로 조작합니다.<br/>
-          모바일에서는 슬라이더·프리셋으로 자세를 제어하고 서버에 저장할 수 있습니다.
+          💡 <strong style={{ color: '#6a9a7a' }}>3D Excavation Simulation</strong> is controlled via keyboard on PC.<br/>
+          On mobile, use sliders and presets to control posture and save to server.
         </div>
       </div>
     )}

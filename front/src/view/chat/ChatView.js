@@ -13,7 +13,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: '안녕하세요! 디지털 트윈 AI 어시스턴트입니다.\n센서 데이터 조회, BIM 요소 생성 등을 도와드릴 수 있어요.',
+      content: 'Hello! I am the Digital Twin AI Assistant.\nI can help with sensor data queries, BIM element creation, and more.',
       intent: 'chat',
     },
   ]);
@@ -94,7 +94,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     const text = input.trim();
     if ((!text && !imageBase64) || loading) return;
 
-    const userContent = text || '이미지를 분석해주세요.';
+    const userContent = text || 'Please analyze this image.';
     const userMsg = {
       role: 'user',
       content: userContent,
@@ -138,7 +138,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     } catch {
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: '오류가 발생했습니다. 잠시 후 다시 시도해 주세요.', intent: 'chat' },
+        { role: 'assistant', content: 'An error occurred. Please try again later.', intent: 'chat' },
       ]);
     } finally {
       setLoading(false);
@@ -150,7 +150,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     setMessages([
       {
         role: 'assistant',
-        content: '대화 이력을 초기화했습니다. 새로운 대화를 시작해보세요!',
+        content: 'Chat history has been cleared. Start a new conversation!',
         intent: 'chat',
       },
     ]);
@@ -163,7 +163,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
         onClick={() => setIsOpen(o => !o)}
         className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-accent-blue shadow-glow items-center justify-center text-white text-2xl hover:scale-110 transition-transform ${isOpen ? 'hidden sm:flex' : 'flex'}`}
         style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
-        title="AI 어시스턴트"
+        title="AI Assistant"
       >
         🤖
       </button>
@@ -194,7 +194,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
               {/* TTS 토글 */}
               <button
                 onClick={() => setTtsEnabled(v => !v)}
-                title={ttsEnabled ? '음성 출력 켜짐' : '음성 출력 꺼짐'}
+                title={ttsEnabled ? 'Voice output on' : 'Voice output off'}
                 className={`text-sm px-1.5 py-0.5 rounded transition-colors ${ttsEnabled ? 'text-accent-blue' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 🔊
@@ -202,15 +202,15 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
               <button
                 onClick={clearHistory}
                 className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                title="대화 초기화"
+                title="Clear chat"
               >
-                초기화
+                Reset
               </button>
               {/* 모바일 전용 닫기 버튼 */}
               <button
                 onClick={() => setIsOpen(false)}
                 className="sm:hidden text-gray-400 hover:text-gray-200 transition-colors text-base px-1 py-0.5"
-                title="닫기"
+                title="Close"
               >
                 ✕
               </button>
@@ -230,7 +230,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
           {imagePreview && (
             <div className="px-3 pt-2 bg-space-800 border-t border-space-700">
               <div className="relative inline-block">
-                <img src={imagePreview} alt="첨부" className="h-16 rounded-lg border border-space-600 object-cover" />
+                <img src={imagePreview} alt="Attachment" className="h-16 rounded-lg border border-space-600 object-cover" />
                 <button
                   onClick={clearImage}
                   className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 rounded-full text-white text-xs flex items-center justify-center hover:bg-red-500"
@@ -267,7 +267,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
               />
               <button
                 onClick={() => imageInputRef.current?.click()}
-                title="이미지 첨부"
+                title="Attach image"
                 className="text-gray-400 hover:text-gray-200 transition-colors text-lg shrink-0"
               >
                 📎
@@ -276,7 +276,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
               {/* 음성 입력 */}
               <button
                 onClick={toggleListening}
-                title={isListening ? '녹음 중지' : '음성 입력'}
+                title={isListening ? 'Stop recording' : 'Voice input'}
                 className={`text-lg shrink-0 transition-colors ${isListening ? 'text-red-400 animate-pulse' : 'text-gray-400 hover:text-gray-200'}`}
               >
                 🎤
@@ -287,7 +287,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={isListening ? '음성 인식 중...' : '메시지를 입력하세요...'}
+                placeholder={isListening ? 'Listening...' : 'Type a message...'}
                 className="flex-1 bg-space-700 text-gray-200 text-sm rounded-lg px-3 py-2 outline-none placeholder-gray-500 focus:ring-1 focus:ring-accent-blue"
               />
               <button
@@ -295,7 +295,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
                 disabled={loading || (!input.trim() && !imageBase64)}
                 className="px-4 py-2 rounded-lg bg-accent-blue text-white text-sm font-medium disabled:opacity-40 hover:bg-blue-500 transition-colors"
               >
-                전송
+                Send
               </button>
             </div>
           </div>
@@ -308,9 +308,9 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
 // ── 서브 컴포넌트 ───────────────────────────────────────────────
 
 const INTENT_BADGE = {
-  rag_db:      { label: '데이터 조회', color: 'text-accent-green bg-green-900/40' },
-  bim_builder: { label: 'BIM 작업',   color: 'text-accent-blue bg-blue-900/40'   },
-  vision:      { label: '이미지 분석', color: 'text-purple-400 bg-purple-900/40'  },
+  rag_db:      { label: 'Data Query',     color: 'text-accent-green bg-green-900/40' },
+  bim_builder: { label: 'BIM Task',       color: 'text-accent-blue bg-blue-900/40'   },
+  vision:      { label: 'Image Analysis', color: 'text-purple-400 bg-purple-900/40'  },
   chat: null,
 };
 
@@ -327,7 +327,7 @@ function MessageBubble({ msg }) {
           </span>
         )}
         {msg.image && (
-          <img src={msg.image} alt="첨부 이미지" className="rounded-xl max-h-40 object-cover border border-space-600" />
+          <img src={msg.image} alt="Attached image" className="rounded-xl max-h-40 object-cover border border-space-600" />
         )}
         <div
           className={`rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words ${
@@ -359,4 +359,4 @@ function TypingIndicator() {
   );
 }
 
-const QUICK_PROMPTS = ['현재 온도?', '기둥 추가', '알림 확인'];
+const QUICK_PROMPTS = ['Current temperature?', 'Add column', 'Check alerts'];
