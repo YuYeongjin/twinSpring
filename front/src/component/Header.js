@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { id: "agent",               label: "Agent",      icon: "🤖" },
   { id: "simulation-projects", label: "Simulation", icon: "🚜" },
   { id: "safe",                label: "Safe",       icon: "🦺" },
+  { id: "test",                label: "Test",       icon: "🧪" },
 ];
 
 export default function Header({ viewComponent, setViceComponent, agentAvailable }) {
@@ -107,7 +108,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
               onClick={() => setMenuOpen(v => !v)}
               className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg transition-colors"
               style={{ backgroundColor: menuOpen ? "#1e3a5f" : "transparent", border: "1px solid #253347" }}
-              aria-label="메뉴 열기/닫기"
+              aria-label="Toggle Menu"
               aria-expanded={menuOpen}
             >
               <span className="text-gray-300 text-lg leading-none select-none">

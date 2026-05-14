@@ -51,14 +51,14 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
           if (e.key === "Enter") handleSave();
           if (e.key === "Escape") onCancel();
         }}
-        placeholder="프로젝트 이름 입력..."
+        placeholder="Enter project name..."
         className="flex-1 px-2 py-1 rounded text-xs outline-none min-w-0"
         style={{ backgroundColor: "#0d1b2a", border: "1px solid #3b82f6", color: TB.text1 }}
       />
       <button
         onClick={handleSave}
         disabled={!value.trim() || saving}
-        title="저장 (Enter)"
+        title="Save (Enter)"
         className="flex-shrink-0 px-2 py-1 rounded text-xs font-medium transition"
         style={{
           backgroundColor: value.trim() && !saving ? "#1d4ed8" : "#1c2a3a",
@@ -71,7 +71,7 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
       </button>
       <button
         onClick={onCancel}
-        title="취소 (Esc)"
+        title="Cancel (Esc)"
         className="flex-shrink-0 px-2 py-1 rounded text-xs transition"
         style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
       >
@@ -112,7 +112,7 @@ function ProjectCard({ item, onOpen, onRename }) {
         <>
           {invalid && (
             <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: TB.warning }}>
-              ⚠ 이름을 입력해주세요
+              ⚠ Please enter a name
             </div>
           )}
           <InlineNameEditor
@@ -133,7 +133,7 @@ function ProjectCard({ item, onOpen, onRename }) {
           </div>
           <button
             onClick={handleRenameClick}
-            title="이름 변경"
+            title="Rename"
             className="flex-shrink-0 opacity-0 group-hover/name:opacity-100 transition-opacity p-0.5 rounded"
             style={{ color: TB.text2 }}
           >
@@ -155,7 +155,7 @@ function ProjectCard({ item, onOpen, onRename }) {
             className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ color: TB.accent }}
           >
-            열기 →
+            Open →
           </button>
         </div>
       )}
@@ -197,7 +197,7 @@ function CreateProjectForm({ onClose, onCreate }) {
     <div className={`${TB.card} p-6 mb-6`} style={{ borderLeft: "3px solid #f5a623" }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          신규 프로젝트 생성
+          Create New Project
         </h3>
         <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition text-lg leading-none">
           ✕
@@ -207,14 +207,14 @@ function CreateProjectForm({ onClose, onCreate }) {
       <div className="flex flex-col gap-4 md:flex-row md:items-end">
         <div className="flex-1">
           <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
-            프로젝트 이름
+            Project Name
           </label>
           <input
             type="text"
             value={projectName}
             onChange={e => setProjectName(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSubmit()}
-            placeholder="프로젝트 이름을 입력하세요..."
+            placeholder="Enter project name..."
             autoFocus
             className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
             style={{ backgroundColor: "#152030", border: "1px solid #253347", color: TB.text1 }}
@@ -231,7 +231,7 @@ function CreateProjectForm({ onClose, onCreate }) {
             cursor: !projectName.trim() || creating ? "not-allowed" : "pointer",
           }}
         >
-          {creating ? "생성 중…" : "프로젝트 생성"}
+          {creating ? "Creating…" : "Create Project"}
         </button>
       </div>
     </div>
@@ -265,16 +265,16 @@ export default function SimulationProjectList({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            🚜 시뮬레이션 프로젝트
+            🚜 Simulation Projects
           </h2>
           <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-            총 <span className="text-white font-semibold">{projectList?.length ?? 0}</span>개의 프로젝트
+            Total <span className="text-white font-semibold">{projectList?.length ?? 0}</span> projects
             {invalidCount > 0 && (
               <span
                 className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium"
                 style={{ backgroundColor: `${TB.warning}20`, color: TB.warning, border: `1px solid ${TB.warning}50` }}
               >
-                ⚠ 이름 없음 {invalidCount}개
+                ⚠ No name {invalidCount}
               </span>
             )}
           </p>
@@ -289,7 +289,7 @@ export default function SimulationProjectList({
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="프로젝트 검색..."
+              placeholder="Search projects..."
               className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
               style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text1 }}
             />

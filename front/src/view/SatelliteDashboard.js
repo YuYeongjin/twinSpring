@@ -187,7 +187,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
         >
           <span className="text-xl shrink-0">🚨</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold">경고: 센서 임계값 초과 — 라즈베리파이 LED 점등 중</p>
+            <p className="text-sm font-bold">Warning: Sensor threshold exceeded — Raspberry Pi LED on</p>
             {activeAlert.reason && (
               <p className="text-xs mt-0.5" style={{ color: "#f87171" }}>{activeAlert.reason}</p>
             )}
@@ -211,7 +211,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
           <div className="min-w-0">
             <div className="text-sm font-bold text-white">IoT Sensor Dashboard</div>
             <div className="text-xs truncate" style={{ color: TB.text2 }}>
-              위치: {latest?.location ?? "—"} &nbsp;|&nbsp; {lastSeen}
+              Location: {latest?.location ?? "—"} &nbsp;|&nbsp; {lastSeen}
             </div>
           </div>
           <StatusBadge status={wsStatus} />
@@ -239,29 +239,29 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
           ================================================================ */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiWidget
-          label="온도" icon="🌡"
+          label="Temperature" icon="🌡"
           value={latest?.temperature ?? null} unit="°C"
           min={stats.tempMin} max={stats.tempMax} avg={stats.tempAvg}
           accent={TB.warning} warnMax={35} warnMin={0}
-          subtitle="DHT11 센서"
+          subtitle="DHT11 Sensor"
         />
         <KpiWidget
-          label="습도" icon="💧"
+          label="Humidity" icon="💧"
           value={latest?.humidity ?? null} unit="%"
           min={stats.humMin} max={stats.humMax} avg={stats.humAvg}
           accent={TB.accent} warnMax={80} warnMin={20}
-          subtitle="DHT11 센서"
+          subtitle="DHT11 Sensor"
         />
         <div className="lg:col-span-2">
           <Widget
-            title="BIM 프로젝트" accent="#7c3aed"
+            title="BIM Projects" accent="#7c3aed"
             action={
               <button
                 onClick={() => setViceComponent('bim-projects')}
                 className="text-xs px-2 py-0.5 rounded text-purple-300 hover:text-white transition"
                 style={{ border: "1px solid #7c3aed" }}
               >
-                모두 보기 →
+                View All →
               </button>
             }
           >
@@ -269,7 +269,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
               {/* 프로젝트 수 요약 */}
               <div className="flex items-center justify-between py-2 px-3 rounded-lg"
                 style={{ backgroundColor: "#152030" }}>
-                <span className="text-xs" style={{ color: TB.text2 }}>전체 프로젝트</span>
+                <span className="text-xs" style={{ color: TB.text2 }}>Total Projects</span>
                 <span className="text-lg font-bold text-white">{projectList?.length ?? 0}</span>
               </div>
               <div className="flex gap-2">
@@ -297,7 +297,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
                     {projectList[projectList.length - 1].projectName}
                   </span>
                   <span className="text-xs opacity-0 group-hover:opacity-100 transition"
-                    style={{ color: TB.accent }}>열기 →</span>
+                    style={{ color: TB.accent }}>Open →</span>
                 </button>
               )}
               <button
@@ -305,7 +305,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
                 className="w-full py-2 rounded-lg text-xs font-semibold transition text-white"
                 style={{ backgroundColor: "#1e1040", border: "1px solid #7c3aed" }}
               >
-                🏗 BIM 프로젝트 관리
+                🏗 BIM Project Management
               </button>
             </div>
           </Widget>
@@ -320,8 +320,8 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
         {/* 실시간 텔레메트리 차트 */}
         <div className="w-full">
           <Widget
-            title="실시간 텔레메트리"
-            subtitle={`데이터 포인트 ${data.length}개 수신`}
+            title="Real-time Telemetry"
+            subtitle={`${data.length} data points received`}
             accent={TB.accent}
             action={
               <span className="flex items-center gap-1 text-xs"
@@ -349,13 +349,13 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
                 />
                 {/* 온도 경고선 */}
                 <ReferenceLine y={35} stroke={TB.danger} strokeDasharray="4 4"
-                  label={{ value: "경고", fill: TB.danger, fontSize: 10 }} />
+                  label={{ value: "Warning", fill: TB.danger, fontSize: 10 }} />
                 <Line
-                  type="monotone" dataKey="temperature" name="온도 (°C)"
+                  type="monotone" dataKey="temperature" name="Temperature (°C)"
                   stroke={TB.warning} dot={false} strokeWidth={2} isAnimationActive={false}
                 />
                 <Line
-                  type="monotone" dataKey="humidity" name="습도 (%)"
+                  type="monotone" dataKey="humidity" name="Humidity (%)"
                   stroke={TB.accent} dot={false} strokeWidth={2} isAnimationActive={false}
                 />
               </LineChart>
@@ -370,12 +370,12 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
           4. 이벤트 로그 테이블 (ThingsBoard의 Telemetry Table 위젯)
           ================================================================ */}
       <Widget
-        title="텔레메트리 로그"
-        subtitle={`최근 ${Math.min(data.length, 100)}건`}
+        title="Telemetry Log"
+        subtitle={`Latest ${Math.min(data.length, 100)} entries`}
         accent={TB.text2}
         action={
           <span className="text-xs" style={{ color: TB.text2 }}>
-            총 {data.length}건 수신
+            {data.length} total received
           </span>
         }
       >
@@ -386,10 +386,10 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
             <div className="grid grid-cols-5 gap-2 text-xs font-semibold pb-2 mb-1"
               style={{ color: TB.text2, borderBottom: "1px solid #253347" }}>
               <span>#</span>
-              <span>수신 시각</span>
-              <span>위치</span>
-              <span className="text-center">온도 (°C)</span>
-              <span className="text-center">습도 (%)</span>
+              <span>Received At</span>
+              <span>Location</span>
+              <span className="text-center">Temperature (°C)</span>
+              <span className="text-center">Humidity (%)</span>
             </div>
 
             {/* 테이블 바디 — 최근 15건, 최신이 위 */}
@@ -426,7 +426,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
               })}
               {!data.length && (
                 <div className="text-center py-8 text-xs" style={{ color: TB.text2 }}>
-                  데이터 수신 대기 중…
+                  Waiting for data…
                 </div>
               )}
             </div>

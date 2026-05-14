@@ -66,12 +66,12 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
             
             // 3. 상태 갱신 및 UI 닫기
             onUpdate(dataToSend); // 부모 컴포넌트의 상태 갱신 함수 호출
-            alert(`부재 ${element.elementId}의 정보가 성공적으로 수정되었습니다.`);
+            alert(`Member ${element.elementId} updated successfully.`);
             onClose();
 
         } catch (error) {
             console.error("Element update failed:", error);
-            alert("수정 실패: 서버 오류 또는 데이터 형식 오류. 콘솔을 확인하세요.");
+            alert("Update failed: server error or invalid data format. Check console.");
         } finally {
             setIsSaving(false);
         }
@@ -79,12 +79,12 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
 
     return (
         <div className="fixed right-0 top-0 w-80 h-full bg-space-800/95 border-l border-space-700 p-6 shadow-xl z-50">
-            <h3 className="text-xl font-bold mb-4 text-accent-orange">부재 속성 수정</h3>
+            <h3 className="text-xl font-bold mb-4 text-accent-orange">Edit Member Info</h3>
             <p className="text-sm text-gray-400 mb-6">ID: {element.elementId} ({element.elementType})</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-300">재질 (Material)</label>
+                    <label className="block text-sm font-medium text-gray-300">Material</label>
                     <input
                         type="text"
                         name="material"
@@ -94,7 +94,7 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
                     />
                 </div>
              <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-300">위치 (Position)</label>
+                    <label className="block text-sm font-medium text-gray-300">Position</label>
                     <div className="flex space-x-2">
                         {['X', 'Y', 'Z'].map(axis => (
                             <input
@@ -112,7 +112,7 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
                 </div>
 
                 <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-300">크기 (Size)</label>
+                    <label className="block text-sm font-medium text-gray-300">Size</label>
                     <div className="flex space-x-2">
                         {['X', 'Y', 'Z'].map(axis => (
                             <input
@@ -136,14 +136,14 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
                         className="px-4 py-2 text-gray-400 hover:text-gray-200 transition mr-3"
                         disabled={isSaving}
                     >
-                        닫기
+                        Close
                     </button>
                     <button
                         type="submit"
                         className="px-4 py-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500 transition"
                         disabled={isSaving}
                     >
-                        {isSaving ? '저장 중...' : '변경 사항 저장'}
+                        {isSaving ? 'Saving...' : 'Save Changes'}
                     </button>
                 </div>
             </form>

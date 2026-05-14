@@ -238,7 +238,7 @@ export default function ControlPanel({
 
     const elementTemplates = [
         {
-            label: '기둥', icon: '▮',
+            label: 'Column', icon: '▮',
             color: 'bg-yellow-800/50 text-yellow-200 hover:bg-yellow-700/60',
             activeColor: 'bg-yellow-600/70 text-yellow-100 ring-1 ring-yellow-400',
             data: {
@@ -247,7 +247,7 @@ export default function ControlPanel({
             },
         },
         {
-            label: '보', icon: '━',
+            label: 'Beam', icon: '━',
             color: 'bg-gray-700/60 text-gray-200 hover:bg-gray-600/70',
             activeColor: 'bg-gray-500/70 text-white ring-1 ring-gray-300',
             data: {
@@ -256,7 +256,7 @@ export default function ControlPanel({
             },
         },
         {
-            label: '벽', icon: '▬',
+            label: 'Wall', icon: '▬',
             color: 'bg-slate-700/60 text-slate-200 hover:bg-slate-600/70',
             activeColor: 'bg-slate-500/70 text-white ring-1 ring-slate-300',
             data: {
@@ -265,7 +265,7 @@ export default function ControlPanel({
             },
         },
         {
-            label: '슬래브', icon: '▭',
+            label: 'Slab', icon: '▭',
             color: 'bg-blue-900/50 text-blue-200 hover:bg-blue-800/60',
             activeColor: 'bg-blue-600/70 text-white ring-1 ring-blue-400',
             data: {
@@ -274,7 +274,7 @@ export default function ControlPanel({
             },
         },
         {
-            label: '교각', icon: '⬛',
+            label: 'Pier', icon: '⬛',
             color: 'bg-orange-900/50 text-orange-200 hover:bg-orange-800/60',
             activeColor: 'bg-orange-600/70 text-white ring-1 ring-orange-400',
             data: {
@@ -285,9 +285,9 @@ export default function ControlPanel({
     ];
 
     const modes = [
-        { key: 'translate', label: '이동', icon: '✥', shortcut: 'T' },
-        { key: 'rotate',    label: '회전', icon: '↺', shortcut: 'R' },
-        { key: 'scale',     label: '크기', icon: '⤢', shortcut: 'S' },
+        { key: 'translate', label: 'Move', icon: '✥', shortcut: 'T' },
+        { key: 'rotate',    label: 'Rotate', icon: '↺', shortcut: 'R' },
+        { key: 'scale',     label: 'Scale', icon: '⤢', shortcut: 'S' },
     ];
 
     // ── 샘플 구조물 정의 ─────────────────────────────────────────
@@ -419,13 +419,13 @@ export default function ControlPanel({
             {/* A. 부재 배치 버튼 */}
             <div>
                 <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-gray-400">새 부재 배치</p>
+                    <p className="text-xs font-medium text-gray-400">Place Member</p>
                     {pendingElement && (
                         <button
                             onClick={cancelPlacement}
                             className="text-xs text-red-400 hover:text-red-300 transition px-1.5 py-0.5 rounded border border-red-700/50"
                         >
-                            ✕ 취소
+                            ✕ Cancel
                         </button>
                     )}
                 </div>
@@ -442,12 +442,12 @@ export default function ControlPanel({
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                                     isActive ? activeColor : color
                                 }`}
-                                title={isActive ? '배치 모드 취소' : `${label} 배치 시작`}
+                                title={isActive ? 'Cancel placement mode' : `Start placing ${label}`}
                             >
                                 <span className="text-base leading-none">{icon}</span>
                                 <span>{label}</span>
                                 {isActive ? (
-                                    <span className="ml-auto text-xs animate-pulse">📍 배치 중</span>
+                                    <span className="ml-auto text-xs animate-pulse">📍 Placing</span>
                                 ) : (
                                     <span className="ml-auto text-xs opacity-40">{data.elementType.replace('Ifc', '')}</span>
                                 )}
@@ -458,14 +458,14 @@ export default function ControlPanel({
 
                 {pendingElement && (
                     <p className="mt-2 text-xs text-blue-400 leading-relaxed">
-                        3D 뷰어를 클릭하여 배치 &nbsp;•&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> 취소
+                        Click in 3D viewer to place &nbsp;•&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> Cancel
                     </p>
                 )}
             </div>
 
             {/* B. 조작 모드 */}
             <div className="border-t border-space-700 pt-3">
-                <p className="text-xs font-medium text-gray-400 mb-2">조작 모드</p>
+                <p className="text-xs font-medium text-gray-400 mb-2">Transform Mode</p>
                 <div className="flex flex-col gap-1.5">
                     {modes.map(({ key, label, icon, shortcut }) => (
                         <button
@@ -487,7 +487,7 @@ export default function ControlPanel({
 
             {/* C. 선택 모드 (러버밴드) */}
             <div className="border-t border-space-700 pt-3">
-                <p className="text-xs font-medium text-gray-400 mb-2">다중 선택</p>
+                <p className="text-xs font-medium text-gray-400 mb-2">Multi Select</p>
                 <button
                     onClick={toggleSelectMode}
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
@@ -497,16 +497,16 @@ export default function ControlPanel({
                     }`}
                 >
                     <span className="text-base leading-none">⬚</span>
-                    <span>선택 모드</span>
+                    <span>Select Mode</span>
                     <kbd className="ml-auto text-xs bg-black/30 px-1 py-0.5 rounded opacity-60">Q</kbd>
                 </button>
                 {isSelectMode ? (
                     <p className="mt-1.5 text-xs text-violet-400 leading-relaxed">
-                        드래그로 영역 선택 &nbsp;•&nbsp; <kbd className="bg-black/30 px-1 rounded">Shift</kbd>+클릭 추가
+                        Drag to select area &nbsp;•&nbsp; <kbd className="bg-black/30 px-1 rounded">Shift</kbd>+click to add
                     </p>
                 ) : (
                     <p className="mt-1.5 text-xs text-gray-600">
-                        <kbd className="bg-black/30 px-1 rounded">Shift</kbd>+클릭으로 추가 선택
+                        <kbd className="bg-black/30 px-1 rounded">Shift</kbd>+click to add to selection
                     </p>
                 )}
             </div>
@@ -518,7 +518,7 @@ export default function ControlPanel({
                     className="w-full flex items-center justify-between mb-2 group"
                 >
                     <p className="text-xs font-medium text-gray-400 group-hover:text-gray-200 transition">
-                        샘플 구조물
+                        Sample Structures
                     </p>
                     <span className="text-xs text-gray-600 group-hover:text-gray-400 transition">
                         {showSamples ? '▲' : '▼'}
@@ -541,12 +541,12 @@ export default function ControlPanel({
                                     <div className="text-xs opacity-60 truncate">{desc}</div>
                                 </div>
                                 {isPlacingSample && (
-                                    <span className="ml-auto shrink-0 animate-pulse text-xs">배치 중...</span>
+                                    <span className="ml-auto shrink-0 animate-pulse text-xs">Placing...</span>
                                 )}
                             </button>
                         ))}
                         <p className="mt-1 text-xs text-gray-600 leading-relaxed">
-                            클릭하면 원점(0,0,0) 기준으로 배치됩니다
+                            Click to place at origin (0,0,0)
                         </p>
                     </div>
                 )}
