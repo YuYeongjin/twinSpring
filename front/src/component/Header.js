@@ -24,7 +24,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
     return () => clearInterval(id);
   }, []);
 
-  // 메뉴 외부 클릭 시 닫기
+  // Close menu on outside click
   useEffect(() => {
     if (!menuOpen) return;
     const handleClick = (e) => {
@@ -58,7 +58,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
       <div className="mx-auto w-full px-4 py-3 flex items-center justify-between gap-3">
 
-        {/* 로고 */}
+        {/* Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
           <div className="h-7 w-7 rounded-full bg-gradient-to-br from-accent-blue to-accent-green shadow-glow" />
           <h1 className="text-base sm:text-xl font-semibold tracking-wide whitespace-nowrap">
@@ -66,7 +66,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
           </h1>
         </div>
 
-        {/* 데스크탑 네비게이션 (md 이상) */}
+        {/* Desktop navigation (md+) */}
         {setViceComponent && (
           <nav className="hidden md:flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
             {NAV_ITEMS.map(({ id, label, icon }) => {
@@ -96,12 +96,12 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
         )}
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* 시계 — 데스크탑만 */}
+          {/* Clock — desktop only */}
           <div className="hidden sm:block text-xs sm:text-sm text-gray-400 whitespace-nowrap">
             KST {time}
           </div>
 
-          {/* 햄버거 버튼 — 모바일만 */}
+          {/* Hamburger button — mobile only */}
           {setViceComponent && (
             <button
               onClick={() => setMenuOpen(v => !v)}
@@ -118,7 +118,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
         </div>
       </div>
 
-      {/* 모바일 드롭다운 메뉴 */}
+      {/* Mobile dropdown menu */}
       {menuOpen && setViceComponent && (
         <nav className="md:hidden border-t border-space-700 bg-[#0a1525]/97 backdrop-blur-lg">
           {NAV_ITEMS.map(({ id, label, icon }) => {

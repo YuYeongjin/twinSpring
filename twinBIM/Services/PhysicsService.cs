@@ -143,16 +143,16 @@ namespace BimProcessorApi.Services
                 // 여유가 0.30 → 0.05 범위: 진동 0 → 0.025 rad
                 wobbleAmp   = (0.30 - margin) / 0.25 * 0.025;
                 wobbleFreq  = 2.5 + (0.30 - margin) * 3.0;
-                alerts.Add($"안정 여유 {margin * 100:F0}% — 장비 이동/자세를 확인하세요");
+                alerts.Add($"Relaxation {margin * 100:F0}% — Check equipment movement/posture");
             }
             else
             {
                 dangerLevel = "DANGER";
                 wobbleAmp   = 0.025 + Math.Abs(Math.Min(0, margin)) * 0.08;
                 wobbleFreq  = 5.0;
-                alerts.Add("⚠ 전도 위험! 즉시 작업을 중단하고 장비를 안전한 위치로 이동하세요");
-                if (Math.Abs(zmpX) > tHX) alerts.Add($"좌우 불안정 ({(zmpX > 0 ? "우측" : "좌측")} 전도 위험)");
-                if (Math.Abs(zmpZ) > tHZ) alerts.Add($"전후 불안정 ({(zmpZ > 0 ? "전방" : "후방")} 전도 위험)");
+                alerts.Add("⚠ Dangers of falling! Stop working immediately and move the equipment to a safe position");
+                if (Math.Abs(zmpX) > tHX) alerts.Add($"Left and right instability ({(zmpX > 0 ? "right" : "left")} risk of falling)");
+                if (Math.Abs(zmpZ) > tHZ) alerts.Add($"Front-back instability ({(zmpZ > 0 ? "Front" : "Rear")} risk of falling)");
             }
 
             // 전도 방향 벡터 (정규화)

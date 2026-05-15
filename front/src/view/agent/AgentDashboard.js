@@ -11,7 +11,7 @@ import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
 const API_CHAT = '/api/chat';
 
 // ────────────────────────────────────────────────────
-// 에이전트 능력 목록
+// Agent capabilities list
 // ────────────────────────────────────────────────────
 const CAPABILITIES = [
   { icon: '🌡', title: 'Sensor Data Query', desc: 'Real-time temperature/humidity status and history analysis' },
@@ -37,10 +37,10 @@ const METRIC_OPTIONS = [
 const COUNT_OPTIONS = [10, 20, 50, 100];
 
 // ────────────────────────────────────────────────────
-// 메인 컴포넌트
+// Main component
 // ────────────────────────────────────────────────────
 export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject, agentAvailable }) {
-  // ── 채팅 상태 ──
+  // ── Chat state ──
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -53,38 +53,38 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   const [sessionId] = useState(() => `agent-${Date.now()}`);
   const bottomRef = useRef(null);
 
-  // ── 음성 상태 ──
+  // ── Voice state ──
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const recognitionRef = useRef(null);
 
-  // ── 이미지 상태 ──
+  // ── Image state ──
   const [imagePreview, setImagePreview] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);
   const imageInputRef = useRef(null);
 
-  // ── 센서 데이터 상태 ──
+  // ── Sensor data state ──
   const [latestSensor, setLatestSensor] = useState(null);
   const [sensorLogs, setSensorLogs] = useState([]);
   const [rawLogs, setRawLogs] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
 
-  // ── 데이터 조회 컨트롤 ──
+  // ── Data query controls ──
   const [selectedMetric, setSelectedMetric] = useState('both');
   const [selectedCount, setSelectedCount] = useState(20);
 
-  // ── BIM 데이터 상태 ──
+  // ── BIM data state ──
   const [bimProjects, setBimProjects]   = useState([]);
   const [bimStats, setBimStats]         = useState([]);
   const [bimTotal, setBimTotal]         = useState(0);
   const [bimTargetProject, setBimTargetProject] = useState(null);
   const [bimLoading, setBimLoading]     = useState(false);
 
-  // ── 우측 패널 탭 ──
+  // ── Right panel tab ──
   const [activeTab, setActiveTab] = useState('data');
 
-  // ── STT 초기화 ──
+  // ── STT initialization ──
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
@@ -105,7 +105,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ── 센서 데이터 fetch ──
+  // ── Sensor data fetch ──
   const fetchSensorData = useCallback(async (count = selectedCount) => {
     setDataLoading(true);
     try {
@@ -132,7 +132,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     }
   }, [selectedCount]);
 
-  // 마운트 시 초기 데이터 로드
+  // Initial data load on mount
   useEffect(() => {
     fetchSensorData(20);
     AxiosCustom.get('/api/bim/db-projects')
@@ -140,7 +140,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
       .catch(() => {});
   }, [fetchSensorData]);
 
-  // ── BIM 통계 조회 ──
+  // ── BIM statistics query ──
   const fetchBimStats = useCallback(async (projectId) => {
     if (!projectId) return;
     setBimLoading(true);
@@ -171,7 +171,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     else { recognitionRef.current.start(); setIsListening(true); }
   };
 
-  // ── 이미지 ──
+  // ── Image ──
   const handleImageSelect = (e) => {
     const file = e.target.files[0]; if (!file) return;
     const reader = new FileReader();
@@ -181,7 +181,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   };
   const clearImage = () => { setImagePreview(null); setImageBase64(null); };
 
-  // ── sensorData 구조화 응답으로 차트 업데이트 ──
+  // ── Update chart from sensorData structured response ──
   const applySensorData = useCallback((sd) => {
     if (!sd) return;
     if (Array.isArray(sd.sensor) && sd.sensor.length > 0) {
@@ -197,7 +197,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     setLastFetched(new Date().toLocaleTimeString('en-US'));
   }, []);
 
-  // ── 메시지 전송 ──
+  // ── Send message ──
   const sendMessage = async () => {
     const text = input.trim();
     if ((!text && !imageBase64) || loading) return;
@@ -311,7 +311,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   };
 
   // ─────────────────────────────────────────────────
-  // 렌더
+  // Render
   const [mobilePanel, setMobilePanel] = useState('chat');
 
   // ─────────────────────────────────────────────────
@@ -319,18 +319,15 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <span className="text-5xl opacity-30">🤖</span>
-        <p className="text-gray-400 font-semibold">Agent server offline</p>
-        <p className="text-gray-600 text-sm">Start the agent server and reload the page.</p>
-        <code className="text-xs text-gray-500 bg-[#0d1b2a] border border-[#253347] px-3 py-1.5 rounded-lg">
-          cd agent &amp;&amp; python main.py
-        </code>
+        <p className="text-gray-400 font-semibold">Local PC LLM Not Available</p>
+        <p className="text-gray-600 text-sm">Local PC LLM is not currently in use. Please use it later.</p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col lg:h-[calc(100vh-120px)]">
-      {/* 상단 정보 바 */}
+      {/* Top info bar */}
       <div className="flex items-center gap-3 mb-3 px-1">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-accent-green animate-pulse" />
@@ -344,7 +341,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
         <span className="text-xs text-gray-500 ml-auto hidden sm:inline">Voice · Image · Data Query · BIM Creation</span>
       </div>
 
-      {/* 모바일 전용 패널 탭 전환 */}
+      {/* Mobile panel tab switch */}
       <div className="lg:hidden flex gap-1 mb-3 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
         {[{ id: 'chat', label: '💬 Chat' }, { id: 'tools', label: '🛠 Tools' }].map(({ id, label }) => (
           <button
@@ -362,12 +359,12 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
         ))}
       </div>
 
-      {/* 메인 레이아웃 */}
+      {/* Main layout */}
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
 
-        {/* ════ 좌측: 채팅 패널 ════ */}
+        {/* ════ Left: Chat panel ════ */}
         <div className={`flex-col flex-1 min-w-0 bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden ${mobilePanel === 'chat' ? 'flex' : 'hidden lg:flex'}`}>
-          {/* 채팅 헤더 */}
+          {/* Chat header */}
           <div className="flex items-center justify-between px-4 py-3 bg-[#162032] border-b border-[#253347]">
             <span className="text-sm font-semibold text-gray-200">Chat</span>
             <div className="flex items-center gap-3">
@@ -387,7 +384,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             </div>
           </div>
 
-          {/* 메시지 영역 */}
+          {/* Message area */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-[50vh] lg:min-h-0">
             {messages.map((msg, i) => (
               <AgentMessageBubble key={i} msg={msg} />
@@ -396,7 +393,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             <div ref={bottomRef} />
           </div>
 
-          {/* 이미지 미리보기 */}
+          {/* Image preview */}
           {imagePreview && (
             <div className="px-4 pt-3 bg-[#162032] border-t border-[#253347]">
               <div className="relative inline-block">
@@ -409,7 +406,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             </div>
           )}
 
-          {/* 빠른 질문 */}
+          {/* Quick prompts */}
           <div className="px-4 pt-3 bg-[#162032] border-t border-[#253347]">
             <div className="flex flex-wrap gap-1.5">
               {QUICK_PROMPTS.map(q => (
@@ -424,7 +421,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             </div>
           </div>
 
-          {/* 입력창 */}
+          {/* Input area */}
           <div className="px-4 py-3 bg-[#162032]">
             <div className="flex items-center gap-2">
               <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
@@ -459,9 +456,9 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           </div>
         </div>
 
-        {/* ════ 우측: 도구 패널 ════ */}
+        {/* ════ Right: Tools panel ════ */}
         <div className={`flex-col bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden lg:w-80 xl:w-96 lg:shrink-0 ${mobilePanel === 'tools' ? 'flex' : 'hidden lg:flex'}`}>
-          {/* 탭 */}
+          {/* Tabs */}
           <div className="flex border-b border-[#253347]">
             {[
               { id: 'data',   label: '📊 Sensor' },
@@ -483,7 +480,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             ))}
           </div>
 
-          {/* 탭 콘텐츠 */}
+          {/* Tab content */}
           <div className="flex-1 overflow-y-auto min-h-[60vh] lg:min-h-0">
             {activeTab === 'data' && (
               <DataPanel
@@ -533,7 +530,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 }
 
 // ────────────────────────────────────────────────────
-// 데이터 패널 (센서 + 에너지 차트)
+// Data panel (sensor + energy chart)
 // ────────────────────────────────────────────────────
 function DataPanel({
   latestSensor, sensorLogs, loading, lastFetched,
@@ -546,13 +543,13 @@ function DataPanel({
 
   return (
     <div className="p-3 space-y-3">
-      {/* KPI 카드 */}
+      {/* KPI cards */}
       <div className="grid grid-cols-2 gap-2">
         <KpiCard label="Current Temp" value={latestSensor?.temperature} unit="°C" color="#2196f3" />
         <KpiCard label="Current Humidity" value={latestSensor?.humidity}    unit="%"  color="#4caf50" />
       </div>
 
-      {/* 데이터 조회 컨트롤 */}
+      {/* Data query controls */}
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] space-y-3">
         <p className="text-xs font-semibold text-gray-300">Data Query</p>
 
@@ -609,7 +606,7 @@ function DataPanel({
         )}
       </div>
 
-      {/* ── 센서 차트 (온도/습도) ── */}
+      {/* ── Sensor chart (temp/humidity) ── */}
       {sensorLogs && sensorLogs.length > 0 && (
         <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
           <p className="text-xs font-semibold text-gray-400 mb-3">
@@ -645,7 +642,7 @@ function DataPanel({
         </div>
       )}
 
-      {/* 비어있을 때 안내 */}
+      {/* Empty state guidance */}
       {!loading && sensorLogs.length === 0 && (
         <p className="text-xs text-gray-500 text-center py-6">
           Select a query item above and click [Query &amp; Generate Chart].
@@ -670,7 +667,7 @@ function KpiCard({ label, value, unit, color }) {
 }
 
 // ────────────────────────────────────────────────────
-// 능력 패널
+// Capabilities panel
 // ────────────────────────────────────────────────────
 function CapsPanel() {
   return (
@@ -690,7 +687,7 @@ function CapsPanel() {
 }
 
 // ────────────────────────────────────────────────────
-// 내보내기 패널
+// Export panel
 // ────────────────────────────────────────────────────
 function ExportPanel({
   onExportChat, onExportSensor,
@@ -706,7 +703,7 @@ function ExportPanel({
       <ExportItem icon="💬" title="Export Chat" desc={`Current chat ${messageCount} messages → TXT`} label="Download" onClick={onExportChat} disabled={messageCount === 0} />
       <ExportItem icon="🌡" title="Sensor Data CSV" desc={`Queried sensor logs ${sensorCount} records`} label="CSV" onClick={onExportSensor} disabled={sensorCount === 0} />
 
-      {/* BIM 수량산출서 */}
+      {/* BIM quantity report */}
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] space-y-2">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-lg">🏗</span>
@@ -776,7 +773,7 @@ function ExportItem({ icon, title, desc, label, onClick, disabled }) {
 }
 
 // ────────────────────────────────────────────────────
-// BIM 패널
+// BIM panel
 // ────────────────────────────────────────────────────
 function BimPanel({ projects, stats, total, targetProject, loading, onSelectProject }) {
   const TYPE_COLORS = {
@@ -867,7 +864,7 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
 }
 
 // ────────────────────────────────────────────────────
-// 메시지 버블
+// Message bubble
 // ────────────────────────────────────────────────────
 const INTENT_BADGE = {
   rag_db:      { label: 'Data Query',     color: 'text-green-400 bg-green-900/40 border-green-800/50'     },
@@ -896,12 +893,12 @@ function AgentMessageBubble({ msg }) {
           {msg.content}
         </div>
 
-        {/* 센서 데이터 인라인 차트 */}
+        {/* Sensor data inline chart */}
         {!isUser && msg.intent === 'rag_db' && msg.sensorData && (
           <SensorInlineChart sensorData={msg.sensorData} />
         )}
 
-        {/* BIM 조회 인라인 요약 */}
+        {/* BIM query inline summary */}
         {!isUser && msg.intent === 'bim_query' && msg.bimData && (
           <BimInlineSummary bimData={msg.bimData} />
         )}
@@ -911,7 +908,7 @@ function AgentMessageBubble({ msg }) {
 }
 
 // ────────────────────────────────────────────────────
-// 센서 인라인 차트 (채팅 버블 내)
+// Sensor inline chart (inside chat bubble)
 // ────────────────────────────────────────────────────
 function SensorInlineChart({ sensorData }) {
   const { sensor = [], latest, alerts = [] } = sensorData;
@@ -924,7 +921,7 @@ function SensorInlineChart({ sensorData }) {
 
   return (
     <div className="w-full space-y-2 mt-1">
-      {/* 최신값 KPI */}
+      {/* Latest KPI */}
       {latest && (
         <div className="grid grid-cols-2 gap-1.5">
           {latest.temperature != null && (
@@ -942,7 +939,7 @@ function SensorInlineChart({ sensorData }) {
         </div>
       )}
 
-      {/* 센서 Area 차트 */}
+      {/* Sensor area chart */}
       {sensorRows.length > 1 && (
         <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
           <p className="text-xs font-semibold text-gray-400 mb-2">🌡 Temp/Humidity History ({sensorRows.length} records)</p>
@@ -976,7 +973,7 @@ function SensorInlineChart({ sensorData }) {
         </div>
       )}
 
-      {/* 알림 목록 */}
+      {/* Alert list */}
       {alerts.length > 0 && (
         <div className="bg-[#162032] rounded-xl border border-[#253347] overflow-hidden">
           <div className="px-3 py-2 border-b border-[#253347]">
@@ -997,7 +994,7 @@ function SensorInlineChart({ sensorData }) {
 }
 
 // ────────────────────────────────────────────────────
-// BIM 인라인 요약
+// BIM inline summary
 // ────────────────────────────────────────────────────
 function BimInlineSummary({ bimData }) {
   const { projects, stats, total } = bimData;
@@ -1068,7 +1065,7 @@ function AgentTypingIndicator() {
 }
 
 // ────────────────────────────────────────────────────
-// 유틸
+// Utils
 // ────────────────────────────────────────────────────
 function today() { return new Date().toISOString().slice(0, 10); }
 
