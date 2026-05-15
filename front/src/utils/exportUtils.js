@@ -3,9 +3,9 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import * as THREE from 'three';
 
-// ── 상수 ─────────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 const TYPE_KOR = {
-  IfcColumn: '기둥', IfcBeam: '보', IfcWall: '벽', IfcSlab: '슬래브', IfcPier: '교각',
+  IfcColumn: 'Column', IfcBeam: 'Beam', IfcWall: 'Wall', IfcSlab: 'Slab', IfcPier: 'Pier',
 };
 
 // BimElement.jsx의 getBaseColor와 동일
@@ -27,7 +27,7 @@ function fmt(v, d = 3) {
   return isNaN(n) ? '0.000' : n.toFixed(d);
 }
 
-// ── 씬 정보 계산 (Y축 보정 포함) ─────────────────────────────────────────────
+// ── Scene info calculation (includes Y-axis correction) ──────────────────────
 function computeSceneInfo(elements) {
   if (!elements.length) return { center: { x: 0, y: 0, z: 0 }, size: 10 };
   let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -51,12 +51,12 @@ function computeSceneInfo(elements) {
   };
 }
 
-// ── Three.js 오프스크린 씬 구성 ───────────────────────────────────────────────
+// ── Three.js offscreen scene setup ───────────────────────────────────────────
 function buildScene(elements) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x111827);
 
-  // 조명
+  // Lighting
   scene.add(new THREE.AmbientLight(0xffffff, 1.0));
   const sun = new THREE.DirectionalLight(0xffffff, 0.9);
   sun.position.set(8, 15, 8);
@@ -95,7 +95,7 @@ function buildScene(elements) {
   return scene;
 }
 
-// ── 다각도 스크린샷 캡처 ──────────────────────────────────────────────────────
+// ── Multi-angle screenshot capture ───────────────────────────────────────────
 async function captureViews(elements) {
   const { center, size } = computeSceneInfo(elements);
   const cx = center.x, cy = center.y, cz = center.z;
@@ -106,7 +106,7 @@ async function captureViews(elements) {
   renderer.setSize(W, H);
   renderer.setPixelRatio(1);
 
-  // 캔버스를 DOM에 잠시 붙여야 일부 브라우저에서 WebGL 컨텍스트가 생성됨
+  // Must attach canvas to DOM briefly for WebGL context creation in some browsers
   renderer.domElement.style.cssText = 'position:fixed;left:-9999px;top:0;pointer-events:none;';
   document.body.appendChild(renderer.domElement);
 
@@ -115,16 +115,16 @@ async function captureViews(elements) {
   const ASPECT = W / H;
   const half   = size * 0.62;
 
-  // 평면도용 직교 카메라
+  // Orthographic camera for plan view
   const orthoCamera = new THREE.OrthographicCamera(
     -half * ASPECT, half * ASPECT, half, -half, 0.01, 100000
   );
-  // 원근 카메라 (정면/측면/투시)
+  // Perspective camera (front / side / perspective)
   const persCamera = new THREE.PerspectiveCamera(45, ASPECT, 0.01, 100000);
 
   const viewDefs = [
     {
-      label: '평면도 (TOP VIEW)',
+      label: 'Plan View (TOP)',
       render() {
         orthoCamera.position.set(cx, cy + d, cz);
         orthoCamera.up.set(0, 0, -1);
@@ -133,7 +133,7 @@ async function captureViews(elements) {
       },
     },
     {
-      label: '정면도 (FRONT)',
+      label: 'Front View (FRONT)',
       render() {
         persCamera.position.set(cx, cy + size * 0.15, cz + d);
         persCamera.up.set(0, 1, 0);
@@ -143,7 +143,7 @@ async function captureViews(elements) {
       },
     },
     {
-      label: '종단면도 (LONGITUDINAL)',
+      label: 'Longitudinal Section (LONGITUDINAL)',
       render() {
         persCamera.position.set(cx + d, cy + size * 0.15, cz);
         persCamera.up.set(0, 1, 0);
@@ -153,7 +153,7 @@ async function captureViews(elements) {
       },
     },
     {
-      label: '횡단면도 (CROSS SECTION)',
+      label: 'Cross Section (CROSS)',
       render() {
         persCamera.position.set(cx - d * 0.5, cy + size * 0.5, cz + d * 0.5);
         persCamera.up.set(0, 1, 0);
@@ -163,7 +163,7 @@ async function captureViews(elements) {
       },
     },
     {
-      label: '투시도 (PERSPECTIVE)',
+      label: 'Perspective View (PERSPECTIVE)',
       render() {
         persCamera.position.set(cx + d * 0.65, cy + d * 0.55, cz + d * 0.65);
         persCamera.up.set(0, 1, 0);
@@ -255,14 +255,14 @@ function buildQuantityHtml(elements, projectName) {
       <div style="display:flex;justify-content:space-between;align-items:flex-end;
                   border-bottom:2px solid #2a5080;padding-bottom:14px;margin-bottom:22px">
         <div>
-          <div style="font-size:20px;font-weight:700;color:#60a5fa;letter-spacing:1px">BIM 수량산출 보고서</div>
+          <div style="font-size:20px;font-weight:700;color:#60a5fa;letter-spacing:1px">BIM Quantity Report</div>
           <div style="font-size:12px;color:#94a3b8;margin-top:5px">
-            프로젝트: <b style="color:#e2e8f0">${projectName}</b>
+            Project: <b style="color:#e2e8f0">${projectName}</b>
           </div>
         </div>
         <div style="text-align:right;font-size:11px;color:#64748b">
-          <div>출력일: ${new Date().toLocaleDateString('ko-KR')}</div>
-          <div>총 부재: <b style="color:#60a5fa">${elements.length}개</b></div>
+          <div>Date: ${new Date().toLocaleDateString('en-US')}</div>
+          <div>Total Members: <b style="color:#60a5fa">${elements.length}</b></div>
         </div>
       </div>
 
@@ -277,7 +277,7 @@ function buildQuantityHtml(elements, projectName) {
           </div>`).join('')}
         <div style="flex:1;background:#162032;border:1px solid #2a5080;border-radius:10px;
                     padding:10px 14px;border-left:3px solid #34d399">
-          <div style="font-size:10px;color:#64748b">총 부피</div>
+          <div style="font-size:10px;color:#64748b">Total Volume</div>
           <div style="font-size:22px;font-weight:700;color:#34d399">${totalVol.toFixed(2)}</div>
           <div style="font-size:10px;color:#94a3b8">m³</div>
         </div>
@@ -285,23 +285,23 @@ function buildQuantityHtml(elements, projectName) {
 
       <!-- 타입별 요약 표 -->
       <div style="margin-bottom:22px">
-        <div style="${SECTION_TITLE}">▌ 구성요소별 수량 집계</div>
+        <div style="${SECTION_TITLE}">▌ Quantity Summary by Type</div>
         <table style="${TABLE}">
           <thead>
             <tr style="${TH_ROW}">
-              <th style="${TH}">구성요소</th>
-              <th style="${TH}">타입 코드</th>
-              <th style="${TH}">수량 (EA)</th>
-              <th style="${TH}">재질</th>
-              <th style="${TH}">대표 규격 (폭×높이×깊이)</th>
-              <th style="${TH}">총 부피 (m³)</th>
-              <th style="${TH}">비율</th>
+              <th style="${TH}">Component</th>
+              <th style="${TH}">Type Code</th>
+              <th style="${TH}">Qty (EA)</th>
+              <th style="${TH}">Material</th>
+              <th style="${TH}">Typical Size (W×H×D)</th>
+              <th style="${TH}">Total Vol (m³)</th>
+              <th style="${TH}">Ratio</th>
             </tr>
           </thead>
           <tbody>${summaryRows}</tbody>
           <tfoot>
             <tr style="background:#1e3a5f;font-weight:700">
-              <td colspan="2" style="${TD};color:#93c5fd">합계</td>
+              <td colspan="2" style="${TD};color:#93c5fd">Total</td>
               <td style="${TD};text-align:center;color:#60a5fa">${elements.length}</td>
               <td style="${TD}">-</td>
               <td style="${TD}">-</td>
@@ -314,20 +314,20 @@ function buildQuantityHtml(elements, projectName) {
 
       <!-- 부재 상세 목록 -->
       <div>
-        <div style="${SECTION_TITLE}">▌ 부재 상세 목록${elements.length > 40 ? ` (상위 40 / 전체 ${elements.length}개)` : ''}</div>
+        <div style="${SECTION_TITLE}">▌ Member Detail List${elements.length > 40 ? ` (Top 40 / Total ${elements.length})` : ''}</div>
         <table style="${TABLE}">
           <thead>
             <tr style="${TH_ROW}">
               <th style="${TH}">No</th>
-              <th style="${TH}">구성요소</th>
-              <th style="${TH}">부재 ID</th>
-              <th style="${TH}">재질</th>
-              <th style="${TH}">규격 폭×높이×깊이(m)</th>
-              <th style="${TH}">단면적(m²)</th>
-              <th style="${TH}">부피(m³)</th>
-              <th style="${TH}">X(m)</th>
-              <th style="${TH}">Y(m)</th>
-              <th style="${TH}">Z(m)</th>
+              <th style="${TH}">Type</th>
+              <th style="${TH}">Member ID</th>
+              <th style="${TH}">Material</th>
+              <th style="${TH}">Spec W×H×D (m)</th>
+              <th style="${TH}">Section (m²)</th>
+              <th style="${TH}">Volume (m³)</th>
+              <th style="${TH}">X (m)</th>
+              <th style="${TH}">Y (m)</th>
+              <th style="${TH}">Z (m)</th>
             </tr>
           </thead>
           <tbody>${detailRows}</tbody>
@@ -335,14 +335,14 @@ function buildQuantityHtml(elements, projectName) {
         ${elements.length > 40 ? `
           <div style="font-size:10px;color:#64748b;text-align:center;margin-top:8px;
                       border:1px dashed #253347;border-radius:6px;padding:6px">
-            전체 부재 상세 목록은 수량산출서 Excel 파일 참조
+            Full member details available in the Quantity Sheet Excel file
           </div>` : ''}
       </div>
 
       <div style="margin-top:22px;font-size:9px;color:#4a5568;
                   border-top:1px solid #253347;padding-top:8px;display:flex;justify-content:space-between">
-        <span>Digital Twin BIM System — 자동 생성 수량산출 보고서</span>
-        <span>${new Date().toLocaleString('ko-KR')}</span>
+        <span>Digital Twin BIM System — Auto-generated Quantity Report</span>
+        <span>${new Date().toLocaleString('en-US')}</span>
       </div>
     </div>`;
 }
@@ -358,14 +358,14 @@ function buildDrawingsHtml(views, projectName, elementCount) {
       <div style="display:flex;justify-content:space-between;align-items:center;
                   border-bottom:2px solid #2a5080;padding-bottom:12px;margin-bottom:18px">
         <div>
-          <div style="font-size:16px;font-weight:700;color:#60a5fa;letter-spacing:1px">BIM 도면</div>
+          <div style="font-size:16px;font-weight:700;color:#60a5fa;letter-spacing:1px">BIM Drawing</div>
           <div style="font-size:11px;color:#94a3b8;margin-top:3px">
-            프로젝트: <b style="color:#e2e8f0">${projectName}</b> &nbsp;|&nbsp; 총 부재: ${elementCount}개
+            Project: <b style="color:#e2e8f0">${projectName}</b> &nbsp;|&nbsp; Total Members: ${elementCount}
           </div>
         </div>
         <div style="text-align:right;font-size:10px;color:#64748b">
-          <div>${new Date().toLocaleDateString('ko-KR')}</div>
-          <div style="color:#475569">평면도 · 정면도 · 종단면도 · 횡단면도 · 투시도</div>
+          <div>${new Date().toLocaleDateString('en-US')}</div>
+          <div style="color:#475569">Plan · Front · Longitudinal · Cross · Perspective</div>
         </div>
       </div>
 
@@ -386,7 +386,7 @@ function buildDrawingsHtml(views, projectName, elementCount) {
       <!-- 범례 -->
       <div style="margin-top:14px;background:#111827;border:1px solid #1e3a5f;
                   border-radius:8px;padding:10px 16px">
-        <div style="font-size:10px;font-weight:600;color:#64748b;margin-bottom:8px">범례 (LEGEND)</div>
+        <div style="font-size:10px;font-weight:600;color:#64748b;margin-bottom:8px">Legend (LEGEND)</div>
         <div style="display:flex;gap:20px;flex-wrap:wrap">
           ${Object.entries(BASE_COLORS).map(([type, color]) => `
             <div style="display:flex;align-items:center;gap:6px">
@@ -398,7 +398,7 @@ function buildDrawingsHtml(views, projectName, elementCount) {
       </div>
 
       <div style="margin-top:12px;font-size:9px;color:#4a5568;text-align:center">
-        Digital Twin BIM System &nbsp;|&nbsp; 자동 생성 도면
+        Digital Twin BIM System &nbsp;|&nbsp; Auto-generated Drawing
       </div>
     </div>`;
 }
@@ -432,12 +432,12 @@ export function exportQuantityToExcel(elements, projectName) {
   const totalVol = Object.values(typeMap).reduce((s, t) => s + t.vol, 0);
 
   const summaryData = [
-    ['프로젝트명', projectName],
-    ['출력일자', new Date().toLocaleDateString('ko-KR')],
-    ['총 부재 수', elements.length],
-    ['총 부피 (m³)', totalVol.toFixed(3)],
+    ['Project Name', projectName],
+    ['Date', new Date().toLocaleDateString('en-US')],
+    ['Total Members', elements.length],
+    ['Total Volume (m³)', totalVol.toFixed(3)],
     [],
-    ['구성요소', '타입코드', '수량 (EA)', '재질', '대표 규격 (폭×높이×깊이 m)', '총 단면적 (m²)', '총 부피 (m³)', '비율 (%)'],
+    ['Component', 'Type Code', 'Qty (EA)', 'Material', 'Typical Size (W×H×D m)', 'Total Section (m²)', 'Total Vol (m³)', 'Ratio (%)'],
     ...Object.entries(typeMap).map(([type, info]) => {
       const freqMap = {};
       info.specs.forEach(s => { freqMap[s] = (freqMap[s] || 0) + 1; });
@@ -459,16 +459,16 @@ export function exportQuantityToExcel(elements, projectName) {
     { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 20 },
     { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 10 },
   ];
-  XLSX.utils.book_append_sheet(wb, ws1, '요약');
+  XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
 
   // ── 부재목록 시트 ──────────────────────────────────────
   const headers = [
-    'No', '부재ID', '구성요소', '구성요소(한글)', '재질',
-    '규격 (폭×높이×깊이)',
-    '폭 X (m)', '높이 Y (m)', '깊이 Z (m)',
-    '단면적 (m²)', '부피 (m³)',
-    'X 위치 (m)', 'Y 위치 (m)', 'Z 위치 (m)',
-    '회전X (°)', '회전Y (°)', '회전Z (°)',
+    'No', 'Member ID', 'Type', 'Type (EN)', 'Material',
+    'Spec (W×H×D)',
+    'Width X (m)', 'Height Y (m)', 'Depth Z (m)',
+    'Section (m²)', 'Volume (m³)',
+    'X Pos (m)', 'Y Pos (m)', 'Z Pos (m)',
+    'Rot X (°)', 'Rot Y (°)', 'Rot Z (°)',
   ];
   const rows = elements.map((el, i) => {
     const sx = Number(el.sizeX) || 0, sy = Number(el.sizeY) || 0, sz = Number(el.sizeZ) || 0;
@@ -493,9 +493,9 @@ export function exportQuantityToExcel(elements, projectName) {
     { wch: 12 }, { wch: 12 }, { wch: 12 },
     { wch: 10 }, { wch: 10 }, { wch: 10 },
   ];
-  XLSX.utils.book_append_sheet(wb, ws2, '부재목록');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Members');
 
-  XLSX.writeFile(wb, `${projectName}_수량산출서_${today()}.xlsx`);
+  XLSX.writeFile(wb, `${projectName}_QuantitySheet_${today()}.xlsx`);
 }
 
 // ── PDF 내보내기 (수량산출서 + 다각도 도면) ──────────────────────────────────
@@ -534,5 +534,5 @@ export async function exportToPDF(elements, projectName) {
   const dH = Math.min((dCanvas.height / dCanvas.width) * LW, LH);
   pdf.addImage(dCanvas.toDataURL('image/png'), 'PNG', 0, 0, LW, dH);
 
-  pdf.save(`${projectName}_BIM도면_${today()}.pdf`);
+  pdf.save(`${projectName}_BIMDrawing_${today()}.pdf`);
 }

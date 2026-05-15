@@ -156,7 +156,10 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     function saveUpdateElement() {
         if (!selectedElement) return;
         pushUndo();
-        const payload = { ...selectedElement.data };
+        const payload = {
+            ...selectedElement.data,
+            projectId: selectedProject?.projectId || selectedElement.data.projectId,
+        };
 
         if (payload.positionData) {
             try {
@@ -256,9 +259,9 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         if (toDelete.length === 0) return;
 
         const label = toDelete.length === 1
-            ? `부재 "${toDelete[0]}"를`
-            : `선택된 ${toDelete.length}개 부재를`;
-        if (!window.confirm(`${label} 삭제하시겠습니까?`)) return;
+            ? `member "${toDelete[0]}"`
+            : `${toDelete.length} selected members`;
+        if (!window.confirm(`Delete ${label}?`)) return;
 
         for (const id of toDelete) {
             try {
@@ -313,7 +316,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         const newLayer = {
             layerId:    'layer-' + Math.random().toString(36).substr(2, 9),
             projectId:  pid,
-            layerName:  `레이어 ${layers.length + 1}`,
+            layerName:  `Layer ${layers.length + 1}`,
             color:      randomLayerColor(),
             visible:    true,
             elementIds: [],

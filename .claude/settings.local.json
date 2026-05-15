@@ -51,7 +51,8 @@
       "Bash(Select-Object Name, FullName)",
       "Bash(Format-Table -AutoSize)",
       "Bash(grep -E \"\\(ERROR|error TS|Failed to compile|src\\\\\\\\view\\\\\\\\simulation\\)\")",
-      "Bash(grep -E \"^\\(ERROR|Failed to compile|src\\\\\\\\\\\\\\\\\\)\")"
+      "Bash(grep -E \"^\\(ERROR|Failed to compile|src\\\\\\\\\\\\\\\\\\)\")",
+      "Bash(dir C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\front\\\\src\\\\view\\\\agent *)"
     ]
   }
 }

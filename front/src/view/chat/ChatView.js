@@ -4,9 +4,9 @@ import AxiosCustom from '../../axios/AxiosCustom';
 const API_BASE = `/api/chat`;
 
 /**
- * 플로팅 AI 채팅 패널
- * - 모든 뷰에서 우측 하단에 고정 표시 (Agent 화면 제외)
- * - 음성 입력(STT) / 음성 출력(TTS) / 이미지 업로드 지원
+ * Floating AI chat panel
+ * - Fixed at bottom-right across all views (except Agent view)
+ * - Supports voice input (STT) / voice output (TTS) / image upload
  */
 export default function ChatView({ selectedProject, onBimUpdate, selectedSimulationProject }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -21,19 +21,19 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(() => `session-${Date.now()}`);
 
-  // 음성 관련
+  // Voice
   const [isListening, setIsListening] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const recognitionRef = useRef(null);
 
-  // 이미지 관련
+  // Image
   const [imagePreview, setImagePreview] = useState(null);
   const [imageBase64, setImageBase64] = useState(null);
   const imageInputRef = useRef(null);
 
   const bottomRef = useRef(null);
 
-  // STT 초기화
+  // STT initialization
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
@@ -158,7 +158,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
 
   return (
     <>
-      {/* 플로팅 버튼 — 패널 열리면 모바일에서 숨김 */}
+      {/* Floating button — hidden on mobile when panel is open */}
       <button
         onClick={() => setIsOpen(o => !o)}
         className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-accent-blue shadow-glow items-center justify-center text-white text-2xl hover:scale-110 transition-transform ${isOpen ? 'hidden sm:flex' : 'flex'}`}
@@ -168,18 +168,18 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
         🤖
       </button>
 
-      {/* 채팅 패널
-          모바일: 전체 너비 바텀시트 (bottom-0, inset-x-0, h-[72vh], rounded-t-2xl)
-          데스크탑: 기존 플로팅 패널 (bottom-24 right-6, w-96, h-[600px], rounded-2xl) */}
+      {/* Chat panel
+          Mobile: full-width bottom sheet (bottom-0, inset-x-0, h-[72vh], rounded-t-2xl)
+          Desktop: floating panel (bottom-24 right-6, w-96, h-[600px], rounded-2xl) */}
       {isOpen && (
         <div className="fixed z-50 flex flex-col shadow-2xl border border-space-700 bg-space-900 overflow-hidden bottom-0 inset-x-0 h-[72vh] rounded-t-2xl sm:bottom-24 sm:left-auto sm:right-6 sm:w-96 sm:h-[600px] sm:rounded-2xl">
 
-          {/* 모바일 드래그 힌트 바 */}
+          {/* Mobile drag hint bar */}
           <div className="sm:hidden flex justify-center pt-2 pb-1 bg-space-800">
             <div className="w-10 h-1 rounded-full bg-gray-600" />
           </div>
 
-          {/* 헤더 */}
+          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-space-800 border-b border-space-700">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-accent-green animate-pulse" />
@@ -191,7 +191,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
               )}
             </div>
             <div className="flex items-center gap-2">
-              {/* TTS 토글 */}
+              {/* TTS toggle */}
               <button
                 onClick={() => setTtsEnabled(v => !v)}
                 title={ttsEnabled ? 'Voice output on' : 'Voice output off'}
@@ -206,7 +206,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
               >
                 Reset
               </button>
-              {/* 모바일 전용 닫기 버튼 */}
+              {/* Mobile-only close button */}
               <button
                 onClick={() => setIsOpen(false)}
                 className="sm:hidden text-gray-400 hover:text-gray-200 transition-colors text-base px-1 py-0.5"
@@ -217,7 +217,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
             </div>
           </div>
 
-          {/* 메시지 목록 */}
+          {/* Message list */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
             {messages.map((msg, i) => (
               <MessageBubble key={i} msg={msg} />
@@ -226,7 +226,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
             <div ref={bottomRef} />
           </div>
 
-          {/* 이미지 미리보기 */}
+          {/* Image preview */}
           {imagePreview && (
             <div className="px-3 pt-2 bg-space-800 border-t border-space-700">
               <div className="relative inline-block">
@@ -241,10 +241,10 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
             </div>
           )}
 
-          {/* 입력창 */}
+          {/* Input area */}
           <div className="px-3 py-3 bg-space-800 border-t border-space-700"
             style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}>
-            {/* 빠른 질문 버튼 */}
+            {/* Quick prompt buttons */}
             <div className="flex gap-1 mb-2 flex-wrap">
               {QUICK_PROMPTS.map(q => (
                 <button
@@ -257,7 +257,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
               ))}
             </div>
             <div className="flex gap-2 items-center">
-              {/* 이미지 업로드 */}
+              {/* Image upload */}
               <input
                 ref={imageInputRef}
                 type="file"
@@ -273,7 +273,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
                 📎
               </button>
 
-              {/* 음성 입력 */}
+              {/* Voice input */}
               <button
                 onClick={toggleListening}
                 title={isListening ? 'Stop recording' : 'Voice input'}
@@ -305,7 +305,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
   );
 }
 
-// ── 서브 컴포넌트 ───────────────────────────────────────────────
+// ── Subcomponents ───────────────────────────────────────────────
 
 const INTENT_BADGE = {
   rag_db:      { label: 'Data Query',     color: 'text-accent-green bg-green-900/40' },

@@ -28,15 +28,15 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [projectList, setProjectList] = useState([]);
 
-  // ── 시뮬레이션 프로젝트 ────────────────────────────────────────
+  // ── Simulation projects ───────────────────────────────────────
   const [simulationProjectList, setSimulationProjectList] = useState([]);
   const [selectedSimulationProject, setSelectedSimulationProject] = useState(null);
 
-  // ── Agent 헬스체크 ────────────────────────────────────────────
+  // ── Agent health check ────────────────────────────────────────
   const [agentAvailable, setAgentAvailable] = useState(null);
 
   // ---------------------------------------------------------------
-  // BIM 프로젝트 목록 새로 고침
+  // Refresh BIM project list
   // ---------------------------------------------------------------
   const refreshProjectList = useCallback(() => {
     return AxiosCustom.get('/api/bim/projects')
@@ -44,12 +44,12 @@ function App() {
         setProjectList(response.data);
       })
       .catch(error => {
-        console.error('프로젝트 목록 로딩 실패:', error);
+        console.error('Failed to load project list:', error);
       });
   }, []);
 
   // ---------------------------------------------------------------
-  // BIM 프로젝트 이름 변경
+  // Rename BIM project
   // ---------------------------------------------------------------
   const renameProject = useCallback((projectId, newName, callback) => {
     AxiosCustom.put(`/api/bim/project/${projectId}/name`, { projectName: newName })
@@ -60,13 +60,13 @@ function App() {
         if (callback) callback(true);
       })
       .catch(error => {
-        console.error('프로젝트 이름 변경 실패:', error);
+        console.error('Failed to rename project:', error);
         if (callback) callback(false);
       });
   }, []);
 
   // ---------------------------------------------------------------
-  // BIM 신규 프로젝트 생성
+  // Create new BIM project
   // ---------------------------------------------------------------
   const addNewProject = useCallback((type, name, callback) => {
     AxiosCustom.post('/api/bim/project', {
@@ -77,22 +77,23 @@ function App() {
       .then(() => refreshProjectList())
       .then(() => { if (callback) callback(); })
       .catch(error => {
-        console.error('프로젝트 생성 실패:', error);
+        console.error('Failed to create project:', error);
         if (callback) callback();
       });
   }, [refreshProjectList]);
 
   // ---------------------------------------------------------------
-  // BIM 프로젝트 선택 → BIM 모델 데이터 로딩
+  // Select BIM project → load BIM model data
   // ---------------------------------------------------------------
   function handleProjectSelect(projectData) {
     setSelectedProject(projectData);
+    setModelData([]);
     AxiosCustom.get(`/api/bim/project/${projectData.projectId}`)
       .then(response => {
         setModelData(response.data);
       })
       .catch(error => {
-        console.error('BIM 데이터 로딩 실패:', error);
+        console.error('Failed to load BIM data:', error);
       });
   }
 
@@ -109,33 +110,33 @@ function App() {
     if (!selectedProject) return;
     AxiosCustom.get(`/api/bim/project/${selectedProject.projectId}`)
       .then(response => setModelData(response.data))
-      .catch(error => console.error('모델 갱신 실패:', error));
+      .catch(error => console.error('Failed to refresh model:', error));
   }, [selectedProject]);
 
   // ---------------------------------------------------------------
-  // 시뮬레이션 프로젝트 목록 새로 고침
+  // Refresh simulation project list
   // ---------------------------------------------------------------
   const refreshSimulationProjectList = useCallback(() => {
     return AxiosCustom.get('/api/simulation/projects')
       .then(response => setSimulationProjectList(response.data))
-      .catch(error => console.error('시뮬레이션 프로젝트 목록 로딩 실패:', error));
+      .catch(error => console.error('Failed to load simulation project list:', error));
   }, []);
 
   // ---------------------------------------------------------------
-  // 시뮬레이션 신규 프로젝트 생성
+  // Create new simulation project
   // ---------------------------------------------------------------
   const addSimulationProject = useCallback((name, callback) => {
     AxiosCustom.post('/api/simulation/project', { projectName: name })
       .then(() => refreshSimulationProjectList())
       .then(() => { if (callback) callback(); })
       .catch(error => {
-        console.error('시뮬레이션 프로젝트 생성 실패:', error);
+        console.error('Failed to create simulation project:', error);
         if (callback) callback();
       });
   }, [refreshSimulationProjectList]);
 
   // ---------------------------------------------------------------
-  // 시뮬레이션 프로젝트 이름 변경
+  // Rename simulation project
   // ---------------------------------------------------------------
   const renameSimulationProject = useCallback((projectId, newName, callback) => {
     AxiosCustom.put(`/api/simulation/project/${projectId}/name`, { projectName: newName })
@@ -149,12 +150,12 @@ function App() {
         if (callback) callback(true);
       })
       .catch(error => {
-        console.error('시뮬레이션 프로젝트 이름 변경 실패:', error);
+        console.error('Failed to rename simulation project:', error);
         if (callback) callback(false);
       });
   }, [selectedSimulationProject]);
 
-  // 초기 로딩
+  // Initial load
   useEffect(() => {
     Promise.all([
       refreshProjectList(),
@@ -180,7 +181,7 @@ function App() {
   }
 
   // ---------------------------------------------------------------
-  // 뷰 렌더링
+  // View rendering
   // ---------------------------------------------------------------
   const renderView = () => {
     if (viewComponent === 'simulation-projects') {
