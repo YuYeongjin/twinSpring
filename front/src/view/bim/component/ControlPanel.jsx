@@ -293,9 +293,9 @@ export default function ControlPanel({
     // ── 샘플 구조물 정의 ─────────────────────────────────────────
     const sampleStructures = [
         {
-            label: '단층 건물 골조',
+            label: 'Single-Story Frame',
             icon: '🏢',
-            desc: '기둥 4개 + 보 4개 + 슬래브',
+            desc: '4 Columns + 4 Beams + Slab',
             color: 'bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/50',
             elements: [
                 // 기둥 4개 (모서리)
@@ -313,9 +313,9 @@ export default function ControlPanel({
             ],
         },
         {
-            label: '2경간 교량',
+            label: '2-Span Bridge',
             icon: '🌉',
-            desc: '교각 3개 + 상부 슬래브',
+            desc: '3 Piers + Deck Slab',
             color: 'bg-orange-900/40 text-orange-200 hover:bg-orange-800/50',
             elements: [
                 { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 8.0, sizeZ: 2.5, positionX: -20, positionY: 0, positionZ: 0 },
@@ -325,9 +325,9 @@ export default function ControlPanel({
             ],
         },
         {
-            label: '라멘 교각',
+            label: 'Rahmen Pier',
             icon: '⛩',
-            desc: '교각 기둥 2개 + 캡 빔',
+            desc: '2 Pier Columns + Cap Beam',
             color: 'bg-violet-900/40 text-violet-200 hover:bg-violet-800/50',
             elements: [
                 { elementType: 'IfcPier', material: 'Concrete C40', sizeX: 2.0, sizeY: 8.0, sizeZ: 2.0, positionX: -6, positionY: 0, positionZ: 0 },
@@ -336,9 +336,9 @@ export default function ControlPanel({
             ],
         },
         {
-            label: '3경간 교량',
+            label: '3-Span Bridge',
             icon: '🏗',
-            desc: '교각 4개 + 긴 슬래브',
+            desc: '4 Piers + Long Deck Slab',
             color: 'bg-sky-900/40 text-sky-200 hover:bg-sky-800/50',
             elements: [
                 { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX: -30, positionY: 0, positionZ: 0 },
@@ -350,44 +350,44 @@ export default function ControlPanel({
         },
         // ── 랜드마크 구조물 ──────────────────────────────────────────
         {
-            label: '인천대교 사장교',
+            label: 'Incheon Bridge (Cable-Stayed)',
             icon: '🌉',
-            desc: '사장 케이블 · A형 주탑 2기 · 접속경간 포함 · 33개 부재',
+            desc: 'Stay Cables · 2 A-Frame Pylons · Approach Spans · 33 Members',
             color: 'bg-blue-900/40 text-blue-200 hover:bg-blue-800/50',
             elements: _INCHEON_BRIDGE,
         },
         {
-            label: '피사의 사탑',
+            label: 'Tower of Pisa',
             icon: '🗼',
-            desc: '8층 팔각 원형 타워 · 기울기 약 3.9° · 73개 부재',
+            desc: '8-Story Octagonal Tower · ~3.9° Tilt · 73 Members',
             color: 'bg-amber-900/40 text-amber-200 hover:bg-amber-800/50',
             elements: _TOWER_OF_PISA,
         },
         {
-            label: '에펠탑',
+            label: 'Eiffel Tower',
             icon: '🗽',
-            desc: '3층 철골 타워 · 첨탑 포함 · 20개 부재',
+            desc: '3-Level Steel Tower · Spire Included · 20 Members',
             color: 'bg-gray-700/50 text-gray-200 hover:bg-gray-600/60',
             elements: _EIFFEL_TOWER,
         },
         {
-            label: '이집트 피라미드',
+            label: 'Egyptian Pyramid',
             icon: '🔺',
-            desc: '9단 계단식 피라미드 · 층별 크기 감소 · 9개 부재',
+            desc: '9-Step Pyramid · Tapering Tiers · 9 Members',
             color: 'bg-yellow-900/40 text-yellow-200 hover:bg-yellow-800/50',
             elements: _PYRAMID,
         },
         {
-            label: '부르즈 할리파',
+            label: 'Burj Khalifa',
             icon: '🏙',
-            desc: '세트백 Y형 초고층 · 날개 슬래브 + 첨탑',
+            desc: 'Setback Y-Form Supertall · Wing Slabs + Spire',
             color: 'bg-cyan-900/40 text-cyan-200 hover:bg-cyan-800/50',
             elements: _BURJ_KHALIFA,
         },
         {
-            label: '2층 건물 골조',
+            label: '2-Story Frame',
             icon: '🏬',
-            desc: '기둥 4개 + 보 8개 + 슬래브 2개',
+            desc: '4 Columns + 8 Beams + 2 Slabs',
             color: 'bg-teal-900/40 text-teal-200 hover:bg-teal-800/50',
             elements: [
                 // 기둥 4개 (2층 높이)

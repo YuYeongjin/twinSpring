@@ -175,10 +175,10 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
     : "—";
 
   return (
-    <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-4 space-y-4">
+    <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-4 flex flex-col gap-4">
 
       {/* ================================================================
-          Alert Banner — 임계값 초과 시 표시
+          Alert Banner — 임계값 초과 시 표시 (항상 최상단)
           ================================================================ */}
       {activeAlert && (
         <div
@@ -202,8 +202,9 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
 
       {/* ================================================================
           0. Quick Access — tab shortcut cards
+          모바일: KPI 카드 아래 (order-3), 데스크탑: 최상단 (order-1)
           ================================================================ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 order-3 sm:order-1">
         {[
           {
             id: 'bim-projects',
@@ -258,8 +259,9 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
 
       {/* ================================================================
           1. 상단 디바이스 상태 바
+          모바일: order-1 (최상단), 데스크탑: order-2
           ================================================================ */}
-      <div className={`${TB.card} px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0`}>
+      <div className={`${TB.card} px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 order-1 sm:order-2`}>
         {/* 디바이스 정보 */}
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           <div className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-xl"
@@ -292,8 +294,9 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
 
       {/* ================================================================
           2. KPI 위젯 행 (ThingsBoard의 Digital Gauge)
+          모바일: order-2, 데스크탑: order-3
           ================================================================ */}
-      <div className="grid grid-cols-2 lg:grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-2 gap-2 order-2 sm:order-3">
         <KpiWidget
           label="Temperature" icon="🌡"
           value={latest?.temperature ?? null} unit="°C"
@@ -314,7 +317,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
       {/* ================================================================
           3. 차트 + 프로젝트 패널
           ================================================================ */}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 order-4">
 
         {/* 실시간 텔레메트리 차트 */}
         <div className="w-full">
@@ -368,7 +371,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
       {/* ================================================================
           4. 이벤트 로그 테이블 (ThingsBoard의 Telemetry Table 위젯)
           ================================================================ */}
-      <Widget
+      <Widget className="order-5"
         title="Telemetry Log"
         subtitle={`Latest ${Math.min(data.length, 100)} entries`}
         accent={TB.text2}

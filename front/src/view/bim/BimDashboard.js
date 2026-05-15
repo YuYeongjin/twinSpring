@@ -880,29 +880,35 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 >
                     ← List
                 </button>
-                <h2 className="text-lg md:text-xl font-light text-white">BIM Editor</h2>
-                <Chip color="blue">Edit Mode</Chip>
+                <h2 className="text-lg md:text-xl font-light text-white"></h2>
 
                 {/* 서브 탭 */}
                 <div className="flex gap-1 bg-space-800/60 border border-space-700 rounded-xl p-1">
-                    {[
-                        { id: 'editor',     label: 'Editor',             icon: '🏗' },
-                        { id: 'structural', label: 'Structural Analysis', icon: '🔩' },
-                    ].map(({ id, label, icon }) => (
-                        <button
-                            key={id}
-                            onClick={() => setBimSubView(id)}
-                            className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold transition-all"
-                            style={{
-                                backgroundColor: bimSubView === id ? '#1e3a5f' : 'transparent',
-                                color: bimSubView === id ? '#60a5fa' : '#8896a4',
-                                border: bimSubView === id ? '1px solid #2a5080' : '1px solid transparent',
-                            }}
-                        >
-                            <span>{icon}</span>
-                            <span className="hidden sm:inline">{label}</span>
-                        </button>
-                    ))}
+                    <button
+                        onClick={() => setBimSubView('editor')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                        style={{
+                            backgroundColor: bimSubView === 'editor' ? '#1e3a5f' : 'transparent',
+                            color: bimSubView === 'editor' ? '#60a5fa' : '#8896a4',
+                            border: bimSubView === 'editor' ? '1px solid #2a5080' : '1px solid transparent',
+                        }}
+                    >
+                        <span>🏗</span>
+                        <span>Editor</span>
+                    </button>
+                    <button
+                        onClick={() => setBimSubView('structural')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                        style={{
+                            backgroundColor: bimSubView === 'structural' ? '#1a3520' : 'transparent',
+                            color: bimSubView === 'structural' ? '#4ade80' : '#8896a4',
+                            border: bimSubView === 'structural' ? '1px solid #166534' : '1px solid transparent',
+                            boxShadow: bimSubView === 'structural' ? '0 0 8px #22c55e30' : 'none',
+                        }}
+                    >
+                        <span>🔩</span>
+                        <span>Structural Analysis</span>
+                    </button>
                 </div>
 
                 {/* 다중 선택 삭제 버튼 */}
@@ -943,7 +949,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         }`}
                         title="Toggle Edit Panel"
                     >
-                        {showLeftPanel ? '◀' : '▶'} <span className="hidden sm:inline">Edit</span>
+                        {showLeftPanel ? '◀' : '▶'} Edit
                     </button>
 
                     {/* 스냅 토글 */}
@@ -956,8 +962,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         }`}
                         title={snapEnabled ? 'Snap ON — Vertex auto-snap active (click to turn OFF)' : 'Snap OFF — Click to enable'}
                     >
-                        🧲 <span className="hidden sm:inline">{snapEnabled ? 'SNAP' : 'SNAP'}</span>
-                        <span className={`text-xs ml-0.5 ${snapEnabled ? 'text-yellow-400' : 'text-gray-600'}`}>
+                        🧲 Snap <span className={`text-xs ml-0.5 ${snapEnabled ? 'text-yellow-400' : 'text-gray-600'}`}>
                             {snapEnabled ? 'ON' : 'OFF'}
                         </span>
                     </button>
@@ -972,7 +977,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         }`}
                         title="Toggle Layer Panel"
                     >
-                        🗂 <span className="hidden sm:inline">Layer</span>
+                        🗂 Layer
                         {layers.length > 0 && (
                             <span className="px-1 py-0.5 rounded-full text-xs bg-teal-600/40 text-teal-300">
                                 {layers.length}
@@ -990,7 +995,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                        bg-emerald-800/50 text-emerald-300 border border-emerald-700/50
                                        hover:bg-emerald-700/60 disabled:opacity-30 disabled:cursor-not-allowed"
                         >
-                            📊 <span className="hidden sm:inline">Quantity Excel</span>
+                            📊 Excel
                         </button>
                         <button
                             onClick={handleExportPDF}
@@ -1000,7 +1005,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                        bg-purple-800/50 text-purple-300 border border-purple-700/50
                                        hover:bg-purple-700/60 disabled:opacity-30 disabled:cursor-not-allowed"
                         >
-                            {exporting ? '⏳' : '📄'} <span className="hidden sm:inline">{exporting ? 'Generating...' : 'PDF Export'}</span>
+                            {exporting ? '⏳ Generating...' : '📄 PDF'}
                         </button>
                     </div>
 
@@ -1233,7 +1238,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     eventSource={mainViewRef}
                                     className="!absolute inset-0 rounded-xl pointer-events-none z-0"
                                     camera={{ position: [15, 12, 15], fov: 55 }}
-                                    gl={{ preserveDrawingBuffer: true }}
                                     shadows
                                     onPointerMissed={() => {
                                         if (!isSelectMode) {
@@ -1279,14 +1283,16 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
                                 </Canvas>
 
-                                {/* 미니맵 앵커 + MiniMapCanvas (별도 Canvas, portal) */}
-                                <div
-                                    ref={minimapContainerRef}
-                                    className="absolute top-3 right-3 w-40 h-40 border border-space-500 rounded-xl overflow-hidden shadow-2xl z-20 pointer-events-auto"
-                                    style={{ cursor: 'crosshair' }}
-                                    title="Minimap — Click to navigate"
-                                />
-                                {minimapTrackElement && (
+                                {/* 미니맵 — 데스크탑에서만 렌더링 */}
+                                {isDesktop && (
+                                    <div
+                                        ref={minimapContainerRef}
+                                        className="absolute top-3 right-3 w-40 h-40 border border-space-500 rounded-xl overflow-hidden shadow-2xl z-20 pointer-events-auto"
+                                        style={{ cursor: 'crosshair' }}
+                                        title="Minimap — Click to navigate"
+                                    />
+                                )}
+                                {isDesktop && minimapTrackElement && (
                                     <MiniMapCanvas
                                         modelData={visibleModelData}
                                         mainCameraPosition={mainCameraPosition}
