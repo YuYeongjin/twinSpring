@@ -43,12 +43,12 @@ const PRESET_LABELS = { IDLE: 'Idle', DIG: 'Dig', DUMP: 'Dump', TRAVEL: 'Travel'
 
 // ── 자동 시뮬레이션 사이클 페이즈 ────────────────────────────────────────────────
 const AUTO_SIM_PHASES = [
-  { name: 'Approach',  boomAngle: 15,  armAngle: 75,  bucketAngle: 5,   swingAngle: 0,   dz:  0.06, duration: 1600 },
-  { name: 'Dig',       boomAngle: 5,   armAngle: 110, bucketAngle: 12,  swingAngle: 0,   dz:  0,    duration: 1800 },
+  { name: 'Approach',  boomAngle: 15,  armAngle: 75,  bucketAngle: -70,   swingAngle: 0,   dㅈㅈㄴz:  -0.015, duration: 1600 },
+  { name: 'Dig',       boomAngle: 0,   armAngle: 110, bucketAngle: 12,  swingAngle: 0,   dz:  0,    duration: 1800 },
   { name: 'Lift',      boomAngle: 55,  armAngle: 35,  bucketAngle: 5,   swingAngle: 0,   dz:  0,    duration: 1200 },
   { name: 'Swing',     boomAngle: 65,  armAngle: 25,  bucketAngle: 5,   swingAngle: 85,  dz:  0,    duration: 1000 },
-  { name: 'Dump',      boomAngle: 65,  armAngle: 20,  bucketAngle: -82, swingAngle: 90,  dz:  0,    duration: 1200 },
-  { name: 'Return',    boomAngle: 35,  armAngle: 60,  bucketAngle: -25, swingAngle: 0,   dz:  0,    duration: 1400 },
+  { name: 'Dump',      boomAngle: 65,  armAngle: 20,  bucketAngle: -90, swingAngle: 90,  dz:  0,    duration: 1200 },
+  { name: 'Return',    boomAngle: 35,  armAngle: 60,  bucketAngle: -90, swingAngle: 0,   dz:  0,    duration: 1400 },
 ];
 
 // ── 장비 사양 정의 ─────────────────────────────────────────────────────────────
@@ -59,21 +59,21 @@ const MACHINE_CONFIGS = {
   '0.3W': {
     id: '0.3W', label: '0.3W Small', subLabel: 'Small Excavator (Mini)', weight: '3~6 ton class',
     bodyScale: 0.55,
-    boomLen: 2.8,  armLen: 1.4,  bucketLen: 0.48,  bucketCapacity: 0.3,
+    boomLen: 2.8,  armLen: 1.4,  bucketLen: 0.72,  bucketCapacity: 0.3,
     digRate: 0.038, digRadius: 1.7,
     fillRate: 0.08, fillRadius: 1.4,
   },
   '0.6W': {
     id: '0.6W', label: '0.6W Medium', subLabel: 'Medium Excavator', weight: '12~20 ton class',
     bodyScale: 0.78,
-    boomLen: 4.8,  armLen: 2.8,  bucketLen: 0.68,  bucketCapacity: 0.6,
+    boomLen: 4.8,  armLen: 2.8,  bucketLen: 1.05,  bucketCapacity: 0.6,
     digRate: 0.065, digRadius: 2.8,
     fillRate: 0.14, fillRadius: 2.2,
   },
   '1W': {
     id: '1W', label: '1W Large', subLabel: 'Large Excavator', weight: '20~35 ton class',
     bodyScale: 1.0,
-    boomLen: 6.0,  armLen: 3.8,  bucketLen: 0.85,  bucketCapacity: 1.0,
+    boomLen: 6.0,  armLen: 3.8,  bucketLen: 1.30,  bucketCapacity: 1.0,
     digRate: 0.10,  digRadius: 3.8,
     fillRate: 0.20, fillRadius: 2.6,
   },
@@ -136,15 +136,14 @@ function vertH(hm, c, r) {
   return n ? s / n : 0;
 }
 
-// 높이값 → 버텍스 색상 (굴착 = 짙은 적갈색 점토, 성토 = 진한 황토)
+// 높이값 → 버텍스 색상 (굴착 구멍은 어두운 갈색~거의 검정, 성토는 황토)
 function hToRGB(h) {
   if (h < 0) {
-    const t = Math.min(1, -h / MAX_DIG);
-    // 표면 황토 → 깊은 적갈색 생토 (굴착 깊을수록 진해짐)
-    return [0.46 - t * 0.22, 0.34 - t * 0.22, 0.20 - t * 0.14];
+    // 구멍: 표면에서 3m 이상 파면 거의 검정에 가까운 진흙색
+    const t = Math.min(1, -h / 3.0);
+    return [0.42 - t * 0.38, 0.30 - t * 0.28, 0.16 - t * 0.15];
   }
   const t = Math.min(1, h / MAX_FILL);
-  // 황토 → 짙은 갈색 (성토 = 압축 안된 흙)
   return [0.50 - t * 0.10, 0.38 - t * 0.10, 0.22 - t * 0.06];
 }
 
@@ -413,120 +412,231 @@ function ExcavatorModel({ state, soilInBucket, machine, heightMapRef, wobbleRef 
 
   return (
     <group ref={groupRef}>
-      {/* 전체 차체를 bodyScale로 스케일 */}
       <group scale={[s, s, s]}>
 
-        {/* 하부 차체 */}
-        <mesh position={[0, 0.36, 0]} castShadow receiveShadow>
-          <boxGeometry args={[3.9, 0.72, 5.4]} />
-          <meshStandardMaterial color="#3b4228" roughness={0.85} metalness={0.1} />
+        {/* ── 하부 차체 (언더캐리지) ── */}
+        {/* 센터 프레임 */}
+        <mesh position={[0, 0.38, 0]} castShadow receiveShadow>
+          <boxGeometry args={[3.6, 0.68, 5.2]} />
+          <meshStandardMaterial color="#3a4126" roughness={0.88} metalness={0.12} />
         </mesh>
-        <mesh position={[-2.1, 0.37, 0]} castShadow>
-          <boxGeometry args={[0.62, 0.60, 5.85]} />
-          <meshStandardMaterial color="#191919" roughness={0.95} />
-        </mesh>
-        <mesh position={[2.1, 0.37, 0]} castShadow>
-          <boxGeometry args={[0.62, 0.60, 5.85]} />
-          <meshStandardMaterial color="#191919" roughness={0.95} />
-        </mesh>
+        {/* 트랙 프레임 좌우 */}
+        {[-1, 1].map((sx, i) => (
+          <group key={`trackframe${i}`}>
+            <mesh position={[sx * 2.05, 0.38, 0]} castShadow>
+              <boxGeometry args={[0.58, 0.62, 5.9]} />
+              <meshStandardMaterial color="#1a1a1a" roughness={0.95} />
+            </mesh>
+            {/* 트랙 슈 (신발) 표현 */}
+            {Array.from({ length: 10 }, (_, k) => k - 4.5).map(zOff => (
+              <mesh key={zOff} position={[sx * 2.05, 0.04, zOff * 0.58]} castShadow>
+                <boxGeometry args={[0.72, 0.1, 0.5]} />
+                <meshStandardMaterial color="#111" metalness={0.5} roughness={0.8} />
+              </mesh>
+            ))}
+          </group>
+        ))}
         <TrackRollers side="left" />
         <TrackRollers side="right" />
+        {/* 아이들러·스프로켓 */}
         {[-1, 1].map((sx, i) => (
-          <mesh key={`idler${i}`} position={[sx * 2.1, 0.37, 2.75]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.32, 0.32, 0.55, 12]} />
-            <meshStandardMaterial color="#2a2a2a" metalness={0.6} />
+          <mesh key={`idler${i}`} position={[sx * 2.05, 0.38, 2.75]} rotation={[0, 0, Math.PI / 2]} castShadow>
+            <cylinderGeometry args={[0.32, 0.32, 0.6, 14]} />
+            <meshStandardMaterial color="#2a2a2a" metalness={0.65} roughness={0.3} />
           </mesh>
         ))}
         {[-1, 1].map((sx, i) => (
-          <mesh key={`sprocket${i}`} position={[sx * 2.1, 0.37, -2.75]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.34, 0.34, 0.55, 12]} />
-            <meshStandardMaterial color="#333" metalness={0.7} />
+          <mesh key={`sprocket${i}`} position={[sx * 2.05, 0.38, -2.75]} rotation={[0, 0, Math.PI / 2]} castShadow>
+            <cylinderGeometry args={[0.36, 0.36, 0.6, 10]} />
+            <meshStandardMaterial color="#303030" metalness={0.72} roughness={0.25} />
           </mesh>
         ))}
 
-        {/* 상부 선회체 */}
+        {/* ── 상부 선회체 ── */}
         <group position={[0, 0.72, 0]} rotation={[0, state.swingAngle * D2R, 0]}>
-          <mesh position={[0, 0.72, 0.1]} castShadow receiveShadow>
-            <boxGeometry args={[3.3, 1.44, 4.0]} />
-            <meshStandardMaterial color="#f5a623" roughness={0.52} metalness={0.22} />
+          {/* 선회링 */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[1.35, 0.16, 10, 28]} />
+            <meshStandardMaterial color="#444" metalness={0.85} roughness={0.2} />
           </mesh>
-          <mesh position={[-0.65, 1.92, -0.6]} castShadow>
-            <boxGeometry args={[1.95, 1.85, 2.1]} />
-            <meshStandardMaterial color="#f5a623" roughness={0.48} metalness={0.2} />
+          {/* 메인 카운터웨이트 포함 상부 프레임 */}
+          <mesh position={[0, 0.74, 0.1]} castShadow receiveShadow>
+            <boxGeometry args={[3.2, 1.38, 3.8]} />
+            <meshStandardMaterial color="#f5a623" roughness={0.5} metalness={0.22} />
           </mesh>
-          <mesh position={[-0.65, 2.05, 0.45]}>
-            <boxGeometry args={[1.75, 0.85, 0.06]} />
-            <meshStandardMaterial color="#88ccff" transparent opacity={0.42} />
+          {/* 운전석 캡 */}
+          <mesh position={[-0.62, 2.0, 0.45]} castShadow>
+            <boxGeometry args={[1.82, 1.72, 1.95]} />
+            <meshStandardMaterial color="#f5a623" roughness={0.46} metalness={0.2} />
           </mesh>
-          <mesh position={[0.31, 2.05, -0.6]}>
-            <boxGeometry args={[0.06, 0.7, 1.6]} />
-            <meshStandardMaterial color="#88ccff" transparent opacity={0.38} />
+          {/* 앞 유리 */}
+          <mesh position={[-0.62, 2.02, 1.4]}>
+            <boxGeometry args={[1.7, 1.25, 0.07]} />
+            <meshStandardMaterial color="#9dd8ff" transparent opacity={0.38} roughness={0.05} metalness={0.1} />
           </mesh>
-          <mesh position={[0.2, 0.7, -2.45]} castShadow>
-            <boxGeometry args={[3.1, 0.95, 1.25]} />
-            <meshStandardMaterial color="#282828" metalness={0.55} roughness={0.6} />
+          {/* 측면 유리 */}
+          <mesh position={[0.3, 2.02, 0.45]}>
+            <boxGeometry args={[0.07, 1.0, 1.5]} />
+            <meshStandardMaterial color="#9dd8ff" transparent opacity={0.32} roughness={0.05} metalness={0.1} />
           </mesh>
-          <mesh position={[0.5, 1.35, -1.2]} castShadow>
-            <boxGeometry args={[2.2, 0.8, 1.6]} />
-            <meshStandardMaterial color="#e09010" roughness={0.55} />
+          {/* 엔진 커버 */}
+          <mesh position={[0.4, 1.38, -1.15]} castShadow>
+            <boxGeometry args={[2.1, 0.78, 1.55]} />
+            <meshStandardMaterial color="#e09010" roughness={0.52} metalness={0.28} />
           </mesh>
-          <mesh position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[1.4, 0.15, 8, 24]} />
-            <meshStandardMaterial color="#444" metalness={0.8} />
+          {/* 카운터웨이트 */}
+          <mesh position={[0.2, 0.72, -2.4]} castShadow>
+            <boxGeometry args={[3.0, 0.9, 1.2]} />
+            <meshStandardMaterial color="#252525" metalness={0.58} roughness={0.6} />
+          </mesh>
+          {/* 배기관 */}
+          <mesh position={[-1.3, 2.85, -0.3]} castShadow>
+            <cylinderGeometry args={[0.1, 0.12, 0.95, 8]} />
+            <meshStandardMaterial color="#333" metalness={0.88} roughness={0.3} />
+          </mesh>
+          <mesh position={[-1.3, 3.35, -0.3]}>
+            <cylinderGeometry args={[0.12, 0.09, 0.15, 8]} />
+            <meshStandardMaterial color="#222" metalness={0.9} />
           </mesh>
 
-          {/* 붐 피벗 (스케일 공간 고정 좌표 [0,1.4,1.9]) */}
+          {/* ── 붐 (BOOM) ── */}
           <group position={[0, 1.4, 1.9]}>
             <group rotation={[-state.boomAngle * D2R, 0, 0]}>
-              {/* 붐 — 길이를 BL(= boomLen/s)로 → 월드 공간에서 boomLen */}
-              <mesh position={[0, 0, BL / 2]} castShadow>
-                <boxGeometry args={[0.58, 0.58, BL]} />
-                <meshStandardMaterial color="#d48810" roughness={0.48} metalness={0.38} />
+              {/* 붐 좌측 박스 빔 */}
+              <mesh position={[-0.18, 0, BL / 2]} castShadow>
+                <boxGeometry args={[0.22, 0.52, BL]} />
+                <meshStandardMaterial color="#d48810" roughness={0.45} metalness={0.40} />
               </mesh>
-              <mesh position={[-0.35, -0.32, BL * 0.38]} rotation={[0.32, 0, 0]} castShadow>
-                <cylinderGeometry args={[0.11, 0.11, BL * 0.72, 8]} />
-                <meshStandardMaterial color="#888" metalness={0.85} roughness={0.2} />
+              {/* 붐 우측 박스 빔 */}
+              <mesh position={[0.18, 0, BL / 2]} castShadow>
+                <boxGeometry args={[0.22, 0.52, BL]} />
+                <meshStandardMaterial color="#d48810" roughness={0.45} metalness={0.40} />
+              </mesh>
+              {/* 붐 웹 플레이트 (중간 연결판) */}
+              {[BL * 0.25, BL * 0.55, BL * 0.82].map((z, i) => (
+                <mesh key={i} position={[0, -0.04, z]} castShadow>
+                  <boxGeometry args={[0.42, 0.42, 0.06]} />
+                  <meshStandardMaterial color="#c07808" roughness={0.5} metalness={0.35} />
+                </mesh>
+              ))}
+              {/* 붐 유압실린더 (메인) */}
+              <mesh position={[0, -0.38, BL * 0.32]} rotation={[0.34, 0, 0]} castShadow>
+                <cylinderGeometry args={[0.13, 0.13, BL * 0.68, 10]} />
+                <meshStandardMaterial color="#999" metalness={0.88} roughness={0.18} />
+              </mesh>
+              {/* 피스톤 로드 */}
+              <mesh position={[0, -0.22, BL * 0.18]} rotation={[0.34, 0, 0]} castShadow>
+                <cylinderGeometry args={[0.07, 0.07, BL * 0.28, 8]} />
+                <meshStandardMaterial color="#ccc" metalness={0.95} roughness={0.08} />
               </mesh>
 
-              {/* 암 피벗 */}
+              {/* ── 암 (ARM / STICK) ── */}
               <group position={[0, 0, BL]}>
+                {/* 암 피벗 핀 */}
+                <mesh rotation={[0, 0, Math.PI / 2]}>
+                  <cylinderGeometry args={[0.14, 0.14, 0.7, 10]} />
+                  <meshStandardMaterial color="#555" metalness={0.9} />
+                </mesh>
                 <group rotation={[state.armAngle * D2R, 0, 0]}>
-                  <mesh position={[0, 0, AL / 2]} castShadow>
-                    <boxGeometry args={[0.44, 0.44, AL]} />
-                    <meshStandardMaterial color="#c07a0a" roughness={0.5} metalness={0.35} />
+                  {/* 암 좌측 빔 */}
+                  <mesh position={[-0.16, 0, AL / 2]} castShadow>
+                    <boxGeometry args={[0.18, 0.40, AL]} />
+                    <meshStandardMaterial color="#c07a0a" roughness={0.48} metalness={0.36} />
                   </mesh>
-                  <mesh position={[-0.28, -0.3, AL * 0.35]} rotation={[0.18, 0, 0]} castShadow>
-                    <cylinderGeometry args={[0.09, 0.09, AL * 0.75, 8]} />
-                    <meshStandardMaterial color="#777" metalness={0.85} roughness={0.2} />
+                  {/* 암 우측 빔 */}
+                  <mesh position={[0.16, 0, AL / 2]} castShadow>
+                    <boxGeometry args={[0.18, 0.40, AL]} />
+                    <meshStandardMaterial color="#c07a0a" roughness={0.48} metalness={0.36} />
+                  </mesh>
+                  {/* 암 유압실린더 */}
+                  <mesh position={[0, -0.26, AL * 0.36]} rotation={[0.22, 0, 0]} castShadow>
+                    <cylinderGeometry args={[0.10, 0.10, AL * 0.72, 10]} />
+                    <meshStandardMaterial color="#999" metalness={0.88} roughness={0.18} />
+                  </mesh>
+                  {/* 암 피스톤 로드 */}
+                  <mesh position={[0, -0.18, AL * 0.18]} rotation={[0.22, 0, 0]} castShadow>
+                    <cylinderGeometry args={[0.055, 0.055, AL * 0.30, 8]} />
+                    <meshStandardMaterial color="#ccc" metalness={0.95} roughness={0.08} />
                   </mesh>
 
-                  {/* 버킷 피벗 */}
+                  {/* ── 버킷 (BUCKET) ── */}
                   <group position={[0, 0, AL]}>
+                    {/* 암-버킷 연결 핀 */}
+                    <mesh rotation={[0, 0, Math.PI / 2]}>
+                      <cylinderGeometry args={[0.12, 0.12, 2.10, 10]} />
+                      <meshStandardMaterial color="#666" metalness={0.9} roughness={0.2} />
+                    </mesh>
+                    {/* 버킷 유압실린더 */}
+                    <mesh position={[0, 0.22, -buL * 0.28]} rotation={[0.28, 0, 0]} castShadow>
+                      <cylinderGeometry args={[0.100, 0.100, buL * 0.72, 8]} />
+                      <meshStandardMaterial color="#999" metalness={0.88} roughness={0.18} />
+                    </mesh>
+                    <mesh position={[0, 0.13, -buL * 0.12]} rotation={[0.28, 0, 0]} castShadow>
+                      <cylinderGeometry args={[0.058, 0.058, buL * 0.26, 8]} />
+                      <meshStandardMaterial color="#ccc" metalness={0.95} roughness={0.08} />
+                    </mesh>
+
                     <group rotation={[state.bucketAngle * D2R, 0, 0]}>
-                      <mesh position={[0, -0.2, buL * 0.45]} castShadow>
-                        <boxGeometry args={[1.38, 0.78, buL * 1.05]} />
-                        <meshStandardMaterial color="#6a6a6a" metalness={0.68} roughness={0.38} />
-                      </mesh>
-                      <mesh position={[0, -0.06, -0.06]} castShadow>
-                        <boxGeometry args={[1.38, 0.58, 0.13]} />
-                        <meshStandardMaterial color="#5a5a5a" metalness={0.72} />
-                      </mesh>
-                      {[-0.52, -0.18, 0.18, 0.52].map((x, i) => (
-                        <mesh key={i} position={[x, -0.52, buL * 0.88]} castShadow>
-                          <boxGeometry args={[0.1, 0.14, buL * 0.35]} />
-                          <meshStandardMaterial color="#3a3a3a" metalness={0.88} />
+                      {/* ── 버킷 브라켓 (암과 버킷 연결 링크) ── */}
+                      {[-0.58, 0.58].map((x, i) => (
+                        <mesh key={`bkt_brk${i}`} position={[x, -0.12, -0.22]} castShadow>
+                          <boxGeometry args={[0.16, 0.32, 0.46]} />
+                          <meshStandardMaterial color="#4a4a4a" metalness={0.82} roughness={0.3} />
                         </mesh>
                       ))}
+
+                      {/* ── 버킷 백플레이트 (뒷판) ── */}
+                      <mesh position={[0, -0.42, -0.10]} castShadow>
+                        <boxGeometry args={[2.10, 1.00, 0.16]} />
+                        <meshStandardMaterial color="#5c5c5c" metalness={0.76} roughness={0.28} />
+                      </mesh>
+
+                      {/* ── 버킷 좌·우 사이드플레이트 ── */}
+                      {[-0.97, 0.97].map((x, i) => (
+                        <mesh key={`side${i}`} position={[x, -0.42, -buL * 0.50]} castShadow>
+                          <boxGeometry args={[0.14, 1.00, buL * 1.02]} />
+                          <meshStandardMaterial color="#585858" metalness={0.76} roughness={0.28} />
+                        </mesh>
+                      ))}
+
+                      {/* ── 버킷 바닥판 ── */}
+                      <mesh position={[0, -0.88, -buL * 0.50]} castShadow>
+                        <boxGeometry args={[2.10, 0.14, buL * 1.02]} />
+                        <meshStandardMaterial color="#525252" metalness={0.80} roughness={0.25} />
+                      </mesh>
+
+                      {/* ── 커팅 엣지 (절삭날) ── */}
+                      <mesh position={[0, -0.92, -(buL * 0.97 + 0.06)]} castShadow>
+                        <boxGeometry args={[2.12, 0.18, 0.14]} />
+                        <meshStandardMaterial color="#aaa" metalness={0.96} roughness={0.07} />
+                      </mesh>
+
+                      {/* ── 버킷 투스 5개 (굴착 이빨) ── */}
+                      {[-0.76, -0.38, 0, 0.38, 0.76].map((x, i) => (
+                        <group key={`tooth${i}`} position={[x, -1.06, -(buL * 0.97 + 0.10)]}>
+                          {/* 투스 베이스 */}
+                          <mesh castShadow>
+                            <boxGeometry args={[0.14, 0.18, 0.18]} />
+                            <meshStandardMaterial color="#888" metalness={0.90} roughness={0.15} />
+                          </mesh>
+                          {/* 투스 팁 (뾰족한 끝) */}
+                          <mesh position={[0, -0.04, -0.20]} rotation={[-0.4, 0, 0]} castShadow>
+                            <coneGeometry args={[0.065, 0.32, 6]} />
+                            <meshStandardMaterial color="#777" metalness={0.93} roughness={0.10} />
+                          </mesh>
+                        </group>
+                      ))}
+
+                      {/* ── 버킷 내 흙 ── */}
                       {soilFill > 0.04 && (
-                        <mesh position={[0, -0.54 + soilFill * 0.32, buL * 0.42]}>
-                          <boxGeometry args={[1.18, soilFill * 0.58 + 0.06, buL * 0.88]} />
-                          <meshStandardMaterial color="#6b4416" roughness={0.95} metalness={0} />
+                        <mesh position={[0, -0.80 + soilFill * 0.22, -buL * 0.44]}>
+                          <boxGeometry args={[1.74, soilFill * 0.60 + 0.08, buL * 0.84]} />
+                          <meshStandardMaterial color="#7a5025" roughness={0.96} metalness={0} />
                         </mesh>
                       )}
                     </group>
                   </group>
                 </group>
-
               </group>
             </group>
           </group>
@@ -766,9 +876,17 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     return () => client.deactivate();
   }, []);
 
-  // 서버에서 초기 상태 로드 (지형 + 장비 선택 포함)
+  // 서버에서 초기 상태 로드 (지형 + 장비 선택 포함) — 프로젝트별 분리
   useEffect(() => {
-    AxiosCustom.get('/api/simulation/excavator')
+    const excavatorId = selectedProject?.projectId || 'EX-001';
+    // 프로젝트 전환 시 지형·버킷 초기화
+    heightMapRef.current.fill(0);
+    soilInBucketRef.current = 0;
+    setSoilDisplay(0);
+    terrainDirtyRef.current = true;
+    setState({ ...DEFAULT_STATE, excavatorId });
+
+    AxiosCustom.get(`/api/simulation/excavator?excavatorId=${excavatorId}`)
       .then(res => {
         if (!res.data) return;
         setState(prev => ({ ...prev, ...res.data }));
@@ -788,7 +906,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         }
       })
       .catch(() => {});
-  }, []);
+  }, [selectedProject?.projectId]);
 
   // ── 키보드 이벤트 ──
   useEffect(() => {
@@ -889,8 +1007,10 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   useEffect(() => {
     const id = setInterval(() => {
       setSyncStatus('syncing');
+      const excavatorId = selectedProject?.projectId || 'EX-001';
       const payload = {
         ...stateRef.current,
+        excavatorId,
         soilInBucket: soilInBucketRef.current,
         heightMapData: serializeTerrain(heightMapRef.current),
         selectedMachineId: selectedMachineIdRef.current,
@@ -900,7 +1020,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         .catch(() => setSyncStatus('error'));
     }, 2000);
     return () => clearInterval(id);
-  }, []);
+  }, [selectedProject?.projectId]);
 
   // ── 순기구학 계산 (장비 사양 반영, 차체+선회 합산) ──
   const calcKinematics = useCallback((s, machine) => {
@@ -996,12 +1116,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     const m = MACHINE_CONFIGS[machineId];
     setSelectedMachineId(machineId);
     machineRef.current = m;
-    // 장비 전환 시 초기 자세로 리셋
     setState(prev => ({ ...prev, ...PRESETS.IDLE, operationMode: 'IDLE' }));
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
-    heightMapRef.current.fill(0);
-    terrainDirtyRef.current = true;
   };
 
   const handleClearTerrain = () => {
@@ -1012,18 +1129,21 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   };
 
   const handleReset = () => {
-    setState({ ...DEFAULT_STATE });
+    const excavatorId = selectedProject?.projectId || 'EX-001';
+    setState({ ...DEFAULT_STATE, excavatorId });
     heightMapRef.current.fill(0);
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
     terrainDirtyRef.current = true;
-    AxiosCustom.post('/api/simulation/excavator/reset').catch(() => {});
+    AxiosCustom.post(`/api/simulation/excavator/reset?excavatorId=${excavatorId}`).catch(() => {});
   };
 
   const handleSave = () => {
+    const excavatorId = selectedProject?.projectId || 'EX-001';
     setSyncStatus('syncing');
     const payload = {
       ...state,
+      excavatorId,
       soilInBucket: soilInBucketRef.current,
       heightMapData: serializeTerrain(heightMapRef.current),
       selectedMachineId,
