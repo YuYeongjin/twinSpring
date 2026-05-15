@@ -293,7 +293,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
       {/* ================================================================
           2. KPI 위젯 행 (ThingsBoard의 Digital Gauge)
           ================================================================ */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-2 gap-2">
         <KpiWidget
           label="Temperature" icon="🌡"
           value={latest?.temperature ?? null} unit="°C"
@@ -308,64 +308,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
           accent={TB.accent} warnMax={80} warnMin={20}
           subtitle="DHT11 Sensor"
         />
-        <div className="lg:col-span-2">
-          <Widget
-            title="BIM Projects" accent="#7c3aed"
-            action={
-              <button
-                onClick={() => setViceComponent('bim-projects')}
-                className="text-xs px-2 py-0.5 rounded text-purple-300 hover:text-white transition"
-                style={{ border: "1px solid #7c3aed" }}
-              >
-                View All →
-              </button>
-            }
-          >
-            <div className="space-y-2">
-              {/* 프로젝트 수 요약 */}
-              <div className="flex items-center justify-between py-2 px-3 rounded-lg"
-                style={{ backgroundColor: "#152030" }}>
-                <span className="text-xs" style={{ color: TB.text2 }}>Total Projects</span>
-                <span className="text-lg font-bold text-white">{projectList?.length ?? 0}</span>
-              </div>
-              <div className="flex gap-2">
-                {[["🌉", "Bridge"], ["🏢", "Building"]].map(([icon, type]) => {
-                  const cnt = (projectList ?? []).filter(p => p.structureType === type).length;
-                  return (
-                    <div key={type} className="flex-1 text-center py-2 rounded-lg"
-                      style={{ backgroundColor: "#152030", border: "1px solid #253347" }}>
-                      <div className="text-lg">{icon}</div>
-                      <div className="text-xs font-semibold text-white">{cnt}</div>
-                      <div className="text-xs" style={{ color: TB.text2 }}>{type}</div>
-                    </div>
-                  );
-                })}
-              </div>
-              {/* 최근 프로젝트 1개 */}
-              {projectList?.length > 0 && (
-                <button
-                  onClick={() => { onProjectSelect(projectList[projectList.length - 1]); setViceComponent('bim'); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition group"
-                  style={{ backgroundColor: "#152030", border: "1px solid #253347" }}
-                >
-                  <span>{projectList[projectList.length - 1].structureType === "Bridge" ? "🌉" : "🏢"}</span>
-                  <span className="text-gray-300 group-hover:text-white transition truncate flex-1 text-xs">
-                    {projectList[projectList.length - 1].projectName}
-                  </span>
-                  <span className="text-xs opacity-0 group-hover:opacity-100 transition"
-                    style={{ color: TB.accent }}>Open →</span>
-                </button>
-              )}
-              <button
-                onClick={() => setViceComponent('bim-projects')}
-                className="w-full py-2 rounded-lg text-xs font-semibold transition text-white"
-                style={{ backgroundColor: "#1e1040", border: "1px solid #7c3aed" }}
-              >
-                🏗 BIM Project Management
-              </button>
-            </div>
-          </Widget>
-        </div>
+       
       </div>
 
       {/* ================================================================
