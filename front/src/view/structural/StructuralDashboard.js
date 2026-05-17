@@ -34,25 +34,25 @@ const MATERIALS = {
 };
 
 const SEISMIC_ZONES = [
-  { value: 1, label: 'Zone I  — Low Risk (0.08g)',       Sa: 0.08 },
-  { value: 2, label: 'Zone II — Moderate (0.154g)',      Sa: 0.154 },
-  { value: 3, label: 'Zone III — High Risk (0.22g)',     Sa: 0.22 },
+  { value: 1, label: 'Zone I  — Low Risk (0.08g)', Sa: 0.08 },
+  { value: 2, label: 'Zone II — Moderate (0.154g)', Sa: 0.154 },
+  { value: 3, label: 'Zone III — High Risk (0.22g)', Sa: 0.22 },
   { value: 4, label: 'Zone IV — Very High Risk (0.32g)', Sa: 0.32 },
 ];
 
 const ELEMENT_LABELS = {
   IfcColumn: 'Column',
-  IfcBeam:   'Beam',
+  IfcBeam: 'Beam',
   IfcMember: 'Member',
-  IfcWall:   'Wall',
-  IfcSlab:   'Slab',
-  IfcPier:   'Pier',
+  IfcWall: 'Wall',
+  IfcSlab: 'Slab',
+  IfcPier: 'Pier',
 };
 
 const STATUS_CFG = {
-  safe:    { label: 'Safe',    color: '#22c55e', bg: 'bg-green-900/40', text: 'text-green-300', border: 'border-green-600/40' },
-  warning: { label: 'Warning', color: '#f59e0b', bg: 'bg-amber-900/40',  text: 'text-amber-300',  border: 'border-amber-600/40' },
-  danger:  { label: 'Danger',  color: '#ef4444', bg: 'bg-red-900/40',   text: 'text-red-300',   border: 'border-red-600/40' },
+  safe: { label: 'Safe', color: '#22c55e', bg: 'bg-green-900/40', text: 'text-green-300', border: 'border-green-600/40' },
+  warning: { label: 'Warning', color: '#f59e0b', bg: 'bg-amber-900/40', text: 'text-amber-300', border: 'border-amber-600/40' },
+  danger: { label: 'Danger', color: '#ef4444', bg: 'bg-red-900/40', text: 'text-red-300', border: 'border-red-600/40' },
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ const STATUS_CFG = {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function runAnalysis(modelData, env, loads, matId) {
-  const mat     = MATERIALS[matId];
+  const mat = MATERIALS[matId];
   const seismic = SEISMIC_ZONES.find(z => z.value === env.seismicZone) ?? SEISMIC_ZONES[1];
 
   // Design wind pressure (kN/m²): q = 0.6125 × V²/1000 × Cf(1.3) × gust(1.5)
@@ -71,8 +71,8 @@ function runAnalysis(modelData, env, loads, matId) {
 
   return modelData.map((el, idx) => {
     const sX = Math.max(Number(el.sizeX) || 0.3, 0.01);
-    const sY = Math.max(Number(el.sizeY) || 3.0,  0.01);
-    const sZ = Math.max(Number(el.sizeZ) || 0.3,  0.01);
+    const sY = Math.max(Number(el.sizeY) || 3.0, 0.01);
+    const sZ = Math.max(Number(el.sizeZ) || 0.3, 0.01);
     const pY = Number(el.positionY) || 0;
     const type = el.elementType || 'IfcColumn';
 
@@ -92,13 +92,13 @@ function runAnalysis(modelData, env, loads, matId) {
       axialLoad = selfWt + (loads.deadLoad + loads.liveLoad) * loads.tributaryArea * loads.numFloors;
 
       // Lateral: larger of wind vs seismic
-      const hFactor   = Math.pow((pY + sY) / 10 + 1, 0.25);
-      const Fwind     = qDesign * hFactor * sX * L;      // kN
-      const Fseismic  = seismic.Sa * axialLoad;           // kN
-      const Flateral  = Math.max(Fwind, Fseismic);
+      const hFactor = Math.pow((pY + sY) / 10 + 1, 0.25);
+      const Fwind = qDesign * hFactor * sX * L;      // kN
+      const Fseismic = seismic.Sa * axialLoad;           // kN
+      const Flateral = Math.max(Fwind, Fseismic);
 
       bendingMoment = Flateral * L / 2;  // kN·m (mid section)
-      shearForce    = Flateral;          // kN
+      shearForce = Flateral;          // kN
 
     } else if (type === 'IfcBeam' || type === 'IfcMember') {
       // Section sX(width)×sY(height), span sZ
@@ -108,13 +108,13 @@ function runAnalysis(modelData, env, loads, matId) {
       L = Math.max(sZ, 0.1);
 
       // UDL (kN/m) = self weight/m + floor load × influence width
-      const wSelf  = sX * sY * mat.density;
+      const wSelf = sX * sY * mat.density;
       const wFloor = (loads.deadLoad + loads.liveLoad) * Math.sqrt(loads.tributaryArea);
-      const w      = wSelf + wFloor;
+      const w = wSelf + wFloor;
 
       bendingMoment = w * L ** 2 / 8; // kN·m
-      shearForce    = w * L / 2;       // kN
-      axialLoad     = 0;
+      shearForce = w * L / 2;       // kN
+      axialLoad = 0;
 
     } else if (type === 'IfcWall') {
       // Length sX, height sY, thickness sZ
@@ -123,9 +123,9 @@ function runAnalysis(modelData, env, loads, matId) {
       c = sX / 2;
       L = sY;
 
-      axialLoad  = selfWt + loads.deadLoad * sX * sZ * loads.numFloors;
-      const Fw   = qDesign * sX * sY;
-      const Fs   = seismic.Sa * axialLoad;
+      axialLoad = selfWt + loads.deadLoad * sX * sZ * loads.numFloors;
+      const Fw = qDesign * sX * sY;
+      const Fs = seismic.Sa * axialLoad;
       shearForce = Math.max(Fw, Fs);
       bendingMoment = 0; // shear wall — in-plane shear governs
 
@@ -137,10 +137,10 @@ function runAnalysis(modelData, env, loads, matId) {
       c = sY / 2;
       L = Math.max(span, 0.1);
 
-      const q       = loads.deadLoad + loads.liveLoad + env.snowLoad + sY * mat.density;
+      const q = loads.deadLoad + loads.liveLoad + env.snowLoad + sY * mat.density;
       bendingMoment = q * L ** 2 / 10; // kN·m/m (continuous slab)
-      shearForce    = q * L / 2;
-      axialLoad     = 0;
+      shearForce = q * L / 2;
+      axialLoad = 0;
 
     } else {
       A = sX * sZ;
@@ -151,33 +151,33 @@ function runAnalysis(modelData, env, loads, matId) {
     }
 
     const eps = 1e-9;
-    const sigmaAxial   = axialLoad      / (Math.max(A, eps) * 1000); // MPa
+    const sigmaAxial = axialLoad / (Math.max(A, eps) * 1000); // MPa
     const sigmaBending = (bendingMoment * c) / (Math.max(I, eps) * 1000); // MPa
-    const sigmaShear   = 1.5 * shearForce / (Math.max(A, eps) * 1000);    // MPa
+    const sigmaShear = 1.5 * shearForce / (Math.max(A, eps) * 1000);    // MPa
 
-    const maxStress   = Math.max(sigmaAxial + sigmaBending, sigmaShear, 0.001);
+    const maxStress = Math.max(sigmaAxial + sigmaBending, sigmaShear, 0.001);
     const allowStress = mat.allowCompressive;
-    const sf          = allowStress / maxStress;
-    const util        = (maxStress / allowStress) * 100;
-    const status      = sf >= 2.0 ? 'safe' : sf >= 1.0 ? 'warning' : 'danger';
+    const sf = allowStress / maxStress;
+    const util = (maxStress / allowStress) * 100;
+    const status = sf >= 2.0 ? 'safe' : sf >= 1.0 ? 'warning' : 'danger';
 
     return {
-      elementId:     el.elementId ?? idx,
-      elementName:   el.elementName || `${ELEMENT_LABELS[type] ?? type}-${idx + 1}`,
-      elementType:   type,
-      selfWeight:    +selfWt.toFixed(2),
-      axialLoad:     +axialLoad.toFixed(2),
-      windLoad:      +(qDesign * sX * sY).toFixed(2),
-      seismicLoad:   +(seismic.Sa * Math.max(axialLoad, selfWt)).toFixed(2),
+      elementId: el.elementId ?? idx,
+      elementName: el.elementName || `${ELEMENT_LABELS[type] ?? type}-${idx + 1}`,
+      elementType: type,
+      selfWeight: +selfWt.toFixed(2),
+      axialLoad: +axialLoad.toFixed(2),
+      windLoad: +(qDesign * sX * sY).toFixed(2),
+      seismicLoad: +(seismic.Sa * Math.max(axialLoad, selfWt)).toFixed(2),
       bendingMoment: +bendingMoment.toFixed(2),
-      shearForce:    +shearForce.toFixed(2),
-      axialStress:   +sigmaAxial.toFixed(3),
+      shearForce: +shearForce.toFixed(2),
+      axialStress: +sigmaAxial.toFixed(3),
       bendingStress: +sigmaBending.toFixed(3),
-      shearStress:   +sigmaShear.toFixed(3),
-      maxStress:     +maxStress.toFixed(3),
-      allowStress:   +allowStress.toFixed(1),
-      safetyFactor:  +Math.min(sf, 99.9).toFixed(2),
-      utilization:   +Math.min(util, 999).toFixed(1),
+      shearStress: +sigmaShear.toFixed(3),
+      maxStress: +maxStress.toFixed(3),
+      allowStress: +allowStress.toFixed(1),
+      safetyFactor: +Math.min(sf, 99.9).toFixed(2),
+      utilization: +Math.min(util, 999).toFixed(1),
       status,
     };
   });
@@ -189,13 +189,13 @@ function runAnalysis(modelData, env, loads, matId) {
 
 function StressBox({ element, result, isSelected, onSelect }) {
   const sX = Math.max(Number(element.sizeX) || 0.3, 0.05);
-  const sY = Math.max(Number(element.sizeY) || 3.0,  0.05);
-  const sZ = Math.max(Number(element.sizeZ) || 0.3,  0.05);
+  const sY = Math.max(Number(element.sizeY) || 3.0, 0.05);
+  const sZ = Math.max(Number(element.sizeZ) || 0.3, 0.05);
   const pX = Number(element.positionX) || 0;
   const pY = (Number(element.positionY) || 0) + sY / 2;
   const pZ = Number(element.positionZ) || 0;
 
-  const color  = result ? STATUS_CFG[result.status].color : '#374151';
+  const color = result ? STATUS_CFG[result.status].color : '#374151';
   const emissI = isSelected ? 0.4 : 0;
 
   return (
@@ -217,7 +217,7 @@ function StressBox({ element, result, isSelected, onSelect }) {
 
 function StressViewer3D({ modelData, resultMap, selectedId, onSelect }) {
   return (
-    <Canvas camera={{ position: [15, 15, 15], fov: 50 }} style={{ background: '#0b0f1a',height: 'clamp(300px, 60vh, 600px)'}}>
+    <Canvas camera={{ position: [15, 15, 15], fov: 50 }} style={{ background: '#0b0f1a', height: 'clamp(300px, 70vh, 1000px)' }}>
       <ambientLight intensity={0.55} />
       <directionalLight position={[10, 15, 5]} intensity={0.85} castShadow />
       <directionalLight position={[-5, 8, -5]} intensity={0.25} />
@@ -310,33 +310,33 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
 
   // Environmental conditions
   const [env, setEnv] = useState({
-    windSpeed:   20,    // m/s
-    windDir:     'N',
+    windSpeed: 20,    // m/s
+    windDir: 'N',
     seismicZone: 2,
-    snowLoad:    0.5,  // kN/m²
-    tempMin:     -10,
-    tempMax:     35,
+    snowLoad: 0.5,  // kN/m²
+    tempMin: -10,
+    tempMax: 35,
   });
 
   // Load conditions
   const [loads, setLoads] = useState({
-    deadLoad:      5.0,  // kN/m²
-    liveLoad:      2.5,  // kN/m²
+    deadLoad: 5.0,  // kN/m²
+    liveLoad: 2.5,  // kN/m²
     tributaryArea: 16,   // m²
-    numFloors:     3,
+    numFloors: 3,
   });
 
   // Material
   const [matId, setMatId] = useState('concrete_24');
 
   // Analysis results
-  const [results, setResults]         = useState(null);
+  const [results, setResults] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // UI
-  const [viewMode, setViewMode]     = useState('3d');
+  const [viewMode, setViewMode] = useState('3d');
   const [selectedId, setSelectedId] = useState(null);
-  const [sortCfg, setSortCfg]       = useState({ key: 'safetyFactor', asc: true });
+  const [sortCfg, setSortCfg] = useState({ key: 'safetyFactor', asc: true });
 
   const handleAnalyze = useCallback(() => {
     if (!modelData.length) return;
@@ -358,7 +358,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
     let maxUtil = 0, minSF = Infinity;
     results.forEach(r => {
       counts[r.status]++;
-      if (r.utilization > maxUtil)   maxUtil = r.utilization;
+      if (r.utilization > maxUtil) maxUtil = r.utilization;
       if (r.safetyFactor < minSF) minSF = r.safetyFactor;
     });
     return { counts, maxUtil, minSF, total: results.length };
@@ -377,10 +377,10 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
 
   const sfChart = useMemo(() =>
     results?.map(r => ({
-      name:         r.elementName.slice(0, 9),
+      name: r.elementName.slice(0, 9),
       safetyFactor: r.safetyFactor,
-      utilization:  r.utilization,
-      fill:         STATUS_CFG[r.status].color,
+      utilization: r.utilization,
+      fill: STATUS_CFG[r.status].color,
     })) ?? [],
     [results]
   );
@@ -388,9 +388,9 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   const pieData = useMemo(() => {
     if (!summary) return [];
     return [
-      { name: 'Safe',    value: summary.counts.safe,    fill: '#22c55e' },
+      { name: 'Safe', value: summary.counts.safe, fill: '#22c55e' },
       { name: 'Warning', value: summary.counts.warning, fill: '#f59e0b' },
-      { name: 'Danger',  value: summary.counts.danger,  fill: '#ef4444' },
+      { name: 'Danger', value: summary.counts.danger, fill: '#ef4444' },
     ].filter(d => d.value > 0);
   }, [summary]);
 
@@ -399,7 +399,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <div className="flex flex-col gap-4" style={{ minHeight: 'calc(100vh - 120px)' }}>
+    <div className="w-full bg-space-900 flex flex-col overflow-hidden box-border p-3">
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -500,7 +500,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 <div className="flex gap-2">
                   {[
                     { key: 'tempMin', min: -50, max: 0 },
-                    { key: 'tempMax', min: 0,   max: 60 },
+                    { key: 'tempMax', min: 0, max: 60 },
                   ].map(({ key, min, max }) => (
                     <input key={key} type="number" min={min} max={max} value={env[key]}
                       onChange={e => setEnv(p => ({ ...p, [key]: Number(e.target.value) }))}
@@ -516,10 +516,10 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           {/* Load Conditions */}
           <Card title="⚖️ Load Conditions">
             <div className="flex flex-col gap-2.5">
-              <NumRow label="Dead Load"      value={loads.deadLoad}      unit="kN/m²" min={0} max={50}  step={0.5} onChange={v => setLoads(p => ({ ...p, deadLoad: v }))} />
-              <NumRow label="Live Load"      value={loads.liveLoad}      unit="kN/m²" min={0} max={30}  step={0.5} onChange={v => setLoads(p => ({ ...p, liveLoad: v }))} />
-              <NumRow label="Tributary Area" value={loads.tributaryArea} unit="m²"    min={1} max={100} step={1}   onChange={v => setLoads(p => ({ ...p, tributaryArea: v }))} />
-              <NumRow label="Floors"         value={loads.numFloors}     unit="fl"    min={1} max={100} step={1}   onChange={v => setLoads(p => ({ ...p, numFloors: v }))} />
+              <NumRow label="Dead Load" value={loads.deadLoad} unit="kN/m²" min={0} max={50} step={0.5} onChange={v => setLoads(p => ({ ...p, deadLoad: v }))} />
+              <NumRow label="Live Load" value={loads.liveLoad} unit="kN/m²" min={0} max={30} step={0.5} onChange={v => setLoads(p => ({ ...p, liveLoad: v }))} />
+              <NumRow label="Tributary Area" value={loads.tributaryArea} unit="m²" min={1} max={100} step={1} onChange={v => setLoads(p => ({ ...p, tributaryArea: v }))} />
+              <NumRow label="Floors" value={loads.numFloors} unit="fl" min={1} max={100} step={1} onChange={v => setLoads(p => ({ ...p, numFloors: v }))} />
             </div>
           </Card>
 
@@ -546,12 +546,12 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
         </div>
 
         {/* ── Center: View panel ──────────────────────────────────────── */}
-        <div className="flex-1 flex flex-col gap-3 min-w-0">
+        <div className="flex-1 flex flex-col gap-3 min-w-0" style={{height : 'clamp(300px, 75vh, 1000px)'}}>
 
           {/* View tabs */}
           <div className="flex items-center gap-1 bg-[#0f1422] border border-[#141a2a] rounded-xl p-1 w-fit">
             {[
-              { id: '3d',    label: '🧊 3D View' },
+              { id: '3d', label: '🧊 3D View' },
               { id: 'table', label: '📋 Results' },
               { id: 'chart', label: '📊 Chart' },
             ].map(({ id, label }) => (
@@ -559,8 +559,8 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
                 style={{
                   backgroundColor: viewMode === id ? '#1e3a5f' : 'transparent',
-                  color:           viewMode === id ? '#60a5fa' : '#8896a4',
-                  border:          viewMode === id ? '1px solid #2a5080' : '1px solid transparent',
+                  color: viewMode === id ? '#60a5fa' : '#8896a4',
+                  border: viewMode === id ? '1px solid #2a5080' : '1px solid transparent',
                 }}
               >
                 {label}
@@ -571,7 +571,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           {/* 3D View */}
           {viewMode === '3d' && (
             <div className="flex-1 rounded-2xl overflow-hidden border border-[#141a2a] relative"
-              style={{ minHeight: 'clamp(300px, 40vh, 600px)' }}>
+              style={{ height: 'clamp(300px, 40vh, 600px)' }}>
               {!modelData.length ? (
                 <div className="flex flex-col items-center justify-center h-full bg-[#0f1422] text-gray-500 gap-3">
                   <div className="text-5xl">🏗</div>
@@ -597,9 +597,9 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                         <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: v.color }} />
                         <span className="text-xs text-gray-300">
                           {v.label}
-                          {k === 'safe'    && ' (SF ≥ 2.0)'}
+                          {k === 'safe' && ' (SF ≥ 2.0)'}
                           {k === 'warning' && ' (1.0 ≤ SF < 2.0)'}
-                          {k === 'danger'  && ' (SF < 1.0)'}
+                          {k === 'danger' && ' (SF < 1.0)'}
                         </span>
                       </div>
                     ))}
@@ -631,16 +631,16 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                     <thead className="bg-[#141a2a] sticky top-0 z-10">
                       <tr>
                         {[
-                          { key: 'elementName',  label: 'Name',            w: 'w-28' },
-                          { key: 'elementType',  label: 'Type',            w: 'w-16' },
-                          { key: 'axialLoad',    label: 'Axial(kN)',       w: 'w-20' },
-                          { key: 'windLoad',     label: 'Wind(kN)',        w: 'w-20' },
-                          { key: 'seismicLoad',  label: 'Seismic(kN)',     w: 'w-16' },
-                          { key: 'maxStress',    label: 'Max Stress(MPa)', w: 'w-24' },
-                          { key: 'allowStress',  label: 'Allow.(MPa)',     w: 'w-20' },
-                          { key: 'safetyFactor', label: 'SF',              w: 'w-20' },
-                          { key: 'utilization',  label: 'Util.(%)',        w: 'w-28' },
-                          { key: 'status',       label: 'Status',          w: 'w-16' },
+                          { key: 'elementName', label: 'Name', w: 'w-28' },
+                          { key: 'elementType', label: 'Type', w: 'w-16' },
+                          { key: 'axialLoad', label: 'Axial(kN)', w: 'w-20' },
+                          { key: 'windLoad', label: 'Wind(kN)', w: 'w-20' },
+                          { key: 'seismicLoad', label: 'Seismic(kN)', w: 'w-16' },
+                          { key: 'maxStress', label: 'Max Stress(MPa)', w: 'w-24' },
+                          { key: 'allowStress', label: 'Allow.(MPa)', w: 'w-20' },
+                          { key: 'safetyFactor', label: 'SF', w: 'w-20' },
+                          { key: 'utilization', label: 'Util.(%)', w: 'w-28' },
+                          { key: 'status', label: 'Status', w: 'w-16' },
                         ].map(col => (
                           <th key={col.key}
                             onClick={() => toggleSort(col.key)}
@@ -797,17 +797,15 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Max Utilization</span>
-                    <span className={`font-mono font-bold ${
-                      summary.maxUtil >= 100 ? 'text-red-400' :
-                      summary.maxUtil >= 50  ? 'text-amber-400' : 'text-green-400'}`}>
+                    <span className={`font-mono font-bold ${summary.maxUtil >= 100 ? 'text-red-400' :
+                        summary.maxUtil >= 50 ? 'text-amber-400' : 'text-green-400'}`}>
                       {summary.maxUtil.toFixed(1)}%
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Min Safety Factor</span>
-                    <span className={`font-mono font-bold ${
-                      summary.minSF < 1  ? 'text-red-400' :
-                      summary.minSF < 2  ? 'text-amber-400' : 'text-green-400'}`}>
+                    <span className={`font-mono font-bold ${summary.minSF < 1 ? 'text-red-400' :
+                        summary.minSF < 2 ? 'text-amber-400' : 'text-green-400'}`}>
                       {summary.minSF.toFixed(2)}
                     </span>
                   </div>
@@ -859,15 +857,15 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           <Card title="📌 Current Conditions">
             <div className="flex flex-col gap-1.5 text-xs">
               {[
-                { label: 'Wind',         value: `${env.windSpeed} m/s`,           highlight: true },
-                { label: 'Dir',          value: env.windDir },
-                { label: 'Seismic Zone', value: `Zone ${env.seismicZone}`,         highlight: true },
-                { label: 'Snow Load',    value: `${env.snowLoad} kN/m²` },
-                { label: 'Temp',         value: `${env.tempMin}~${env.tempMax}°C` },
-                { label: 'Dead Load',    value: `${loads.deadLoad} kN/m²` },
-                { label: 'Live Load',    value: `${loads.liveLoad} kN/m²` },
-                { label: 'Floors',       value: `${loads.numFloors} fl` },
-                { label: 'Material',     value: MATERIALS[matId].label },
+                { label: 'Wind', value: `${env.windSpeed} m/s`, highlight: true },
+                { label: 'Dir', value: env.windDir },
+                { label: 'Seismic Zone', value: `Zone ${env.seismicZone}`, highlight: true },
+                { label: 'Snow Load', value: `${env.snowLoad} kN/m²` },
+                { label: 'Temp', value: `${env.tempMin}~${env.tempMax}°C` },
+                { label: 'Dead Load', value: `${loads.deadLoad} kN/m²` },
+                { label: 'Live Load', value: `${loads.liveLoad} kN/m²` },
+                { label: 'Floors', value: `${loads.numFloors} fl` },
+                { label: 'Material', value: MATERIALS[matId].label },
               ].map(({ label, value, highlight }) => (
                 <div key={label} className="flex justify-between gap-1">
                   <span className="text-gray-500 shrink-0">{label}</span>
@@ -889,16 +887,16 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 </div>
                 <hr className="border-[#1b2236]" />
                 {[
-                  { label: 'Type',            value: ELEMENT_LABELS[selectedResult.elementType] ?? selectedResult.elementType },
-                  { label: 'Self Weight',     value: `${selectedResult.selfWeight} kN` },
-                  { label: 'Axial',           value: `${selectedResult.axialLoad} kN` },
-                  { label: 'Wind Load',       value: `${selectedResult.windLoad} kN` },
-                  { label: 'Seismic Load',    value: `${selectedResult.seismicLoad} kN` },
-                  { label: 'Bending Moment',  value: `${selectedResult.bendingMoment} kN·m` },
-                  { label: 'Shear Force',     value: `${selectedResult.shearForce} kN` },
-                  { label: 'Axial Stress',    value: `${selectedResult.axialStress} MPa` },
-                  { label: 'Bending Stress',  value: `${selectedResult.bendingStress} MPa` },
-                  { label: 'Shear Stress',    value: `${selectedResult.shearStress} MPa` },
+                  { label: 'Type', value: ELEMENT_LABELS[selectedResult.elementType] ?? selectedResult.elementType },
+                  { label: 'Self Weight', value: `${selectedResult.selfWeight} kN` },
+                  { label: 'Axial', value: `${selectedResult.axialLoad} kN` },
+                  { label: 'Wind Load', value: `${selectedResult.windLoad} kN` },
+                  { label: 'Seismic Load', value: `${selectedResult.seismicLoad} kN` },
+                  { label: 'Bending Moment', value: `${selectedResult.bendingMoment} kN·m` },
+                  { label: 'Shear Force', value: `${selectedResult.shearForce} kN` },
+                  { label: 'Axial Stress', value: `${selectedResult.axialStress} MPa` },
+                  { label: 'Bending Stress', value: `${selectedResult.bendingStress} MPa` },
+                  { label: 'Shear Stress', value: `${selectedResult.shearStress} MPa` },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex justify-between gap-1">
                     <span className="text-gray-500 shrink-0">{label}</span>

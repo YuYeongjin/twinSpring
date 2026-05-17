@@ -43,7 +43,7 @@ const PRESET_LABELS = { IDLE: 'Idle', DIG: 'Dig', DUMP: 'Dump', TRAVEL: 'Travel'
 
 // ── 자동 시뮬레이션 사이클 페이즈 ────────────────────────────────────────────────
 const AUTO_SIM_PHASES = [
-  { name: 'Approach',  boomAngle: 15,  armAngle: 75,  bucketAngle: -70,   swingAngle: 0,   dㅈㅈㄴz:  -0.015, duration: 1600 },
+  { name: 'Approach',  boomAngle: 15,  armAngle: 75,  bucketAngle: -70,   swingAngle: 0,   dz:  -0.015, duration: 1600 },
   { name: 'Dig',       boomAngle: 0,   armAngle: 110, bucketAngle: 12,  swingAngle: 0,   dz:  0,    duration: 1800 },
   { name: 'Lift',      boomAngle: 55,  armAngle: 35,  bucketAngle: 5,   swingAngle: 0,   dz:  0,    duration: 1200 },
   { name: 'Swing',     boomAngle: 65,  armAngle: 25,  bucketAngle: 5,   swingAngle: 85,  dz:  0,    duration: 1000 },

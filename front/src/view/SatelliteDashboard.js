@@ -175,7 +175,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
     : "—";
 
   return (
-    <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-4 flex flex-col gap-4">
+    <div className="min-h-90 bg-[#0d1b2a] text-gray-200 p-4 flex flex-col gap-4">
 
       {/* ================================================================
           Alert Banner — 임계값 초과 시 표시 (항상 최상단)
