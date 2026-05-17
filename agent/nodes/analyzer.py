@@ -1,10 +1,10 @@
 """
-Node 1: 프롬프트 분석 + 라우팅 분류
+Node 1: Prompt analysis + routing classification
 
-전략:
-1. pending_action이 있으면 bim_builder로 즉시 라우팅 (다단계 BIM 대화 진행 중)
-2. 키워드 매칭으로 빠른 분류
-3. gemma3:12b LLM으로 최종 판단
+Strategy:
+1. If pending_action exists, route immediately to bim_builder (multi-step BIM conversation in progress)
+2. Fast keyword matching
+3. Final judgment via gemma3:12b LLM
 """
 
 import re
@@ -14,18 +14,20 @@ from llm_config import llm_precise
 
 _RAG_DB_KEYWORDS = re.compile(
     r"온도|습도|센서|알림|경보|알람|임계|threshold"
-    r"|현재\s*(상태|값|데이터)|최근|조회|확인|얼마|몇\s*도",
+    r"|현재\s*(상태|값|데이터)|최근|조회|확인|얼마|몇\s*도"
+    r"|temperature|humidity|sensor|alert|alarm|current\s*(status|value|data)|recent",
     re.IGNORECASE,
 )
 
-# BIM 데이터 조회 (생성/수정 아닌 조회/통계)
+# BIM data query (read/statistics, not create/modify)
 _BIM_QUERY_KEYWORDS = re.compile(
     r"프로젝트\s*(목록|리스트|현황|조회|보여|알려|확인|몇\s*개)"
     r"|부재\s*(수|개수|목록|현황|통계|구성|조회|종류|몇\s*개)"
     r"|몇\s*(개의|개|종류).*부재"
     r"|bim.*조회|bim.*목록|bim.*현황|bim.*통계|bim.*부재"
     r"|어떤.*부재|부재.*어떤|부재.*있"
-    r"|내\s*프로젝트|내\s*bim",
+    r"|내\s*프로젝트|내\s*bim"
+    r"|project\s*(list|overview|stats)|element\s*(count|stats|list)",
     re.IGNORECASE,
 )
 
@@ -35,11 +37,12 @@ _BIM_KEYWORDS = re.compile(
     r"|bim|ifc"
     r"|피사의\s*사탑|피사탑|에펠탑|피라미드|부르즈\s*할리파|랜드마크"
     r"|인천대교|사장교|케이블교"
+    r"|column|beam|wall|slab|pier|add|create|delete|remove|modify"
     r"|타워|tower|pyramid|구조물|건축물",
     re.IGNORECASE,
 )
 
-# 시뮬레이션 제어 키워드
+# Simulation control keywords
 _SIMULATION_KEYWORDS = re.compile(
     r"굴착기|굴삭기|excavator"
     r"|붐\s*(각도|올려|내려|설정|변경)|boom\s*(angle|up|down)"
@@ -55,25 +58,25 @@ _SIMULATION_KEYWORDS = re.compile(
 )
 
 _SYSTEM_PROMPT = SystemMessage(content=(
-    "사용자 메시지를 다음 중 하나로 분류하세요: rag_db, bim_builder, bim_query, simulation_controller, chat\n"
-    "- rag_db: 센서 데이터 조회 또는 건물 상태 확인\n"
-    "- bim_builder: BIM 요소(기둥, 보, 벽, 슬래브 등) 생성/수정/삭제\n"
-    "- bim_query: BIM 프로젝트 목록 조회, 부재 수/통계/구성 확인\n"
-    "- simulation_controller: 굴착기 시뮬레이션 제어 (각도 설정, 프리셋, 초기화, 상태 조회)\n"
-    "- chat: 일반 대화\n"
-    "단 하나의 단어만 응답하세요."
+    "Classify the user message into exactly one of: rag_db, bim_builder, bim_query, simulation_controller, chat\n"
+    "- rag_db: sensor data query or building status check\n"
+    "- bim_builder: create/modify/delete BIM elements (column, beam, wall, slab, etc.)\n"
+    "- bim_query: list BIM projects, check element count/statistics/composition\n"
+    "- simulation_controller: excavator simulation control (set angles, presets, reset, status query)\n"
+    "- chat: general conversation\n"
+    "Respond with exactly one word."
 ))
 
 
 def analyze_node(state: AgentState) -> dict:
-    # pending_action이 있으면 bim_builder로 즉시 라우팅 (다단계 BIM 대화 진행 중)
+    # If pending_action exists, route immediately to bim_builder (multi-step BIM conversation)
     if state.get("pending_action"):
         return {"intent": "bim_builder"}
 
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
 
-    # 키워드 매칭 (빠른 경로) — 우선순위 순서대로 체크
+    # Keyword matching (fast path) — checked in priority order
     if _SIMULATION_KEYWORDS.search(user_text):
         return {"intent": "simulation_controller"}
     if _BIM_QUERY_KEYWORDS.search(user_text):
@@ -83,7 +86,7 @@ def analyze_node(state: AgentState) -> dict:
     if _RAG_DB_KEYWORDS.search(user_text):
         return {"intent": "rag_db"}
 
-    # LLM 판단
+    # LLM judgment
     try:
         response = llm_precise.invoke([
             _SYSTEM_PROMPT,

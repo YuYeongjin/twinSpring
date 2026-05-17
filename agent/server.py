@@ -1,7 +1,7 @@
 """
-FastAPI 서버 - LangGraph Agent를 REST API로 노출
+FastAPI server - exposes LangGraph Agent as REST API
 
-실행: uvicorn server:app --host 0.0.0.0 --port 7070 --reload
+Run: uvicorn server:app --host 0.0.0.0 --port 7070 --reload
 """
 
 import traceback
@@ -21,46 +21,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 세션별 상태 저장소 (pending_action 등 Python Agent 내부 상태)
+# Per-session state store (pending_action and other Python Agent internal state)
 # key: session_id, value: {"pending_action": dict | None}
 _session_store: dict[str, dict] = {}
 
 
-# ── 요청/응답 스키마 ──────────────────────────────────────────────
+# ── Request/Response schemas ──────────────────────────────────────────────
 
 class HistoryMessage(BaseModel):
     role: str       # "user" | "assistant"
     content: str
 
 class ChatContext(BaseModel):
-    projectId: str | None = None               # BIM 프로젝트 ID
-    simulationProjectId: str | None = None     # 시뮬레이션 프로젝트 ID
+    projectId: str | None = None               # BIM project ID
+    simulationProjectId: str | None = None     # Simulation project ID
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str = "default"   # Spring Boot에서 전달하는 세션 ID
+    session_id: str = "default"   # Session ID passed from Spring Boot
     history: list[HistoryMessage] = []
     context: ChatContext = ChatContext()
 
 class ChatResponse(BaseModel):
     response: str
     intent: str | None = None
-    bimData: dict | None = None       # bim_query 노드에서 반환하는 구조화 데이터
-    sensorData: dict | None = None    # rag_db 노드에서 반환하는 센서/에너지 데이터
+    bimData: dict | None = None       # Structured data returned from bim_query node
+    sensorData: dict | None = None    # Sensor/energy data returned from rag_db node
 
 class MultimodalRequest(BaseModel):
-    message: str = "이 이미지를 분석해주세요."
-    image_base64: str        # data URL 또는 순수 base64
+    message: str = "Please analyze this image."
+    image_base64: str        # data URL or raw base64
     session_id: str = "default"
 
 
-# ── 엔드포인트 ────────────────────────────────────────────────────
+# ── Endpoints ────────────────────────────────────────────────────
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    """메시지를 LangGraph 에이전트로 전달하고 응답을 반환합니다."""
+    """Forward message to LangGraph agent and return the response."""
 
-    # 히스토리 변환
+    # Convert history
     history_messages = []
     for msg in req.history:
         if msg.role == "user":
@@ -70,7 +70,7 @@ def chat(req: ChatRequest):
 
     messages = history_messages + [HumanMessage(content=req.message)]
 
-    # 세션에서 pending_action 로드
+    # Load pending_action from session
     session_data = _session_store.get(req.session_id, {})
     pending_action = session_data.get("pending_action")
 
@@ -89,17 +89,17 @@ def chat(req: ChatRequest):
     except Exception as e:
         traceback.print_exc()
         return ChatResponse(
-            response="처리 중 오류가 발생했습니다. 다시 시도해 주세요.",
+            response="An error occurred while processing your request. Please try again.",
             intent="chat",
         )
 
-    # 세션에 pending_action 저장 (다단계 BIM 대화 유지)
+    # Save pending_action to session (maintain multi-step BIM conversation)
     _session_store[req.session_id] = {
         "pending_action": result.get("pending_action")
     }
 
     messages = result.get("messages", [])
-    last_content = messages[-1].content if messages else "응답을 받지 못했습니다."
+    last_content = messages[-1].content if messages else "No response received."
 
     return ChatResponse(
         response=last_content,
@@ -111,7 +111,7 @@ def chat(req: ChatRequest):
 
 @app.post("/chat-multimodal", response_model=ChatResponse)
 def chat_multimodal(req: MultimodalRequest):
-    """이미지 + 텍스트를 Ollama 비전 모델로 분석합니다."""
+    """Analyze image + text with Ollama vision model."""
     try:
         img_b64 = req.image_base64
         if "," in img_b64:
@@ -126,14 +126,14 @@ def chat_multimodal(req: MultimodalRequest):
     except Exception:
         traceback.print_exc()
         return ChatResponse(
-            response="이미지 분석 중 오류가 발생했습니다. 모델이 비전을 지원하는지 확인해 주세요.",
+            response="An error occurred while analyzing the image. Please verify the model supports vision.",
             intent="vision",
         )
 
 
 @app.delete("/session/{session_id}")
 def clear_session(session_id: str):
-    """세션 상태(pending_action 등)를 초기화합니다."""
+    """Clear session state (pending_action, etc.)."""
     _session_store.pop(session_id, None)
     return {"status": "cleared", "session_id": session_id}
 

@@ -1,7 +1,7 @@
 """
-LangGraph 그래프 정의
+LangGraph graph definition
 
-흐름:
+Flow:
   START → analyze → (route_by_intent) → rag_db               → END
                                        → bim_builder          → END
                                        → bim_query            → END
@@ -22,18 +22,16 @@ from nodes.simulation_controller import simulation_controller_node
 def build_graph():
     builder = StateGraph(AgentState)
 
-    # 노드 등록
-    builder.add_node("analyze",               analyze_node)               # Node 1: 프롬프트 분석
-    builder.add_node("rag_db",                rag_db_node)                # Node 2: RAG + DB 조회
-    builder.add_node("bim_builder",           bim_builder_node)           # Node 3: BIM 요소 생성/수정/삭제
-    builder.add_node("bim_query",             bim_query_node)             # Node 4: BIM 프로젝트/부재 통계 조회
-    builder.add_node("simulation_controller", simulation_controller_node) # Node 5: 굴착기 시뮬레이션 제어
-    builder.add_node("chat",                  chat_node)                  # Node 6: 일반 대화
+    builder.add_node("analyze",               analyze_node)               # Node 1: prompt analysis
+    builder.add_node("rag_db",                rag_db_node)                # Node 2: RAG + DB query
+    builder.add_node("bim_builder",           bim_builder_node)           # Node 3: BIM element create/edit/delete
+    builder.add_node("bim_query",             bim_query_node)             # Node 4: BIM project/element stats query
+    builder.add_node("simulation_controller", simulation_controller_node) # Node 5: excavator simulation control
+    builder.add_node("chat",                  chat_node)                  # Node 6: general conversation
 
-    # 엣지 연결
     builder.add_edge(START, "analyze")
 
-    # 조건부 엣지: analyze → 각 노드
+    # Conditional edge: analyze → each node
     builder.add_conditional_edges(
         "analyze",
         route_by_intent,
