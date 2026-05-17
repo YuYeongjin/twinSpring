@@ -557,6 +557,15 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
     }, 500);
   }, [modelData, env, loads, matId]);
 
+  // 입력값 변경 시 자동 재계산 (Run Analysis 최초 1회 이후만)
+  useEffect(() => {
+    if (!results || !modelData.length) return;
+    const id = setTimeout(() => {
+      setResults(runAnalysis(modelData, env, loads, matId));
+    }, 250);
+    return () => clearTimeout(id);
+  }, [env, loads, matId, modelData]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const resultMap = useMemo(() => {
     if (!results) return {};
     return Object.fromEntries(results.map(r => [r.elementId, r]));
@@ -628,7 +637,10 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
         </div>
         <div className="flex items-center gap-3">
           {results && (
-            <span className="text-xs text-gray-500">{modelData.length} elements analyzed</span>
+            <span className="text-xs text-gray-500 flex items-center gap-1.5">
+              {modelData.length} elements
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" title="Live — auto-recalculates on input change" />
+            </span>
           )}
           <button
             onClick={handleAnalyze}
@@ -637,7 +649,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
               bg-accent-blue/10 text-accent-blue border border-accent-blue/30
               hover:bg-accent-blue/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
           >
-            {isAnalyzing ? '⏳ Analyzing…' : '▶ Run Analysis'}
+            {isAnalyzing ? '⏳ Analyzing…' : results ? '↺ Re-run' : '▶ Run Analysis'}
           </button>
         </div>
       </div>
