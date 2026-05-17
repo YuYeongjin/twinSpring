@@ -692,8 +692,8 @@ export default function Scene({
                 />
             ))}
 
-            {/* 그리드 */}
-            {!envPreset?.useWater && (
+            {/* 그리드 — 수면/터널/젖은지면 프리셋은 별도 지면을 사용하므로 숨김 */}
+            {!envPreset?.useWater && !envPreset?.useTunnel && !envPreset?.useWetGround && (
                 <gridHelper
                     args={[100,100,
                         envPreset?.id==='night' ? '#1a2040' : '#334155',

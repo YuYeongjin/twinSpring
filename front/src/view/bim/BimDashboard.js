@@ -481,6 +481,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
     const mainViewRef = useRef(null);
+    const viewContainerRef = useRef(null); // selBox CSS 포지셔닝 기준 컨테이너
 
     // ── 패널 표시 여부 ─────────────────────────────────────────────
     const [showLayerPanel, setShowLayerPanel] = useState(typeof window !== 'undefined' && window.innerWidth >= 768);
@@ -760,9 +761,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     /** 러버밴드 박스 정보를 카메라 투영으로 부재 선택에 변환 */
     const computeRubberBandSelection = useCallback((startX, startY, endX, endY) => {
-        if (!cameraRef.current || !mainViewRef.current) return;
+        if (!cameraRef.current || !viewContainerRef.current) return;
         const camera  = cameraRef.current;
-        const domRect = mainViewRef.current.getBoundingClientRect();
+        const domRect = viewContainerRef.current.getBoundingClientRect();
 
         const minX = Math.min(startX, endX);
         const maxX = Math.max(startX, endX);
@@ -786,16 +787,20 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         applyRubberBandSelection(hit);
     }, [cameraRef, mainViewRef, modelData, applyRubberBandSelection]);
 
-    // 선택 모드일 때 mainViewRef에 마우스 이벤트 부착
+    // 선택 모드일 때 뷰어 컨테이너에 마우스 이벤트 부착
+    // — viewContainerRef (selBox의 CSS 포지셔닝 기준)에 capture 단계로 등록하여
+    //   R3F 이벤트 처리보다 먼저 실행되고 좌표계가 selBox와 일치하도록 보장
     useEffect(() => {
         if (!isSelectMode) { setSelBox(null); return; }
-        const el = mainViewRef.current;
+        const el = viewContainerRef.current;
         if (!el) return;
 
         let startX = 0, startY = 0, dragging = false;
 
         const onPointerDown = (e) => {
             if (e.button !== 0) return;
+            // 이후 pointermove/pointerup 이벤트를 이 요소에서 확실히 받도록 capture
+            try { el.setPointerCapture(e.pointerId); } catch (_) {}
             const rect = el.getBoundingClientRect();
             startX = e.clientX - rect.left;
             startY = e.clientY - rect.top;
@@ -830,13 +835,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             setSelBox(null);
         };
 
-        el.addEventListener('pointerdown', onPointerDown);
-        el.addEventListener('pointermove', onPointerMove);
-        el.addEventListener('pointerup',   onPointerUp);
+        // capture: true — R3F의 bubble 단계 핸들러보다 먼저 실행
+        el.addEventListener('pointerdown', onPointerDown, { capture: true });
+        el.addEventListener('pointermove', onPointerMove, { capture: true });
+        el.addEventListener('pointerup',   onPointerUp,   { capture: true });
         return () => {
-            el.removeEventListener('pointerdown', onPointerDown);
-            el.removeEventListener('pointermove', onPointerMove);
-            el.removeEventListener('pointerup',   onPointerUp);
+            el.removeEventListener('pointerdown', onPointerDown, { capture: true });
+            el.removeEventListener('pointermove', onPointerMove, { capture: true });
+            el.removeEventListener('pointerup',   onPointerUp,   { capture: true });
         };
     }, [isSelectMode, computeRubberBandSelection]);
 
@@ -1206,6 +1212,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             </div>
                         ) : (
                             <div
+                                ref={viewContainerRef}
                                 className="w-full flex-1 relative"
                                 style={{
                                     minHeight: 'clamp(300px, 60vh, 700px)',
