@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, TransformControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { OrbitControls, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
 import { BimLine } from '../element/BimLine';
@@ -692,6 +692,9 @@ export default function Scene({
                 />
             ))}
 
+            {/* 월드 좌표계 축 (X=빨강, Y=초록, Z=파랑) */}
+            <axesHelper args={[5]} />
+
             {/* 그리드 — 수면/터널/젖은지면 프리셋은 별도 지면을 사용하므로 숨김 */}
             {!envPreset?.useWater && !envPreset?.useTunnel && !envPreset?.useWetGround && (
                 <gridHelper
@@ -707,9 +710,6 @@ export default function Scene({
                 {envPreset && <SkyEnvironment preset={envPreset} />}
             </Suspense>
 
-            <GizmoHelper alignment="bottom-left" margin={[72,72]}>
-                <GizmoViewport axisColors={['#ff4060','#80ff80','#2080ff']} labelColor="white" />
-            </GizmoHelper>
         </>
     );
 }
