@@ -1612,9 +1612,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         <div>
           <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px' }}>Joint Detail Control</div>
           {[
-            { label: '붐 (Boom)',   key: 'boomAngle',   ...JOINT_LIMITS.boomAngle,   color: accentBlue,  keys: ['r','f'], keylabels: ['R↑','F↓'] },
-            { label: '암 (Arm)',    key: 'armAngle',    ...JOINT_LIMITS.armAngle,    color: '#34d399',   keys: ['t','g'], keylabels: ['T↑','G↓'] },
-            { label: '버킷 (Bucket)', key: 'bucketAngle', ...JOINT_LIMITS.bucketAngle, color: '#fb923c', keys: ['y','h'], keylabels: ['Y↑','H↓'] },
+            { label: 'Boom',   key: 'boomAngle',   ...JOINT_LIMITS.boomAngle,   color: accentBlue,  keys: ['r','f'], keylabels: ['R↑','F↓'] },
+            { label: 'Arm',    key: 'armAngle',    ...JOINT_LIMITS.armAngle,    color: '#34d399',   keys: ['t','g'], keylabels: ['T↑','G↓'] },
+            { label: 'Bucket', key: 'bucketAngle', ...JOINT_LIMITS.bucketAngle, color: '#fb923c',   keys: ['y','h'], keylabels: ['Y↑','H↓'] },
           ].map(({ label, key, min, max, color, keys: kk, keylabels }) => (
             <div key={key} style={{ marginBottom: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', alignItems: 'center' }}>
@@ -1728,7 +1728,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             🚨 Alert Thresholds
             {activeAlerts.length > 0 && (
               <span style={{ marginLeft: '6px', color: activeAlerts.some(a => a.level === 'danger') ? '#f87171' : '#fbbf24', fontWeight: 700 }}>
-                ({activeAlerts.length}건 초과)
+                ({activeAlerts.length} exceeded)
               </span>
             )}
           </div>
@@ -1747,8 +1747,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px', fontSize: '9px', color: '#3a4a5a' }}>
-              <span>현재: {sensor ? `${sensor.temperature}°C` : '--'}</span>
-              <span>범위: {thresholds.tempMin}° ~ {thresholds.tempMax}°</span>
+              <span>Now: {sensor ? `${sensor.temperature}°C` : '--'}</span>
+              <span>Range: {thresholds.tempMin}° ~ {thresholds.tempMax}°</span>
             </div>
           </div>
 
@@ -1766,8 +1766,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px', fontSize: '9px', color: '#3a4a5a' }}>
-              <span>현재: {sensor ? `${sensor.humidity}%` : '--'}</span>
-              <span>범위: {thresholds.humMin}% ~ {thresholds.humMax}%</span>
+              <span>Now: {sensor ? `${sensor.humidity}%` : '--'}</span>
+              <span>Range: {thresholds.humMin}% ~ {thresholds.humMax}%</span>
             </div>
           </div>
 

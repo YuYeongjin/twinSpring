@@ -169,7 +169,7 @@ function ProjectCard({ item, onOpen, onRename }) {
             border: `1px solid ${TB.warning}50`,
           }}
         >
-          ⚠ 이름 없음
+          ⚠ No Name
         </div>
       )}
     </div>
@@ -255,7 +255,7 @@ export default function SimulationProjectList({
 
   const filtered = (projectList ?? []).filter(p =>
     p.projectName?.toLowerCase().includes(search.toLowerCase()) ||
-    (isInvalidName(p.projectName) && "이름없음이름 없음null?".includes(search.toLowerCase()))
+    (isInvalidName(p.projectName) && "no nameunnamed null?".includes(search.toLowerCase()))
   );
 
   return (
@@ -303,7 +303,7 @@ export default function SimulationProjectList({
               border: "1px solid #f5a623",
             }}
           >
-            {showCreate ? "✕ 취소" : "+ 새 프로젝트"}
+            {showCreate ? "✕ Cancel" : "+ New Project"}
           </button>
         </div>
       </div>
@@ -324,8 +324,8 @@ export default function SimulationProjectList({
         >
           <span className="text-lg">⚠</span>
           <span>
-            이름이 설정되지 않은 프로젝트 <strong>{invalidCount}개</strong>가 있습니다.
-            카드의 이름 입력란에 직접 입력하여 수정할 수 있습니다.
+            <strong>{invalidCount}</strong> project{invalidCount > 1 ? 's have' : ' has'} no name set.
+            Click the name field on the card to rename.
           </span>
         </div>
       )}
@@ -346,12 +346,12 @@ export default function SimulationProjectList({
         <div className="flex flex-col items-center justify-center py-32 text-center">
           <div className="text-7xl mb-5">{search ? "🔍" : "🚜"}</div>
           <div className="text-lg font-semibold text-gray-400 mb-2">
-            {search ? `"${search}" 검색 결과 없음` : "프로젝트가 없습니다"}
+            {search ? `No results for "${search}"` : "No projects found"}
           </div>
           <div className="text-sm" style={{ color: TB.text2 }}>
             {search
-              ? "다른 검색어를 입력하거나 검색을 초기화하세요"
-              : '"+ 새 프로젝트" 버튼으로 첫 시뮬레이션 프로젝트를 만들어보세요'}
+              ? "Try a different keyword or clear the search"
+              : 'Click "+ New Project" to create your first simulation project'}
           </div>
           {search && (
             <button
@@ -359,7 +359,7 @@ export default function SimulationProjectList({
               className="mt-4 px-4 py-2 rounded-lg text-sm transition"
               style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
             >
-              검색 초기화
+              Clear Search
             </button>
           )}
         </div>

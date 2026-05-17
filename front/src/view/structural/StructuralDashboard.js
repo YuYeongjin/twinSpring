@@ -7,66 +7,66 @@ import {
 } from 'recharts';
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 상수
+// Constants
 // ──────────────────────────────────────────────────────────────────────────────
 
 const MATERIALS = {
   concrete_24: {
-    id: 'concrete_24', label: '콘크리트 C24', density: 24,
+    id: 'concrete_24', label: 'Concrete C24', density: 24,
     allowCompressive: 16, allowShear: 1.4,
   },
   concrete_30: {
-    id: 'concrete_30', label: '콘크리트 C30', density: 24,
+    id: 'concrete_30', label: 'Concrete C30', density: 24,
     allowCompressive: 20, allowShear: 1.7,
   },
   concrete_40: {
-    id: 'concrete_40', label: '콘크리트 C40', density: 24,
+    id: 'concrete_40', label: 'Concrete C40', density: 24,
     allowCompressive: 26.7, allowShear: 2.1,
   },
   steel_235: {
-    id: 'steel_235', label: '강재 SS275', density: 78.5,
+    id: 'steel_235', label: 'Steel SS275', density: 78.5,
     allowCompressive: 157, allowShear: 91,
   },
   steel_355: {
-    id: 'steel_355', label: '강재 SM355', density: 78.5,
+    id: 'steel_355', label: 'Steel SM355', density: 78.5,
     allowCompressive: 237, allowShear: 137,
   },
 };
 
 const SEISMIC_ZONES = [
-  { value: 1, label: '구역 I  — 저위험 (0.08g)', Sa: 0.08 },
-  { value: 2, label: '구역 II — 보통  (0.154g)', Sa: 0.154 },
-  { value: 3, label: '구역 III— 고위험 (0.22g)', Sa: 0.22 },
-  { value: 4, label: '구역 IV — 극위험 (0.32g)', Sa: 0.32 },
+  { value: 1, label: 'Zone I  — Low Risk (0.08g)',       Sa: 0.08 },
+  { value: 2, label: 'Zone II — Moderate (0.154g)',      Sa: 0.154 },
+  { value: 3, label: 'Zone III — High Risk (0.22g)',     Sa: 0.22 },
+  { value: 4, label: 'Zone IV — Very High Risk (0.32g)', Sa: 0.32 },
 ];
 
 const ELEMENT_LABELS = {
-  IfcColumn: '기둥',
-  IfcBeam:   '보',
-  IfcMember: '부재',
-  IfcWall:   '벽',
-  IfcSlab:   '슬래브',
-  IfcPier:   '교각',
+  IfcColumn: 'Column',
+  IfcBeam:   'Beam',
+  IfcMember: 'Member',
+  IfcWall:   'Wall',
+  IfcSlab:   'Slab',
+  IfcPier:   'Pier',
 };
 
 const STATUS_CFG = {
-  safe:    { label: '안전', color: '#22c55e', bg: 'bg-green-900/40', text: 'text-green-300', border: 'border-green-600/40' },
-  warning: { label: '주의', color: '#f59e0b', bg: 'bg-amber-900/40',  text: 'text-amber-300',  border: 'border-amber-600/40' },
-  danger:  { label: '위험', color: '#ef4444', bg: 'bg-red-900/40',   text: 'text-red-300',   border: 'border-red-600/40' },
+  safe:    { label: 'Safe',    color: '#22c55e', bg: 'bg-green-900/40', text: 'text-green-300', border: 'border-green-600/40' },
+  warning: { label: 'Warning', color: '#f59e0b', bg: 'bg-amber-900/40',  text: 'text-amber-300',  border: 'border-amber-600/40' },
+  danger:  { label: 'Danger',  color: '#ef4444', bg: 'bg-red-900/40',   text: 'text-red-300',   border: 'border-red-600/40' },
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 구조해석 엔진
+// Structural analysis engine
 // σ(MPa) = Force(kN) / Area(m²) / 1000
 // σ(MPa) = M(kN·m) × c(m)  / I(m⁴) / 1000
-// τ(MPa) = 1.5 × V(kN)     / A(m²) / 1000  (직사각형 단면)
+// τ(MPa) = 1.5 × V(kN)     / A(m²) / 1000  (rectangular section)
 // ──────────────────────────────────────────────────────────────────────────────
 
 function runAnalysis(modelData, env, loads, matId) {
   const mat     = MATERIALS[matId];
   const seismic = SEISMIC_ZONES.find(z => z.value === env.seismicZone) ?? SEISMIC_ZONES[1];
 
-  // 설계 풍압 (kN/m²): q = 0.6125 × V²/1000 × Cf(1.3) × gust(1.5)
+  // Design wind pressure (kN/m²): q = 0.6125 × V²/1000 × Cf(1.3) × gust(1.5)
   const qDesign = 0.6125 * (env.windSpeed ** 2) / 1000 * 1.3 * 1.5;
 
   return modelData.map((el, idx) => {
@@ -76,39 +76,39 @@ function runAnalysis(modelData, env, loads, matId) {
     const pY = Number(el.positionY) || 0;
     const type = el.elementType || 'IfcColumn';
 
-    const selfWt = sX * sY * sZ * mat.density; // kN (전체 자중)
+    const selfWt = sX * sY * sZ * mat.density; // kN (total self weight)
 
     let A, I, c, L;
     let axialLoad = 0, bendingMoment = 0, shearForce = 0;
 
     if (type === 'IfcColumn' || type === 'IfcPier') {
-      // 단면 sX×sZ, 높이 sY
+      // Section sX×sZ, height sY
       A = sX * sZ;
       I = sX * sZ ** 3 / 12;
       c = sZ / 2;
       L = sY;
 
-      // 축력 = 자중 + 영향면적 × 적층 하중
+      // Axial = self weight + tributary area × floor loads
       axialLoad = selfWt + (loads.deadLoad + loads.liveLoad) * loads.tributaryArea * loads.numFloors;
 
-      // 횡력: 풍하중 vs 지진하중 중 큰 값
+      // Lateral: larger of wind vs seismic
       const hFactor   = Math.pow((pY + sY) / 10 + 1, 0.25);
       const Fwind     = qDesign * hFactor * sX * L;      // kN
-      const Fseismic  = seismic.Sa * axialLoad;           // kN (Sa × 하중≈중량)
+      const Fseismic  = seismic.Sa * axialLoad;           // kN
       const Flateral  = Math.max(Fwind, Fseismic);
 
-      bendingMoment = Flateral * L / 2;  // kN·m (중간 단면)
+      bendingMoment = Flateral * L / 2;  // kN·m (mid section)
       shearForce    = Flateral;          // kN
 
     } else if (type === 'IfcBeam' || type === 'IfcMember') {
-      // 단면 sX(폭)×sY(높이), 스팬 sZ
+      // Section sX(width)×sY(height), span sZ
       A = sX * sY;
       I = sX * sY ** 3 / 12;
       c = sY / 2;
       L = Math.max(sZ, 0.1);
 
-      // 등분포 하중(kN/m) = 자중/m + 상재하중×영향폭
-      const wSelf  = sX * sY * mat.density;                         // kN/m
+      // UDL (kN/m) = self weight/m + floor load × influence width
+      const wSelf  = sX * sY * mat.density;
       const wFloor = (loads.deadLoad + loads.liveLoad) * Math.sqrt(loads.tributaryArea);
       const w      = wSelf + wFloor;
 
@@ -117,9 +117,9 @@ function runAnalysis(modelData, env, loads, matId) {
       axialLoad     = 0;
 
     } else if (type === 'IfcWall') {
-      // 길이 sX, 높이 sY, 두께 sZ
-      A = sX * sZ;           // 수직 단면적
-      I = sZ * sX ** 3 / 12; // 면내 관성모멘트
+      // Length sX, height sY, thickness sZ
+      A = sX * sZ;           // vertical cross-section
+      I = sZ * sX ** 3 / 12; // in-plane moment of inertia
       c = sX / 2;
       L = sY;
 
@@ -127,10 +127,10 @@ function runAnalysis(modelData, env, loads, matId) {
       const Fw   = qDesign * sX * sY;
       const Fs   = seismic.Sa * axialLoad;
       shearForce = Math.max(Fw, Fs);
-      bendingMoment = 0; // 전단벽 — 면내 전단 지배
+      bendingMoment = 0; // shear wall — in-plane shear governs
 
     } else if (type === 'IfcSlab') {
-      // 두께 sY, 스팬 min(sX,sZ) — 단위폭 1m 기준
+      // Thickness sY, span min(sX,sZ) — unit width 1m
       const span = Math.min(sX, sZ);
       A = 1.0 * sY;
       I = sY ** 3 / 12;
@@ -138,7 +138,7 @@ function runAnalysis(modelData, env, loads, matId) {
       L = Math.max(span, 0.1);
 
       const q       = loads.deadLoad + loads.liveLoad + env.snowLoad + sY * mat.density;
-      bendingMoment = q * L ** 2 / 10; // kN·m/m (연속 슬래브)
+      bendingMoment = q * L ** 2 / 10; // kN·m/m (continuous slab)
       shearForce    = q * L / 2;
       axialLoad     = 0;
 
@@ -184,7 +184,7 @@ function runAnalysis(modelData, env, loads, matId) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 3D 스트레스 뷰어
+// 3D Stress Viewer
 // ──────────────────────────────────────────────────────────────────────────────
 
 function StressBox({ element, result, isSelected, onSelect }) {
@@ -245,7 +245,7 @@ function StressViewer3D({ modelData, resultMap, selectedId, onSelect }) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// UI 공통 컴포넌트
+// UI components
 // ──────────────────────────────────────────────────────────────────────────────
 
 function Card({ title, children, className = '' }) {
@@ -303,12 +303,12 @@ function NumRow({ label, value, unit, min = 0, max = 1000, step = 0.5, onChange 
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// 메인 대시보드
+// Main dashboard
 // ──────────────────────────────────────────────────────────────────────────────
 
 export default function StructuralDashboard({ selectedProject, modelData = [] }) {
 
-  // 환경 조건
+  // Environmental conditions
   const [env, setEnv] = useState({
     windSpeed:   20,    // m/s
     windDir:     'N',
@@ -318,18 +318,18 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
     tempMax:     35,
   });
 
-  // 하중 조건
+  // Load conditions
   const [loads, setLoads] = useState({
     deadLoad:      5.0,  // kN/m²
     liveLoad:      2.5,  // kN/m²
-    tributaryArea: 16,   // m² (기둥 영향면적)
+    tributaryArea: 16,   // m²
     numFloors:     3,
   });
 
-  // 재료
+  // Material
   const [matId, setMatId] = useState('concrete_24');
 
-  // 분석 결과
+  // Analysis results
   const [results, setResults]         = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -338,7 +338,6 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   const [selectedId, setSelectedId] = useState(null);
   const [sortCfg, setSortCfg]       = useState({ key: 'safetyFactor', asc: true });
 
-  // ── 분석 실행 ─────────────────────────────────────────────────
   const handleAnalyze = useCallback(() => {
     if (!modelData.length) return;
     setIsAnalyzing(true);
@@ -348,13 +347,11 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
     }, 500);
   }, [modelData, env, loads, matId]);
 
-  // ── 결과 맵 ───────────────────────────────────────────────────
   const resultMap = useMemo(() => {
     if (!results) return {};
     return Object.fromEntries(results.map(r => [r.elementId, r]));
   }, [results]);
 
-  // ── 요약 ─────────────────────────────────────────────────────
   const summary = useMemo(() => {
     if (!results?.length) return null;
     const counts = { safe: 0, warning: 0, danger: 0 };
@@ -367,7 +364,6 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
     return { counts, maxUtil, minSF, total: results.length };
   }, [results]);
 
-  // ── 정렬된 테이블 ────────────────────────────────────────────
   const sortedResults = useMemo(() => {
     if (!results) return [];
     return [...results].sort((a, b) => {
@@ -379,7 +375,6 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   const toggleSort = key =>
     setSortCfg(p => ({ key, asc: p.key === key ? !p.asc : true }));
 
-  // ── 차트 데이터 ──────────────────────────────────────────────
   const sfChart = useMemo(() =>
     results?.map(r => ({
       name:         r.elementName.slice(0, 9),
@@ -393,9 +388,9 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   const pieData = useMemo(() => {
     if (!summary) return [];
     return [
-      { name: '안전', value: summary.counts.safe,    fill: '#22c55e' },
-      { name: '주의', value: summary.counts.warning, fill: '#f59e0b' },
-      { name: '위험', value: summary.counts.danger,  fill: '#ef4444' },
+      { name: 'Safe',    value: summary.counts.safe,    fill: '#22c55e' },
+      { name: 'Warning', value: summary.counts.warning, fill: '#f59e0b' },
+      { name: 'Danger',  value: summary.counts.danger,  fill: '#ef4444' },
     ].filter(d => d.value > 0);
   }, [summary]);
 
@@ -403,15 +398,14 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
 
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // ── 렌더 ─────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-4" style={{ minHeight: 'calc(100vh - 120px)' }}>
 
-      {/* 상단 바 */}
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
-            <span>🔩</span> 구조해석
+            <span>🔩</span> Structural Analysis
             {selectedProject && (
               <span className="text-sm font-normal text-gray-400">
                 — {selectedProject.projectName}
@@ -419,12 +413,12 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             )}
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            환경 조건·하중 설정 후 분석 실행 → BIM 모델에 안전/위험 구역 시각화
+            Set environmental conditions &amp; loads, then run analysis → Visualize safe/danger zones on BIM model
           </p>
         </div>
         <div className="flex items-center gap-3">
           {results && (
-            <span className="text-xs text-gray-500">요소 {modelData.length}개 분석 완료</span>
+            <span className="text-xs text-gray-500">{modelData.length} elements analyzed</span>
           )}
           <button
             onClick={handleAnalyze}
@@ -433,12 +427,12 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
               bg-accent-blue/10 text-accent-blue border border-accent-blue/30
               hover:bg-accent-blue/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
           >
-            {isAnalyzing ? '⏳ 분석 중…' : '▶ 구조해석 실행'}
+            {isAnalyzing ? '⏳ Analyzing…' : '▶ Run Analysis'}
           </button>
         </div>
       </div>
 
-      {/* 모바일 설정 토글 버튼 */}
+      {/* Mobile settings toggle */}
       <button
         onClick={() => setSettingsOpen(v => !v)}
         className="lg:hidden flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors self-start"
@@ -449,24 +443,24 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
         }}
       >
         <span>{settingsOpen ? "▲" : "▼"}</span>
-        {settingsOpen ? "설정 접기" : "⚙ 환경·하중·재료 설정"}
+        {settingsOpen ? "Collapse Settings" : "⚙ Env · Load · Material"}
       </button>
 
-      {/* 메인 레이아웃 */}
+      {/* Main layout */}
       <div className="flex flex-col lg:flex-row gap-3 flex-1">
 
-        {/* ── 왼쪽: 설정 패널 ────────────────────────────────────── */}
+        {/* ── Left: Settings panel ────────────────────────────────────── */}
         <div className={`lg:w-64 lg:shrink-0 flex flex-col gap-3 ${settingsOpen ? 'flex' : 'hidden lg:flex'}`}>
 
-          {/* 환경 조건 */}
-          <Card title="🌍 환경 조건">
+          {/* Environmental Conditions */}
+          <Card title="🌍 Environmental Conditions">
             <div className="flex flex-col gap-4">
               <SliderRow
-                label="풍속" value={env.windSpeed} min={0} max={60} unit=" m/s"
+                label="Wind Speed" value={env.windSpeed} min={0} max={60} unit=" m/s"
                 onChange={v => setEnv(p => ({ ...p, windSpeed: v }))}
               />
               <div>
-                <p className="text-xs text-gray-400 mb-1.5">풍향</p>
+                <p className="text-xs text-gray-400 mb-1.5">Wind Dir</p>
                 <div className="grid grid-cols-4 gap-1">
                   {['N', 'E', 'S', 'W'].map(d => (
                     <button key={d}
@@ -482,7 +476,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 </div>
               </div>
               <div>
-                <p className="text-xs text-gray-400 mb-1.5">지진 구역</p>
+                <p className="text-xs text-gray-400 mb-1.5">Seismic Zone</p>
                 <select
                   value={env.seismicZone}
                   onChange={e => setEnv(p => ({ ...p, seismicZone: Number(e.target.value) }))}
@@ -495,12 +489,12 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 </select>
               </div>
               <SliderRow
-                label="적설 하중" value={env.snowLoad} min={0} max={5} step={0.1} unit=" kN/m²"
+                label="Snow Load" value={env.snowLoad} min={0} max={5} step={0.1} unit=" kN/m²"
                 onChange={v => setEnv(p => ({ ...p, snowLoad: v }))}
               />
               <div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-400">온도 범위</span>
+                  <span className="text-gray-400">Temp Range</span>
                   <span className="text-accent-blue">{env.tempMin}°C ~ {env.tempMax}°C</span>
                 </div>
                 <div className="flex gap-2">
@@ -519,18 +513,18 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             </div>
           </Card>
 
-          {/* 하중 조건 */}
-          <Card title="⚖️ 하중 조건">
+          {/* Load Conditions */}
+          <Card title="⚖️ Load Conditions">
             <div className="flex flex-col gap-2.5">
-              <NumRow label="고정 하중"    value={loads.deadLoad}      unit="kN/m²" min={0} max={50}  step={0.5} onChange={v => setLoads(p => ({ ...p, deadLoad: v }))} />
-              <NumRow label="활 하중"      value={loads.liveLoad}      unit="kN/m²" min={0} max={30}  step={0.5} onChange={v => setLoads(p => ({ ...p, liveLoad: v }))} />
-              <NumRow label="기둥 영향면적" value={loads.tributaryArea} unit="m²"   min={1} max={100} step={1}   onChange={v => setLoads(p => ({ ...p, tributaryArea: v }))} />
-              <NumRow label="층 수"        value={loads.numFloors}     unit="층"    min={1} max={100} step={1}   onChange={v => setLoads(p => ({ ...p, numFloors: v }))} />
+              <NumRow label="Dead Load"      value={loads.deadLoad}      unit="kN/m²" min={0} max={50}  step={0.5} onChange={v => setLoads(p => ({ ...p, deadLoad: v }))} />
+              <NumRow label="Live Load"      value={loads.liveLoad}      unit="kN/m²" min={0} max={30}  step={0.5} onChange={v => setLoads(p => ({ ...p, liveLoad: v }))} />
+              <NumRow label="Tributary Area" value={loads.tributaryArea} unit="m²"    min={1} max={100} step={1}   onChange={v => setLoads(p => ({ ...p, tributaryArea: v }))} />
+              <NumRow label="Floors"         value={loads.numFloors}     unit="fl"    min={1} max={100} step={1}   onChange={v => setLoads(p => ({ ...p, numFloors: v }))} />
             </div>
           </Card>
 
-          {/* 재료 선택 */}
-          <Card title="🏗 재료 선택">
+          {/* Material */}
+          <Card title="🏗 Material">
             <div className="flex flex-col gap-1.5">
               {Object.values(MATERIALS).map(m => (
                 <label key={m.id}
@@ -543,7 +537,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                     onChange={() => setMatId(m.id)} className="accent-blue-500" />
                   <div>
                     <div className="text-xs font-medium">{m.label}</div>
-                    <div className="text-xs text-gray-500">허용압축 {m.allowCompressive} MPa</div>
+                    <div className="text-xs text-gray-500">Allow. Comp. {m.allowCompressive} MPa</div>
                   </div>
                 </label>
               ))}
@@ -551,15 +545,15 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           </Card>
         </div>
 
-        {/* ── 중앙: 뷰 패널 ──────────────────────────────────────── */}
+        {/* ── Center: View panel ──────────────────────────────────────── */}
         <div className="flex-1 flex flex-col gap-3 min-w-0">
 
-          {/* 뷰 탭 선택 */}
+          {/* View tabs */}
           <div className="flex items-center gap-1 bg-[#0f1422] border border-[#141a2a] rounded-xl p-1 w-fit">
             {[
-              { id: '3d',    label: '🧊 3D 뷰' },
-              { id: 'table', label: '📋 결과표' },
-              { id: 'chart', label: '📊 차트' },
+              { id: '3d',    label: '🧊 3D View' },
+              { id: 'table', label: '📋 Results' },
+              { id: 'chart', label: '📊 Chart' },
             ].map(({ id, label }) => (
               <button key={id} onClick={() => setViewMode(id)}
                 className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all"
@@ -574,16 +568,16 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             ))}
           </div>
 
-          {/* 3D 뷰 */}
+          {/* 3D View */}
           {viewMode === '3d' && (
             <div className="flex-1 rounded-2xl overflow-hidden border border-[#141a2a] relative"
-              style={{ minHeight: 'clamp(300px, 55vh, 700px)' }}>
+              style={{ minHeight: 'clamp(300px, 40vh, 600px)' }}>
               {!modelData.length ? (
                 <div className="flex flex-col items-center justify-center h-full bg-[#0f1422] text-gray-500 gap-3">
                   <div className="text-5xl">🏗</div>
                   <div className="text-center">
-                    <p className="text-sm font-medium text-gray-400">BIM 프로젝트를 먼저 선택하세요</p>
-                    <p className="text-xs text-gray-600 mt-1">BIM 탭 → 프로젝트 선택 후 이 탭으로 돌아오세요</p>
+                    <p className="text-sm font-medium text-gray-400">Please select a BIM project first</p>
+                    <p className="text-xs text-gray-600 mt-1">Go to BIM tab → select a project, then come back here</p>
                   </div>
                 </div>
               ) : (
@@ -594,10 +588,10 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                     selectedId={selectedId}
                     onSelect={id => setSelectedId(prev => prev === id ? null : id)}
                   />
-                  {/* 범례 */}
+                  {/* Legend */}
                   <div className="absolute bottom-4 left-4 bg-[#0b0f1a]/90 backdrop-blur
                     rounded-xl p-3 border border-[#141a2a] flex flex-col gap-1.5">
-                    <p className="text-xs text-gray-500 font-semibold mb-0.5">안전 상태</p>
+                    <p className="text-xs text-gray-500 font-semibold mb-0.5">Status</p>
                     {Object.entries(STATUS_CFG).map(([k, v]) => (
                       <div key={k} className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: v.color }} />
@@ -610,26 +604,26 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                       </div>
                     ))}
                     {!results && (
-                      <p className="text-xs text-gray-600 mt-1 italic">▶ 분석 실행 후 색상 표시</p>
+                      <p className="text-xs text-gray-600 mt-1 italic">▶ Run analysis to show colors</p>
                     )}
                   </div>
-                  {/* 클릭 힌트 */}
+                  {/* Click hint */}
                   <div className="absolute top-3 right-3 text-xs text-gray-600 bg-[#0b0f1a]/70 px-2 py-1 rounded-lg">
-                    부재 클릭 → 상세 정보
+                    Click element → Details
                   </div>
                 </>
               )}
             </div>
           )}
 
-          {/* 결과 테이블 */}
+          {/* Results table */}
           {viewMode === 'table' && (
             <div className="flex-1 bg-[#0f1422] border border-[#141a2a] rounded-2xl overflow-hidden"
               style={{ minHeight: 'clamp(300px, 55vh, 700px)' }}>
               {!results ? (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-500 gap-2">
                   <div className="text-3xl">📋</div>
-                  <p className="text-sm">구조해석을 실행하면 결과가 표시됩니다</p>
+                  <p className="text-sm">Run structural analysis to see results</p>
                 </div>
               ) : (
                 <div className="overflow-auto h-full">
@@ -637,16 +631,16 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                     <thead className="bg-[#141a2a] sticky top-0 z-10">
                       <tr>
                         {[
-                          { key: 'elementName',  label: '부재명',       w: 'w-28' },
-                          { key: 'elementType',  label: '유형',         w: 'w-16' },
-                          { key: 'axialLoad',    label: '축력(kN)',      w: 'w-20' },
-                          { key: 'windLoad',     label: '풍하중(kN)',    w: 'w-20' },
-                          { key: 'seismicLoad',  label: '지진(kN)',      w: 'w-16' },
-                          { key: 'maxStress',    label: '최대응력(MPa)', w: 'w-24' },
-                          { key: 'allowStress',  label: '허용(MPa)',     w: 'w-20' },
-                          { key: 'safetyFactor', label: '안전율(SF)',    w: 'w-20' },
-                          { key: 'utilization',  label: '이용률(%)',     w: 'w-28' },
-                          { key: 'status',       label: '판정',         w: 'w-16' },
+                          { key: 'elementName',  label: 'Name',            w: 'w-28' },
+                          { key: 'elementType',  label: 'Type',            w: 'w-16' },
+                          { key: 'axialLoad',    label: 'Axial(kN)',       w: 'w-20' },
+                          { key: 'windLoad',     label: 'Wind(kN)',        w: 'w-20' },
+                          { key: 'seismicLoad',  label: 'Seismic(kN)',     w: 'w-16' },
+                          { key: 'maxStress',    label: 'Max Stress(MPa)', w: 'w-24' },
+                          { key: 'allowStress',  label: 'Allow.(MPa)',     w: 'w-20' },
+                          { key: 'safetyFactor', label: 'SF',              w: 'w-20' },
+                          { key: 'utilization',  label: 'Util.(%)',        w: 'w-28' },
+                          { key: 'status',       label: 'Status',          w: 'w-16' },
                         ].map(col => (
                           <th key={col.key}
                             onClick={() => toggleSort(col.key)}
@@ -703,20 +697,20 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             </div>
           )}
 
-          {/* 차트 */}
+          {/* Chart */}
           {viewMode === 'chart' && (
             <div className="flex-1 flex flex-col gap-3" style={{ minHeight: 480 }}>
               {!results ? (
                 <div className="flex flex-col items-center justify-center h-64
                   bg-[#0f1422] border border-[#141a2a] rounded-2xl text-gray-500 gap-2">
                   <div className="text-3xl">📊</div>
-                  <p className="text-sm">구조해석을 실행하면 차트가 표시됩니다</p>
+                  <p className="text-sm">Run structural analysis to see charts</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  {/* 안전율 막대 */}
+                  {/* Safety Factor bar */}
                   <div className="bg-[#0f1422] border border-[#141a2a] rounded-2xl p-4">
-                    <p className="text-xs font-semibold text-gray-400 mb-3">부재별 안전율 (SF)</p>
+                    <p className="text-xs font-semibold text-gray-400 mb-3">Safety Factor by Element (SF)</p>
                     <ResponsiveContainer width="100%" height={200}>
                       <BarChart data={sfChart} margin={{ top: 5, right: 5, left: -25, bottom: 25 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1b2236" />
@@ -725,7 +719,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                         <Tooltip
                           contentStyle={{ backgroundColor: '#0f1422', border: '1px solid #1b2236', borderRadius: 8, fontSize: 11 }}
                           labelStyle={{ color: '#e2e8f0' }}
-                          formatter={v => [v, '안전율']}
+                          formatter={v => [v, 'Safety Factor']}
                         />
                         <Bar dataKey="safetyFactor" radius={[4, 4, 0, 0]}>
                           {sfChart.map((d, i) => <Cell key={i} fill={d.fill} />)}
@@ -734,9 +728,9 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                     </ResponsiveContainer>
                   </div>
 
-                  {/* 상태 분포 파이 */}
+                  {/* Status distribution pie */}
                   <div className="bg-[#0f1422] border border-[#141a2a] rounded-2xl p-4">
-                    <p className="text-xs font-semibold text-gray-400 mb-3">안전 상태 분포</p>
+                    <p className="text-xs font-semibold text-gray-400 mb-3">Status Distribution</p>
                     <ResponsiveContainer width="100%" height={200}>
                       <PieChart>
                         <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={75}
@@ -754,9 +748,9 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                     </ResponsiveContainer>
                   </div>
 
-                  {/* 이용률 막대 (full width) */}
+                  {/* Utilization bar (full width) */}
                   <div className="col-span-2 bg-[#0f1422] border border-[#141a2a] rounded-2xl p-4">
-                    <p className="text-xs font-semibold text-gray-400 mb-3">부재별 이용률 (%)</p>
+                    <p className="text-xs font-semibold text-gray-400 mb-3">Utilization by Element (%)</p>
                     <ResponsiveContainer width="100%" height={160}>
                       <BarChart data={sfChart} margin={{ top: 5, right: 5, left: -25, bottom: 25 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1b2236" />
@@ -764,9 +758,8 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                         <YAxis tick={{ fill: '#6b7280', fontSize: 9 }} domain={[0, 120]} />
                         <Tooltip
                           contentStyle={{ backgroundColor: '#0f1422', border: '1px solid #1b2236', borderRadius: 8, fontSize: 11 }}
-                          formatter={v => [`${v}%`, '이용률']}
+                          formatter={v => [`${v}%`, 'Utilization']}
                         />
-                        {/* 100% 허용한계 기준선은 referenceArea로 */}
                         <Bar dataKey="utilization" radius={[3, 3, 0, 0]}>
                           {sfChart.map((d, i) => <Cell key={i} fill={d.fill} opacity={0.85} />)}
                         </Bar>
@@ -779,13 +772,13 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           )}
         </div>
 
-        {/* ── 오른쪽: 요약 패널 ─────────────────────────────────── */}
+        {/* ── Right: Summary panel ─────────────────────────────────── */}
         <div className="w-56 shrink-0 flex flex-col gap-3">
 
-          {/* 분석 요약 */}
-          <Card title="📊 분석 요약">
+          {/* Analysis Summary */}
+          <Card title="📊 Analysis Summary">
             {!summary ? (
-              <p className="text-xs text-gray-600 text-center py-4">분석 실행 전</p>
+              <p className="text-xs text-gray-600 text-center py-4">Not analyzed yet</p>
             ) : (
               <>
                 <div className="grid grid-cols-3 gap-1 mb-3">
@@ -799,11 +792,11 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 </div>
                 <div className="flex flex-col gap-1.5 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">총 부재</span>
-                    <span className="text-gray-200 font-medium">{summary.total}개</span>
+                    <span className="text-gray-500">Total</span>
+                    <span className="text-gray-200 font-medium">{summary.total}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">최대 이용률</span>
+                    <span className="text-gray-500">Max Utilization</span>
                     <span className={`font-mono font-bold ${
                       summary.maxUtil >= 100 ? 'text-red-400' :
                       summary.maxUtil >= 50  ? 'text-amber-400' : 'text-green-400'}`}>
@@ -811,7 +804,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">최소 안전율</span>
+                    <span className="text-gray-500">Min Safety Factor</span>
                     <span className={`font-mono font-bold ${
                       summary.minSF < 1  ? 'text-red-400' :
                       summary.minSF < 2  ? 'text-amber-400' : 'text-green-400'}`}>
@@ -823,27 +816,27 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             )}
           </Card>
 
-          {/* 안전 지표 */}
-          <Card title="🚦 안전 지표">
+          {/* Safety Indicators */}
+          <Card title="🚦 Safety Indicators">
             {!summary ? (
-              <p className="text-xs text-gray-600 text-center py-4">분석 후 표시</p>
+              <p className="text-xs text-gray-600 text-center py-4">Available after analysis</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {[
                   {
-                    label: '내풍 안전성',
+                    label: 'Wind Resistance',
                     st: env.windSpeed <= 30 ? 'safe' : env.windSpeed <= 50 ? 'warning' : 'danger',
                   },
                   {
-                    label: '내진 안전성',
+                    label: 'Seismic Resistance',
                     st: env.seismicZone <= 2 ? 'safe' : env.seismicZone === 3 ? 'warning' : 'danger',
                   },
                   {
-                    label: '구조 안전율',
+                    label: 'Structural SF',
                     st: summary.counts.danger > 0 ? 'danger' : summary.counts.warning > 0 ? 'warning' : 'safe',
                   },
                   {
-                    label: '재료 안전성',
+                    label: 'Material Safety',
                     st: summary.maxUtil < 50 ? 'safe' : summary.maxUtil < 100 ? 'warning' : 'danger',
                   },
                 ].map(({ label, st }) => {
@@ -862,19 +855,19 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             )}
           </Card>
 
-          {/* 현재 조건 요약 */}
-          <Card title="📌 현재 조건">
+          {/* Current Conditions */}
+          <Card title="📌 Current Conditions">
             <div className="flex flex-col gap-1.5 text-xs">
               {[
-                { label: '풍속',       value: `${env.windSpeed} m/s`,        highlight: true },
-                { label: '풍향',       value: env.windDir },
-                { label: '지진 구역',   value: `구역 ${env.seismicZone}`,      highlight: true },
-                { label: '적설 하중',   value: `${env.snowLoad} kN/m²` },
-                { label: '온도',        value: `${env.tempMin}~${env.tempMax}°C` },
-                { label: '고정 하중',   value: `${loads.deadLoad} kN/m²` },
-                { label: '활 하중',     value: `${loads.liveLoad} kN/m²` },
-                { label: '층 수',       value: `${loads.numFloors}층` },
-                { label: '재료',        value: MATERIALS[matId].label },
+                { label: 'Wind',         value: `${env.windSpeed} m/s`,           highlight: true },
+                { label: 'Dir',          value: env.windDir },
+                { label: 'Seismic Zone', value: `Zone ${env.seismicZone}`,         highlight: true },
+                { label: 'Snow Load',    value: `${env.snowLoad} kN/m²` },
+                { label: 'Temp',         value: `${env.tempMin}~${env.tempMax}°C` },
+                { label: 'Dead Load',    value: `${loads.deadLoad} kN/m²` },
+                { label: 'Live Load',    value: `${loads.liveLoad} kN/m²` },
+                { label: 'Floors',       value: `${loads.numFloors} fl` },
+                { label: 'Material',     value: MATERIALS[matId].label },
               ].map(({ label, value, highlight }) => (
                 <div key={label} className="flex justify-between gap-1">
                   <span className="text-gray-500 shrink-0">{label}</span>
@@ -886,9 +879,9 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             </div>
           </Card>
 
-          {/* 선택 부재 상세 */}
+          {/* Selected Element Detail */}
           {selectedResult && (
-            <Card title="🔍 선택 부재">
+            <Card title="🔍 Selected Element">
               <div className="flex flex-col gap-1.5 text-xs">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-200 font-medium truncate">{selectedResult.elementName}</span>
@@ -896,16 +889,16 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 </div>
                 <hr className="border-[#1b2236]" />
                 {[
-                  { label: '유형',      value: ELEMENT_LABELS[selectedResult.elementType] ?? selectedResult.elementType },
-                  { label: '자중',      value: `${selectedResult.selfWeight} kN` },
-                  { label: '축력',      value: `${selectedResult.axialLoad} kN` },
-                  { label: '풍하중',    value: `${selectedResult.windLoad} kN` },
-                  { label: '지진하중',  value: `${selectedResult.seismicLoad} kN` },
-                  { label: '휨 모멘트', value: `${selectedResult.bendingMoment} kN·m` },
-                  { label: '전단력',    value: `${selectedResult.shearForce} kN` },
-                  { label: '축 응력',   value: `${selectedResult.axialStress} MPa` },
-                  { label: '휨 응력',   value: `${selectedResult.bendingStress} MPa` },
-                  { label: '전단 응력', value: `${selectedResult.shearStress} MPa` },
+                  { label: 'Type',            value: ELEMENT_LABELS[selectedResult.elementType] ?? selectedResult.elementType },
+                  { label: 'Self Weight',     value: `${selectedResult.selfWeight} kN` },
+                  { label: 'Axial',           value: `${selectedResult.axialLoad} kN` },
+                  { label: 'Wind Load',       value: `${selectedResult.windLoad} kN` },
+                  { label: 'Seismic Load',    value: `${selectedResult.seismicLoad} kN` },
+                  { label: 'Bending Moment',  value: `${selectedResult.bendingMoment} kN·m` },
+                  { label: 'Shear Force',     value: `${selectedResult.shearForce} kN` },
+                  { label: 'Axial Stress',    value: `${selectedResult.axialStress} MPa` },
+                  { label: 'Bending Stress',  value: `${selectedResult.bendingStress} MPa` },
+                  { label: 'Shear Stress',    value: `${selectedResult.shearStress} MPa` },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex justify-between gap-1">
                     <span className="text-gray-500 shrink-0">{label}</span>
@@ -914,19 +907,19 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 ))}
                 <hr className="border-[#1b2236]" />
                 <div className="flex justify-between font-bold">
-                  <span className="text-gray-400">최대 응력</span>
+                  <span className="text-gray-400">Max Stress</span>
                   <span className="font-mono text-gray-100">{selectedResult.maxStress} MPa</span>
                 </div>
                 <div className="flex justify-between font-bold">
-                  <span className="text-gray-400">안전율(SF)</span>
+                  <span className="text-gray-400">Safety Factor (SF)</span>
                   <span className="font-mono" style={{ color: STATUS_CFG[selectedResult.status].color }}>
                     {selectedResult.safetyFactor}
                   </span>
                 </div>
-                {/* 이용률 게이지 */}
+                {/* Utilization gauge */}
                 <div className="mt-1">
                   <div className="flex justify-between text-gray-500 mb-1">
-                    <span>이용률</span>
+                    <span>Utilization</span>
                     <span className="font-mono" style={{ color: STATUS_CFG[selectedResult.status].color }}>
                       {selectedResult.utilization}%
                     </span>
