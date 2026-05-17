@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import {
@@ -53,6 +53,101 @@ const STATUS_CFG = {
   safe: { label: 'Safe', color: '#22c55e', bg: 'bg-green-900/40', text: 'text-green-300', border: 'border-green-600/40' },
   warning: { label: 'Warning', color: '#f59e0b', bg: 'bg-amber-900/40', text: 'text-amber-300', border: 'border-amber-600/40' },
   danger: { label: 'Danger', color: '#ef4444', bg: 'bg-red-900/40', text: 'text-red-300', border: 'border-red-600/40' },
+};
+
+const FORMULA_HELP = {
+  windSpeed: {
+    title: 'Wind Load',
+    formula: 'q = 0.6125 × V² / 1000 × Cf × G',
+    vars: [
+      { s: 'q',       d: 'Design wind pressure (kN/m²)' },
+      { s: 'V',       d: 'Wind speed (m/s)' },
+      { s: 'Cf=1.3',  d: 'Force coefficient' },
+      { s: 'G=1.5',   d: 'Gust factor' },
+      { s: 'F_wind',  d: 'q × h_factor × width × height' },
+    ],
+    sub: 'h_factor = ((y+H)/10 + 1)^0.25  (height amplification)',
+  },
+  seismic: {
+    title: 'Seismic Force',
+    formula: 'F_seismic = Sa × W',
+    vars: [
+      { s: 'Sa',      d: 'Spectral acceleration (0.08g–0.32g by zone)' },
+      { s: 'W',       d: 'Seismic weight ≈ axial load (kN)' },
+    ],
+    sub: 'Lateral design: max(F_wind, F_seismic)',
+  },
+  snowLoad: {
+    title: 'Snow Load — Slab',
+    formula: 'q_slab = D + L + S + γ·t',
+    vars: [
+      { s: 'D',       d: 'Dead load (kN/m²)' },
+      { s: 'L',       d: 'Live load (kN/m²)' },
+      { s: 'S',       d: 'Snow load (kN/m²)' },
+      { s: 'γ·t',     d: 'Slab self-weight (density × thickness)' },
+    ],
+    sub: 'M = q·L²/10  (continuous slab)  |  V = q·L/2',
+  },
+  tempRange: {
+    title: 'Thermal Effect',
+    formula: 'ε_T = α × ΔT',
+    vars: [
+      { s: 'α',       d: '1.0×10⁻⁵/°C (concrete) / 1.2×10⁻⁵/°C (steel)' },
+      { s: 'ΔT',      d: 'T_max − T_min (°C)' },
+      { s: 'σ_T',     d: 'E × α × ΔT  — informational only' },
+    ],
+    sub: 'Thermal stress is shown as reference; not included in current SF',
+  },
+  deadLoad: {
+    title: 'Dead Load — Column Axial',
+    formula: 'N = W_self + D × A_trib × n_floors',
+    vars: [
+      { s: 'W_self',  d: 'Element self-weight (kN)' },
+      { s: 'D',       d: 'Dead load per floor (kN/m²)' },
+      { s: 'A_trib',  d: 'Tributary area (m²)' },
+      { s: 'n',       d: 'Number of floors' },
+    ],
+    sub: 'σ_axial = N / (A × 1000)  [MPa]',
+  },
+  liveLoad: {
+    title: 'Live Load — Beam UDL',
+    formula: 'w = w_self + (D + L) × √A_trib',
+    vars: [
+      { s: 'w_self',  d: 'Beam self-weight per metre (kN/m)' },
+      { s: 'L',       d: 'Live load intensity (kN/m²)' },
+      { s: '√A_trib', d: 'Influence width (m)' },
+    ],
+    sub: 'M = w·L²/8  |  V = w·L/2  (simply-supported)',
+  },
+  tributaryArea: {
+    title: 'Tributary Area',
+    formula: 'A_trib ≈ (column spacing)²',
+    vars: [
+      { s: 'A_trib',  d: 'Floor area supported per column (m²)' },
+    ],
+    sub: 'Used in axial load (column) and UDL width (beam)',
+  },
+  material: {
+    title: 'Safety Factor & Utilization',
+    formula: 'SF = f_allow / σ_max\nη  = σ_max / f_allow × 100 (%)',
+    vars: [
+      { s: 'f_allow', d: 'Allowable compressive stress (MPa)' },
+      { s: 'σ_max',   d: 'max(σ_axial + σ_bending, τ_shear)' },
+    ],
+    sub: 'Safe: SF ≥ 2.0  |  Warning: 1.0–2.0  |  Danger: < 1.0',
+  },
+  stressFormulas: {
+    title: 'Element Stress Formulas',
+    formula: 'σ_axial  = N / (A·1000)\nσ_bend   = M·c / (I·1000)\nτ_shear  = 1.5·V / (A·1000)',
+    vars: [
+      { s: 'N',  d: 'Axial force (kN)' },
+      { s: 'M',  d: 'Bending moment (kN·m)' },
+      { s: 'V',  d: 'Shear force (kN)' },
+      { s: 'c',  d: 'Distance to extreme fibre (m)' },
+      { s: 'I',  d: 'Second moment of area (m⁴)' },
+    ],
+    sub: 'All stresses in MPa  (÷1000 converts kN/m² → MPa)',
+  },
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -248,10 +343,119 @@ function StressViewer3D({ modelData, resultMap, selectedId, onSelect }) {
 // UI components
 // ──────────────────────────────────────────────────────────────────────────────
 
-function Card({ title, children, className = '' }) {
+function FormulaTooltip({ data }) {
+  const [visible, setVisible] = useState(false);
+  const [pinned, setPinned]   = useState(false);
+  const [rect, setRect]       = useState(null);
+  const btnRef = useRef(null);
+  const tipRef = useRef(null);
+  const show   = visible || pinned;
+
+  const openAt = () => {
+    if (btnRef.current) setRect(btnRef.current.getBoundingClientRect());
+    setVisible(true);
+  };
+
+  useEffect(() => {
+    if (!pinned) return;
+    const close = e => {
+      if (btnRef.current?.contains(e.target)) return;
+      if (tipRef.current?.contains(e.target)) return;
+      setPinned(false);
+      setVisible(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [pinned]);
+
+  const tipStyle = rect ? {
+    position: 'fixed',
+    top: rect.bottom + 6,
+    left: Math.min(rect.left - 4, window.innerWidth - 284),
+    zIndex: 9999,
+    width: 272,
+  } : {};
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onMouseEnter={openAt}
+        onMouseLeave={() => { if (!pinned) setVisible(false); }}
+        onClick={() => {
+          if (pinned) { setPinned(false); setVisible(false); }
+          else        { openAt(); setPinned(true); }
+        }}
+        title="Formula info"
+        className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full
+                   text-[9px] font-bold leading-none select-none transition-colors
+                   bg-[#1b2236] border border-[#2a3a5a] text-gray-500
+                   hover:text-blue-400 hover:border-blue-600/60 cursor-pointer"
+      >
+        ?
+      </button>
+
+      {show && rect && (
+        <div
+          ref={tipRef}
+          style={tipStyle}
+          onMouseEnter={() => setVisible(true)}
+          onMouseLeave={() => { if (!pinned) setVisible(false); }}
+          className="bg-[#080c18] border border-[#1e2d48] rounded-xl shadow-2xl p-3 text-left"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold text-blue-400">{data.title}</span>
+            {pinned && (
+              <button
+                onClick={() => { setPinned(false); setVisible(false); }}
+                className="text-gray-600 hover:text-gray-300 text-xs leading-none ml-2"
+              >✕</button>
+            )}
+          </div>
+
+          {/* Formula box */}
+          <div className="bg-[#0d1220] border border-[#1b2a40] rounded-lg px-2.5 py-2 mb-2.5
+                          font-mono text-[10px] text-emerald-300 whitespace-pre leading-relaxed">
+            {data.formula}
+          </div>
+
+          {/* Variable list */}
+          <div className="flex flex-col gap-1 mb-2">
+            {data.vars.map(({ s, d }) => (
+              <div key={s} className="flex gap-2 text-[10px] leading-snug">
+                <span className="font-mono text-amber-300 shrink-0 w-[88px] truncate">{s}</span>
+                <span className="text-gray-400">{d}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Sub note */}
+          {data.sub && (
+            <div className="border-t border-[#1b2236] pt-1.5 text-[10px] text-gray-500 leading-snug">
+              {data.sub}
+            </div>
+          )}
+
+          {/* Pin hint */}
+          {!pinned && (
+            <div className="mt-1.5 text-[9px] text-gray-600 text-right">click to pin</div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Card({ title, children, className = '', help }) {
   return (
     <div className={`bg-[#0f1422] border border-[#141a2a] rounded-2xl p-4 ${className}`}>
-      {title && <p className="text-xs font-semibold text-gray-400 mb-3 tracking-wide">{title}</p>}
+      {title && (
+        <div className="flex items-center gap-1.5 mb-3">
+          <p className="text-xs font-semibold text-gray-400 tracking-wide">{title}</p>
+          {help && <FormulaTooltip data={help} />}
+        </div>
+      )}
       {children}
     </div>
   );
@@ -266,11 +470,14 @@ function StatusBadge({ status }) {
   );
 }
 
-function SliderRow({ label, value, min, max, step = 1, unit, onChange }) {
+function SliderRow({ label, value, min, max, step = 1, unit, onChange, help }) {
   return (
     <div>
       <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-400">{label}</span>
+        <span className="text-gray-400 flex items-center gap-1">
+          {label}
+          {help && <FormulaTooltip data={help} />}
+        </span>
         <span className="text-accent-blue font-medium">{value}{unit}</span>
       </div>
       <input
@@ -285,10 +492,13 @@ function SliderRow({ label, value, min, max, step = 1, unit, onChange }) {
   );
 }
 
-function NumRow({ label, value, unit, min = 0, max = 1000, step = 0.5, onChange }) {
+function NumRow({ label, value, unit, min = 0, max = 1000, step = 0.5, onChange, help }) {
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-xs text-gray-400 shrink-0">{label}</span>
+      <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1">
+        {label}
+        {help && <FormulaTooltip data={help} />}
+      </span>
       <div className="flex items-center gap-1">
         <input
           type="number" min={min} max={max} step={step} value={value}
@@ -458,6 +668,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
               <SliderRow
                 label="Wind Speed" value={env.windSpeed} min={0} max={60} unit=" m/s"
                 onChange={v => setEnv(p => ({ ...p, windSpeed: v }))}
+                help={FORMULA_HELP.windSpeed}
               />
               <div>
                 <p className="text-xs text-gray-400 mb-1.5">Wind Dir</p>
@@ -476,7 +687,10 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 </div>
               </div>
               <div>
-                <p className="text-xs text-gray-400 mb-1.5">Seismic Zone</p>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <p className="text-xs text-gray-400">Seismic Zone</p>
+                  <FormulaTooltip data={FORMULA_HELP.seismic} />
+                </div>
                 <select
                   value={env.seismicZone}
                   onChange={e => setEnv(p => ({ ...p, seismicZone: Number(e.target.value) }))}
@@ -491,10 +705,14 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
               <SliderRow
                 label="Snow Load" value={env.snowLoad} min={0} max={5} step={0.1} unit=" kN/m²"
                 onChange={v => setEnv(p => ({ ...p, snowLoad: v }))}
+                help={FORMULA_HELP.snowLoad}
               />
               <div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-400">Temp Range</span>
+                  <span className="text-gray-400 flex items-center gap-1">
+                    Temp Range
+                    <FormulaTooltip data={FORMULA_HELP.tempRange} />
+                  </span>
                   <span className="text-accent-blue">{env.tempMin}°C ~ {env.tempMax}°C</span>
                 </div>
                 <div className="flex gap-2">
@@ -514,17 +732,17 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           </Card>
 
           {/* Load Conditions */}
-          <Card title="⚖️ Load Conditions">
+          <Card title="⚖️ Load Conditions" help={FORMULA_HELP.stressFormulas}>
             <div className="flex flex-col gap-2.5">
-              <NumRow label="Dead Load" value={loads.deadLoad} unit="kN/m²" min={0} max={50} step={0.5} onChange={v => setLoads(p => ({ ...p, deadLoad: v }))} />
-              <NumRow label="Live Load" value={loads.liveLoad} unit="kN/m²" min={0} max={30} step={0.5} onChange={v => setLoads(p => ({ ...p, liveLoad: v }))} />
-              <NumRow label="Tributary Area" value={loads.tributaryArea} unit="m²" min={1} max={100} step={1} onChange={v => setLoads(p => ({ ...p, tributaryArea: v }))} />
+              <NumRow label="Dead Load" value={loads.deadLoad} unit="kN/m²" min={0} max={50} step={0.5} onChange={v => setLoads(p => ({ ...p, deadLoad: v }))} help={FORMULA_HELP.deadLoad} />
+              <NumRow label="Live Load" value={loads.liveLoad} unit="kN/m²" min={0} max={30} step={0.5} onChange={v => setLoads(p => ({ ...p, liveLoad: v }))} help={FORMULA_HELP.liveLoad} />
+              <NumRow label="Tributary Area" value={loads.tributaryArea} unit="m²" min={1} max={100} step={1} onChange={v => setLoads(p => ({ ...p, tributaryArea: v }))} help={FORMULA_HELP.tributaryArea} />
               <NumRow label="Floors" value={loads.numFloors} unit="fl" min={1} max={100} step={1} onChange={v => setLoads(p => ({ ...p, numFloors: v }))} />
             </div>
           </Card>
 
           {/* Material */}
-          <Card title="🏗 Material">
+          <Card title="🏗 Material" help={FORMULA_HELP.material}>
             <div className="flex flex-col gap-1.5">
               {Object.values(MATERIALS).map(m => (
                 <label key={m.id}
