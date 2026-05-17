@@ -482,6 +482,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     const mainViewRef = useRef(null);
     const viewContainerRef = useRef(null); // selBox CSS 포지셔닝 기준 컨테이너
+    const dragStateRef = useRef({ startX: 0, startY: 0, dragging: false }); // effect 재실행 시에도 드래그 상태 유지
 
     // ── 패널 표시 여부 ─────────────────────────────────────────────
     const [showLayerPanel, setShowLayerPanel] = useState(typeof window !== 'undefined' && window.innerWidth >= 768);
@@ -759,61 +760,96 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ================================================================
     const [selBox, setSelBox] = useState(null); // { left, top, width, height } for CSS
 
-    /** 러버밴드 박스 정보를 카메라 투영으로 부재 선택에 변환 */
+    /** 러버밴드 박스 정보를 카메라 투영으로 부재 선택에 변환
+     *  - 부재의 8개 꼭짓점을 모두 투영 후 2D 바운딩박스를 구해
+     *    선택 영역과 교차하면 선택 (일부만 걸쳐도 포함) */
     const computeRubberBandSelection = useCallback((startX, startY, endX, endY) => {
         if (!cameraRef.current || !viewContainerRef.current) return;
         const camera  = cameraRef.current;
         const domRect = viewContainerRef.current.getBoundingClientRect();
 
-        const minX = Math.min(startX, endX);
-        const maxX = Math.max(startX, endX);
-        const minY = Math.min(startY, endY);
-        const maxY = Math.max(startY, endY);
+        const selMinX = Math.min(startX, endX);
+        const selMaxX = Math.max(startX, endX);
+        const selMinY = Math.min(startY, endY);
+        const selMaxY = Math.max(startY, endY);
+
+        // 로컬 오프셋 → 8 꼭짓점
+        const LOCAL_CORNERS = [
+            [-1, -1, -1], [1, -1, -1], [-1, 1, -1], [1, 1, -1],
+            [-1, -1,  1], [1, -1,  1], [-1, 1,  1], [1, 1,  1],
+        ];
 
         const hit = modelData.filter(el => {
-            const px = Number(el.positionX) || 0;
-            const py = Number(el.positionY) || 0;
-            const pz = Number(el.positionZ) || 0;
-            const sy = Number(el.sizeY) || 1;
-            // 중심점 (positionY는 밑면 기준이므로 + sy/2)
-            const center = new THREE.Vector3(px, py + sy / 2, pz);
-            center.project(camera);
-            // NDC → 캔버스 픽셀 좌표
-            const sx = (center.x + 1) / 2 * domRect.width;
-            const sc = (1 - center.y) / 2 * domRect.height;
-            return sx >= minX && sx <= maxX && sc >= minY && sc <= maxY;
+            const px  = Number(el.positionX) || 0;
+            const py  = Number(el.positionY) || 0;
+            const pz  = Number(el.positionZ) || 0;
+            const szX = Number(el.sizeX)     || 0.1;
+            const szY = Number(el.sizeY)     || 0.1;
+            const szZ = Number(el.sizeZ)     || 0.1;
+            const ry  = Number(el.rotationY) || 0;
+
+            const hx = szX / 2, hy = szY / 2, hz = szZ / 2;
+            const centerY = py + hy;   // positionY 는 밑면 기준
+            const cos = Math.cos(ry), sin = Math.sin(ry);
+
+            let projMinX = Infinity, projMaxX = -Infinity;
+            let projMinY = Infinity, projMaxY = -Infinity;
+
+            for (const [ox, oy, oz] of LOCAL_CORNERS) {
+                const lx = ox * hx, ly = oy * hy, lz = oz * hz;
+                // Y축 회전 적용 후 월드 좌표
+                const wx = cos * lx - sin * lz + px;
+                const wy = ly + centerY;
+                const wz = sin * lx + cos * lz + pz;
+                const v = new THREE.Vector3(wx, wy, wz);
+                v.project(camera);
+                if (v.z > 1) continue; // 카메라 뒤쪽 꼭짓점은 무시
+                const sx = (v.x + 1) / 2 * domRect.width;
+                const sy = (1 - v.y) / 2 * domRect.height;
+                if (sx < projMinX) projMinX = sx;
+                if (sx > projMaxX) projMaxX = sx;
+                if (sy < projMinY) projMinY = sy;
+                if (sy > projMaxY) projMaxY = sy;
+            }
+
+            if (projMinX === Infinity) return false; // 전부 카메라 뒤
+            // 부재 2D bbox와 선택 영역이 조금이라도 겹치면 선택
+            return projMaxX >= selMinX && projMinX <= selMaxX &&
+                   projMaxY >= selMinY && projMinY <= selMaxY;
         }).map(el => el.elementId);
 
         applyRubberBandSelection(hit);
-    }, [cameraRef, mainViewRef, modelData, applyRubberBandSelection]);
+    }, [modelData, applyRubberBandSelection]);
 
-    // 선택 모드일 때 뷰어 컨테이너에 마우스 이벤트 부착
+    // 선택 모드일 때 뷰어 컨테이너에 마우스 이벤트 부착 (3D 전용)
+    // 2D 모드에서는 Plan2DView 내부에서 자체 처리
     // — viewContainerRef (selBox의 CSS 포지셔닝 기준)에 capture 단계로 등록하여
     //   R3F 이벤트 처리보다 먼저 실행되고 좌표계가 selBox와 일치하도록 보장
     useEffect(() => {
-        if (!isSelectMode) { setSelBox(null); return; }
+        if (!isSelectMode || viewMode !== '3d') { setSelBox(null); return; }
         const el = viewContainerRef.current;
         if (!el) return;
 
-        let startX = 0, startY = 0, dragging = false;
+        // dragStateRef를 사용해 effect 재실행(setSelBox 렌더) 시에도 드래그 시작 좌표 유지
+        dragStateRef.current.dragging = false;
 
         const onPointerDown = (e) => {
             if (e.button !== 0) return;
-            // 이후 pointermove/pointerup 이벤트를 이 요소에서 확실히 받도록 capture
             try { el.setPointerCapture(e.pointerId); } catch (_) {}
             const rect = el.getBoundingClientRect();
-            startX = e.clientX - rect.left;
-            startY = e.clientY - rect.top;
-            dragging = false;
+            dragStateRef.current.startX   = e.clientX - rect.left;
+            dragStateRef.current.startY   = e.clientY - rect.top;
+            dragStateRef.current.dragging = false;
         };
 
         const onPointerMove = (e) => {
             if (!(e.buttons & 1)) return;
+            const { startX, startY } = dragStateRef.current;
             const rect = el.getBoundingClientRect();
             const cx = e.clientX - rect.left;
             const cy = e.clientY - rect.top;
             if (Math.abs(cx - startX) > 5 || Math.abs(cy - startY) > 5) {
-                dragging = true;
+                dragStateRef.current.dragging = true;
                 setSelBox({
                     left:   Math.min(startX, cx),
                     top:    Math.min(startY, cy),
@@ -825,13 +861,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         };
 
         const onPointerUp = (e) => {
-            if (dragging) {
+            if (dragStateRef.current.dragging) {
+                const { startX, startY } = dragStateRef.current;
                 const rect = el.getBoundingClientRect();
                 const ex = e.clientX - rect.left;
                 const ey = e.clientY - rect.top;
                 computeRubberBandSelection(startX, startY, ex, ey);
             }
-            dragging = false;
+            dragStateRef.current.dragging = false;
             setSelBox(null);
         };
 
@@ -844,7 +881,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             el.removeEventListener('pointermove', onPointerMove, { capture: true });
             el.removeEventListener('pointerup',   onPointerUp,   { capture: true });
         };
-    }, [isSelectMode, computeRubberBandSelection]);
+    }, [isSelectMode, viewMode, computeRubberBandSelection]);
 
     // ================================================================
     // 키보드 단축키
@@ -1235,6 +1272,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         lineStart={lineStart}
                                         onLineClick={handleLineClick}
                                         snapEnabled={snapEnabled}
+                                        isSelectMode={isSelectMode}
+                                        onRubberBandSelect={applyRubberBandSelection}
+                                        selectedElements={selectedElements}
                                     />
                                 ) : (<>
 

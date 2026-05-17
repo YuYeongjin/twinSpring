@@ -119,7 +119,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // ================================================================
     // 러버밴드 다중 선택 적용
     // ================================================================
-    function applyRubberBandSelection(ids) {
+    const applyRubberBandSelection = useCallback((ids) => {
         setSelectedElements(new Set(ids));
         if (ids.length > 0) {
             const el = modelData.find(e => e.elementId === ids[0]);
@@ -127,7 +127,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         } else {
             setSelectedElement(null);
         }
-    }
+    }, [modelData]);
 
     // ================================================================
     // 선택 모드 토글

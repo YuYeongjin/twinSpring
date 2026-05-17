@@ -74,13 +74,16 @@ export default function Plan2DView({
   lineDrawMode = 'off', lineStart = null,
   pendingElement = null, onLineClick, onPlacementConfirm,
   snapEnabled = true,
+  isSelectMode = false, onRubberBandSelect,
+  selectedElements = new Set(),
 }) {
-  const canvasRef = useRef(null);
-  const vpRef     = useRef({ x: 0, y: 0, scale: 20 });
-  const dragRef   = useRef({ active: false, lx: 0, ly: 0, moved: false });
-  const fittedRef = useRef(false);
-  const mouseRef  = useRef({ cx: -9999, cy: -9999 });
-  const snapRef   = useRef(null);
+  const canvasRef  = useRef(null);
+  const vpRef      = useRef({ x: 0, y: 0, scale: 20 });
+  const dragRef    = useRef({ active: false, lx: 0, ly: 0, moved: false });
+  const rubberRef  = useRef({ active: false, startX: 0, startY: 0, endX: 0, endY: 0 });
+  const fittedRef  = useRef(false);
+  const mouseRef   = useRef({ cx: -9999, cy: -9999 });
+  const snapRef    = useRef(null);
 
   const [, setTick] = useState(0);
   const redraw = useCallback(() => setTick(t => t + 1), []);
@@ -164,8 +167,9 @@ export default function Plan2DView({
     // ── 부재 ─────────────────────────────────────────────────────
     const selId = selectedElement?.data?.elementId;
     for (const el of modelData) {
-      const cfg   = TYPE_CFG[el.elementType] ?? DEFAULT_CFG;
-      const isSel = el.elementId === selId;
+      const cfg        = TYPE_CFG[el.elementType] ?? DEFAULT_CFG;
+      const isSel      = el.elementId === selId;
+      const isMultiSel = !isSel && selectedElements.has(el.elementId);
       const epx   = Number(el.positionX) || 0;
       const epz   = Number(el.positionZ) || 0;
       const esx   = Math.max(0.05, Number(el.sizeX) || 0.1);
@@ -178,24 +182,34 @@ export default function Plan2DView({
       ctx.translate(cx2, cy2);
       ctx.rotate(-ry);
 
+      // ── fill ──────────────────────────────────────────────────
       if (el.elementType === 'IfcSlab') {
-        ctx.fillStyle = isSel ? '#0e2840' : cfg.fill;
+        ctx.fillStyle = isSel ? '#0e2840' : isMultiSel ? '#1a0b36' : cfg.fill;
         ctx.fillRect(-w / 2, -h / 2, w, h);
-        ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5; ctx.setLineDash([4, 4]);
-        ctx.strokeRect(-w / 2, -h / 2, w, h); ctx.setLineDash([]);
+        ctx.strokeStyle = isMultiSel ? '#7c3aed' : '#333';
+        ctx.lineWidth = isMultiSel ? 0.5 : 0.5;
+        ctx.setLineDash(isMultiSel ? [] : [4, 4]);
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+        ctx.setLineDash([]);
       } else {
-        ctx.fillStyle = isSel ? '#0c2238' : cfg.fill;
+        ctx.fillStyle = isSel ? '#0c2238' : isMultiSel ? '#1a0b36' : cfg.fill;
         ctx.fillRect(-w / 2, -h / 2, w, h);
       }
 
-      ctx.strokeStyle = isSel ? '#00d4ff' : cfg.stroke;
-      ctx.lineWidth   = isSel ? 2.5 : cfg.lw;
-      ctx.setLineDash(isSel ? [] : cfg.dash);
-      ctx.strokeRect(-w / 2, -h / 2, w, h);
+      // 다중 선택: 반투명 보라 overlay
+      if (isMultiSel) {
+        ctx.fillStyle = 'rgba(124,58,237,0.22)';
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+      }
+
+      // ── stroke ────────────────────────────────────────────────
+      ctx.strokeStyle = isSel ? '#00d4ff' : isMultiSel ? '#a78bfa' : cfg.stroke;
+      ctx.lineWidth   = isSel ? 2.5 : isMultiSel ? 2 : cfg.lw;
       ctx.setLineDash([]);
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
 
       if (el.elementType === 'IfcColumn' && w > 6 && h > 6) {
-        ctx.strokeStyle = isSel ? '#00d4ff' : '#555';
+        ctx.strokeStyle = isSel ? '#00d4ff' : isMultiSel ? '#a78bfa' : '#555';
         ctx.lineWidth = 0.6;
         ctx.beginPath();
         ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(w / 2, h / 2);
@@ -203,14 +217,14 @@ export default function Plan2DView({
         ctx.stroke();
       }
       if (w > 24 && h > 12) {
-        ctx.fillStyle = isSel ? '#7ecfff' : '#777';
+        ctx.fillStyle = isSel ? '#7ecfff' : isMultiSel ? '#c4b5fd' : '#777';
         ctx.font = `${Math.min(11, w * 0.25, h * 0.4)}px monospace`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(cfg.label, 0, 0);
       }
       ctx.restore();
 
-      // ── 선택된 부재: 꼭짓점(■) + 중간점(●) + 중심(+) ────────────
+      // ── 단일 선택: 꼭짓점(■) + 중간점(●) + 중심(+) ──────────
       if (isSel) {
         const spts    = getElementSnapPoints(el);
         const corners = spts.slice(0, 4);
@@ -237,6 +251,19 @@ export default function Plan2DView({
         ctx.moveTo(cpx - 5, cpy); ctx.lineTo(cpx + 5, cpy);
         ctx.moveTo(cpx, cpy - 5); ctx.lineTo(cpx, cpy + 5);
         ctx.stroke();
+      }
+
+      // ── 다중 선택: 꼭짓점(◆) 마커 ───────────────────────────
+      if (isMultiSel) {
+        const corners = getElementSnapPoints(el).slice(0, 4);
+        for (const [wx2, wz2] of corners) {
+          const [cpx, cpy] = toCanvas(wx2, wz2, vp);
+          const s = 4;
+          ctx.fillStyle = '#a78bfa';
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.8;
+          ctx.fillRect(cpx - s / 2, cpy - s / 2, s, s);
+          ctx.strokeRect(cpx - s / 2, cpy - s / 2, s, s);
+        }
       }
     }
 
@@ -288,6 +315,24 @@ export default function Plan2DView({
       ctx.restore();
     }
 
+    // ── 러버밴드 선택 박스 (선택 모드) ───────────────────────────
+    if (isSelectMode && rubberRef.current.active) {
+      const { startX, startY, endX, endY } = rubberRef.current;
+      const rx = Math.min(startX, endX);
+      const ry2 = Math.min(startY, endY);
+      const rw = Math.abs(endX - startX);
+      const rh = Math.abs(endY - startY);
+      ctx.save();
+      ctx.fillStyle = 'rgba(139,92,246,0.12)';
+      ctx.fillRect(rx, ry2, rw, rh);
+      ctx.strokeStyle = '#a78bfa';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 3]);
+      ctx.strokeRect(rx, ry2, rw, rh);
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     // ── 스케일 바 ─────────────────────────────────────────────────
     const barM  = vp.scale >= 10 ? 10 : vp.scale >= 4 ? 5 : 1;
     const barPx = barM * vp.scale;
@@ -310,7 +355,7 @@ export default function Plan2DView({
       ctx.fillText(cfg.label, lx + 14, ly + 9);
       lx += 42;
     }
-  }, [modelData, lines, selectedElement, lineDrawMode, lineStart, pendingElement, snapEnabled]);
+  }, [modelData, lines, selectedElement, selectedElements, lineDrawMode, lineStart, pendingElement, snapEnabled, isSelectMode]);
 
   // ── 초기 fit ──────────────────────────────────────────────────────
   // 데이터가 완전히 비워질 때(프로젝트 전환)만 재fit 허용.
@@ -375,6 +420,20 @@ export default function Plan2DView({
 
   // ── 포인터 이벤트 ─────────────────────────────────────────────────
   const handlePointerDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    // 선택 모드: rubber band 시작 (패닝 비활성화)
+    if (isSelectMode) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      // 캔버스 밖으로 드래그해도 이벤트 유지
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      rubberRef.current = { active: true, startX: cx, startY: cy, endX: cx, endY: cy, justCompleted: false };
+      dragRef.current = { active: false, lx: 0, ly: 0, moved: false };
+      return;
+    }
     // 부재 배치 · 선 작도 모드에서는 드래그(패닝) 비활성화
     if (pendingElement || lineDrawMode === 'click') {
       dragRef.current = { active: false, lx: e.clientX, ly: e.clientY, moved: false };
@@ -382,7 +441,7 @@ export default function Plan2DView({
     }
     dragRef.current = { active: true, lx: e.clientX, ly: e.clientY, moved: false };
     if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing';
-  }, [pendingElement, lineDrawMode]);
+  }, [isSelectMode, pendingElement, lineDrawMode]);
 
   const handlePointerMove = useCallback((e) => {
     const canvas = canvasRef.current;
@@ -391,6 +450,14 @@ export default function Plan2DView({
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     mouseRef.current = { cx, cy };
+
+    // rubber band 업데이트
+    if (isSelectMode && rubberRef.current.active && (e.buttons & 1)) {
+      rubberRef.current.endX = cx;
+      rubberRef.current.endY = cy;
+      draw();
+      return;
+    }
 
     // 패닝
     if (dragRef.current.active) {
@@ -412,12 +479,48 @@ export default function Plan2DView({
     }
 
     draw();
-  }, [draw, snapEnabled, allSnapPoints]);
+  }, [draw, isSelectMode, snapEnabled, allSnapPoints]);
 
   const handlePointerUp = useCallback(() => {
+    // rubber band 완료 → 2D 선택 계산
+    if (isSelectMode && rubberRef.current.active) {
+      rubberRef.current.active = false;
+      const { startX, startY, endX, endY } = rubberRef.current;
+      const dx = Math.abs(endX - startX), dy = Math.abs(endY - startY);
+      if (dx > 5 && dy > 5 && onRubberBandSelect) {
+        const vp = vpRef.current;
+        const [wx1, wz1] = fromCanvas(Math.min(startX, endX), Math.min(startY, endY), vp);
+        const [wx2, wz2] = fromCanvas(Math.max(startX, endX), Math.max(startY, endY), vp);
+        const selMinX = Math.min(wx1, wx2), selMaxX = Math.max(wx1, wx2);
+        const selMinZ = Math.min(wz1, wz2), selMaxZ = Math.max(wz1, wz2);
+
+        const hit = modelData.filter(el => {
+          const px = Number(el.positionX) || 0;
+          const pz = Number(el.positionZ) || 0;
+          const hx = (Number(el.sizeX) || 0.1) / 2;
+          const hz = (Number(el.sizeZ) || 0.1) / 2;
+          const ry = Number(el.rotationY) || 0;
+          const cos = Math.cos(-ry), sin = Math.sin(-ry);
+          // 4 꼭짓점을 회전 적용해 world XZ로 변환 후 AABB 계산
+          let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+          for (const [ox, oz] of [[-hx,-hz],[hx,-hz],[hx,hz],[-hx,hz]]) {
+            const wx = px + ox * cos - oz * sin;
+            const wz = pz + ox * sin + oz * cos;
+            if (wx < minX) minX = wx; if (wx > maxX) maxX = wx;
+            if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
+          }
+          return maxX >= selMinX && minX <= selMaxX && maxZ >= selMinZ && minZ <= selMaxZ;
+        }).map(el => el.elementId);
+
+        rubberRef.current.justCompleted = true; // handleClick이 선택 해제하지 않도록
+        onRubberBandSelect(hit);
+      }
+      draw();
+      return;
+    }
     dragRef.current.active = false;
     if (canvasRef.current) canvasRef.current.style.cursor = 'crosshair';
-  }, []);
+  }, [isSelectMode, modelData, onRubberBandSelect, draw]);
 
   const handlePointerLeave = useCallback(() => {
     dragRef.current.active = false;
@@ -429,6 +532,13 @@ export default function Plan2DView({
   // ── 클릭: 선 작도 / 배치 / 선택 ──────────────────────────────────
   const handleClick = useCallback((e) => {
     if (dragRef.current.moved) { dragRef.current.moved = false; return; }
+
+    // rubber band 완료 직후의 click 이벤트는 무시 (선택 해제 방지)
+    if (isSelectMode && rubberRef.current.justCompleted) {
+      rubberRef.current.justCompleted = false;
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -467,8 +577,9 @@ export default function Plan2DView({
         return;
       }
     }
-    onElementSelect(null, null, false);
-  }, [modelData, onElementSelect, lineDrawMode, onLineClick, pendingElement, onPlacementConfirm, snapEnabled]);
+    // select mode에서 빈 공간 클릭 시 선택 유지 (해제 안 함)
+    if (!isSelectMode) onElementSelect(null, null, false);
+  }, [isSelectMode, modelData, onElementSelect, lineDrawMode, onLineClick, pendingElement, onPlacementConfirm, snapEnabled]);
 
   // ── 전체보기 ──────────────────────────────────────────────────────
   const handleFit = useCallback(() => {
@@ -480,18 +591,20 @@ export default function Plan2DView({
 
   const isActionMode = lineDrawMode === 'click' || !!pendingElement;
 
-  const hintText = isActionMode
-    ? lineDrawMode === 'click'
-      ? `선 작도 — ${lineStart ? '두 번째 점 클릭' : '첫 번째 점 클릭'}${snapEnabled ? '  🧲 스냅 ON' : ''}`
-      : `부재 배치 — 클릭하여 배치${snapEnabled ? '  🧲 스냅 ON' : ''}`
-    : '2D 평면도 — 휠: 확대/축소  |  드래그: 이동  |  클릭: 선택';
+  const hintText = isSelectMode
+    ? '선택 모드 — 드래그하여 영역 선택  |  클릭: 단일 선택'
+    : isActionMode
+      ? lineDrawMode === 'click'
+        ? `선 작도 — ${lineStart ? '두 번째 점 클릭' : '첫 번째 점 클릭'}${snapEnabled ? '  🧲 스냅 ON' : ''}`
+        : `부재 배치 — 클릭하여 배치${snapEnabled ? '  🧲 스냅 ON' : ''}`
+      : '2D 평면도 — 휠: 확대/축소  |  드래그: 이동  |  클릭: 선택';
 
   return (
     <div className="relative w-full h-full select-none" style={{ background: '#0f0f0f' }}>
       <canvas
         ref={canvasRef}
         className="w-full h-full block"
-        style={{ cursor: 'crosshair' }}
+        style={{ cursor: isSelectMode ? 'crosshair' : 'crosshair' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
