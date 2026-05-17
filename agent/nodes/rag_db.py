@@ -1,5 +1,5 @@
 """
-Node 2: RAG + Database 조회 노드 (Ollama - gemma3:12b)
+Node 2: RAG + Database query node (Ollama - gemma3:12b)
 """
 
 import re
@@ -19,9 +19,9 @@ _KEYWORDS = {
 }
 
 _SYSTEM = SystemMessage(content=(
-    "당신은 스마트 빌딩 디지털 트윈 어시스턴트입니다. "
-    "제공된 데이터를 바탕으로 한국어로 명확하고 구체적으로 답변하세요. "
-    "수치 데이터를 포함하여 답변하세요."
+    "You are a Smart Building Digital Twin assistant. "
+    "Answer clearly and specifically in English based on the provided data. "
+    "Include numerical values in your answers."
 ))
 
 
@@ -31,7 +31,7 @@ def _detect_targets(text: str) -> list[str]:
 
 
 def _fmt_time(val) -> str:
-    """timestamp → 'HH:MM' 문자열 변환 (datetime / str 모두 처리)"""
+    """Convert timestamp to 'HH:MM' string (handles both datetime and str)"""
     if val is None:
         return ""
     if isinstance(val, datetime):
@@ -43,7 +43,7 @@ def _fmt_time(val) -> str:
 
 
 def _fetch_db_context(targets: list[str]) -> tuple[str, dict]:
-    """DB 조회 결과를 (텍스트 컨텍스트, 구조화 딕셔너리) 형태로 반환"""
+    """Return DB query result as (text context, structured dict)"""
     parts = []
     structured: dict = {}
 
@@ -56,7 +56,7 @@ def _fetch_db_context(targets: list[str]) -> tuple[str, dict]:
                 "temperature": _safe_float(r.get("temperature") or r.get("temp")),
                 "humidity": _safe_float(r.get("humidity")),
             }
-            for r in reversed(rows)   # 오래된 것부터 표시
+            for r in reversed(rows)   # oldest first
         ]
         if rows:
             latest = rows[0]
@@ -66,7 +66,6 @@ def _fetch_db_context(targets: list[str]) -> tuple[str, dict]:
                 "timestamp": _fmt_time(latest.get("timestamp")),
             }
 
-  
     context_text = "\n\n".join(parts) if parts else "No data found."
     return context_text, structured
 
@@ -94,14 +93,14 @@ def rag_db_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
 
-    # 1. DB 조회 (텍스트 + 구조화 데이터)
+    # 1. DB query (text + structured data)
     targets = _detect_targets(user_text)
     db_context, sensor_data = _fetch_db_context(targets)
 
-    # 2. RAG 검색
+    # 2. RAG search
     rag_context = search_as_text(user_text, k=3)
 
-    # 3. 컨텍스트 조합
+    # 3. Combine context
     combined = f"Data:\n{db_context}\n\nDocs:\n{rag_context}"
 
     try:
@@ -111,7 +110,7 @@ def rag_db_node(state: AgentState) -> dict:
         ])
         content = response.content.strip()
     except Exception as e:
-        content = f"데이터 조회 후 응답 생성 중 오류가 발생했습니다: {e}"
+        content = f"An error occurred while generating a response after data query: {e}"
 
     return {
         "messages": [AIMessage(content=content)],

@@ -1,9 +1,9 @@
 """
-AI Agent 진입점
+AI Agent entry point
 
-터미널에서 대화형으로 실행하거나, 외부에서 graph를 import해서 사용합니다.
+Run interactively from the terminal, or import graph from external code.
 
-사용법:
+Usage:
     python main.py
 """
 
@@ -13,14 +13,14 @@ from graph import graph
 
 def run_agent(user_input: str, history: list | None = None) -> str:
     """
-    단일 메시지를 처리하고 AI 응답 문자열을 반환합니다.
+    Process a single message and return the AI response string.
 
     Args:
-        user_input: 사용자 입력 문자열
-        history: 이전 대화 메시지 리스트 (LangChain Message 객체)
+        user_input: User input string
+        history: Previous conversation messages (LangChain Message objects)
 
     Returns:
-        AI 응답 문자열
+        AI response string
     """
     messages = (history or []) + [HumanMessage(content=user_input)]
     state = graph.invoke({"messages": messages, "intent": None, "query_result": None, "context": None})
@@ -29,34 +29,33 @@ def run_agent(user_input: str, history: list | None = None) -> str:
 
 def main():
     print("=" * 60)
-    print("  스마트 빌딩 디지털 트윈 AI Agent")
-    print("  종료하려면 'quit' 또는 'exit'를 입력하세요.")
+    print("  Smart Building Digital Twin AI Agent")
+    print("  Type 'quit' or 'exit' to stop.")
     print("=" * 60)
 
     history = []
 
     while True:
         try:
-            user_input = input("\n사용자: ").strip()
+            user_input = input("\nUser: ").strip()
         except (EOFError, KeyboardInterrupt):
-            print("\n종료합니다.")
+            print("\nExiting.")
             break
 
         if not user_input:
             continue
         if user_input.lower() in ("quit", "exit", "종료"):
-            print("종료합니다.")
+            print("Exiting.")
             break
 
         try:
             response = run_agent(user_input, history)
             print(f"\nAgent: {response}")
-            # 대화 히스토리 유지
             history.append(HumanMessage(content=user_input))
             from langchain_core.messages import AIMessage
             history.append(AIMessage(content=response))
         except Exception as e:
-            print(f"\n[오류] {e}")
+            print(f"\n[Error] {e}")
 
 
 if __name__ == "__main__":

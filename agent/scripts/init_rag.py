@@ -1,7 +1,7 @@
 """
-RAG 초기 문서 로딩 스크립트
+RAG initial document loading script
 
-실행: python scripts/init_rag.py
+Run: python scripts/init_rag.py
 """
 
 import sys
@@ -12,34 +12,34 @@ from tools.rag_tool import add_documents
 
 DOCUMENTS = [
     {
-        "text": "센서 데이터는 DHT11 센서를 통해 수집됩니다. 온도(temperature)와 습도(humidity) 값을 MQTT 브로커를 통해 실시간으로 전송하며, SENSOR_DATA 테이블에 저장됩니다.",
-        "metadata": {"source": "시스템 매뉴얼", "category": "sensor"},
+        "text": "Sensor data is collected via DHT11 sensors. Temperature and humidity values are transmitted in real time through an MQTT broker and stored in the SENSOR_DATA table.",
+        "metadata": {"source": "System Manual", "category": "sensor"},
     },
     {
-        "text": "BIM(Building Information Modeling)은 건물의 디지털 모델로, 각 공간과 설비의 위치, 크기, 속성 정보를 포함합니다. BIM 서버는 포트 5112에서 동작합니다.",
-        "metadata": {"source": "시스템 매뉴얼", "category": "bim"},
+        "text": "BIM (Building Information Modeling) is a digital model of a building that includes position, size, and attribute information for each space and facility. The BIM server runs on port 5112.",
+        "metadata": {"source": "System Manual", "category": "bim"},
     },
     {
-        "text": "디지털 트윈 시스템은 실물 건물과 동일한 가상 모델을 구축하여 실시간 모니터링, 예측 유지보수를 지원합니다.",
-        "metadata": {"source": "시스템 개요", "category": "overview"},
+        "text": "The Digital Twin system builds a virtual model identical to the physical building to support real-time monitoring and predictive maintenance.",
+        "metadata": {"source": "System Overview", "category": "overview"},
     },
     {
-        "text": "MQTT 브로커(Eclipse Mosquitto)는 포트 1883에서 동작하며, 센서 데이터는 'test/topic' 토픽으로 발행됩니다. Spring Boot 애플리케이션이 이를 구독하여 DB에 저장합니다.",
-        "metadata": {"source": "시스템 매뉴얼", "category": "iot"},
+        "text": "The MQTT broker (Eclipse Mosquitto) runs on port 1883. Sensor data is published to the 'test/topic' topic. The Spring Boot application subscribes to this topic and saves the data to the database.",
+        "metadata": {"source": "System Manual", "category": "iot"},
     },
     {
-        "text": "WebSocket(STOMP 프로토콜)을 통해 /ws/sensor 엔드포인트에 연결하면 센서 데이터를 실시간으로 수신할 수 있습니다. 토픽은 /topic/sensor입니다.",
-        "metadata": {"source": "API 문서", "category": "websocket"},
+        "text": "Connect to the /ws/sensor endpoint via WebSocket (STOMP protocol) to receive sensor data in real time. The subscription topic is /topic/sensor.",
+        "metadata": {"source": "API Documentation", "category": "websocket"},
     },
 ]
 
 
 def main():
-    print(f"총 {len(DOCUMENTS)}개 문서를 벡터스토어에 추가합니다...")
+    print(f"Adding {len(DOCUMENTS)} documents to the vector store...")
     texts = [d["text"] for d in DOCUMENTS]
     metadatas = [d["metadata"] for d in DOCUMENTS]
     add_documents(texts, metadatas)
-    print("완료! 벡터스토어 초기화가 완료되었습니다.")
+    print("Done! Vector store initialization complete.")
 
 
 if __name__ == "__main__":

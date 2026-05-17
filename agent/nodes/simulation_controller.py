@@ -1,12 +1,12 @@
 """
-Node: Simulation Controller 노드
+Node: Simulation Controller node
 
-굴착기 시뮬레이션 제어:
-- 상태 조회 (getState)
-- 프리셋 적용 (setPreset: IDLE / DIG / DUMP / TRAVEL)
-- 관절 각도 설정 (setAngles)
-- 위치 이동 (setPosition)
-- 전체 초기화 (reset)
+Excavator simulation control:
+- Status query (getState)
+- Preset application (setPreset: IDLE / DIG / DUMP / TRAVEL)
+- Joint angle setting (setAngles)
+- Position movement (setPosition)
+- Full reset (reset)
 """
 
 import json
@@ -20,7 +20,7 @@ from config import SPRING_BASE_URL
 
 EXCAVATOR_ID = "EX-001"
 
-# ── 프리셋 정의 (SimulationDashboard.js의 PRESETS와 동일) ─────────
+# Presets (same as SimulationDashboard.js PRESETS)
 PRESETS: dict[str, dict] = {
     "IDLE":   {"boomAngle": 35,  "armAngle": 60,  "bucketAngle": -25, "swingAngle": 0,  "operationMode": "IDLE"},
     "DIG":    {"boomAngle": 5,   "armAngle": 100, "bucketAngle": 10,  "swingAngle": 0,  "operationMode": "DIG"},
@@ -28,42 +28,39 @@ PRESETS: dict[str, dict] = {
     "TRAVEL": {"boomAngle": 20,  "armAngle": 60,  "bucketAngle": -30, "swingAngle": 0,  "operationMode": "TRAVEL"},
 }
 
-PRESET_KOR = {"IDLE": "대기", "DIG": "굴착", "DUMP": "덤핑", "TRAVEL": "이동"}
+PRESET_EN = {"IDLE": "Idle", "DIG": "Digging", "DUMP": "Dumping", "TRAVEL": "Traveling"}
 
-# 관절 한국어 이름 매핑
-ANGLE_KOR = {
-    "boomAngle":    "붐",
-    "armAngle":     "암",
-    "bucketAngle":  "버킷",
-    "swingAngle":   "선회",
-    "bodyRotation": "차체 회전",
+# Joint English name mapping
+ANGLE_EN = {
+    "boomAngle":    "Boom",
+    "armAngle":     "Arm",
+    "bucketAngle":  "Bucket",
+    "swingAngle":   "Swing",
+    "bodyRotation": "Body Rotation",
 }
 
-# ── LLM 시스템 프롬프트 ───────────────────────────────────────────
+# LLM system prompt
+_SYSTEM_PROMPT = SystemMessage(content="""Parse excavator simulation control commands into JSON. Output JSON only.
 
-_SYSTEM_PROMPT = SystemMessage(content="""굴착기 시뮬레이션 제어 명령을 JSON으로 파싱하세요. JSON만 출력하세요.
+Actions:
+- getState   : Query current excavator status
+- setPreset  : Apply preset (preset: IDLE / DIG / DUMP / TRAVEL)
+- setAngles  : Set specific joint angles (unit: degrees)
+- setPosition: Move excavator position
+- reset      : Full reset
 
-액션 목록:
-- getState   : 현재 굴착기 상태 조회
-- setPreset  : 프리셋 적용 (preset: IDLE / DIG / DUMP / TRAVEL)
-- setAngles  : 특정 관절 각도 설정 (단위: 도°)
-- setPosition: 굴착기 위치 이동
-- reset      : 전체 초기화
+setAngles fields: boomAngle, armAngle, bucketAngle, swingAngle, bodyRotation
+setPosition fields: positionX, positionY, positionZ
 
-setAngles 사용 필드: boomAngle, armAngle, bucketAngle, swingAngle, bodyRotation
-setPosition 사용 필드: positionX, positionY, positionZ
-
-출력 예시:
+Output examples:
 {"action":"setPreset","preset":"DIG"}
 {"action":"setAngles","boomAngle":45,"armAngle":90}
 {"action":"setPosition","positionX":5,"positionZ":3}
 {"action":"getState"}
 {"action":"reset"}
 
-모르는 값은 포함하지 마세요. JSON만 출력하세요.""")
+Do not include unknown values. Output JSON only.""")
 
-
-# ── 유틸 ─────────────────────────────────────────────────────────
 
 def _extract_json(text: str) -> dict | None:
     text = re.sub(r"```(?:json)?", "", text).strip().rstrip("`").strip()
@@ -88,8 +85,6 @@ def _detect_preset(text: str) -> str | None:
             return preset
     return None
 
-
-# ── Spring API 호출 ───────────────────────────────────────────────
 
 def _get_current_state() -> dict | None:
     try:
@@ -130,7 +125,7 @@ def _reset_state() -> bool:
         return False
 
 
-# ── 기본 상태 (서버 미응답 시 fallback) ───────────────────────────
+# Default state (fallback when server is not responding)
 _DEFAULT_STATE = {
     "excavatorId":  EXCAVATOR_ID,
     "positionX": 0.0, "positionY": 0.0, "positionZ": 0.0,
@@ -140,33 +135,31 @@ _DEFAULT_STATE = {
 }
 
 
-# ── 노드 함수 ─────────────────────────────────────────────────────
-
 def simulation_controller_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
     sim_project_id = state.get("simulation_project_id")
 
-    # ── 1. 빠른 키워드 분류 ──────────────────────────────────────
+    # 1. Fast keyword classification
     text_lower = user_text.lower().replace(" ", "")
 
-    # 초기화 요청
+    # Reset request
     if re.search(r"초기화|리셋|reset|원위치", user_text, re.IGNORECASE):
         action = {"action": "reset"}
 
-    # 프리셋 키워드 직접 감지
-    elif (preset := _detect_preset(user_text)) and re.search(r"설정|변경|바꿔|적용|해줘|모드", user_text, re.IGNORECASE):
+    # Direct preset keyword detection
+    elif (preset := _detect_preset(user_text)) and re.search(r"설정|변경|바꿔|적용|해줘|모드|set|apply|change", user_text, re.IGNORECASE):
         action = {"action": "setPreset", "preset": preset}
 
-    # 상태 조회 (변경 키워드 없이 확인만)
+    # Status query (check only, no change keyword)
     elif (
-        re.search(r"상태|현재|조회|확인|알려|보여|어떻게|각도|위치", user_text, re.IGNORECASE)
-        and not re.search(r"설정|변경|바꿔|조정|맞춰|이동", user_text, re.IGNORECASE)
+        re.search(r"상태|현재|조회|확인|알려|보여|어떻게|각도|위치|status|current|query|check|show|angle|position", user_text, re.IGNORECASE)
+        and not re.search(r"설정|변경|바꿔|조정|맞춰|이동|set|change|move|adjust", user_text, re.IGNORECASE)
     ):
         action = {"action": "getState"}
 
     else:
-        # ── 2. LLM 파싱 ─────────────────────────────────────────
+        # 2. LLM parsing
         try:
             resp = llm_precise.invoke([
                 _SYSTEM_PROMPT,
@@ -176,26 +169,26 @@ def simulation_controller_node(state: AgentState) -> dict:
         except Exception:
             action = {"action": "getState"}
 
-    # ── 3. 현재 상태 로드 (PUT 요청에 전체 필드 필요) ────────────
+    # 3. Load current state (full fields required for PUT)
     current = _get_current_state() or dict(_DEFAULT_STATE)
 
     act = action.get("action", "getState")
 
-    # ── 4. 액션 실행 ─────────────────────────────────────────────
+    # 4. Execute action
 
     if act == "getState":
-        project_line = f"📁 프로젝트: {sim_project_id}\n" if sim_project_id else ""
+        project_line = f"📁 Project: {sim_project_id}\n" if sim_project_id else ""
         reply = (
-            f"🚜 굴착기 {EXCAVATOR_ID} 현재 상태\n"
+            f"🚜 Excavator {EXCAVATOR_ID} — Current Status\n"
             f"{project_line}\n"
-            f"📍 위치  X={current.get('positionX', 0):.1f}  Y={current.get('positionY', 0):.1f}  Z={current.get('positionZ', 0):.1f}\n"
-            f"🔄 차체 회전:  {current.get('bodyRotation', 0):.1f}°\n"
-            f"⚙️ 선회각:    {current.get('swingAngle', 0):.1f}°\n"
-            f"💪 붐 각도:   {current.get('boomAngle', 0):.1f}°\n"
-            f"🦾 암 각도:   {current.get('armAngle', 0):.1f}°\n"
-            f"🪣 버킷 각도: {current.get('bucketAngle', 0):.1f}°\n"
-            f"🏷 작동 모드: {current.get('operationMode', 'IDLE')}\n\n"
-            "사용 가능한 프리셋: IDLE(대기) / DIG(굴착) / DUMP(덤핑) / TRAVEL(이동)"
+            f"📍 Position  X={current.get('positionX', 0):.1f}  Y={current.get('positionY', 0):.1f}  Z={current.get('positionZ', 0):.1f}\n"
+            f"🔄 Body Rotation:  {current.get('bodyRotation', 0):.1f}°\n"
+            f"⚙️ Swing Angle:    {current.get('swingAngle', 0):.1f}°\n"
+            f"💪 Boom Angle:     {current.get('boomAngle', 0):.1f}°\n"
+            f"🦾 Arm Angle:      {current.get('armAngle', 0):.1f}°\n"
+            f"🪣 Bucket Angle:   {current.get('bucketAngle', 0):.1f}°\n"
+            f"🏷 Operation Mode: {current.get('operationMode', 'IDLE')}\n\n"
+            "Available presets: IDLE / DIG / DUMP / TRAVEL"
         )
         return {"messages": [AIMessage(content=reply)]}
 
@@ -203,13 +196,13 @@ def simulation_controller_node(state: AgentState) -> dict:
         ok = _reset_state()
         if ok:
             reply = (
-                "✅ 굴착기가 초기 상태로 리셋되었습니다.\n\n"
-                "📍 위치: (0, 0, 0)\n"
-                "💪 붐: 35° | 🦾 암: 60° | 🪣 버킷: -25°\n"
-                "🏷 모드: IDLE"
+                "✅ Excavator has been reset to initial state.\n\n"
+                "📍 Position: (0, 0, 0)\n"
+                "💪 Boom: 35° | 🦾 Arm: 60° | 🪣 Bucket: -25°\n"
+                "🏷 Mode: IDLE"
             )
         else:
-            reply = "⚠️ 초기화 요청을 전송했습니다. 서버 응답이 없으면 시뮬레이션 뷰에서 수동으로 초기화하세요."
+            reply = "⚠️ Reset request sent. If the server does not respond, reset manually from the simulation view."
         return {"messages": [AIMessage(content=reply)]}
 
     elif act == "setPreset":
@@ -219,20 +212,20 @@ def simulation_controller_node(state: AgentState) -> dict:
         preset_data = PRESETS[preset_name]
         payload = {**current, **preset_data, "excavatorId": EXCAVATOR_ID}
         ok, _ = _update_state(payload)
-        kor = PRESET_KOR.get(preset_name, preset_name)
+        en = PRESET_EN.get(preset_name, preset_name)
         angles = preset_data
         if ok:
             reply = (
-                f"✅ {kor}({preset_name}) 자세로 설정되었습니다.\n\n"
-                f"💪 붐: {angles['boomAngle']}°  "
-                f"🦾 암: {angles['armAngle']}°  "
-                f"🪣 버킷: {angles['bucketAngle']}°  "
-                f"🔄 선회: {angles['swingAngle']}°"
+                f"✅ Set to {en} ({preset_name}) pose.\n\n"
+                f"💪 Boom: {angles['boomAngle']}°  "
+                f"🦾 Arm: {angles['armAngle']}°  "
+                f"🪣 Bucket: {angles['bucketAngle']}°  "
+                f"🔄 Swing: {angles['swingAngle']}°"
             )
         else:
             reply = (
-                f"⚠️ {kor}({preset_name}) 프리셋 요청을 전송했습니다. "
-                "시뮬레이션 뷰에서 변경을 확인하세요."
+                f"⚠️ {en} ({preset_name}) preset request sent. "
+                "Please verify the change in the simulation view."
             )
         return {"messages": [AIMessage(content=reply)]}
 
@@ -240,21 +233,21 @@ def simulation_controller_node(state: AgentState) -> dict:
         payload = dict(current)
         payload["excavatorId"] = EXCAVATOR_ID
         changed: list[str] = []
-        for field, kor in ANGLE_KOR.items():
+        for field, en in ANGLE_EN.items():
             if field in action and action[field] is not None:
                 payload[field] = float(action[field])
-                changed.append(f"{kor}: {action[field]}°")
+                changed.append(f"{en}: {action[field]}°")
         if not changed:
             return {"messages": [AIMessage(content=(
-                "변경할 각도 정보를 찾지 못했습니다.\n"
-                "예) '붐 각도를 45도로 설정해줘' / '암 90도, 버킷 -20도로 변경해줘'"
+                "Could not find angle information to update.\n"
+                "Example: 'Set boom angle to 45 degrees' / 'Change arm to 90° and bucket to -20°'"
             ))]}
         ok, _ = _update_state(payload)
         summary = " | ".join(changed)
         if ok:
-            reply = f"✅ 관절 각도가 설정되었습니다.\n\n{summary}"
+            reply = f"✅ Joint angles updated.\n\n{summary}"
         else:
-            reply = f"⚠️ 각도 설정 요청을 전송했습니다.\n\n{summary}"
+            reply = f"⚠️ Angle update request sent.\n\n{summary}"
         return {"messages": [AIMessage(content=reply)]}
 
     elif act == "setPosition":
@@ -267,24 +260,24 @@ def simulation_controller_node(state: AgentState) -> dict:
                 changed.append(f"{axis}: {action[field]}")
         if not changed:
             return {"messages": [AIMessage(content=(
-                "이동할 위치 정보를 찾지 못했습니다.\n"
-                "예) '위치를 x=5, z=3으로 이동해줘'"
+                "Could not find position information to move to.\n"
+                "Example: 'Move to position x=5, z=3'"
             ))]}
         ok, _ = _update_state(payload)
         summary = " | ".join(changed)
         if ok:
-            reply = f"✅ 굴착기 위치가 이동되었습니다.\n\n{summary}"
+            reply = f"✅ Excavator position updated.\n\n{summary}"
         else:
-            reply = f"⚠️ 위치 이동 요청을 전송했습니다.\n\n{summary}"
+            reply = f"⚠️ Position update request sent.\n\n{summary}"
         return {"messages": [AIMessage(content=reply)]}
 
     else:
         return {"messages": [AIMessage(content=(
-            "🚜 굴착기 시뮬레이션 제어 안내\n\n"
-            "• **상태 조회** — '굴착기 현재 상태 알려줘'\n"
-            "• **프리셋 적용** — 'DIG 자세로 설정해줘' / 'IDLE 모드로 변경'\n"
-            "  IDLE(대기) / DIG(굴착) / DUMP(덤핑) / TRAVEL(이동)\n"
-            "• **각도 설정** — '붐 각도 45도로 설정해줘'\n"
-            "• **위치 이동** — 'x=5, z=3 위치로 이동해줘'\n"
-            "• **초기화** — '굴착기 초기화해줘'"
+            "🚜 Excavator Simulation Control Guide\n\n"
+            "• **Status query** — 'Show excavator current status'\n"
+            "• **Apply preset** — 'Set to DIG pose' / 'Change to IDLE mode'\n"
+            "  IDLE / DIG / DUMP / TRAVEL\n"
+            "• **Set angles** — 'Set boom angle to 45 degrees'\n"
+            "• **Move position** — 'Move to position x=5, z=3'\n"
+            "• **Reset** — 'Reset excavator'"
         ))]}
