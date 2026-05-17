@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sky, GizmoHelper, GizmoViewport } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
+import { Physics, RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
@@ -648,30 +648,161 @@ function ExcavatorModel({ state, soilInBucket, machine, heightMapRef, wobbleRef 
 }
 
 // ── 건설 현장 오버레이 (지면은 TerrainMesh가 담당, 여기선 시설물만) ─────────────
-function ConstructionOverlay() {
+// 울타리 · 블록 배치, 돌은 StonePhysics 별도 관리
+const STONE_POSITIONS = [
+  [-4, 0.4, -6], [6, 0.4, 4], [-9, 0.4, -3],
+  [14, 0.4, 7],  [2, 0.4, -10], [-12, 0.4, 9],
+];
+const PICKUP_RADIUS_SQ = 1.44; // 1.2m²
+
+function ConstructionOverlay({ version }) {
+  const fenceRefs = useRef([]);
+  const blockRefs = useRef([]);
+
+  // 지형 콜라이더 재빌드 시 잠든 오브젝트 깨우기
+  useEffect(() => {
+    if (!version) return;
+    [...fenceRefs.current, ...blockRefs.current].forEach(rb => rb?.wakeUp());
+  }, [version]);
+
   return (
     <>
-      {/* 공사 울타리 */}
-      {Array.from({ length: 11 }, (_, i) => i - 5).map(i => (
-        <group key={`fence${i}`} position={[i * 5, 0, -28]}>
+      {/* 공사 울타리 — 땅이 꺼지면 쓰러짐 */}
+      {Array.from({ length: 11 }, (_, arrIdx) => ({ offset: arrIdx - 5, arrIdx })).map(({ offset, arrIdx }) => (
+        <RigidBody
+          key={`fence${offset}`}
+          ref={el => { fenceRefs.current[arrIdx] = el; }}
+          type="dynamic"
+          colliders={false}
+          position={[offset * 5, 0.02, -28]}
+          linearDamping={0.6}
+          angularDamping={1.2}
+          restitution={0.1}
+          friction={0.9}
+          mass={18}
+        >
+          <CuboidCollider args={[0.05, 0.65, 0.05]} position={[0, 0.65, 0]} />
           <mesh position={[0, 0.65, 0]} castShadow>
             <boxGeometry args={[0.1, 1.3, 0.1]} />
             <meshStandardMaterial color="#ff6600" />
           </mesh>
-          {i < 10 && (
+          {offset < 5 && (
             <mesh position={[2.5, 0.9, 0]} castShadow>
               <boxGeometry args={[5, 0.06, 0.06]} />
               <meshStandardMaterial color="#ff6600" />
             </mesh>
           )}
-        </group>
+        </RigidBody>
       ))}
-      {/* 콘크리트 블록 */}
+
+      {/* 콘크리트 블록 — 땅이 꺼지면 미끄러지거나 넘어짐 */}
       {[[8, 0.3, -8], [-6, 0.3, 12], [20, 0.3, -4]].map(([x, y, z], i) => (
-        <mesh key={`block${i}`} position={[x, y, z]} castShadow receiveShadow>
-          <boxGeometry args={[2.5, 0.6, 1.2]} />
-          <meshStandardMaterial color="#aaaaaa" roughness={0.7} />
-        </mesh>
+        <RigidBody
+          key={`block${i}`}
+          ref={el => { blockRefs.current[i] = el; }}
+          type="dynamic"
+          colliders="cuboid"
+          position={[x, y + 0.02, z]}
+          linearDamping={0.5}
+          angularDamping={0.8}
+          restitution={0.08}
+          friction={1.0}
+          mass={600}
+        >
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[2.5, 0.6, 1.2]} />
+            <meshStandardMaterial color="#aaaaaa" roughness={0.7} />
+          </mesh>
+        </RigidBody>
+      ))}
+    </>
+  );
+}
+
+// ── 돌 물리 & 버킷 수집 ────────────────────────────────────────────────────
+function StonePhysics({ kinematicsRef, stateRef, onCountChange, version }) {
+  const rbRefs    = useRef(Array(STONE_POSITIONS.length).fill(null));
+  const collected = useRef(new Set());
+  const wasDump   = useRef(false);
+
+  // 지형 콜라이더 재빌드 시 잠든 돌 깨우기
+  useEffect(() => {
+    if (!version) return;
+    STONE_POSITIONS.forEach((_, idx) => {
+      if (collected.current.has(idx)) return;
+      rbRefs.current[idx]?.wakeUp();
+    });
+  }, [version]);
+
+  useFrame(() => {
+    const km = kinematicsRef?.current;
+    if (!km) return;
+    const tx = parseFloat(km.tipX ?? 0);
+    const ty = parseFloat(km.tipY ?? 0);
+    const tz = parseFloat(km.tipZ ?? 0);
+    const depth = parseFloat(km.depth ?? 0);
+    const bucketAngle = stateRef?.current?.bucketAngle ?? 0;
+    const isDumping = bucketAngle < -65 && ty > 0.4;
+
+    // ── 덤핑: 수집된 돌 방출 ──
+    if (isDumping && !wasDump.current && collected.current.size > 0) {
+      collected.current.forEach(idx => {
+        const rb = rbRefs.current[idx];
+        if (!rb) return;
+        rb.setBodyType(0, true); // 0 = Dynamic
+        rb.setTranslation({ x: tx + (Math.random() - 0.5) * 0.5, y: ty + 0.3, z: tz + (Math.random() - 0.5) * 0.5 }, true);
+        rb.setLinvel({ x: (Math.random() - 0.5) * 4, y: 2, z: (Math.random() - 0.5) * 4 }, true);
+        rb.setAngvel({ x: Math.random() * 5, y: Math.random() * 5, z: Math.random() * 5 }, true);
+      });
+      collected.current.clear();
+      onCountChange?.(0);
+    }
+    wasDump.current = isDumping;
+
+    // ── 수집된 돌: 버킷 끝 위치 추종 (kinematic) ──
+    collected.current.forEach(idx => {
+      const rb = rbRefs.current[idx];
+      if (!rb) return;
+      rb.setNextKinematicTranslation({ x: tx, y: ty + 0.15, z: tz });
+    });
+
+    // ── 굴착 중 근접 돌 수집 ──
+    if (depth > 0.05) {
+      STONE_POSITIONS.forEach((_, idx) => {
+        if (collected.current.has(idx)) return;
+        const rb = rbRefs.current[idx];
+        if (!rb) return;
+        const p = rb.translation();
+        const dx = p.x - tx, dy = p.y - ty, dz = p.z - tz;
+        if (dx * dx + dy * dy + dz * dz < PICKUP_RADIUS_SQ) {
+          rb.setBodyType(2, true); // 2 = KinematicPositionBased
+          collected.current.add(idx);
+          onCountChange?.(collected.current.size);
+        }
+      });
+    }
+  });
+
+  return (
+    <>
+      {STONE_POSITIONS.map(([x, y, z], i) => (
+        <RigidBody
+          key={`stone${i}`}
+          ref={el => { rbRefs.current[i] = el; }}
+          type="dynamic"
+          colliders="ball"
+          position={[x, y, z]}
+          restitution={0.25}
+          friction={0.7}
+          mass={90}
+          linearDamping={0.3}
+          angularDamping={0.2}
+        >
+          <mesh castShadow>
+            <sphereGeometry args={[0.38, 9, 7]} />
+            <meshStandardMaterial color="#7a6f5a" roughness={0.92} metalness={0.04} />
+          </mesh>
+        </RigidBody>
       ))}
     </>
   );
@@ -754,9 +885,15 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   // 지형 변경 시 rapier HeightfieldCollider 재빌드 트리거
   const [terrainPhysicsVersion, setTerrainPhysicsVersion] = useState(0);
 
+  // 부재 원위치 리셋 트리거
+  const [objectResetSignal, setObjectResetSignal] = useState(0);
+
   // 버킷 내 흙
   const soilInBucketRef = useRef(0);
   const [soilDisplay, setSoilDisplay] = useState(0);
+
+  // 버킷 내 돌
+  const [stonesInBucket, setStonesInBucket] = useState(0);
 
   // 장비 선택
   const [selectedMachineId, setSelectedMachineId] = useState(DEFAULT_MACHINE.id);
@@ -805,12 +942,17 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   // stateRef 항상 최신 유지
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // 지형이 변경된 후 3초마다 rapier HeightfieldCollider 갱신
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (terrainDirtyRef.current) setTerrainPhysicsVersion(v => v + 1);
-    }, 3000);
-    return () => clearInterval(id);
+  // 지형 변경 시 rapier HeightfieldCollider 즉시 갱신 (200ms 디바운스)
+  const colliderDebounceRef = useRef(null);
+  const scheduleColliderRebuild = useCallback(() => {
+    if (colliderDebounceRef.current) return; // 이미 예약됨
+    colliderDebounceRef.current = setTimeout(() => {
+      colliderDebounceRef.current = null;
+      if (terrainDirtyRef.current) {
+        terrainDirtyRef.current = false;
+        setTerrainPhysicsVersion(v => v + 1);
+      }
+    }, 200);
   }, []);
 
   // BEPUphysics2 물리 평가 훅 (C# 서버 폴링)
@@ -1078,6 +1220,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         applyExcavation(heightMapRef.current, cell.col, cell.row, rate, machine.digRadius);
         soilInBucketRef.current = Math.min(maxBucket, soilInBucketRef.current + rate * 0.9);
         terrainDirtyRef.current = true;
+        scheduleColliderRebuild();
         setSoilDisplay(soilInBucketRef.current);
         if (particlesRef.current.length < MAX_PARTICLES) {
           const emit = Math.min(5, MAX_PARTICLES - particlesRef.current.length);
@@ -1098,6 +1241,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         applyFill(heightMapRef.current, cell.col, cell.row, amount * 0.92, machine.fillRadius);
         soilInBucketRef.current = Math.max(0, soilInBucketRef.current - amount);
         terrainDirtyRef.current = true;
+        scheduleColliderRebuild();
         setSoilDisplay(soilInBucketRef.current);
         if (particlesRef.current.length < MAX_PARTICLES) {
           const emit = Math.min(7, MAX_PARTICLES - particlesRef.current.length);
@@ -1106,7 +1250,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         }
       }
     }
-  }, [state, calcKinematics]);
+  }, [state, calcKinematics, scheduleColliderRebuild]);
 
   // ── UI 핸들러 ──
   const applyPreset = (name) => setState(prev => ({ ...prev, ...PRESETS[name], operationMode: name }));
@@ -1126,6 +1270,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
     terrainDirtyRef.current = true;
+    setObjectResetSignal(v => v + 1);
   };
 
   const handleReset = () => {
@@ -1135,6 +1280,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
     terrainDirtyRef.current = true;
+    setObjectResetSignal(v => v + 1);
     AxiosCustom.post(`/api/simulation/excavator/reset?excavatorId=${excavatorId}`).catch(() => {});
   };
 
@@ -1242,6 +1388,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               transition: 'width 0.1s, background 0.3s',
               borderRadius: '4px',
             }} />
+          </div>
+        </div>
+
+        {/* 돌 수집 */}
+        <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
+          <div style={{ color: secColor, fontSize: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Stones in Bucket</span>
+            <span style={{ color: stonesInBucket > 0 ? '#a78bfa' : secColor, fontFamily: 'monospace', fontWeight: 700 }}>
+              🪨 {stonesInBucket}
+            </span>
           </div>
         </div>
 
@@ -1526,7 +1682,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
             {/* 동적 지형 메시 */}
             <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
-            <ConstructionOverlay />
+            <ConstructionOverlay key={`overlay-${objectResetSignal}`} version={terrainPhysicsVersion} />
+            <StonePhysics key={`stones-${objectResetSignal}`} kinematicsRef={kinematicsRef} stateRef={stateRef} onCountChange={setStonesInBucket} version={terrainPhysicsVersion} />
             {/* wobbleRef 전달 → BEPUphysics2 진동 파라미터로 실시간 흔들림 적용 */}
             <ExcavatorModel
               state={state}
@@ -1870,7 +2027,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
             {/* 동적 지형 메시 */}
             <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
-            <ConstructionOverlay />
+            <ConstructionOverlay key={`overlay-${objectResetSignal}`} version={terrainPhysicsVersion} />
+            <StonePhysics key={`stones-${objectResetSignal}`} kinematicsRef={kinematicsRef} stateRef={stateRef} onCountChange={setStonesInBucket} version={terrainPhysicsVersion} />
             <ExcavatorModel
               state={state}
               soilInBucket={soilDisplay}
