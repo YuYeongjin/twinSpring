@@ -220,13 +220,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
             color: '#f5a623',
             desc: 'Excavator physics simulation with terrain deformation and real-time kinematics.',
           },
-          {
-            id: 'safe',
-            icon: '🦺',
-            label: 'Safe',
-            color: '#22c55e',
-            desc: 'Safety monitoring — helmet detection and restricted area intrusion alerts.',
-          },
+          // { id: 'safe' }  // 비활성화
           {
             id: 'test',
             icon: '🧪',

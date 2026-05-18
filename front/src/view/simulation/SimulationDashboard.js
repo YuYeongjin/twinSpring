@@ -1,11 +1,10 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sky, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { Physics, RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
-import SockJS from 'sockjs-client';
-import { Client } from '@stomp/stompjs';
-import AxiosCustom, { WS_BASE } from '../../axios/AxiosCustom';
+import AxiosCustom from '../../axios/AxiosCustom';
 import {
   TerrainRapierCollider,
   ExcavatorCollider,
@@ -79,6 +78,65 @@ const MACHINE_CONFIGS = {
   },
 };
 const DEFAULT_MACHINE = MACHINE_CONFIGS['0.6W'];
+
+// ── 토질 다짐 계수 ─────────────────────────────────────────────────────────────
+// Lf: Loose Factor (Bank → Loose), Cf: Compaction Factor (Bank → Compacted)
+const SOIL_TYPES = {
+  'Sandy Soil':   { lf: 1.10, cf: 0.95, desc: 'Sand / Sandy Loam' },
+  'Common Earth': { lf: 1.20, cf: 0.90, desc: 'General Soil / Silt' },
+  'Clay':         { lf: 1.25, cf: 0.88, desc: 'Clay / Heavy Clay' },
+  'Gravel':       { lf: 1.13, cf: 0.92, desc: 'Gravel / Crushed Stone' },
+  'Rock':         { lf: 1.50, cf: 1.30, desc: 'Blasted Rock' },
+};
+const DEFAULT_SOIL = 'Common Earth';
+
+// ── 날씨 모드 ──────────────────────────────────────────────────────────────────
+// digMod   : 굴착 속도 배수 (젖은 흙은 연해져 더 빨리 굴착)
+// swellAdd : Loose Factor 추가분  (젖으면 더 팽창)
+// cfSub    : Compaction Factor 감소분 (젖으면 다짐 효율 저하)
+// ruSlope  : 비탈면 간극수압비 (ru) — 클수록 안전율 감소
+// satCoeff : 지반 포화계수 → 지지력 저하에 사용
+const WEATHER_MODES = {
+  'clear':      { label: 'Clear',      icon: '☀',  digMod: 1.00, swellAdd: 0.00, cfSub: 0.00, ruSlope: 0.00, satCoeff: 1.00 },
+  'light-rain': { label: 'Light Rain', icon: '🌧', digMod: 1.08, swellAdd: 0.05, cfSub: 0.04, ruSlope: 0.20, satCoeff: 0.85 },
+  'heavy-rain': { label: 'Heavy Rain', icon: '⛈', digMod: 1.18, swellAdd: 0.12, cfSub: 0.10, ruSlope: 0.40, satCoeff: 0.62 },
+};
+const DEFAULT_WEATHER = 'clear';
+
+// ── 안전 계산 기준값 (비탈면·지반지지력·장비 안정) ────────────────────────────
+const SAFETY_PARAMS = {
+  // 비탈면 (무한사면 안정해석)
+  h:     3.0,   // 굴착 깊이 기준 (m)
+  beta:  30,    // 비탈면 각도 (°)
+  c:     15,    // 점착력 c (kPa)
+  phi:   28,    // 내부마찰각 φ (°)
+  gamma: 18,    // 단위중량 γ (kN/m³)
+  // 지지력 (Terzaghi, φ=28°)
+  Nc: 25.8, Nq: 14.7, Ngamma: 16.7,
+  D:   0.5,   // 기초 근입깊이 (m)
+  B:   4.2,   // 굴착기 트랙 폭 (m) — 0.6W 기준
+  SF:  3.0,   // 안전율
+};
+
+// 무한사면 FS 계산 : FS = [c + (γ·h·cos²β − u)·tanφ] / (γ·h·sinβ·cosβ)
+function calcSlopeFS(weatherKey) {
+  const { h, beta, c, phi, gamma } = SAFETY_PARAMS;
+  const ru = WEATHER_MODES[weatherKey]?.ruSlope ?? 0;
+  const betaR = beta * Math.PI / 180;
+  const phiR  = phi  * Math.PI / 180;
+  const u     = ru * gamma * h;
+  const num   = c + (gamma * h * Math.cos(betaR) ** 2 - u) * Math.tan(phiR);
+  const den   = gamma * h * Math.sin(betaR) * Math.cos(betaR);
+  return Math.max(0, num / den);
+}
+
+// Terzaghi 지지력 계산 (스트립 기초, 포화 보정)
+function calcBearing(weatherKey) {
+  const { c, gamma, D, B, Nc, Nq, Ngamma, SF } = SAFETY_PARAMS;
+  const sat = WEATHER_MODES[weatherKey]?.satCoeff ?? 1.0;
+  const qu  = c * Nc + gamma * D * Nq * sat + 0.5 * gamma * B * Ngamma * sat;
+  return { qu: parseFloat(qu.toFixed(1)), qa: parseFloat((qu / SF).toFixed(1)) };
+}
 
 // 온·습도 이상 감지 기본 임계값
 const DEFAULT_THRESHOLDS = { tempMin: 5, tempMax: 40, humMin: 20, humMax: 85 };
@@ -296,6 +354,270 @@ function createParticle(x, y, z, type) {
     maxLife: 1.2,
     type,
   };
+}
+
+// ── 비 파티클 ──────────────────────────────────────────────────────────────────
+// COUNT는 고정(버퍼 리사이즈 불가 → 강/약 모두 동일 크기 사용)
+const RAIN_COUNT = 900;
+
+function RainParticles({ weatherKey }) {
+  // clear 이면 렌더링하지 않음
+  const visible = weatherKey !== 'clear';
+
+  const posArr = useMemo(() => {
+    const a = new Float32Array(RAIN_COUNT * 3);
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      a[i*3]   = (Math.random() - 0.5) * 100;
+      a[i*3+1] = Math.random() * 35;
+      a[i*3+2] = (Math.random() - 0.5) * 100;
+    }
+    return a;
+  // 최초 1회만 생성 — weatherKey 변경 시 재생성 안 함
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const ref        = useRef();
+  const weatherRef = useRef(weatherKey);
+  useEffect(() => { weatherRef.current = weatherKey; }, [weatherKey]);
+
+  useFrame((_, delta) => {
+    if (!ref.current || !visible) return;
+    const isHeavy = weatherRef.current === 'heavy-rain';
+    const speed = isHeavy ? 22 : 12;
+    const wind  = isHeavy ? 1.8 : 0.5;
+    const pos = ref.current.geometry.attributes.position;
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      pos.array[i*3+1] -= speed * delta;
+      pos.array[i*3]   -= wind  * delta;
+      if (pos.array[i*3+1] < -1) {
+        pos.array[i*3]   = (Math.random() - 0.5) * 100;
+        pos.array[i*3+1] = 33;
+        pos.array[i*3+2] = (Math.random() - 0.5) * 100;
+      }
+    }
+    pos.needsUpdate = true;
+  });
+
+  if (!visible) return null;
+
+  const isHeavy = weatherKey === 'heavy-rain';
+  return (
+    <points ref={ref}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" count={RAIN_COUNT} array={posArr} itemSize={3} />
+      </bufferGeometry>
+      <pointsMaterial
+        color={isHeavy ? '#8ab8e8' : '#b8d4f0'}
+        size={isHeavy ? 0.10 : 0.06}
+        transparent
+        opacity={isHeavy ? 0.65 : 0.45}
+        sizeAttenuation
+        depthWrite={false}
+      />
+    </points>
+  );
+}
+
+// ── 날씨 안전 모달 ─────────────────────────────────────────────────────────────
+function WeatherSafetyModal({ weatherKey, onClose }) {
+  const wm   = WEATHER_MODES[weatherKey];
+  const sp   = SAFETY_PARAMS;
+  const ru   = wm.ruSlope;
+  const betaR = sp.beta * Math.PI / 180;
+  const phiR  = sp.phi  * Math.PI / 180;
+  const u    = ru * sp.gamma * sp.h;
+
+  const FS_slope   = calcSlopeFS(weatherKey);
+  const { qu, qa } = calcBearing(weatherKey);
+  const slopeLevel = FS_slope >= 1.5 ? 'SAFE' : FS_slope >= 1.0 ? 'CAUTION' : 'DANGER';
+  const bearLevel  = qa >= 150 ? 'SAFE' : qa >= 80 ? 'CAUTION' : 'DANGER';
+
+  const levelColor = l => l === 'SAFE' ? '#4ade80' : l === 'CAUTION' ? '#fbbf24' : '#f87171';
+  const levelBg    = l => l === 'SAFE' ? '#0a2010' : l === 'CAUTION' ? '#1a1200' : '#2a0a0a';
+
+  const Section = ({ title, color, children }) => (
+    <div style={{ background: '#0d1b2a', border: `1px solid ${color}30`, borderRadius: '10px', padding: '14px', marginBottom: '12px' }}>
+      <div style={{ color, fontWeight: 700, fontSize: '13px', marginBottom: '10px' }}>{title}</div>
+      {children}
+    </div>
+  );
+
+  const Formula = ({ latex, desc }) => (
+    <div style={{ background: '#060e18', borderRadius: '6px', padding: '8px 12px', margin: '6px 0', fontFamily: 'monospace', fontSize: '12px' }}>
+      <div style={{ color: '#a78bfa', marginBottom: '3px' }}>{latex}</div>
+      {desc && <div style={{ color: '#4a6a7a', fontSize: '10px' }}>{desc}</div>}
+    </div>
+  );
+
+  const Row = ({ label, value, unit, color }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' }}>
+      <span style={{ color: '#8896a4' }}>{label}</span>
+      <span style={{ color: color ?? '#e2e8f0', fontFamily: 'monospace', fontWeight: 600 }}>{value} <span style={{ color: '#4a6a7a' }}>{unit}</span></span>
+    </div>
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+         onClick={onClose}>
+      <div style={{ background: '#0f1e2d', border: '1px solid #253347', borderRadius: '16px', padding: '24px', width: '90%', maxWidth: '600px', maxHeight: '88vh', overflowY: 'auto' }}
+           onClick={e => e.stopPropagation()}>
+
+        {/* 헤더 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div>
+            <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '16px' }}>
+              {wm.icon} Weather Safety Analysis
+            </div>
+            <div style={{ color: '#8896a4', fontSize: '11px', marginTop: '2px' }}>
+              Condition: <span style={{ color: '#f5a623' }}>{wm.label}</span>
+              {' · '}Pore Pressure Ratio ru = {ru}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8896a4', fontSize: '20px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* ① 비탈면 안정 */}
+        <Section title="① Slope Stability  (Infinite Slope Method)" color="#60a5fa">
+          <Formula
+            latex="FS = [ c + (γ·h·cos²β − u) · tan φ ] / (γ·h·sin β·cos β)"
+            desc="Infinite slope stability formula — pore pressure u = rᵤ · γ · h increases with rainfall"
+          />
+          <div style={{ background: '#060e18', borderRadius: '6px', padding: '8px 12px', marginBottom: '8px', fontSize: '11px' }}>
+            <div style={{ color: '#4a6a7a', marginBottom: '4px' }}>Input Parameters</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px' }}>
+              {[
+                [`Slope angle β`, `${sp.beta}°`],
+                [`Height h`,      `${sp.h} m`],
+                [`Cohesion c`,    `${sp.c} kPa`],
+                [`Friction φ`,    `${sp.phi}°`],
+                [`Unit weight γ`, `${sp.gamma} kN/m³`],
+                [`Pore pressure u`, `${u.toFixed(1)} kPa`],
+              ].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                  <span style={{ color: '#6a8a9a' }}>{k}</span>
+                  <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: levelBg(slopeLevel), border: `1px solid ${levelColor(slopeLevel)}40`, borderRadius: '8px', padding: '8px 16px', flex: 1, textAlign: 'center' }}>
+              <div style={{ color: '#8896a4', fontSize: '9px' }}>Factor of Safety</div>
+              <div style={{ color: levelColor(slopeLevel), fontSize: '22px', fontWeight: 700, fontFamily: 'monospace' }}>{FS_slope.toFixed(2)}</div>
+            </div>
+            <div style={{ flex: 2 }}>
+              <div style={{ fontSize: '11px', color: levelColor(slopeLevel), fontWeight: 700, marginBottom: '3px' }}>
+                {slopeLevel === 'SAFE' ? '✓ Stable (FS ≥ 1.5)' : slopeLevel === 'CAUTION' ? '⚠ Marginal (1.0 ≤ FS < 1.5)' : '✗ Unstable (FS < 1.0)'}
+              </div>
+              <div style={{ fontSize: '10px', color: '#4a6a7a', lineHeight: 1.5 }}>
+                {weatherKey === 'clear'
+                  ? 'Dry condition. No pore pressure buildup.'
+                  : weatherKey === 'light-rain'
+                  ? `Light rain raises ru to ${ru}. Pore pressure reduces effective normal stress, decreasing FS.`
+                  : `Heavy rain saturates slope (ru=${ru}). Significant pore pressure build-up. Slope failure risk.`}
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        {/* ② 지지력 */}
+        <Section title="② Ground Bearing Capacity  (Terzaghi)" color="#34d399">
+          <Formula
+            latex="qᵤ = c·Nᶜ + γ·D·Nq + 0.5·γ·B·Nᵧ   (strip footing)"
+            desc="Saturated soil: effective unit weight γ' reduced → Nq, Nγ terms multiplied by saturation coefficient"
+          />
+          <div style={{ background: '#060e18', borderRadius: '6px', padding: '8px 12px', marginBottom: '8px', fontSize: '11px' }}>
+            <div style={{ color: '#4a6a7a', marginBottom: '4px' }}>Parameters  (φ = {sp.phi}°)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px' }}>
+              {[
+                ['Nᶜ', sp.Nc], ['Nq', sp.Nq], ['Nᵧ', sp.Ngamma],
+                ['Track width B', `${sp.B} m`],
+                ['Embedment D', `${sp.D} m`],
+                ['Sat. coeff', wm.satCoeff],
+              ].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                  <span style={{ color: '#6a8a9a' }}>{k}</span>
+                  <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            {[
+              ['Ultimate Bearing', `${qu} kPa`, '#fb923c'],
+              [`Allowable (SF=${sp.SF})`, `${qa} kPa`, levelColor(bearLevel)],
+            ].map(([label, val, color]) => (
+              <div key={label} style={{ background: '#060e18', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
+                <div style={{ color: '#4a6a7a', fontSize: '9px', marginBottom: '3px' }}>{label}</div>
+                <div style={{ color, fontFamily: 'monospace', fontWeight: 700, fontSize: '16px' }}>{val}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: '8px', fontSize: '10px', color: '#4a6a7a', lineHeight: 1.5 }}>
+            {weatherKey === 'clear'
+              ? 'Normal dry conditions. Full bearing capacity available.'
+              : weatherKey === 'light-rain'
+              ? `Soil saturation reduces bearing capacity to ${Math.round(wm.satCoeff * 100)}% of dry value. Monitor for excessive settlement.`
+              : `Heavy rain saturates ground (${Math.round(wm.satCoeff * 100)}% capacity). Risk of equipment sinkage and ground failure. Halt operations if ponding occurs.`}
+          </div>
+        </Section>
+
+        {/* ③ 토공량 보정 */}
+        <Section title="③ Earthwork Volume Correction" color="#f5a623">
+          <Formula
+            latex="Lf_wet = Lf_dry + ΔLf   |   Cf_wet = Cf_dry − ΔCf"
+            desc="Wet soil swells more (↑ Lf) and is harder to compact properly (↓ Cf)"
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+            {[
+              ['Dig Rate', `×${wm.digMod.toFixed(2)}`, '#fb923c'],
+              ['Swell +ΔLf', `+${wm.swellAdd.toFixed(2)}`, '#60a5fa'],
+              ['Compact −ΔCf', `-${wm.cfSub.toFixed(2)}`, '#f87171'],
+            ].map(([l, v, c]) => (
+              <div key={l} style={{ background: '#060e18', borderRadius: '8px', padding: '8px', textAlign: 'center' }}>
+                <div style={{ color: '#4a6a7a', fontSize: '9px', marginBottom: '3px' }}>{l}</div>
+                <div style={{ color: c, fontFamily: 'monospace', fontWeight: 700, fontSize: '15px' }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: '10px', color: '#4a6a7a', lineHeight: 1.5 }}>
+            Wet soil excavates faster but swells more in the loose state and achieves less compaction per pass. Volume corrections are applied to the Bank→Loose and Bank→Compacted conversions automatically.
+          </div>
+        </Section>
+
+        {/* ④ 작업 중지 권고 */}
+        {weatherKey === 'heavy-rain' && (
+          <div style={{ background: '#2a0a0a', border: '1px solid #ef4444', borderRadius: '10px', padding: '14px' }}>
+            <div style={{ color: '#f87171', fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>⚠ Work Suspension Recommended</div>
+            <div style={{ fontSize: '10px', color: '#fca5a5', lineHeight: 1.7 }}>
+              Heavy rain conditions meet suspension criteria per KOSHA safety guidelines:<br/>
+              • Slope FS = {FS_slope.toFixed(2)} &lt; 1.0 → Imminent slide risk<br/>
+              • Allowable bearing = {qa} kPa → Risk of equipment sinkage<br/>
+              • Excavated volume compaction efficiency reduced by {Math.round(wm.cfSub * 100)}%<br/>
+              Suspend excavation until rainfall ceases and ground drains adequately.
+            </div>
+          </div>
+        )}
+        {weatherKey === 'light-rain' && (
+          <div style={{ background: '#1a1200', border: '1px solid #f59e0b', borderRadius: '10px', padding: '14px' }}>
+            <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>⚠ Proceed with Caution</div>
+            <div style={{ fontSize: '10px', color: '#fde68a', lineHeight: 1.7 }}>
+              • Monitor slope for signs of tension cracks or seepage<br/>
+              • Check equipment footing — avoid soft saturated areas<br/>
+              • Compaction quality may be reduced; re-check fill layer by layer
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={onClose}
+          style={{ width: '100%', marginTop: '4px', background: '#162032', border: '1px solid #253347', borderRadius: '8px', color: '#8896a4', padding: '12px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ── TerrainMesh 컴포넌트 ───────────────────────────────────────────────────────
@@ -865,7 +1187,7 @@ function SoilParticles({ particlesRef }) {
 }
 
 // ── 메인 대시보드 ──────────────────────────────────────────────────────────────
-export default function SimulationDashboard({ selectedProject, modelData, setViceComponent }) {
+export default function SimulationDashboard({ selectedProject, modelData, setViceComponent, sensorLatest, sensorWsStatus }) {
 
   const [state, setState] = useState({ ...DEFAULT_STATE });
   const keysRef    = useRef(new Set());
@@ -891,6 +1213,19 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   // 버킷 내 흙
   const soilInBucketRef = useRef(0);
   const [soilDisplay, setSoilDisplay] = useState(0);
+
+  // 토공량 누계 추적
+  const totalExcavRef  = useRef(0);   // 누계 굴착량 (m³)
+  const totalFillRef   = useRef(0);   // 누계 성토량 (m³)
+  const [totalExcavDisplay, setTotalExcavDisplay] = useState(0);
+  const [totalFillDisplay,  setTotalFillDisplay]  = useState(0);
+  const excavLogRef    = useRef([]);  // [{ seq, time, posX, posZ, volume, type, machine }]
+  const lastDigLogRef  = useRef(0);   // 마지막 굴착 로그 기록 시각
+  const [soilType,    setSoilType]    = useState(DEFAULT_SOIL);
+  const [weatherMode, setWeatherMode] = useState(DEFAULT_WEATHER);
+  const [showSafetyModal, setShowSafetyModal] = useState(false);
+  const weatherModeRef = useRef(DEFAULT_WEATHER);
+  useEffect(() => { weatherModeRef.current = weatherMode; }, [weatherMode]);
 
   // 버킷 내 돌
   const [stonesInBucket, setStonesInBucket] = useState(0);
@@ -925,9 +1260,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   }, []);
   const [kinematics, setKinematics] = useState(null);
 
-  // IoT 센서 모니터링
-  const [sensor, setSensor]           = useState(null);
-  const [sensorWs, setSensorWs]       = useState('idle'); // 'idle'|'connecting'|'connected'|'disconnected'|'error'
+  // IoT 센서 모니터링 — App.js에서 항상 유지되는 SatelliteAPI 연결 재사용
+  const sensor   = sensorLatest;
+  const sensorWs = sensorWsStatus ?? 'idle';
   const [thresholds, setThresholds]   = useState(() => {
     try { return JSON.parse(localStorage.getItem('sim_thresholds')) || DEFAULT_THRESHOLDS; }
     catch { return DEFAULT_THRESHOLDS; }
@@ -935,7 +1270,6 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const [activeAlerts, setActiveAlerts]   = useState([]);  // 현재 임계값 초과 중인 항목
   const [alertHistory, setAlertHistory]   = useState([]);  // 최근 알림 기록 (최대 20건)
   const [alertPulse, setAlertPulse]       = useState(true);
-  const stompClientRef  = useRef(null);
   const thresholdsRef   = useRef(thresholds);
   const wasAlertingRef  = useRef(false);
 
@@ -972,51 +1306,32 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     return () => clearInterval(id);
   }, [activeAlerts.length]);
 
-  // WebSocket: IoT 센서 데이터 구독 및 이상 감지
+  // 센서 데이터 변경 시 임계값 초과 감지 및 LED 알림
   useEffect(() => {
-    const client = new Client({
-      webSocketFactory: () => new SockJS(`${WS_BASE}/ws/sensor`),
-      reconnectDelay: 5000,
-      onConnect: () => {
-        setSensorWs('connected');
-        client.subscribe('/topic/sensor', (msg) => {
-          try {
-            const d = JSON.parse(msg.body);
-            setSensor(d);
-            const t = thresholdsRef.current;
-            const ts = new Date().toLocaleTimeString('ko-KR');
-            const triggered = [];
-            if (d.temperature > t.tempMax)
-              triggered.push({ id: 'TEMP_HIGH', level: 'danger',  text: `High Temp Alert: ${d.temperature}°C (Max allowed ${t.tempMax}°C)`, ts });
-            if (d.temperature < t.tempMin)
-              triggered.push({ id: 'TEMP_LOW',  level: 'danger',  text: `Low Temp Alert: ${d.temperature}°C (Min allowed ${t.tempMin}°C)`, ts });
-            if (d.humidity > t.humMax)
-              triggered.push({ id: 'HUM_HIGH',  level: 'warning', text: `High Humidity Alert: ${d.humidity}% (Max allowed ${t.humMax}%)`, ts });
-            if (d.humidity < t.humMin)
-              triggered.push({ id: 'HUM_LOW',   level: 'warning', text: `Low Humidity Alert: ${d.humidity}% (Min allowed ${t.humMin}%)`, ts });
-            setActiveAlerts(triggered);
-            if (triggered.length > 0) {
-              setAlertHistory(prev => [...triggered.map(a => ({ ...a, uid: `${a.id}_${Date.now()}` })), ...prev].slice(0, 20));
-              if (!wasAlertingRef.current) {
-                wasAlertingRef.current = true;
-                AxiosCustom.post('/api/alert/led/on').catch(() => {});
-              }
-            } else if (wasAlertingRef.current) {
-              wasAlertingRef.current = false;
-              AxiosCustom.post('/api/alert/led/off').catch(() => {});
-            }
-          } catch {}
-        });
-      },
-      onDisconnect:     () => setSensorWs('disconnected'),
-      onStompError:     () => setSensorWs('error'),
-      onWebSocketClose: () => setSensorWs('disconnected'),
-    });
-    setSensorWs('connecting');
-    client.activate();
-    stompClientRef.current = client;
-    return () => client.deactivate();
-  }, []);
+    if (!sensor) return;
+    const t = thresholdsRef.current;
+    const ts = new Date().toLocaleTimeString('ko-KR');
+    const triggered = [];
+    if (sensor.temperature > t.tempMax)
+      triggered.push({ id: 'TEMP_HIGH', level: 'danger',  text: `High Temp Alert: ${sensor.temperature}°C (Max allowed ${t.tempMax}°C)`, ts });
+    if (sensor.temperature < t.tempMin)
+      triggered.push({ id: 'TEMP_LOW',  level: 'danger',  text: `Low Temp Alert: ${sensor.temperature}°C (Min allowed ${t.tempMin}°C)`, ts });
+    if (sensor.humidity > t.humMax)
+      triggered.push({ id: 'HUM_HIGH',  level: 'warning', text: `High Humidity Alert: ${sensor.humidity}% (Max allowed ${t.humMax}%)`, ts });
+    if (sensor.humidity < t.humMin)
+      triggered.push({ id: 'HUM_LOW',   level: 'warning', text: `Low Humidity Alert: ${sensor.humidity}% (Min allowed ${t.humMin}%)`, ts });
+    setActiveAlerts(triggered);
+    if (triggered.length > 0) {
+      setAlertHistory(prev => [...triggered.map(a => ({ ...a, uid: `${a.id}_${Date.now()}` })), ...prev].slice(0, 20));
+      if (!wasAlertingRef.current) {
+        wasAlertingRef.current = true;
+        AxiosCustom.post('/api/alert/led/on').catch(() => {});
+      }
+    } else if (wasAlertingRef.current) {
+      wasAlertingRef.current = false;
+      AxiosCustom.post('/api/alert/led/off').catch(() => {});
+    }
+  }, [sensor]);
 
   // 서버에서 초기 상태 로드 (지형 + 장비 선택 포함) — 프로젝트별 분리
   useEffect(() => {
@@ -1025,6 +1340,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     heightMapRef.current.fill(0);
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
+    totalExcavRef.current = 0; totalFillRef.current = 0;
+    setTotalExcavDisplay(0); setTotalFillDisplay(0);
+    excavLogRef.current = [];
     terrainDirtyRef.current = true;
     setState({ ...DEFAULT_STATE, excavatorId });
 
@@ -1087,10 +1405,10 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           const sin = Math.sin(s.bodyRotation * D2R);
           if (keys.has('w') || keys.has('W') || keys.has('ArrowUp'))    { s.positionX += sin * MOVE_SPEED; s.positionZ += cos * MOVE_SPEED; }
           if (keys.has('s') || keys.has('S') || keys.has('ArrowDown'))  { s.positionX -= sin * MOVE_SPEED; s.positionZ -= cos * MOVE_SPEED; }
-          if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft'))  s.bodyRotation -= ROT_SPEED;
-          if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) s.bodyRotation += ROT_SPEED;
-          if (keys.has('q') || keys.has('Q')) s.swingAngle -= JOINT_SPEED * 1.8;
-          if (keys.has('e') || keys.has('E')) s.swingAngle += JOINT_SPEED * 1.8;
+          if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft'))  s.bodyRotation += ROT_SPEED;
+          if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) s.bodyRotation -= ROT_SPEED;
+          if (keys.has('q') || keys.has('Q')) s.swingAngle += JOINT_SPEED * 1.8;
+          if (keys.has('e') || keys.has('E')) s.swingAngle -= JOINT_SPEED * 1.8;
           if (keys.has('r') || keys.has('R')) s.boomAngle = clamp(s.boomAngle + JOINT_SPEED, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
           if (keys.has('f') || keys.has('F')) s.boomAngle = clamp(s.boomAngle - JOINT_SPEED, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
           if (keys.has('t') || keys.has('T')) s.armAngle = clamp(s.armAngle + JOINT_SPEED, JOINT_LIMITS.armAngle.min, JOINT_LIMITS.armAngle.max);
@@ -1216,9 +1534,27 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     if (digDepth > 0.05 && soilInBucketRef.current < maxBucket) {
       const cell = worldToCell(tipX, tipZ);
       if (cell.valid) {
-        const rate = Math.min(machine.digRate, digDepth * 0.055);
+        const digMod = WEATHER_MODES[weatherModeRef.current]?.digMod ?? 1.0;
+        const rate = Math.min(machine.digRate * digMod, digDepth * 0.055 * digMod);
         applyExcavation(heightMapRef.current, cell.col, cell.row, rate, machine.digRadius);
+        const added = Math.min(maxBucket, soilInBucketRef.current + rate * 0.9) - soilInBucketRef.current;
         soilInBucketRef.current = Math.min(maxBucket, soilInBucketRef.current + rate * 0.9);
+        // 토공량 누계 & 로그 (2초마다 1건)
+        totalExcavRef.current += added;
+        setTotalExcavDisplay(parseFloat(totalExcavRef.current.toFixed(3)));
+        const now = Date.now();
+        if (now - lastDigLogRef.current > 2000) {
+          lastDigLogRef.current = now;
+          excavLogRef.current.push({
+            seq:  excavLogRef.current.length + 1,
+            time: new Date(now).toLocaleTimeString(),
+            posX: tipX.toFixed(2), posZ: tipZ.toFixed(2),
+            volume: parseFloat(added.toFixed(4)),
+            type:   'DIG',
+            machine: machine.id,
+            weather: weatherModeRef.current,
+          });
+        }
         terrainDirtyRef.current = true;
         scheduleColliderRebuild();
         setSoilDisplay(soilInBucketRef.current);
@@ -1234,12 +1570,22 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     if (state.bucketAngle < -65 && tipY > 0.4 && soilInBucketRef.current > 0.01) {
       const cell = worldToCell(tipX, tipZ);
       if (cell.valid) {
-        const dumpRate = 0.05;
-        // const amount   = Math.min(dumpRate, soilInBucketRef.current);
-        // applyFill(heightMapRef.current, cell.col, cell.row, amount);
         const amount = Math.min(machine.fillRate, soilInBucketRef.current);
         applyFill(heightMapRef.current, cell.col, cell.row, amount * 0.92, machine.fillRadius);
+        const dumped = amount;
         soilInBucketRef.current = Math.max(0, soilInBucketRef.current - amount);
+        // 토공량 누계 & 로그
+        totalFillRef.current += dumped;
+        setTotalFillDisplay(parseFloat(totalFillRef.current.toFixed(3)));
+        excavLogRef.current.push({
+          seq:    excavLogRef.current.length + 1,
+          time:   new Date().toLocaleTimeString(),
+          posX:   tipX.toFixed(2), posZ: tipZ.toFixed(2),
+          volume: parseFloat(dumped.toFixed(4)),
+          type:   'FILL',
+          machine: machine.id,
+          weather: weatherModeRef.current,
+        });
         terrainDirtyRef.current = true;
         scheduleColliderRebuild();
         setSoilDisplay(soilInBucketRef.current);
@@ -1269,6 +1615,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     heightMapRef.current.fill(0);
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
+    totalExcavRef.current = 0; totalFillRef.current = 0;
+    setTotalExcavDisplay(0); setTotalFillDisplay(0);
+    excavLogRef.current = [];
     terrainDirtyRef.current = true;
     setObjectResetSignal(v => v + 1);
   };
@@ -1279,6 +1628,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     heightMapRef.current.fill(0);
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
+    totalExcavRef.current = 0; totalFillRef.current = 0;
+    setTotalExcavDisplay(0); setTotalFillDisplay(0);
+    excavLogRef.current = [];
     terrainDirtyRef.current = true;
     setObjectResetSignal(v => v + 1);
     AxiosCustom.post(`/api/simulation/excavator/reset?excavatorId=${excavatorId}`).catch(() => {});
@@ -1299,6 +1651,140 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       .catch(() => setSyncStatus('error'));
   };
 
+  // ── Earthwork Excel Export ────────────────────────────────────────────────
+  const handleExportExcel = useCallback(() => {
+    const projectName = selectedProject?.projectName ?? 'Simulation';
+    const now         = new Date();
+    const dateStr     = now.toLocaleString();
+    const soil        = SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL];
+    const wmExp       = WEATHER_MODES[weatherMode] ?? WEATHER_MODES[DEFAULT_WEATHER];
+    const lf = parseFloat((soil.lf + wmExp.swellAdd).toFixed(2));
+    const cf = parseFloat((soil.cf - wmExp.cfSub).toFixed(2));
+
+    const log   = excavLogRef.current;
+    const B_exc = totalExcavRef.current;   // Bank excavation (m³)
+    const B_fil = totalFillRef.current;    // Bank fill       (m³)
+    const B_net = B_exc - B_fil;
+
+    // ── Per-machine aggregation ──
+    const machineMap = {};
+    log.forEach(r => {
+      if (!machineMap[r.machine]) machineMap[r.machine] = { dig: 0, fill: 0, digCount: 0, fillCount: 0 };
+      if (r.type === 'DIG')  { machineMap[r.machine].dig  += r.volume; machineMap[r.machine].digCount++;  }
+      if (r.type === 'FILL') { machineMap[r.machine].fill += r.volume; machineMap[r.machine].fillCount++; }
+    });
+    const usedMachineIds = Object.keys(machineMap);
+    const firstLog = log[0]?.time ?? '-';
+    const lastLog  = log[log.length - 1]?.time ?? '-';
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sheet 1: Earthwork Summary
+    // ─────────────────────────────────────────────────────────────────────────
+    const fmt = v => parseFloat(v.toFixed(3));
+    const summaryData = [
+      ['EARTHWORK CALCULATION REPORT', '', '', ''],
+      ['', '', '', ''],
+      ['Project',       projectName,   '', ''],
+      ['Date Issued',   dateStr,       '', ''],
+      ['Equipment Used', usedMachineIds.join(', ') || '-', '', ''],
+      ['Work Period',    `${firstLog} ~ ${lastLog}`, '', ''],
+      ['Soil Type',      `${soilType} (${soil.desc})`, '', ''],
+      ['Weather',        `${wmExp.label} (Dig ×${wmExp.digMod}, ΔLf +${wmExp.swellAdd}, ΔCf −${wmExp.cfSub})`, '', ''],
+      ['', '', '', ''],
+      // Compaction factors
+      ['── Soil Conversion Factors ──', '', '', ''],
+      ['Factor', 'Symbol', 'Value', 'Description'],
+      ['Loose Factor',      'Lf', lf,  'Bank → Loose  (excavated soil in bucket/truck)'],
+      ['Compaction Factor', 'Cf', cf,  'Bank → Compacted  (after fill & compaction)'],
+      ['', '', '', ''],
+      // Volume table
+      ['── Volume Analysis (m³) ──', '', '', ''],
+      ['Item',        'Bank (B)',    `Loose (B×${lf})`, `Compacted (B×${cf})`],
+      ['Excavation',  fmt(B_exc),   fmt(B_exc * lf),   fmt(B_exc * cf)],
+      ['Fill',        fmt(B_fil),   fmt(B_fil * lf),   fmt(B_fil * cf)],
+      ['Net (Exc−Fill)', fmt(B_net), fmt(B_net * lf),  fmt(B_net * cf)],
+      ['', '', '', ''],
+      ['Note: Bank = in-situ volume from terrain heightmap.', '', '', ''],
+      ['Loose = volume when loaded (bucket / truck).', '', '', ''],
+      ['Compacted = volume after earthfill compaction.', '', '', ''],
+    ];
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sheet 2: Equipment Summary
+    // ─────────────────────────────────────────────────────────────────────────
+    const eqHeaders = ['Equipment ID', 'Class', 'Bucket (m³)',
+      'Excavation – Bank (m³)', 'Excavation – Loose (m³)', 'Excavation – Compacted (m³)',
+      'Fill – Bank (m³)',        'Fill – Loose (m³)',        'Fill – Compacted (m³)',
+      'Dig Events', 'Fill Events'];
+
+    const eqRows = usedMachineIds.map(mid => {
+      const mc  = MACHINE_CONFIGS[mid] ?? { label: mid, weight: '-', bucketCapacity: '-' };
+      const row = machineMap[mid];
+      return [
+        mid,
+        mc.weight,
+        mc.bucketCapacity,
+        fmt(row.dig),           fmt(row.dig  * lf), fmt(row.dig  * cf),
+        fmt(row.fill),          fmt(row.fill * lf), fmt(row.fill * cf),
+        row.digCount,           row.fillCount,
+      ];
+    });
+    // Totals row
+    const totDig  = usedMachineIds.reduce((s, m) => s + machineMap[m].dig,       0);
+    const totFill = usedMachineIds.reduce((s, m) => s + machineMap[m].fill,      0);
+    const totDC   = usedMachineIds.reduce((s, m) => s + machineMap[m].digCount,  0);
+    const totFC   = usedMachineIds.reduce((s, m) => s + machineMap[m].fillCount, 0);
+    eqRows.push([
+      'TOTAL', '', '',
+      fmt(totDig),  fmt(totDig  * lf), fmt(totDig  * cf),
+      fmt(totFill), fmt(totFill * lf), fmt(totFill * cf),
+      totDC, totFC,
+    ]);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sheet 3: Work Log
+    // ─────────────────────────────────────────────────────────────────────────
+    const logHeaders = ['No.', 'Time', 'X (m)', 'Z (m)',
+      'Volume – Bank (m³)', 'Volume – Loose (m³)', 'Volume – Compacted (m³)',
+      'Type', 'Equipment', 'Weather'];
+    const logRows = log.map(r => [
+      r.seq,
+      r.time,
+      parseFloat(r.posX),
+      parseFloat(r.posZ),
+      r.volume,
+      fmt(r.volume * lf),
+      fmt(r.volume * cf),
+      r.type,
+      r.machine,
+      WEATHER_MODES[r.weather]?.label ?? 'Clear',
+    ]);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Build workbook
+    // ─────────────────────────────────────────────────────────────────────────
+    const wb = XLSX.utils.book_new();
+
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
+    wsSummary['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 44 }];
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Earthwork Summary');
+
+    const wsEq = XLSX.utils.aoa_to_sheet([eqHeaders, ...eqRows]);
+    wsEq['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 12 },
+      { wch: 20 }, { wch: 20 }, { wch: 22 },
+      { wch: 18 }, { wch: 18 }, { wch: 20 },
+      { wch: 10 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsEq, 'Equipment Report');
+
+    const wsLog = XLSX.utils.aoa_to_sheet([logHeaders, ...logRows]);
+    wsLog['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 8 }, { wch: 8 },
+      { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 8 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, wsLog, 'Work Log');
+
+    const fileName = `Earthwork_${projectName}_${now.toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  }, [selectedProject, soilType]);
+
   const pressKey   = (k) => { keysRef.current.add(k);    setKeysDisplay(new Set(keysRef.current)); };
   const releaseKey = (k) => { keysRef.current.delete(k); setKeysDisplay(new Set(keysRef.current)); };
 
@@ -1313,7 +1799,12 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const isDumping = state.bucketAngle < -65 && soilDisplay > 0.02;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', ...(isMobile ? {} : { height: 'calc(100vh - 145px)', overflow: 'hidden' }) }}>
+
+      {/* 날씨 안전 모달 */}
+      {showSafetyModal && (
+        <WeatherSafetyModal weatherKey={weatherMode} onClose={() => setShowSafetyModal(false)} />
+      )}
 
       {/* ── 프로젝트 헤더 ── */}
       <div style={{
@@ -1339,7 +1830,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         </span>
       </div>
 
-    {!isMobile && <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px' }}>
+    {!isMobile && <div style={{ display: 'flex', width: '100%', flex: 1, minHeight: 0, gap: '10px' }}>
 
       {/* ── 왼쪽 상태 패널 ── */}
       <div style={{
@@ -1398,6 +1889,48 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             <span style={{ color: stonesInBucket > 0 ? '#a78bfa' : secColor, fontFamily: 'monospace', fontWeight: 700 }}>
               🪨 {stonesInBucket}
             </span>
+          </div>
+        </div>
+
+        {/* 토공량 요약 (좌측 패널) */}
+        <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
+          <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>📊 Earthwork</span>
+            <button
+              onClick={handleExportExcel}
+              style={{ background: '#0a2010', border: '1px solid #16a34a', borderRadius: '4px', color: '#4ade80', padding: '1px 6px', fontSize: '9px', cursor: 'pointer', fontWeight: 600 }}
+            >
+              📥 xlsx
+            </button>
+          </div>
+          {/* Bank / Loose / Compacted 헤더 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '46px 1fr 1fr 1fr', gap: '3px', marginBottom: '4px' }}>
+            {['', 'Bank', 'Loose', 'Cmpct'].map(h => (
+              <div key={h} style={{ color: '#3a4a5a', fontSize: '7px', textAlign: 'center' }}>{h}</div>
+            ))}
+          </div>
+          {(() => {
+            const base = SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL];
+            const wm   = WEATHER_MODES[weatherMode] ?? WEATHER_MODES[DEFAULT_WEATHER];
+            const lf   = parseFloat((base.lf + wm.swellAdd).toFixed(2));
+            const cf   = parseFloat((base.cf - wm.cfSub).toFixed(2));
+            return [
+              ['Excav.', totalExcavDisplay, '#fb923c'],
+              ['Fill',   totalFillDisplay,  '#34d399'],
+              ['Net',    parseFloat((totalExcavDisplay - totalFillDisplay).toFixed(3)), '#60a5fa'],
+            ].map(([label, bank, color]) => (
+              <div key={label} style={{ display: 'grid', gridTemplateColumns: '46px 1fr 1fr 1fr', gap: '3px', marginBottom: '3px' }}>
+                <div style={{ color: secColor, fontSize: '9px', display: 'flex', alignItems: 'center' }}>{label}</div>
+                {[bank, bank * lf, bank * cf].map((v, i) => (
+                  <div key={i} style={{ color, fontFamily: 'monospace', fontSize: '9px', fontWeight: 600, textAlign: 'center' }}>
+                    {Number(v).toFixed(2)}
+                  </div>
+                ))}
+              </div>
+            ));
+          })()}
+          <div style={{ color: '#3a4a5a', fontSize: '8px', marginTop: '4px' }}>
+            Soil: {soilType} · Lf {(SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL]).lf} / Cf {(SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL]).cf}
           </div>
         </div>
 
@@ -1661,19 +2194,35 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </div>
         )}
 
-        <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }} style={{ background: '#1a2a3a', width: '100%', height: '100%' }}>
-          {/* @react-three/rapier Physics 컨텍스트: 지형 콜라이더 + 굴착기 충돌 프록시 */}
+        <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }}
+          style={{
+            background: weatherMode === 'heavy-rain' ? '#1a1f2e' : weatherMode === 'light-rain' ? '#1e2a3a' : '#1a2a3a',
+            width: '100%', height: '100%',
+          }}>
           <Physics gravity={[0, -9.81, 0]} colliders={false}>
-            <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
-            <ambientLight intensity={0.55} />
+            {weatherMode === 'clear' ? (
+              <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
+            ) : (
+              <Sky sunPosition={[10, 2, 10]}
+                turbidity={weatherMode === 'heavy-rain' ? 18 : 12}
+                rayleigh={weatherMode === 'heavy-rain' ? 4.0 : 2.0}
+                mieCoefficient={0.05}
+                mieDirectionalG={0.4}
+              />
+            )}
+            <ambientLight intensity={weatherMode === 'heavy-rain' ? 0.30 : weatherMode === 'light-rain' ? 0.42 : 0.55} />
             <directionalLight
-              position={[60, 70, 40]} intensity={1.3} castShadow
+              position={[60, 70, 40]}
+              intensity={weatherMode === 'heavy-rain' ? 0.5 : weatherMode === 'light-rain' ? 0.9 : 1.3}
+              castShadow
               shadow-mapSize-width={2048} shadow-mapSize-height={2048}
               shadow-camera-far={200} shadow-camera-left={-70}
               shadow-camera-right={70} shadow-camera-top={70} shadow-camera-bottom={-70}
             />
-            <pointLight position={[-20, 8, -20]} intensity={0.25} color="#ff9944" />
-            <pointLight position={[25, 6, 25]}   intensity={0.2}  color="#4488ff" />
+            <pointLight position={[-20, 8, -20]} intensity={weatherMode === 'clear' ? 0.25 : 0.10} color="#ff9944" />
+            <pointLight position={[25, 6, 25]}   intensity={weatherMode === 'clear' ? 0.20 : 0.08} color="#4488ff" />
+            {/* 비 파티클 */}
+            <RainParticles weatherKey={weatherMode} />
 
             {/* rapier 지형 Heightfield 콜라이더 (3초마다 갱신) */}
             <TerrainRapierCollider heightMapRef={heightMapRef} version={terrainPhysicsVersion} />
@@ -1711,6 +2260,59 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       }}>
         <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
           🎮 Manual Control
+        </div>
+
+        {/* 날씨 선택 */}
+        <div>
+          <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px', letterSpacing: '0.04em' }}>🌤 Weather Condition</div>
+          <div style={{ display: 'flex', gap: '5px' }}>
+            {Object.entries(WEATHER_MODES).map(([key, wm]) => {
+              const active = weatherMode === key;
+              const col = key === 'clear' ? '#60a5fa' : key === 'light-rain' ? '#a78bfa' : '#f87171';
+              const FS = calcSlopeFS(key);
+              const safeColor = FS >= 1.5 ? '#4ade80' : FS >= 1.0 ? '#fbbf24' : '#f87171';
+              return (
+                <button
+                  key={key}
+                  onClick={() => setWeatherMode(key)}
+                  style={{
+                    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    gap: '3px', padding: '8px 4px', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s',
+                    background: active ? `${col}18` : '#162032',
+                    border: `1px solid ${active ? col : '#253347'}`,
+                  }}
+                >
+                  <span style={{ fontSize: '16px' }}>{wm.icon}</span>
+                  <span style={{ color: active ? col : secColor, fontSize: '9px', fontWeight: 700 }}>{wm.label}</span>
+                  <span style={{ color: safeColor, fontSize: '8px', fontFamily: 'monospace' }}>FS {FS.toFixed(1)}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* 안전 요약 배너 */}
+          {(() => {
+            const FS = calcSlopeFS(weatherMode);
+            const { qa } = calcBearing(weatherMode);
+            const lvl = FS >= 1.5 && qa >= 150 ? 'SAFE' : FS >= 1.0 && qa >= 80 ? 'CAUTION' : 'DANGER';
+            const lvlColor = lvl === 'SAFE' ? '#4ade80' : lvl === 'CAUTION' ? '#fbbf24' : '#f87171';
+            const lvlBg    = lvl === 'SAFE' ? '#0a2010' : lvl === 'CAUTION' ? '#1a1200' : '#2a0a0a';
+            return (
+              <div style={{ marginTop: '6px', background: lvlBg, border: `1px solid ${lvlColor}40`, borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ color: lvlColor, fontWeight: 700, fontSize: '11px' }}>{lvl === 'SAFE' ? '✓ Site Conditions OK' : lvl === 'CAUTION' ? '⚠ Proceed with Caution' : '✗ Suspend Operations'}</div>
+                  <div style={{ color: '#4a6a7a', fontSize: '9px', marginTop: '2px' }}>
+                    Slope FS {FS.toFixed(2)} · Bearing {qa} kPa
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSafetyModal(true)}
+                  style={{ background: '#162032', border: `1px solid ${lvlColor}50`, borderRadius: '6px', color: lvlColor, padding: '4px 8px', fontSize: '11px', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}
+                >
+                  ?
+                </button>
+              </div>
+            );
+          })()}
         </div>
 
         {/* 장비 선택 */}
@@ -2009,7 +2611,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             </div>
           </div>
         </div>
-        <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }} style={{ background: '#1a2a3a', width: '100%', height: 'clamp(300px, 25vh, 500px)', borderRadius: '12px' }}>
+        <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }} style={{ background: '#1a2a3a', width: '100%', height: 'clamp(300px, 40vh, 500px)', borderRadius: '12px', touchAction: 'none' }}>
           <Physics gravity={[0, -9.81, 0]} colliders={false}>
             <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.6} mieCoefficient={0.005} mieDirectionalG={0.8} />
             <ambientLight intensity={0.55} />
@@ -2152,6 +2754,62 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               );
             })}
           </div>
+        </div>
+
+        {/* Earthwork Summary */}
+        <div style={{ background: '#111e2e', borderRadius: '12px', padding: '14px', border: '1px solid #253347' }}>
+          <div style={{ color: '#8896a4', fontSize: '11px', marginBottom: '10px', fontWeight: 600 }}>📊 Earthwork Volume</div>
+
+          {/* Soil type selector */}
+          <div style={{ marginBottom: '10px' }}>
+            <div style={{ color: '#4a5a6a', fontSize: '9px', marginBottom: '4px' }}>Soil Type</div>
+            <select
+              value={soilType}
+              onChange={e => setSoilType(e.target.value)}
+              style={{ width: '100%', background: '#162032', border: '1px solid #253347', borderRadius: '6px', color: '#e2e8f0', padding: '5px 8px', fontSize: '11px', cursor: 'pointer' }}
+            >
+              {Object.entries(SOIL_TYPES).map(([k, v]) => (
+                <option key={k} value={k}>{k} — Lf {v.lf} / Cf {v.cf}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Volume table header */}
+          <div style={{ display: 'grid', gridTemplateColumns: '52px 1fr 1fr 1fr', gap: '4px', marginBottom: '4px' }}>
+            {['', 'Bank', 'Loose', 'Compacted'].map(h => (
+              <div key={h} style={{ color: '#4a5a6a', fontSize: '8px', textAlign: 'center' }}>{h}</div>
+            ))}
+          </div>
+
+          {/* Volume rows */}
+          {(() => {
+            const base = SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL];
+            const wm   = WEATHER_MODES[weatherMode] ?? WEATHER_MODES[DEFAULT_WEATHER];
+            const lf   = parseFloat((base.lf + wm.swellAdd).toFixed(2));
+            const cf   = parseFloat((base.cf - wm.cfSub).toFixed(2));
+            return [
+              ['Excavation', totalExcavDisplay, '#fb923c'],
+              ['Fill',       totalFillDisplay,  '#34d399'],
+              ['Net',        parseFloat((totalExcavDisplay - totalFillDisplay).toFixed(3)), '#60a5fa'],
+            ].map(([label, bank, color]) => (
+              <div key={label} style={{ display: 'grid', gridTemplateColumns: '52px 1fr 1fr 1fr', gap: '4px', marginBottom: '5px' }}>
+                <div style={{ color: '#8896a4', fontSize: '9px', display: 'flex', alignItems: 'center' }}>{label}</div>
+                {[bank, bank * lf, bank * cf].map((v, i) => (
+                  <div key={i} style={{ background: '#162032', borderRadius: '5px', padding: '4px', textAlign: 'center' }}>
+                    <div style={{ color, fontFamily: 'monospace', fontWeight: 700, fontSize: '10px' }}>{Number(v).toFixed(2)}</div>
+                    <div style={{ color: '#3a4a5a', fontSize: '7px' }}>m³</div>
+                  </div>
+                ))}
+              </div>
+            ));
+          })()}
+
+          <button
+            onClick={handleExportExcel}
+            style={{ width: '100%', marginTop: '6px', background: '#0a2010', border: '1px solid #16a34a', borderRadius: '8px', color: '#4ade80', padding: '10px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
+          >
+            📥 Export Earthwork Excel
+          </button>
         </div>
 
         {/* 액션 버튼 */}

@@ -2,11 +2,11 @@ import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react'
 
 // 다크 테마 요소 타입별 2D 도면 스타일
 const TYPE_CFG = {
-  IfcColumn: { fill: '#3c3c3c', stroke: '#c8c8c8', label: '기둥', lw: 1.5, dash: [] },
-  IfcBeam:   { fill: '#2e2e2e', stroke: '#909090', label: '보',   lw: 1.0, dash: [5, 3] },
-  IfcWall:   { fill: '#363636', stroke: '#aaaaaa', label: '벽',   lw: 1.5, dash: [] },
-  IfcSlab:   { fill: '#262626', stroke: '#686868', label: '슬래브', lw: 0.8, dash: [3, 3] },
-  IfcPier:   { fill: '#404040', stroke: '#b8b8b8', label: '교각', lw: 1.5, dash: [] },
+  IfcColumn: { fill: '#3c3c3c', stroke: '#c8c8c8', label: 'column', lw: 1.5, dash: [] },
+  IfcBeam:   { fill: '#2e2e2e', stroke: '#909090', label: 'beam',   lw: 1.0, dash: [5, 3] },
+  IfcWall:   { fill: '#363636', stroke: '#aaaaaa', label: 'wall',   lw: 1.5, dash: [] },
+  IfcSlab:   { fill: '#262626', stroke: '#686868', label: 'slab', lw: 0.8, dash: [3, 3] },
+  IfcPier:   { fill: '#404040', stroke: '#b8b8b8', label: 'pier', lw: 1.5, dash: [] },
 };
 const DEFAULT_CFG = { fill: '#2a2a2a', stroke: '#808080', label: '?', lw: 1.0, dash: [] };
 
@@ -597,7 +597,7 @@ export default function Plan2DView({
       ? lineDrawMode === 'click'
         ? `선 작도 — ${lineStart ? '두 번째 점 클릭' : '첫 번째 점 클릭'}${snapEnabled ? '  🧲 스냅 ON' : ''}`
         : `부재 배치 — 클릭하여 배치${snapEnabled ? '  🧲 스냅 ON' : ''}`
-      : '2D 평면도 — 휠: 확대/축소  |  드래그: 이동  |  클릭: 선택';
+      : '2D floor plan — Wheel: Zoom | Drag: Move | Click: Select';
 
   return (
     <div className="relative w-full h-full select-none" style={{ background: '#0f0f0f' }}>
