@@ -84,27 +84,40 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
 // ================================================================
 // 프로젝트 카드
 // ================================================================
-function ProjectCard({ item, onOpen, onRename }) {
+const DANGER = "#f44336";
+
+function ProjectCard({ item, onOpen, onRename, onDelete }) {
   const [editing, setEditing] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [active, setActive] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const invalid = isInvalidName(item.projectName);
 
   useEffect(() => {
     if (invalid) setEditing(true);
   }, [invalid]);
 
-  function handleRenameClick(e) {
-    e.stopPropagation();
-    setEditing(true);
+  const showActions = (hovered || active) && !editing;
+
+  function handleCardClick() {
+    if (editing) return;
+    if (active) setConfirmDelete(false);
+    setActive(v => !v);
   }
 
   return (
     <div
-      className="text-left rounded-xl p-5 transition-all duration-200 group hover:scale-[1.02] hover:shadow-2xl w-full relative"
+      className="text-left rounded-xl p-5 transition-all duration-200 w-full relative cursor-pointer select-none"
       style={{
         backgroundColor: "#1c2a3a",
-        border: invalid ? `1px solid ${TB.warning}` : "1px solid #253347",
+        border: invalid ? `1px solid ${TB.warning}` : `1px solid ${active ? '#3b82f6' : '#253347'}`,
         borderTop: `3px solid ${invalid ? TB.warning : "#f5a623"}`,
+        transform: hovered || active ? 'scale(1.02)' : 'scale(1)',
+        boxShadow: active ? '0 0 0 2px #3b82f620' : undefined,
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={handleCardClick}
     >
       <div className="text-4xl mb-3">🚜</div>
 
@@ -123,51 +136,77 @@ function ProjectCard({ item, onOpen, onRename }) {
           />
         </>
       ) : (
-        <div className="flex items-center gap-1.5 group/name">
-          <div
-            className="font-semibold text-white text-sm truncate flex-1 cursor-pointer"
-            title={item.projectName}
-            onClick={onOpen}
-          >
-            {item.projectName}
-          </div>
-          <button
-            onClick={handleRenameClick}
-            title="Rename"
-            className="flex-shrink-0 opacity-0 group-hover/name:opacity-100 transition-opacity p-0.5 rounded"
-            style={{ color: TB.text2 }}
-          >
-            ✏
-          </button>
+        <div className="font-semibold text-white text-sm truncate" title={item.projectName}>
+          {item.projectName}
         </div>
       )}
 
-      {!editing && (
-        <div className="flex items-center justify-between mt-4">
+      {/* 타입 배지 (액션 없을 때) */}
+      {!editing && !showActions && (
+        <div className="flex items-center mt-4">
           <span
             className="text-xs px-2 py-0.5 rounded-full font-medium"
             style={{ backgroundColor: "#1a2a0a", color: "#f5a623", border: "1px solid #f5a62340" }}
           >
             Excavator
           </span>
+        </div>
+      )}
+
+      {/* 액션 버튼 — 열기 / 수정 / 삭제 */}
+      {!editing && showActions && !confirmDelete && (
+        <div className="flex gap-1.5 mt-4" onClick={e => e.stopPropagation()}>
           <button
-            onClick={onOpen}
-            className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ color: TB.accent }}
+            onClick={e => { e.stopPropagation(); onOpen(); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+            style={{ backgroundColor: '#1d4ed8', border: '1px solid #3b82f6', color: '#fff' }}
           >
-            Open →
+            Open
           </button>
+          <button
+            onClick={e => { e.stopPropagation(); setEditing(true); setActive(false); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+            style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
+          >
+            Rename
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+            style={{ backgroundColor: '#450a0a', border: `1px solid ${DANGER}`, color: DANGER }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* 삭제 확인 */}
+      {!editing && showActions && confirmDelete && (
+        <div onClick={e => e.stopPropagation()}>
+          <p className="text-xs mt-3 mb-2" style={{ color: TB.warning }}>Really delete?</p>
+          <div className="flex gap-1.5">
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(item.projectId); }}
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+              style={{ backgroundColor: '#7f1d1d', border: `1px solid ${DANGER}`, color: '#fff' }}
+            >
+              Delete
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+              style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
       {invalid && !editing && (
         <div
           className="mt-3 text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-          style={{
-            backgroundColor: `${TB.warning}20`,
-            color: TB.warning,
-            border: `1px solid ${TB.warning}50`,
-          }}
+          style={{ backgroundColor: `${TB.warning}20`, color: TB.warning, border: `1px solid ${TB.warning}50` }}
         >
           ⚠ No Name
         </div>
@@ -247,6 +286,7 @@ export default function SimulationProjectList({
   onProjectSelect,
   onCreateProject,
   onRenameProject,
+  onDeleteProject,
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
@@ -339,6 +379,7 @@ export default function SimulationProjectList({
               item={item}
               onOpen={() => { onProjectSelect(item); setViceComponent("simulation"); }}
               onRename={onRenameProject}
+              onDelete={onDeleteProject}
             />
           ))}
         </div>

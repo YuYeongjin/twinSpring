@@ -9,7 +9,7 @@ import * as THREE from 'three';
 export const ENV_PRESETS = [
     {
         id: 'none',
-        label: '기본 (없음)',
+        label: 'Background (None)',
         icon: '⬛',
         env: null,
         useEnvBg: false,
