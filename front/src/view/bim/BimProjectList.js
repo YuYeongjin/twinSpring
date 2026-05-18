@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { parseIfcFile } from "../../utils/ifcImporter";
 
 // ================================================================
 // 디자인 토큰
@@ -107,29 +108,39 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
 // ================================================================
 // 프로젝트 카드
 // ================================================================
-function ProjectCard({ item, onOpen, onRename }) {
+function ProjectCard({ item, onOpen, onRename, onDelete }) {
   const typeInfo = PROJECT_TYPES.find(t => t.type === item.structureType) ?? PROJECT_TYPES[0];
   const [editing, setEditing] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [active, setActive] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const invalid = isInvalidName(item.projectName);
 
-  // 이름이 유효하지 않은 카드는 처음에 편집 모드로 시작
   useEffect(() => {
     if (invalid) setEditing(true);
   }, [invalid]);
 
-  function handleRenameClick(e) {
-    e.stopPropagation();
-    setEditing(true);
+  const showActions = (hovered || active) && !editing;
+
+  function handleCardClick() {
+    if (editing) return;
+    if (active) setConfirmDelete(false);
+    setActive(v => !v);
   }
 
   return (
     <div
-      className="text-left rounded-xl p-5 transition-all duration-200 group hover:scale-[1.02] hover:shadow-2xl w-full relative"
+      className="text-left rounded-xl p-5 transition-all duration-200 w-full relative cursor-pointer select-none"
       style={{
         backgroundColor: "#1c2a3a",
-        border: invalid ? `1px solid ${TB.warning}` : "1px solid #253347",
+        border: invalid ? `1px solid ${TB.warning}` : `1px solid ${active ? '#3b82f6' : '#253347'}`,
         borderTop: `3px solid ${invalid ? TB.warning : typeInfo.color}`,
+        transform: hovered || active ? 'scale(1.02)' : 'scale(1)',
+        boxShadow: active ? '0 0 0 2px #3b82f620' : undefined,
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={handleCardClick}
     >
       {/* 아이콘 */}
       <div className="text-4xl mb-3">{typeInfo.icon}</div>
@@ -138,10 +149,7 @@ function ProjectCard({ item, onOpen, onRename }) {
       {editing ? (
         <>
           {invalid && (
-            <div
-              className="text-xs mb-1.5 flex items-center gap-1"
-              style={{ color: TB.warning }}
-            >
+            <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: TB.warning }}>
               ⚠ Please enter a name
             </div>
           )}
@@ -153,29 +161,14 @@ function ProjectCard({ item, onOpen, onRename }) {
           />
         </>
       ) : (
-        <div className="flex items-center gap-1.5 group/name">
-          <div
-            className="font-semibold text-white text-sm truncate flex-1 cursor-pointer"
-            title={item.projectName}
-            onClick={onOpen}
-          >
-            {item.projectName}
-          </div>
-          {/* 연필 아이콘 — hover 시 표시 */}
-          <button
-            onClick={handleRenameClick}
-            title="Rename"
-            className="flex-shrink-0 opacity-0 group-hover/name:opacity-100 transition-opacity p-0.5 rounded"
-            style={{ color: TB.text2 }}
-          >
-            ✏
-          </button>
+        <div className="font-semibold text-white text-sm truncate" title={item.projectName}>
+          {item.projectName}
         </div>
       )}
 
-      {/* 하단 메타 */}
-      {!editing && (
-        <div className="flex items-center justify-between mt-4">
+      {/* 타입 배지 (액션 없을 때) */}
+      {!editing && !showActions && (
+        <div className="flex items-center mt-4">
           <span
             className="text-xs px-2 py-0.5 rounded-full font-medium"
             style={{
@@ -186,13 +179,56 @@ function ProjectCard({ item, onOpen, onRename }) {
           >
             {item.structureType}
           </span>
+        </div>
+      )}
+
+      {/* 액션 버튼 — 열기 / 수정 / 삭제 */}
+      {!editing && showActions && !confirmDelete && (
+        <div className="flex gap-1.5 mt-4" onClick={e => e.stopPropagation()}>
           <button
-            onClick={onOpen}
-            className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ color: TB.accent }}
+            onClick={e => { e.stopPropagation(); onOpen(); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+            style={{ backgroundColor: '#1d4ed8', border: '1px solid #3b82f6', color: '#fff' }}
           >
-            Open →
+            Open
           </button>
+          <button
+            onClick={e => { e.stopPropagation(); setEditing(true); setActive(false); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+            style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
+          >
+            Update name
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+            style={{ backgroundColor: '#450a0a', border: `1px solid ${TB.danger}`, color: TB.danger }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* 삭제 확인 */}
+      {!editing && showActions && confirmDelete && (
+        <div onClick={e => e.stopPropagation()}>
+          <p className="text-xs mt-3 mb-2" style={{ color: TB.warning }}>Really?</p>
+          <div className="flex gap-1.5">
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(item.projectId); }}
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+              style={{ backgroundColor: '#7f1d1d', border: `1px solid ${TB.danger}`, color: '#fff' }}
+            >
+              Yes
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
+              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+              style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
+            >
+              No
+            </button>
+          </div>
         </div>
       )}
 
@@ -313,6 +349,260 @@ function CreateProjectForm({ onClose, onCreate }) {
 }
 
 // ================================================================
+// IFC 가져오기 모달
+// ================================================================
+function IfcImportModal({ onClose, onImport }) {
+  const [projectType, setProjectType] = useState("Building");
+  const [projectName, setProjectName] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [dragging, setDragging]         = useState(false);
+  const [phase, setPhase]               = useState("idle"); // idle | parsing | importing | done | error
+  const [progress, setProgress]         = useState(0);
+  const [parsedElements, setParsedElements] = useState(null);
+  const [errorMsg, setErrorMsg]         = useState("");
+  const fileInputRef = useRef(null);
+
+  const handleFile = useCallback((file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".ifc")) {
+      setErrorMsg("You can only import .ifc extension files.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMsg(`File size is too large. Only files smaller than 5 MB are supported`);
+      return;
+    }
+    setErrorMsg("");
+    setSelectedFile(file);
+    if (!projectName) setProjectName(file.name.replace(/\.ifc$/i, ""));
+  }, [projectName]);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setDragging(false);
+    handleFile(e.dataTransfer.files[0]);
+  }, [handleFile]);
+
+  const handleParse = useCallback(async () => {
+    if (!selectedFile) return;
+    setPhase("parsing");
+    setProgress(0);
+    setErrorMsg("");
+    try {
+      const elements = await parseIfcFile(selectedFile, setProgress);
+      setParsedElements(elements);
+      setPhase("done");
+    } catch (e) {
+      console.error("IFC parsing error:", e);
+      setErrorMsg(`IFC parsing fale: ${e?.message || String(e)}`);
+      setPhase("error");
+    }
+  }, [selectedFile]);
+
+  const handleImport = useCallback(() => {
+    if (!parsedElements || !projectName.trim()) return;
+    setPhase("importing");
+    onImport(projectType, projectName.trim(), parsedElements, (project) => {
+      if (project) onClose();
+      else {
+        setErrorMsg("Project creation failed, please check server connection.");
+        setPhase("error");
+      }
+    });
+  }, [parsedElements, projectName, projectType, onImport, onClose]);
+
+  const typeStats = parsedElements
+    ? parsedElements.reduce((acc, el) => {
+        acc[el.elementType] = (acc[el.elementType] || 0) + 1;
+        return acc;
+      }, {})
+    : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center"
+         style={{ backgroundColor: "rgba(0,0,0,0.65)" }}>
+      <div className="relative w-full max-w-lg rounded-2xl p-6 shadow-2xl"
+           style={{ backgroundColor: "#0f1e2d", border: "1px solid #253347" }}>
+
+        {/* 헤더 */}
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            📥 Import IFC Files
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 text-xl leading-none">✕</button>
+        </div>
+
+        {/* 파일 드롭존 */}
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          className="flex flex-col items-center justify-center rounded-xl cursor-pointer transition mb-4"
+          style={{
+            border: `2px dashed ${dragging ? "#0ea5e9" : selectedFile ? "#22c55e" : "#253347"}`,
+            backgroundColor: dragging ? "#0c2a3a" : "#0d1b2a",
+            minHeight: 110,
+            padding: "1.5rem",
+          }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".ifc"
+            className="hidden"
+            onChange={e => handleFile(e.target.files[0])}
+          />
+          {selectedFile ? (
+            <>
+              <span className="text-2xl mb-1">✅</span>
+              <p className="text-sm font-medium text-green-400">{selectedFile.name}</p>
+              <p className="text-xs mt-0.5" style={{ color: TB.text2 }}>
+                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            </>
+          ) : (
+            <>
+              <span className="text-3xl mb-2">📂</span>
+              <p className="text-sm" style={{ color: TB.text2 }}>
+               Drag or <span className="text-blue-400 underline">click to select .ifc file</span>
+              </p>
+              <p className="text-xs mt-1 text-gray-600">Revit, Civil3D, IFC 2x3 / IFC4</p>
+            </>
+          )}
+        </div>
+
+        {/* 프로젝트 유형 + 이름 */}
+        <div className="flex gap-3 mb-4">
+          <div className="flex-1">
+            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>Type</label>
+            <div className="flex gap-2">
+              {PROJECT_TYPES.map(({ type, icon, color, bg }) => (
+                <button
+                  key={type}
+                  onClick={() => setProjectType(type)}
+                  className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium transition"
+                  style={{
+                    backgroundColor: projectType === type ? bg : "#152030",
+                    border: `1px solid ${projectType === type ? color : "#253347"}`,
+                    color: projectType === type ? color : TB.text2,
+                  }}
+                >
+                  {icon} {type}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex-[1.5]">
+            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>Project name</label>
+            <input
+              type="text"
+              value={projectName}
+              onChange={e => setProjectName(e.target.value)}
+              placeholder="ありがと..."
+              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+              style={{
+                backgroundColor: "#152030",
+                border: "1px solid #253347",
+                color: TB.text1,
+              }}
+            />
+          </div>
+        </div>
+
+        {/* 파싱 진행바 */}
+        {(phase === "parsing" || phase === "importing") && (
+          <div className="mb-4">
+            <div className="flex justify-between text-xs mb-1" style={{ color: TB.text2 }}>
+              <span>{phase === "parsing" ? "Analyzing..." : "Creating..."}</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-[#1c2a3a] overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${progress}%`,
+                  background: "linear-gradient(90deg, #0ea5e9, #8b5cf6)",
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* 파싱 결과 요약 */}
+        {phase === "done" && typeStats && (
+          <div className="rounded-xl p-3 mb-4 text-xs"
+               style={{ backgroundColor: "#0c2a1a", border: "1px solid #22c55e40" }}>
+            <p className="text-green-400 font-semibold mb-2">
+              ✅ A total of {parsedElements.length} elements detected
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(typeStats).map(([type, count]) => (
+                <span key={type} className="px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: "#152030", color: TB.text2, border: "1px solid #253347" }}>
+                  {type} {count}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 에러 메시지 */}
+        {errorMsg && (
+          <p className="text-xs mb-3 px-3 py-2 rounded-lg"
+             style={{ backgroundColor: "#2a1010", color: TB.danger, border: `1px solid ${TB.danger}30` }}>
+            ⚠ {errorMsg}
+          </p>
+        )}
+
+        {/* 액션 버튼 */}
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-lg text-sm transition"
+            style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
+          >
+            Cancle
+          </button>
+
+          {phase !== "done" ? (
+            <button
+              onClick={handleParse}
+              disabled={!selectedFile || phase === "parsing"}
+              className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white transition"
+              style={{
+                background: selectedFile && phase === "idle"
+                  ? "linear-gradient(135deg, #0ea5e9, #0284c7)"
+                  : "#1c2a3a",
+                border: `1px solid ${selectedFile ? "#0ea5e9" : "#253347"}`,
+                cursor: !selectedFile || phase === "parsing" ? "not-allowed" : "pointer",
+              }}
+            >
+              {phase === "parsing" ? "Analyzing..." : "File Analysis"}
+            </button>
+          ) : (
+            <button
+              onClick={handleImport}
+              disabled={!projectName.trim() || phase === "importing"}
+              className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white transition"
+              style={{
+                background: projectName.trim()
+                  ? "linear-gradient(135deg, #7c3aed, #5b21b6)"
+                  : "#1c2a3a",
+                border: `1px solid ${projectName.trim() ? "#8b5cf6" : "#253347"}`,
+                cursor: !projectName.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {phase === "importing" ? "Creating..." : `📥 Import (${parsedElements?.length ?? 0} as a project)`}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ================================================================
 // BIM 프로젝트 목록 페이지 (메인)
 // ================================================================
 export default function BimProjectList({
@@ -321,9 +611,12 @@ export default function BimProjectList({
   onProjectSelect,
   onCreateProject,
   onRenameProject,
+  onImportIFC,
+  onDeleteProject,
 }) {
-  const [showCreate, setShowCreate] = useState(false);
-  const [search, setSearch]         = useState("");
+  const [showCreate, setShowCreate]       = useState(false);
+  const [showIFCImport, setShowIFCImport] = useState(false);
+  const [search, setSearch]               = useState("");
 
   const invalidCount = (projectList ?? []).filter(p => isInvalidName(p.projectName)).length;
 
@@ -343,10 +636,10 @@ export default function BimProjectList({
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-              🏗 BIM 프로젝트
+              🏗 BIM
             </h2>
             <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-              총 <span className="text-white font-semibold">{projectList?.length ?? 0}</span>개의 프로젝트
+              Project : <span className="text-white font-semibold">{projectList?.length ?? 0}</span>
               {invalidCount > 0 && (
                 <span
                   className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium"
@@ -356,7 +649,7 @@ export default function BimProjectList({
                     border: `1px solid ${TB.warning}50`,
                   }}
                 >
-                  ⚠ No Name {invalidCount}개
+                  ⚠ No Name {invalidCount}EA
                 </span>
               )}
             </p>
@@ -376,7 +669,7 @@ export default function BimProjectList({
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="프로젝트 검색..."
+              placeholder="Search project"
               className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
               style={{
                 backgroundColor: "#1c2a3a",
@@ -385,6 +678,20 @@ export default function BimProjectList({
               }}
             />
           </div>
+
+          {/* IFC 가져오기 버튼 */}
+          {onImportIFC && (
+            <button
+              onClick={() => setShowIFCImport(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
+              style={{
+                backgroundColor: "#0c2233",
+                border: "1px solid #0ea5e9",
+              }}
+            >
+              📥 Add IFC project
+            </button>
+          )}
 
           {/* 신규 프로젝트 버튼 */}
           <button
@@ -395,10 +702,18 @@ export default function BimProjectList({
               border: "1px solid #8b5cf6",
             }}
           >
-            {showCreate ? "✕ 취소" : "+ 새 프로젝트"}
+            {showCreate ? "✕ cancle" : "+ New project"}
           </button>
         </div>
       </div>
+
+      {/* IFC 가져오기 모달 */}
+      {showIFCImport && (
+        <IfcImportModal
+          onClose={() => setShowIFCImport(false)}
+          onImport={onImportIFC}
+        />
+      )}
 
       {/* ============================================================
           프로젝트 생성 폼
@@ -434,7 +749,7 @@ export default function BimProjectList({
           프로젝트 유형 필터 칩
           ============================================================ */}
       <div className="flex items-center gap-2 mb-5 flex-wrap">
-        <span className="text-xs" style={{ color: TB.text2 }}>필터:</span>
+        <span className="text-xs" style={{ color: TB.text2 }}>Filter:</span>
         {PROJECT_TYPES.map(({ type, icon, color }) => {
           const count = (projectList ?? []).filter(p => p.structureType === type).length;
           return (
@@ -474,6 +789,7 @@ export default function BimProjectList({
               item={item}
               onOpen={() => { onProjectSelect(item); setViceComponent("bim"); }}
               onRename={onRenameProject}
+              onDelete={onDeleteProject}
             />
           ))}
         </div>

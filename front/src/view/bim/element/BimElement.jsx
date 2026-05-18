@@ -28,15 +28,6 @@ export const getBaseColor = (elementType) => {
   }
 };
 
-// CAD 도면 스타일: 요소 타입별 미세한 회색 음영
-const CAD_FACE_COLOR = {
-  IfcColumn: '#e8e8e8',
-  IfcBeam:   '#f0f0f0',
-  IfcMember: '#f0f0f0',
-  IfcWall:   '#f5f5f5',
-  IfcSlab:   '#ececec',
-  IfcPier:   '#e5e5e5',
-};
 
 export function BimElement({ element, onElementSelect, isPlacementMode }) {
   const meshRef = useRef();
@@ -62,17 +53,20 @@ export function BimElement({ element, onElementSelect, isPlacementMode }) {
   const selected = element.selected;
   const multiSel = element.multiSelected;
 
-  // 면 색상: 기본 흑백(CAD), 선택/호버 시 미세한 색조만 추가
+  // 기본색: resolvedColor(레이어/커스텀) > getBaseColor(타입별) 순 우선순위
+  const baseColor = element.resolvedColor || getBaseColor(element.elementType);
+
+  // 면 색상: 선택·호버 상태 > 기본색
   const faceColor = selected ? '#dff0ff'
     : multiSel ? '#fffbe0'
     : hovered  ? '#eaf5ff'
-    : (CAD_FACE_COLOR[element.elementType] ?? '#f2f2f2');
+    : baseColor;
 
-  // 외곽선 색상: 기본 짙은 회색, 상태별 강조
+  // 외곽선: 선택·호버 강조, 기본은 기본색을 약간 어둡게
   const edgeColor = selected ? '#00e5ff'
     : multiSel ? '#ffd700'
     : hovered  ? '#1e90ff'
-    : '#303030';
+    : '#2a2a2a';
 
   const handleClick = (e) => {
     if (isPlacementMode) return;

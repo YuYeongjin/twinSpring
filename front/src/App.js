@@ -83,6 +83,55 @@ function App() {
   }, [refreshProjectList]);
 
   // ---------------------------------------------------------------
+  // Delete BIM project
+  // ---------------------------------------------------------------
+  const deleteProject = useCallback((projectId) => {
+    AxiosCustom.delete(`/api/bim/project/${projectId}`)
+      .then(() => {
+        setProjectList(prev => prev.filter(p => p.projectId !== projectId));
+        if (selectedProject?.projectId === projectId) setSelectedProject(null);
+      })
+      .catch(error => console.error('Failed to delete project:', error));
+  }, [selectedProject]);
+
+  // ---------------------------------------------------------------
+  // Import BIM project from IFC elements
+  // ---------------------------------------------------------------
+  const importIfcProject = useCallback(async (type, name, elements, callback) => {
+    try {
+      // 이름 중복 시 자동 증가: "이름" → "이름 (1)" → "이름 (2)"
+      const existingNames = new Set((projectList || []).map(p => p.projectName));
+      let uniqueName = name;
+      let counter = 1;
+      while (existingNames.has(uniqueName)) {
+        uniqueName = `${name} (${counter++})`;
+      }
+
+      const projectRes = await AxiosCustom.post('/api/bim/project', {
+        structureType: type,
+        projectName: uniqueName,
+        spanCount: 0,
+      });
+      const project = projectRes.data;
+
+      if (elements.length > 0) {
+        const payload = elements.map(el => ({
+          ...el,
+          elementId: 'ELEM-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
+          projectId: project.projectId,
+        }));
+        await AxiosCustom.post('/api/bim/elements/batch', payload);
+      }
+
+      await refreshProjectList();
+      if (callback) callback(project);
+    } catch (error) {
+      console.error('IFC import failed:', error);
+      if (callback) callback(null);
+    }
+  }, [refreshProjectList, projectList]);
+
+  // ---------------------------------------------------------------
   // Select BIM project → load BIM model data
   // ---------------------------------------------------------------
   function handleProjectSelect(projectData) {
@@ -134,6 +183,18 @@ function App() {
         if (callback) callback();
       });
   }, [refreshSimulationProjectList]);
+
+  // ---------------------------------------------------------------
+  // Delete simulation project
+  // ---------------------------------------------------------------
+  const deleteSimulationProject = useCallback((projectId) => {
+    AxiosCustom.delete(`/api/simulation/project/${projectId}`)
+      .then(() => {
+        setSimulationProjectList(prev => prev.filter(p => p.projectId !== projectId));
+        if (selectedSimulationProject?.projectId === projectId) setSelectedSimulationProject(null);
+      })
+      .catch(error => console.error('Failed to delete simulation project:', error));
+  }, [selectedSimulationProject]);
 
   // ---------------------------------------------------------------
   // Rename simulation project
@@ -192,6 +253,7 @@ function App() {
           onProjectSelect={setSelectedSimulationProject}
           onCreateProject={addSimulationProject}
           onRenameProject={renameSimulationProject}
+          onDeleteProject={deleteSimulationProject}
         />
       );
     }
@@ -240,6 +302,8 @@ function App() {
           onProjectSelect={handleProjectSelect}
           onCreateProject={addNewProject}
           onRenameProject={renameProject}
+          onImportIFC={importIfcProject}
+          onDeleteProject={deleteProject}
         />
       );
     }

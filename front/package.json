@@ -20,10 +20,14 @@
     "recharts": "^3.1.2",
     "sockjs-client": "^1.6.1",
     "three": "^0.180.0",
+    "web-ifc": "^0.0.68",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
   },
   "scripts": {
+    "copy-wasm": "node scripts/copy-wasm.js",
+    "prestart": "npm run copy-wasm",
+    "prebuild": "npm run copy-wasm",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
