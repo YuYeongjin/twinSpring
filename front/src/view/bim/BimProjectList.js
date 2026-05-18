@@ -130,13 +130,13 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
 
   return (
     <div
-      className="text-left rounded-xl p-5 transition-all duration-200 w-full relative cursor-pointer select-none"
+      className="text-left rounded-xl p-2 transition-all duration-200 w-full relative cursor-pointer select-none"
       style={{
         backgroundColor: "#1c2a3a",
         border: invalid ? `1px solid ${TB.warning}` : `1px solid ${active ? '#3b82f6' : '#253347'}`,
         borderTop: `3px solid ${invalid ? TB.warning : typeInfo.color}`,
-        transform: hovered || active ? 'scale(1.02)' : 'scale(1)',
-        boxShadow: active ? '0 0 0 2px #3b82f620' : undefined,
+        boxShadow: active ? '0 0 0 2px #3b82f640, 0 4px 20px rgba(59,130,246,0.15)'
+                 : hovered ? '0 4px 16px rgba(0,0,0,0.45)' : undefined,
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -184,7 +184,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
 
       {/* 액션 버튼 — 열기 / 수정 / 삭제 */}
       {!editing && showActions && !confirmDelete && (
-        <div className="flex gap-1.5 mt-4" onClick={e => e.stopPropagation()}>
+        <div className="flex gap-1 mt-4" onClick={e => e.stopPropagation()}>
           <button
             onClick={e => { e.stopPropagation(); onOpen(); }}
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
@@ -197,7 +197,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
             style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
           >
-            Update name
+            Rename
           </button>
           <button
             onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
@@ -656,7 +656,7 @@ export default function BimProjectList({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* 검색 */}
           <div className="relative">
             <span

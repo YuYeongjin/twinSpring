@@ -1050,7 +1050,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     {/* ── 좌측 편집 패널 ── */}
                     {showLeftPanel && (
                         <div
-                            className="w-full min-h-0 shrink-0 flex flex-col gap-3 px-0 md:pr-1.5"
+                            className="w-full min-h-0 shrink-0 flex flex-col gap-3 px-0 md:pr-1.5 overflow-y-auto"
                             style={isDesktop ? { width: `${leftPanelPct}%`, minWidth: 120 } : undefined}
                         >
                             {/* 탭 */}

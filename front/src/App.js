@@ -1,4 +1,5 @@
 import AxiosCustom from './axios/AxiosCustom';
+import SatelliteAPI from './view/SatelliteAPI';
 import Footer from './component/Footer';
 import Header from './component/Header';
 import BimDashboard from './view/bim/BimDashboard';
@@ -34,6 +35,9 @@ function App() {
 
   // ── Agent health check ────────────────────────────────────────
   const [agentAvailable, setAgentAvailable] = useState(null);
+
+  // ── IoT 센서 연결 (앱 수명 동안 유지 → Simulation 탭에 props로 전달) ──
+  const { latest: sensorLatest, wsStatus: sensorWsStatus } = SatelliteAPI();
 
   // ---------------------------------------------------------------
   // Refresh BIM project list
@@ -263,6 +267,8 @@ function App() {
           selectedProject={selectedSimulationProject}
           modelData={modelData}
           setViceComponent={setViceComponent}
+          sensorLatest={sensorLatest}
+          sensorWsStatus={sensorWsStatus}
         />
       );
     }
