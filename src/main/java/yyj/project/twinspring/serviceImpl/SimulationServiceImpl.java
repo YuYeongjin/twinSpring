@@ -2,6 +2,7 @@ package yyj.project.twinspring.serviceImpl;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -24,7 +25,7 @@ public class SimulationServiceImpl implements SimulationService {
     private final WebClient webClient;
     private final SimulationDAO simulationDAO;
 
-    public SimulationServiceImpl(WebClient webClient, SimulationDAO simulationDAO) {
+    public SimulationServiceImpl(@Qualifier("webClient") WebClient webClient, SimulationDAO simulationDAO) {
         this.webClient = webClient;
         this.simulationDAO = simulationDAO;
     }

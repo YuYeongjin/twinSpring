@@ -148,73 +148,7 @@ namespace BimProcessorApi.Services
 
         public List<Element> GenerateInitialElements(Project project)
         {
-            var elements = new List<Element>();
-
-            int spanCount = 1;
-            if (!string.IsNullOrEmpty(project.SpanCount))
-            {
-                int.TryParse(project.SpanCount, out spanCount); // 안전하고 CS1503 없음
-            }
-
-
-
-            if (project.StructureType == "Bridge")
-            {
-                // 1. 교량 부재 생성
-                for (int i = 0; i < spanCount + 1; i++) // 교각
-                {
-                    float px = i * 20f - 30f;
-                    float sy = 10f; // size Y
-
-                    elements.Add(new Element
-                    {
-                        ElementId = $"P-{project.ProjectId}-{i + 1}",
-                        ElementType = "IfcPier",
-                        Material = "Concrete C50",
-                        PositionX = px,
-                        PositionY = 0f,
-                        PositionZ = 0f,
-                        SizeX = 3f,
-                        SizeY = sy,
-                        SizeZ = 3f
-                    });
-                }
-
-                // 슬래브 생성
-                elements.Add(new Element
-                {
-                    ElementId = $"DECK-{project.ProjectId}",
-                    ElementType = "IfcSlab",
-                    Material = "Prestressed Concrete",
-                    PositionX = 0f,
-                    PositionY = 10f,
-                    PositionZ = 0f,
-                    SizeX = (spanCount * 20f),
-                    SizeY = 1f,
-                    SizeZ = 10f
-                });
-            }
-            else if (project.StructureType == "Building")
-            {
-                // 2. 건물 부재 생성 (기둥 4개)
-                for (int i = 0; i < 4; i++)
-                {
-                    elements.Add(new Element
-                    {
-                        ElementId = $"COL-{project.ProjectId}-{i + 1}",
-                        ElementType = "IfcColumn",
-                        Material = "Steel Grade A",
-                        PositionX = ((i % 2) * 8f - 4f),
-                        PositionY = 0f,
-                        PositionZ = ((i / 2) * 8f - 4f),
-                        SizeX = 0.5f,
-                        SizeY = 6f,
-                        SizeZ = 0.5f
-                    });
-                }
-            }
-
-            return elements;
+            return new List<Element>();
         }
 
     }

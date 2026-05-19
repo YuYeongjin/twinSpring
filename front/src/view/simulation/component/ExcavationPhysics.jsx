@@ -12,13 +12,7 @@
 
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { RigidBody, CuboidCollider, HeightfieldCollider } from '@react-three/rapier';
-import axios from 'axios';
-
-// C# BIM 서버 (twinBIM, port 5112)
-const BIM_API = axios.create({
-  baseURL: process.env.NODE_ENV === 'development' ? 'http://localhost:5112' : '',
-  timeout: 2000,
-});
+import AxiosCustom from '../../../axios/AxiosCustom';
 
 // ── 지형 상수 (SimulationDashboard와 동일) ───────────────────────────────────
 const GRID_COLS = 80;
@@ -88,7 +82,7 @@ export function usePhysicsEvaluation(stateRef, machineRef, kinematicsRef, height
         const depth = km ? parseFloat(km.depth ?? 0) : 0;
         const bucketForce = Math.min(depth * 8000, 30000);
 
-        const res = await BIM_API.post('/api/simulation/physics/evaluate', {
+        const res = await AxiosCustom.post('/api/simulation/physics/evaluate', {
           state: s,
           machineId: m.id,
           terrainPitch,
@@ -110,7 +104,7 @@ export function usePhysicsEvaluation(stateRef, machineRef, kinematicsRef, height
       } catch {
         // 서버 미접속 시 경고 없이 무시
       }
-    }, 500);
+    }, 2000);
 
     return () => clearInterval(poll);
   // eslint-disable-next-line react-hooks/exhaustive-deps

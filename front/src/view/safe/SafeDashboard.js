@@ -6,7 +6,7 @@ import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { WS_BASE } from '../../axios/AxiosCustom';
 
-const DETECT_URL = process.env.REACT_APP_DETECT_URL || 'http://localhost:5001';
+const DETECT_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
 
 // ── 3D 씬 컴포넌트 ────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ export default function SafeDashboard() {
     setDetectAvailable(null);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
-    fetch(`${DETECT_URL}/status`, { signal: controller.signal })
+    fetch(`${DETECT_URL}/api/detection/status`, { signal: controller.signal })
       .then(r => { if (r.ok) setDetectAvailable(true); else setDetectAvailable(false); })
       .catch(() => setDetectAvailable(false))
       .finally(() => clearTimeout(timer));
@@ -189,7 +189,7 @@ export default function SafeDashboard() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`${DETECT_URL}/detect`, { method: 'POST', body: form });
+      const res = await fetch(`${DETECT_URL}/api/detection/detect`, { method: 'POST', body: form });
       if (!res.ok) throw new Error(`Detection server error: ${res.status}`);
       const data = await res.json();
       setLastResult(data);

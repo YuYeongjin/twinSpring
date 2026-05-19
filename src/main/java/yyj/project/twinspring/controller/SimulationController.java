@@ -1,8 +1,10 @@
 package yyj.project.twinspring.controller;
 
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import yyj.project.twinspring.dto.SimulationDTO;
 import yyj.project.twinspring.dto.SimulationProjectDTO;
@@ -16,9 +18,23 @@ import java.util.Map;
 public class SimulationController {
 
     private final SimulationService simulationService;
+    private final WebClient webClient;
 
-    public SimulationController(SimulationService simulationService) {
+    public SimulationController(SimulationService simulationService, WebClient webClient) {
         this.simulationService = simulationService;
+        this.webClient = webClient;
+    }
+
+    // ── C# 물리 평가 프록시 ────────────────────────────────────────
+
+    @PostMapping("/physics/evaluate")
+    public Mono<ResponseEntity<Map<String, Object>>> evaluatePhysics(@RequestBody Map<String, Object> body) {
+        return webClient.post()
+                .uri("/api/simulation/physics/evaluate")
+                .bodyValue(body)
+                .retrieve()
+                .toEntity(new ParameterizedTypeReference<Map<String, Object>>() {})
+                .onErrorResume(e -> Mono.just(ResponseEntity.status(503).build()));
     }
 
     // ── 굴착기 상태 ────────────────────────────────────────────────
