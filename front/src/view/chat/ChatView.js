@@ -359,4 +359,4 @@ function TypingIndicator() {
   );
 }
 
-const QUICK_PROMPTS = ['Current temperature?', 'Add column', 'Check alerts'];
+const QUICK_PROMPTS = ['Current temperature?', 'Check alerts'];

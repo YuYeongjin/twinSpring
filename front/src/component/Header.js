@@ -4,7 +4,7 @@ const NAV_ITEMS = [
   { id: "",                    label: "Home",       icon: "🏠" },
   { id: "bim-projects",        label: "BIM",        icon: "🏗" },
   { id: "simulation-projects", label: "Simulation", icon: "🚜" },
-  // { id: "safe", label: "Safe", icon: "🦺" },  // 비활성화
+  { id: "safe",                label: "Safe",       icon: "🦺" },
   { id: "test",                label: "Test",       icon: "🧪" },
 ];
 
