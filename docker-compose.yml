@@ -71,6 +71,19 @@ services:
       DB_PASSWORD: "Abcd1234"
       SPRING_BASE_URL: http://app:8080
 
+  detect:
+    build:
+      context: ./detect
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      - app
+    ports:
+      - "5001:5001"
+    environment:
+      SPRING_URL: http://app:8080
+      YOLO_MODEL: yolov8n.pt
+
   app:
     image: yeongjin95/twin-spring:latest
     restart: always
@@ -89,6 +102,7 @@ services:
       MQTT_TOPIC: test/topic
       BIM_SERVER_URL: http://bim-api:5112
       AGENT_URL: http://agent:7070
+      DETECT_URL: http://detect:5001
   nginx-proxy:
     image: 'jc21/nginx-proxy-manager:latest'
     container_name: nginx-proxy
