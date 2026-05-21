@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useT } from '../../../i18n/LanguageContext';
 
 // ── 랜드마크 구조물 생성 함수 ────────────────────────────────────────
 
@@ -234,6 +235,7 @@ export default function ControlPanel({
     isPlacingSample,     // boolean — 샘플 배치 중
 }) {
 
+    const t = useT('controlPanel');
     const [showSamples, setShowSamples] = useState(false);
 
     const elementTemplates = [
@@ -419,13 +421,13 @@ export default function ControlPanel({
             {/* A. 부재 배치 버튼 */}
             <div>
                 <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-gray-400">Place Member</p>
+                    <p className="text-xs font-medium text-gray-400">{t('placeMember')}</p>
                     {pendingElement && (
                         <button
                             onClick={cancelPlacement}
                             className="text-xs text-red-400 hover:text-red-300 transition px-1.5 py-0.5 rounded border border-red-700/50"
                         >
-                            ✕ Cancel
+                            {t('cancelPlacement')}
                         </button>
                     )}
                 </div>
@@ -447,7 +449,7 @@ export default function ControlPanel({
                                 <span className="text-base leading-none">{icon}</span>
                                 <span>{label}</span>
                                 {isActive ? (
-                                    <span className="ml-auto text-xs animate-pulse">📍 Placing</span>
+                                    <span className="ml-auto text-xs animate-pulse">📍 {t('placing')}</span>
                                 ) : (
                                     <span className="ml-auto text-xs opacity-40">{data.elementType.replace('Ifc', '')}</span>
                                 )}
@@ -458,14 +460,14 @@ export default function ControlPanel({
 
                 {pendingElement && (
                     <p className="mt-2 text-xs text-blue-400 leading-relaxed">
-                        Click in 3D viewer to place &nbsp;•&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> Cancel
+                        {t('clickToPlace')}
                     </p>
                 )}
             </div>
 
             {/* B. 조작 모드 */}
             <div className="border-t border-space-700 pt-3">
-                <p className="text-xs font-medium text-gray-400 mb-2">Transform Mode</p>
+                <p className="text-xs font-medium text-gray-400 mb-2">{t('transformMode')}</p>
                 <div className="flex flex-col gap-1.5">
                     {modes.map(({ key, label, icon, shortcut }) => (
                         <button
@@ -487,7 +489,7 @@ export default function ControlPanel({
 
             {/* C. 선택 모드 (러버밴드) */}
             <div className="border-t border-space-700 pt-3">
-                <p className="text-xs font-medium text-gray-400 mb-2">Multi Select</p>
+                <p className="text-xs font-medium text-gray-400 mb-2">{t('multiSelect')}</p>
                 <button
                     onClick={toggleSelectMode}
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
@@ -497,16 +499,16 @@ export default function ControlPanel({
                     }`}
                 >
                     <span className="text-base leading-none">⬚</span>
-                    <span>Select Mode</span>
+                    <span>{t('selectMode')}</span>
                     <kbd className="ml-auto text-xs bg-black/30 px-1 py-0.5 rounded opacity-60">Q</kbd>
                 </button>
                 {isSelectMode ? (
                     <p className="mt-1.5 text-xs text-violet-400 leading-relaxed">
-                        Drag to select area &nbsp;•&nbsp; <kbd className="bg-black/30 px-1 rounded">Shift</kbd>+click to add
+                        {t('dragToSelect')}
                     </p>
                 ) : (
                     <p className="mt-1.5 text-xs text-gray-600">
-                        <kbd className="bg-black/30 px-1 rounded">Shift</kbd>+click to add to selection
+                        {t('shiftClickHint')}
                     </p>
                 )}
             </div>
@@ -518,7 +520,7 @@ export default function ControlPanel({
                     className="w-full flex items-center justify-between mb-2 group"
                 >
                     <p className="text-xs font-medium text-gray-400 group-hover:text-gray-200 transition">
-                        Sample Structures
+                        {t('sampleStructures')}
                     </p>
                     <span className="text-xs text-gray-600 group-hover:text-gray-400 transition">
                         {showSamples ? '▲' : '▼'}
@@ -541,12 +543,12 @@ export default function ControlPanel({
                                     <div className="text-xs opacity-60 truncate">{desc}</div>
                                 </div>
                                 {isPlacingSample && (
-                                    <span className="ml-auto shrink-0 animate-pulse text-xs">Placing...</span>
+                                    <span className="ml-auto shrink-0 animate-pulse text-xs">{t('placing')}</span>
                                 )}
                             </button>
                         ))}
                         <p className="mt-1 text-xs text-gray-600 leading-relaxed">
-                            Click to place at origin (0,0,0)
+                            {t('clickToPlaceOrigin')}
                         </p>
                     </div>
                 )}

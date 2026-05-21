@@ -1,4 +1,5 @@
 import AxiosCustom from './axios/AxiosCustom';
+import { useT } from './i18n/LanguageContext';
 import SatelliteAPI from './view/SatelliteAPI';
 import Footer from './component/Footer';
 import Header from './component/Header';
@@ -15,6 +16,7 @@ import TestDashboard from './view/test/TestDashboard';
 import { useCallback, useEffect, useState } from 'react';
 
 function App() {
+  const t = useT('app');
 
   useEffect(() => {
     document.documentElement.classList.add("dark");
@@ -97,6 +99,63 @@ function App() {
       })
       .catch(error => console.error('Failed to delete project:', error));
   }, [selectedProject]);
+
+  // ---------------------------------------------------------------
+  // Convert drone analysis result into a BIM project
+  // ---------------------------------------------------------------
+  // signature: (type, name, terrainEls, contourBeams, contourLines, callback)
+  const convertDroneProject = useCallback(async (type, name, terrainEls, contourBeams, contourLines, callback) => {
+    try {
+      const existingNames = new Set((projectList || []).map(p => p.projectName));
+      let uniqueName = name;
+      let counter = 1;
+      while (existingNames.has(uniqueName)) uniqueName = `${name} (${counter++})`;
+
+      const projectRes = await AxiosCustom.post('/api/bim/project', {
+        structureType: type, projectName: uniqueName, spanCount: 0,
+      });
+      const project = projectRes.data;
+      const pid = project.projectId;
+      const newId = () => 'ELEM-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+
+      // 1) 지형 슬래브 배치 + 레이어 생성
+      let terrainIds = [];
+      if (terrainEls.length > 0) {
+        const payload = terrainEls.map(el => ({ ...el, elementId: newId(), projectId: pid }));
+        terrainIds = payload.map(e => e.elementId);
+        await AxiosCustom.post('/api/bim/elements/batch', payload);
+        await AxiosCustom.post('/api/bim/layer', {
+          projectId: pid, layerName: '🏔 지형', color: '#52a86b',
+          visible: true, elementIds: terrainIds, sortOrder: 1,
+        });
+      }
+
+      // 2) 등고선 IfcBeam 배치 + 레이어 생성 (지형 위에 렌더링)
+      let contourIds = [];
+      if (contourBeams.length > 0) {
+        const payload = contourBeams.map(el => ({ ...el, elementId: newId(), projectId: pid }));
+        contourIds = payload.map(e => e.elementId);
+        await AxiosCustom.post('/api/bim/elements/batch', payload);
+        await AxiosCustom.post('/api/bim/layer', {
+          projectId: pid, layerName: '📐 등고선', color: '#facc15',
+          visible: true, elementIds: contourIds, sortOrder: 0,
+        });
+      }
+
+      // 3) 2D 평면도용 BIM 라인
+      if (contourLines.length > 0) {
+        await Promise.all(
+          contourLines.map(line => AxiosCustom.post('/api/bim/line', { ...line, projectId: pid }))
+        );
+      }
+
+      await refreshProjectList();
+      if (callback) callback(project);
+    } catch (error) {
+      console.error('Drone project conversion failed:', error);
+      if (callback) callback(null);
+    }
+  }, [refreshProjectList, projectList]);
 
   // ---------------------------------------------------------------
   // Import BIM project from IFC elements
@@ -239,7 +298,7 @@ function App() {
       <div className="min-h-screen bg-[#0d1b2a] flex items-center justify-center text-gray-400">
         <div className="text-center">
           <div className="text-4xl mb-4">🏗</div>
-          <div className="text-sm">Initializing Digital Twin…</div>
+          <div className="text-sm">{t('loading')}</div>
         </div>
       </div>
     );
@@ -297,6 +356,7 @@ function App() {
           modelData={modelData}
           setModelData={setModelData}
           selectedProject={selectedProject}
+          onConvertDrone={convertDroneProject}
         />
       );
     }
@@ -309,6 +369,7 @@ function App() {
           onCreateProject={addNewProject}
           onRenameProject={renameProject}
           onImportIFC={importIfcProject}
+          onConvertDrone={convertDroneProject}
           onDeleteProject={deleteProject}
         />
       );

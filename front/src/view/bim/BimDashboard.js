@@ -13,6 +13,8 @@ import MiniMapCanvas from './component/MiniMapCanvas';
 import AxiosCustom from '../../axios/AxiosCustom';
 import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
 import StructuralDashboard from '../structural/StructuralDashboard';
+import DroneAnalysisModal from './component/DroneAnalysisModal';
+import { useT } from '../../i18n/LanguageContext';
 
 const API_BASE = '/api/bim';
 
@@ -50,6 +52,7 @@ function Chip({ color = "gray", children }) {
 // ================================================================
 
 function EnvSelector({ currentId, onChange }) {
+    const t = useT('bimDashboard');
     const [open, setOpen] = useState(false);
     const current = ENV_PRESETS.find(p => p.id === currentId) ?? ENV_PRESETS[0];
 
@@ -59,7 +62,7 @@ function EnvSelector({ currentId, onChange }) {
                 onClick={() => setOpen(v => !v)}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold
                            bg-space-700/70 text-gray-300 border border-space-600 hover:bg-space-600 transition"
-                title="Select Background Environment"
+                title={t('selectBgEnv')}
             >
                 <span>{current.icon}</span>
                 <span className="hidden sm:inline">{current.label}</span>
@@ -76,7 +79,7 @@ function EnvSelector({ currentId, onChange }) {
                     {/* 드롭다운 패널 */}
                     <div className="absolute right-0 top-full mt-1 z-40 bg-space-800 border border-space-600
                                     rounded-xl shadow-2xl p-2 min-w-[160px]">
-                        <p className="text-xs text-gray-500 px-2 pb-1.5 font-medium">Environment</p>
+                        <p className="text-xs text-gray-500 px-2 pb-1.5 font-medium">{t('environment')}</p>
                         {ENV_PRESETS.map(p => (
                             <button
                                 key={p.id}
@@ -119,6 +122,7 @@ const MATERIAL_OPTIONS = {
 // ================================================================
 
 function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
+    const t = useT('bimDashboard');
     const [form, setForm] = React.useState(null);
 
     // 선택된 선이 바뀌면 폼 초기화
@@ -185,14 +189,14 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
         <div className="space-y-3 rounded-xl border border-cyan-800/50 bg-cyan-900/10 p-3 text-sm">
             {/* 헤더 */}
             <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-cyan-300">Edit Line</span>
+                <span className="text-xs font-semibold text-cyan-300">{t('editLine')}</span>
                 <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xs">✕</button>
             </div>
 
             {/* 색상 / 두께 */}
             <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5">
-                    <label className="text-xs text-gray-400 whitespace-nowrap">Color</label>
+                    <label className="text-xs text-gray-400 whitespace-nowrap">{t('color')}</label>
                     <input
                         type="color"
                         value={form.color}
@@ -201,7 +205,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
                     />
                 </div>
                 <div className="flex items-center gap-1.5 flex-1">
-                    <label className="text-xs text-gray-400 whitespace-nowrap">Thickness</label>
+                    <label className="text-xs text-gray-400 whitespace-nowrap">{t('thickness')}</label>
                     <input
                         type="number" min="1" max="20" step="0.5"
                         value={form.lineWidth}
@@ -215,13 +219,13 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
             <div>
                 <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-medium text-gray-400">
-                        Vertices ({form.points.length})
+                        {t('vertices_count', { n: form.points.length })}
                     </label>
                     <button
                         onClick={addPoint}
                         className="text-xs px-2 py-0.5 rounded bg-cyan-700/50 text-cyan-300 hover:bg-cyan-600/60 transition"
                     >
-                        + Add Point
+                        {t('addPoint')}
                     </button>
                 </div>
                 <div className="space-y-1.5 max-h-52 overflow-y-auto pr-0.5">
@@ -243,7 +247,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
                                 onClick={() => removePoint(idx)}
                                 disabled={form.points.length <= 2}
                                 className="text-gray-600 hover:text-red-400 disabled:opacity-30 transition text-xs shrink-0 px-1"
-                                title="Delete Point"
+                                title={t('deletePoint')}
                             >✕</button>
                         </div>
                     ))}
@@ -253,7 +257,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
             {/* 도형 옵션 (3개 이상 점) */}
             {form.points.length >= 3 && (
                 <div className="space-y-2 pt-1 border-t border-space-600/40">
-                    <p className="text-xs text-gray-400 font-medium">Shape Options</p>
+                    <p className="text-xs text-gray-400 font-medium">{t('shapeOptions')}</p>
                     <label className="flex items-center gap-2 cursor-pointer">
                         <input
                             type="checkbox"
@@ -261,25 +265,25 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
                             onChange={e => commit({ ...form, closed: e.target.checked })}
                             className="accent-cyan-500"
                         />
-                        <span className="text-xs text-gray-300">Closed Polygon (close shape)</span>
+                        <span className="text-xs text-gray-300">{t('closedPolygon')}</span>
                     </label>
                     {isShape && (
                         <div className="flex items-center gap-2">
-                            <label className="text-xs text-gray-400 whitespace-nowrap">Height (m)</label>
+                            <label className="text-xs text-gray-400 whitespace-nowrap">{t('height')}</label>
                             <input
                                 type="number" min="0" step="0.1"
                                 value={form.shapeHeight}
                                 onChange={e => commit({ ...form, shapeHeight: parseFloat(e.target.value) || 0 })}
                                 className={inputCls}
-                                placeholder="0 = flat"
+                                placeholder={t('flatPlaceholder')}
                             />
                         </div>
                     )}
                     {isShape && (
                         <p className="text-xs text-cyan-400/80 italic">
                             {form.shapeHeight > 0
-                                ? `3D Solid Shape (height ${form.shapeHeight}m)`
-                                : 'Closed Polygon (flat)'}
+                                ? t('solidShape', { n: form.shapeHeight })
+                                : t('closedFlat')}
                         </p>
                     )}
                 </div>
@@ -291,7 +295,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
                     onClick={() => onSave({ ...line, ...form, pointsJson: JSON.stringify(form.points) })}
                     className="flex-1 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition"
                 >
-                    💾 Save
+                    {t('save')}
                 </button>
                 <button
                     onClick={() => onDelete(line.lineId)}
@@ -309,6 +313,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
 // ================================================================
 
 function PropertyPanel({ selectedElement, selectedElements, updateElementData, saveUpdateElement, deleteSelectedElements }) {
+    const t = useT('bimDashboard');
     const [form, setForm] = useState({
         material: '', posX: 0, posY: 0, posZ: 0, sizeX: 1, sizeY: 1, sizeZ: 1,
     });
@@ -330,8 +335,8 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
         return (
             <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm p-4 text-center">
                 <div className="text-3xl mb-2">🏗️</div>
-                <p>Click a member in the 3D viewer to edit its properties</p>
-                <p className="text-xs mt-2 text-gray-600">Shift+click or use Select Mode for multi-select</p>
+                <p>{t('clickMemberHint')}</p>
+                <p className="text-xs mt-2 text-gray-600">{t('shiftClickHint')}</p>
             </div>
         );
     }
@@ -341,13 +346,13 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
             <div className="flex flex-col items-center justify-center h-full p-4 text-center gap-3">
                 <div className="text-2xl">⬚</div>
                 <p className="text-sm text-gray-300">
-                    <span className="text-violet-400 font-bold">{multiCount} items</span> selected
+                    <span className="text-violet-400 font-bold">{t('multiSelected', { count: multiCount })}</span>
                 </p>
                 <button
                     onClick={deleteSelectedElements}
                     className="w-full px-3 py-2 rounded-md bg-red-700/60 text-red-300 hover:bg-red-600/80 transition text-xs font-semibold"
                 >
-                    🗑 Delete All Selected Members
+                    {t('deleteAllSelected')}
                 </button>
             </div>
         );
@@ -382,9 +387,9 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Material</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">{t('material')}</label>
                 <select value={form.material} onChange={e => handleChange('material', e.target.value)} className={inputCls}>
-                    <option value="">-- Select Material --</option>
+                    <option value="">-- {t('selectMaterial')} --</option>
                     {Object.entries(MATERIAL_OPTIONS).map(([group, items]) => (
                         <optgroup key={group} label={group}>
                             {items.map(m => <option key={m} value={m}>{m}</option>)}
@@ -392,14 +397,14 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
                     ))}
                 </select>
                 <input
-                    type="text" placeholder="Or type directly..."
+                    type="text" placeholder={t('typeDirectly')}
                     value={form.material} onChange={e => handleChange('material', e.target.value)}
                     className={`${inputCls} mt-1 text-xs`}
                 />
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Size (m)</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">{t('size')}</label>
                 <div className="grid grid-cols-3 gap-1">
                     {[['sizeX', 'W'], ['sizeY', 'H'], ['sizeZ', 'D']].map(([f, lbl]) => (
                         <div key={f}>
@@ -412,7 +417,7 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Position (m)</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">{t('position')}</label>
                 <div className="grid grid-cols-3 gap-1">
                     {[['posX', 'X'], ['posY', 'Y'], ['posZ', 'Z']].map(([f, lbl]) => (
                         <div key={f}>
@@ -427,11 +432,11 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
             <div className="flex gap-2 pt-2">
                 <button onClick={saveUpdateElement}
                     className="flex-1 rounded-md bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-500 transition">
-                    💾 Save
+                    {t('save')}
                 </button>
                 <button onClick={deleteSelectedElements}
                     className="px-3 py-2 rounded-md bg-red-700/60 text-red-300 hover:bg-red-600/80 transition text-xs font-semibold">
-                    🗑 Delete
+                    {t('deleteBtn')}
                 </button>
             </div>
         </div>
@@ -442,7 +447,7 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
 // 메인 BIM 대시보드
 // ================================================================
 
-export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject }) {
+export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone }) {
     const {
         saveUpdateElement,
         selectedElement, setSelectedElement,
@@ -480,6 +485,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         undo, pushUndo,
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
+    const t = useT('bimDashboard');
     const mainViewRef = useRef(null);
 
     // ── 패널 표시 여부 ─────────────────────────────────────────────
@@ -494,6 +500,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ── 뷰 모드 ────────────────────────────────────────────────────
     const [viewMode, setViewMode] = useState('3d'); // '3d' | '2d'
     const [bimSubView, setBimSubView] = useState('editor'); // 'editor' | 'structural'
+    const [showDroneModal, setShowDroneModal] = useState(false);
 
     // ── 패널 드래그 리사이즈 ───────────────────────────────────────
     const [leftPanelPct, setLeftPanelPct]   = useState(13); // 5~20%
@@ -866,6 +873,18 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     return (
         <div className="w-full bg-space-900 pb-2 flex flex-col overflow-hidden" style={{height:'85vh'}} >
+        {/* 드론 사진 분석 모달 */}
+        {showDroneModal && (
+            <DroneAnalysisModal
+                onClose={() => setShowDroneModal(false)}
+                onConvertToBIM={onConvertDrone}
+                onProjectSelect={(project) => {
+                    setShowDroneModal(false);
+                    setViceComponent('bim-projects');
+                    setModelData([]);
+                }}
+            />
+        )}
 
             {/* ── 헤더 ── */}
             <div className="flex items-center gap-2 md:gap-4 mb-3 flex-wrap py-2">
@@ -873,7 +892,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     className="text-gray-300 hover:text-white text-sm"
                     onClick={() => { setViceComponent('bim-projects'); setModelData([]); }}
                 >
-                    ← List
+                    {t('backToList')}
                 </button>
                 <h2 className="text-lg md:text-xl font-light text-white"></h2>
 
@@ -889,7 +908,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         }}
                     >
                         <span>🏗</span>
-                        <span>Editor</span>
+                        <span>{t('editor')}</span>
                     </button>
                     <button
                         onClick={() => setBimSubView('structural')}
@@ -902,7 +921,21 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         }}
                     >
                         <span>🔩</span>
-                        <span>Structural Analysis</span>
+                        <span>{t('structuralAnalysis')}</span>
+                    </button>
+                    <button
+                        onClick={() => setShowDroneModal(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                        style={{
+                            backgroundColor: 'transparent',
+                            color: '#8896a4',
+                            border: '1px solid transparent',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#0d2a1a'; e.currentTarget.style.color = '#4ade80'; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#8896a4'; }}
+                    >
+                        <span>🛸</span>
+                        <span>{t('droneSurvey')}</span>
                     </button>
                 </div>
 
@@ -912,7 +945,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         onClick={deleteSelectedElements}
                         className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-red-700/60 text-red-300 hover:bg-red-600/80 transition"
                     >
-                        🗑 Delete {totalSelectedCount} items
+                        {t('deleteItems', { count: totalSelectedCount })}
                     </button>
                 )}
 
@@ -925,9 +958,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     ? 'bg-emerald-700/60 text-emerald-300 border border-emerald-600/60'
                                     : 'bg-space-700/70 text-gray-400 border border-space-600'
                                 }`}
-                            title={viewMode === '2d' ? 'Switch to 3D View' : 'Switch to 2D Plan View'}
+                            title={viewMode === '2d' ? t('switchTo3D') : t('switchTo2D')}
                         >
-                            {viewMode === '2d' ? '⬜ 2D' : '⬡ 3D'}
+                            {viewMode === '2d' ? t('switch2D') : t('switch3D')}
                         </button>
 
                         {/* 환경 선택 */}
@@ -940,9 +973,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     ? 'bg-blue-700/50 text-blue-300 border border-blue-600/60'
                                     : 'bg-space-700/70 text-gray-400 border border-space-600'
                                 }`}
-                            title="Toggle Edit Panel"
+                            title={t('toggleEditPanel')}
                         >
-                            {showLeftPanel ? '◀' : '▶'} Edit
+                            {showLeftPanel ? '◀' : '▶'} {t('edit')}
                         </button>
 
                         {/* 스냅 토글 */}
@@ -952,10 +985,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     ? 'bg-yellow-700/60 text-yellow-300 border border-yellow-600/60'
                                     : 'bg-space-700/70 text-gray-400 border border-space-600'
                                 }`}
-                            title={snapEnabled ? 'Snap ON — Vertex auto-snap active (click to turn OFF)' : 'Snap OFF — Click to enable'}
+                            title={snapEnabled ? t('snapOnTitle') : t('snapOffTitle')}
                         >
-                            🧲 Snap <span className={`text-xs ml-0.5 ${snapEnabled ? 'text-yellow-400' : 'text-gray-600'}`}>
-                                {snapEnabled ? 'ON' : 'OFF'}
+                            {t('snap')} <span className={`text-xs ml-0.5 ${snapEnabled ? 'text-yellow-400' : 'text-gray-600'}`}>
+                                {snapEnabled ? t('snapOn') : t('snapOff')}
                             </span>
                         </button>
 
@@ -966,9 +999,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     ? 'bg-teal-700/60 text-teal-300 border border-teal-600/60'
                                     : 'bg-space-700/70 text-gray-400 border border-space-600'
                                 }`}
-                            title="Toggle Layer Panel"
+                            title={t('toggleLayerPanel')}
                         >
-                            🗂 Layer
+                            {t('layer')}
                             {layers.length > 0 && (
                                 <span className="px-1 py-0.5 rounded-full text-xs bg-teal-600/40 text-teal-300">
                                     {layers.length}
@@ -981,27 +1014,27 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             <button
                                 onClick={handleExportExcel}
                                 disabled={!modelData?.length}
-                                title="Download Quantity Excel"
+                                title={t('downloadExcel')}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition
                                        bg-emerald-800/50 text-emerald-300 border border-emerald-700/50
                                        hover:bg-emerald-700/60 disabled:opacity-30 disabled:cursor-not-allowed"
                             >
-                                📊 Excel
+                                {t('excel')}
                             </button>
                             <button
                                 onClick={handleExportPDF}
                                 disabled={!modelData?.length || exporting}
-                                title="Download BIM Drawing PDF"
+                                title={t('downloadPDF')}
                                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition
                                        bg-purple-800/50 text-purple-300 border border-purple-700/50
                                        hover:bg-purple-700/60 disabled:opacity-30 disabled:cursor-not-allowed"
                             >
-                                {exporting ? '⏳ Generating...' : '📄 PDF'}
+                                {exporting ? t('generating') : t('pdf')}
                             </button>
                         </div>
 
                         <span className="text-xs text-gray-600 hidden xl:block">
-                            T:Move&nbsp;R:Rotate&nbsp;S:Scale&nbsp;Q:Select&nbsp;Del:Delete&nbsp;Ctrl+Z:Undo
+                            {t('shortcuts')}
                         </span>
                     </>)}
                 </div>
@@ -1013,12 +1046,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     style={{ backgroundColor: '#1a2f4a', border: '1px solid #2a5080' }}>
                     <span className="text-blue-400">📍</span>
                     <span className="text-blue-200 font-medium text-xs">
-                        Place Mode — <span className="text-white">{pendingElement.elementType?.replace('Ifc', '')}</span>
+                        {t('placeModeTitle')} — <span className="text-white">{pendingElement.elementType?.replace('Ifc', '')}</span>
                     </span>
-                    <span className="text-gray-400 text-xs hidden sm:inline">Click to place. Continuous placement enabled.</span>
+                    <span className="text-gray-400 text-xs hidden sm:inline">{t('placeModeHint')}</span>
                     <button onClick={cancelPlacement}
                         className="ml-auto text-xs px-2 py-1 rounded border border-blue-700/60 text-blue-400 hover:text-white transition">
-                        ESC Cancel
+                        {t('escCancel')}
                     </button>
                 </div>
             )}
@@ -1026,14 +1059,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 <div className="mb-2 px-3 py-2 rounded-xl flex items-center gap-2 text-sm flex-wrap"
                     style={{ backgroundColor: '#1f1040', border: '1px solid #5b21b6' }}>
                     <span className="text-violet-400">⬚</span>
-                    <span className="text-violet-200 font-medium text-xs">Select Mode</span>
-                    <span className="text-gray-400 text-xs hidden sm:inline">Drag to select area • Shift+click to add</span>
+                    <span className="text-violet-200 font-medium text-xs">{t('selectMode')}</span>
+                    <span className="text-gray-400 text-xs hidden sm:inline">{t('selectModeHint')}</span>
                     {totalSelectedCount > 0 && (
-                        <span className="text-violet-300 text-xs font-semibold">{totalSelectedCount} items</span>
+                        <span className="text-violet-300 text-xs font-semibold">{totalSelectedCount} {t('items')}</span>
                     )}
                     <button onClick={toggleSelectMode}
                         className="ml-auto text-xs px-2 py-1 rounded border border-violet-700/60 text-violet-400 hover:text-white transition">
-                        Q Deselect
+                        {t('qDeselect')}
                     </button>
                 </div>
             )}
@@ -1062,7 +1095,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             : 'text-gray-400 hover:text-white'
                                         }`}
                                 >
-                                    Edit
+                                    {t('editTab')}
                                 </button>
                                 <button
                                     onClick={() => setLeftTab('line')}
@@ -1071,7 +1104,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             : 'text-gray-400 hover:text-white'
                                         }`}
                                 >
-                                    Draw Line
+                                    {t('drawLine')}
                                     {lines.length > 0 && (
                                         <span className="ml-1 px-1 rounded-full bg-blue-800/60 text-blue-300 text-xs">{lines.length}</span>
                                     )}
@@ -1080,7 +1113,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
                             {leftTab === 'edit' && (
                                 <>
-                                    <Card title="Edit Tools">
+                                    <Card title={t('editTools')}>
                                         <ControlPanel
                                             startPlacement={startPlacement}
                                             pendingElement={pendingElement}
@@ -1094,10 +1127,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         />
                                     </Card>
                                     <Card
-                                        title="Element Properties"
+                                        title={t('elementProperties')}
                                         right={
                                             <Chip color={selectedElement ? 'orange' : totalSelectedCount > 1 ? 'violet' : 'gray'}>
-                                                {selectedElement ? 'SEL' : totalSelectedCount > 1 ? `${totalSelectedCount} items` : 'NONE'}
+                                                {selectedElement ? 'SEL' : totalSelectedCount > 1 ? `${totalSelectedCount} ${t('items')}` : 'NONE'}
                                             </Chip>
                                         }
                                         className="flex-1"
@@ -1114,7 +1147,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             )}
 
                             {leftTab === 'line' && (
-                                <Card title="Draw Line" className="flex-1">
+                                <Card title={t('drawLine')} className="flex-1">
                                     {/* 선 선택 시 편집 패널 */}
                                     {selectedLineId && (
                                         <div className="mb-3">
@@ -1171,16 +1204,16 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     {/* ── 중앙 3D 뷰어 ── */}
                     <div className="flex-1 min-w-0 flex flex-col gap-3 min-h-0" style={{ paddingLeft: showLeftPanel && isDesktop ? 4 : 0, paddingRight: showLayerPanel && isDesktop ? 4 : 0 }}>
                         <Card
-                            title={`${viewMode === '2d' ? '2D Plan View' : '3D BIM Viewer'} — ${currentProjectId ?? 'Project'} (${visibleModelData.length} elements)`}
+                            title={`${viewMode === '2d' ? t('view2D') : t('view3D')} — ${currentProjectId ?? t('project')} (${visibleModelData.length} ${t('itemsUnit')})`}
                             right={
                                 <div className="flex gap-1.5 items-center flex-wrap">
                                     <Chip color="orange">
-                                        {transformMode === 'translate' ? 'Move' : transformMode === 'rotate' ? 'Rotate' : 'Scale'}
+                                        {transformMode === 'translate' ? t('move') : transformMode === 'rotate' ? t('rotate') : t('scale')}
                                     </Chip>
-                                    {pendingElement && <Chip color="blue">Placing</Chip>}
-                                    {isSelectMode && <Chip color="violet">Select Mode</Chip>}
-                                    {lineDrawMode !== 'off' && <Chip color="blue">Draw Line</Chip>}
-                                    <Chip color="blue">Live</Chip>
+                                    {pendingElement && <Chip color="blue">{t('placing')}</Chip>}
+                                    {isSelectMode && <Chip color="violet">{t('selectMode')}</Chip>}
+                                    {lineDrawMode !== 'off' && <Chip color="blue">{t('drawLineChip')}</Chip>}
+                                    <Chip color="blue">{t('liveChip')}</Chip>
                                 </div>
                             }
                             className="flex-1 flex flex-col"
@@ -1316,9 +1349,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             <div className="absolute bottom-3 left-3 bg-space-900/80 border border-space-700 rounded-lg px-3 py-2 text-xs text-gray-300 z-20">
                                                 <span className="text-orange-400 font-bold">{selectedElement.data.elementType}</span>
                                                 <span className="ml-2 text-gray-500">{selectedElement.data.elementId}</span>
-                                                <span className="ml-3 text-gray-400">{selectedElement.data.material || 'No Material'}</span>
+                                                <span className="ml-3 text-gray-400">{selectedElement.data.material || t('noMaterial')}</span>
                                                 {totalSelectedCount > 1 && (
-                                                    <span className="ml-3 text-violet-400 font-semibold">+{totalSelectedCount - 1} Selected</span>
+                                                    <span className="ml-3 text-violet-400 font-semibold">+{totalSelectedCount - 1} {t('selected')}</span>
                                                 )}
                                             </div>
                                         )}
@@ -1333,10 +1366,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             return (
                                                 <div className="absolute bottom-3 left-3 bg-space-900/80 border border-cyan-700/60 rounded-lg px-3 py-2 text-xs text-gray-300 z-20">
                                                     <span className="text-cyan-400 font-bold">Line</span>
-                                                    <span className="ml-2 text-gray-400">{pts.length} vertices</span>
+                                                    <span className="ml-2 text-gray-400">{pts.length} {t('vertices')}</span>
                                                     {sl.closed && <span className="ml-2 text-cyan-300">Closed</span>}
-                                                    {sl.shapeHeight > 0 && <span className="ml-2 text-teal-300">Height {sl.shapeHeight}m</span>}
-                                                    <span className="ml-3 text-gray-500">Edit in left panel</span>
+                                                    {sl.shapeHeight > 0 && <span className="ml-2 text-teal-300">{t('height')} {sl.shapeHeight}m</span>}
+                                                    <span className="ml-3 text-gray-500">{t('editInLeftPanel')}</span>
                                                 </div>
                                             );
                                         })()}
@@ -1344,7 +1377,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         {/* ── 배치 모드 커서 힌트 ── */}
                                         {pendingElement && (
                                             <div className="absolute bottom-3 right-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20 mr-44">
-                                                Click to place &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> Cancel
+                                                {t('clickToPlace')} &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd>
                                             </div>
                                         )}
 
@@ -1352,17 +1385,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         {lineDrawMode === 'click' && (
                                             <div className="absolute bottom-3 left-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20">
                                                 {!lineStart
-                                                    ? '⏳ Click the first point'
-                                                    : '✓ Start point selected — Click the second point'}
-                                                {snapEnabled && <span className="ml-2 text-yellow-400">🧲 Snap ON</span>}
-                                                &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd> Cancel
+                                                    ? t('firstPoint')
+                                                    : t('secondPoint')}
+                                                {snapEnabled && <span className="ml-2 text-yellow-400">{t('snapOnHint')}</span>}
+                                                &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd>
                                             </div>
                                         )}
 
                                         {/* ── 배치 모드 스냅 힌트 ── */}
                                         {pendingElement && snapEnabled && (
                                             <div className="absolute bottom-14 right-3 bg-space-900/70 border border-yellow-700/40 rounded-lg px-2 py-1 text-xs text-yellow-400 z-20 mr-44">
-                                                🧲 Snap ON
+                                                {t('snapOnHint')}
                                             </div>
                                         )}
                                     </>)}
@@ -1397,10 +1430,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             style={isDesktop ? { width: `${rightPanelPct}%`, minWidth: 120 } : undefined}
                         >
                             <Card
-                                title="Layer Manager"
+                                title={t('layerManager')}
                                 right={
                                     <div className="flex items-center gap-2">
-                                        <Chip color="green">{layers.length} items</Chip>
+                                        <Chip color="green">{layers.length} {t('itemsUnit')}</Chip>
                                         <button
                                             onClick={() => setShowLayerPanel(false)}
                                             className="text-gray-500 hover:text-gray-300 transition text-sm leading-none"
@@ -1433,7 +1466,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             </Card>
 
                             {/* 구조 데이터 분석 */}
-                            <Card title="Element List" right={<Chip color="green">Live</Chip>} className="mt-3 shrink-0">
+                            <Card title={t('elementList')} right={<Chip color="green">{t('liveChip')}</Chip>} className="mt-3 shrink-0">
                                 <div className="grid grid-cols-5 gap-1.5">
                                     {['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcSlab', 'IfcPier'].map(type => {
                                         const count = modelData.filter(e => e.elementType === type).length;
@@ -1441,7 +1474,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             <div key={type} className="bg-space-700/60 rounded-lg p-2 flex flex-col items-center gap-0.5">
                                                 <span className="text-xs text-gray-400 truncate w-full text-center">{type.replace('Ifc', '')}</span>
                                                 <span className="text-lg font-bold text-gray-100">{count}</span>
-                                                <span className="text-xs text-gray-500">items</span>
+                                                <span className="text-xs text-gray-500">{t('itemsUnit')}</span>
                                             </div>
                                         );
                                     })}

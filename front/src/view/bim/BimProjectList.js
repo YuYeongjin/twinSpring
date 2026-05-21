@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { parseIfcFile } from "../../utils/ifcImporter";
+import DroneAnalysisModal from "./component/DroneAnalysisModal";
+import { useT } from "../../i18n/LanguageContext";
 
 // ================================================================
 // 디자인 토큰
@@ -34,6 +36,7 @@ function isInvalidName(name) {
 // 인라인 이름 편집 컴포넌트
 // ================================================================
 function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
+  const t = useT('bimProjectList');
   const [value, setValue] = useState(isInvalidName(currentName) ? "" : currentName);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
@@ -67,7 +70,7 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
           if (e.key === "Enter") handleSave();
           if (e.key === "Escape") onCancel();
         }}
-        placeholder="Enter project name..."
+        placeholder={t('enterProjectName')}
         className="flex-1 px-2 py-1 rounded text-xs outline-none min-w-0"
         style={{
           backgroundColor: "#0d1b2a",
@@ -109,6 +112,7 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
 // 프로젝트 카드
 // ================================================================
 function ProjectCard({ item, onOpen, onRename, onDelete }) {
+  const t = useT('bimProjectList');
   const typeInfo = PROJECT_TYPES.find(t => t.type === item.structureType) ?? PROJECT_TYPES[0];
   const [editing, setEditing] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -150,7 +154,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
         <>
           {invalid && (
             <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: TB.warning }}>
-              ⚠ Please enter a name
+              {t('pleaseEnterName')}
             </div>
           )}
           <InlineNameEditor
@@ -190,21 +194,21 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
             style={{ backgroundColor: '#1d4ed8', border: '1px solid #3b82f6', color: '#fff' }}
           >
-            Open
+            {t('open')}
           </button>
           <button
             onClick={e => { e.stopPropagation(); setEditing(true); setActive(false); }}
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
             style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
           >
-            Rename
+            {t('rename')}
           </button>
           <button
             onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
             style={{ backgroundColor: '#450a0a', border: `1px solid ${TB.danger}`, color: TB.danger }}
           >
-            Delete
+            {t('delete')}
           </button>
         </div>
       )}
@@ -212,21 +216,21 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
       {/* 삭제 확인 */}
       {!editing && showActions && confirmDelete && (
         <div onClick={e => e.stopPropagation()}>
-          <p className="text-xs mt-3 mb-2" style={{ color: TB.warning }}>Really?</p>
+          <p className="text-xs mt-3 mb-2" style={{ color: TB.warning }}>{t('really')}</p>
           <div className="flex gap-1.5">
             <button
               onClick={e => { e.stopPropagation(); onDelete(item.projectId); }}
               className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
               style={{ backgroundColor: '#7f1d1d', border: `1px solid ${TB.danger}`, color: '#fff' }}
             >
-              Yes
+              {t('yes')}
             </button>
             <button
               onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
               className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
               style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
             >
-              No
+              {t('no')}
             </button>
           </div>
         </div>
@@ -242,7 +246,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
             border: `1px solid ${TB.warning}50`,
           }}
         >
-          ⚠ No Name
+          {t('noNameBadge')}
         </div>
       )}
     </div>
@@ -253,6 +257,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
 // 신규 프로젝트 생성 폼
 // ================================================================
 function CreateProjectForm({ onClose, onCreate }) {
+  const t = useT('bimProjectList');
   const [projectType, setProjectType] = useState("Bridge");
   const [projectName, setProjectName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -274,7 +279,7 @@ function CreateProjectForm({ onClose, onCreate }) {
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          Create New Project
+          {t('createNewProject')}
         </h3>
         <button
           onClick={onClose}
@@ -288,7 +293,7 @@ function CreateProjectForm({ onClose, onCreate }) {
         {/* 프로젝트 유형 선택 */}
         <div className="flex-1">
           <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
-            Project Type
+            {t('projectType')}
           </label>
           <div className="flex gap-2">
             {PROJECT_TYPES.map(({ type, icon, label, color, bg }) => (
@@ -311,14 +316,14 @@ function CreateProjectForm({ onClose, onCreate }) {
         {/* 프로젝트 이름 입력 */}
         <div className="flex-1">
           <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
-            프로젝트 이름
+            {t('projectNameLabel')}
           </label>
           <input
             type="text"
             value={projectName}
             onChange={e => setProjectName(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSubmit()}
-            placeholder="프로젝트 이름을 입력하세요..."
+            placeholder={t('projectNamePlaceholder')}
             autoFocus
             className="w-full px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2"
             style={{
@@ -341,7 +346,7 @@ function CreateProjectForm({ onClose, onCreate }) {
             cursor: !projectName.trim() || creating ? "not-allowed" : "pointer",
           }}
         >
-          {creating ? "생성 중…" : "프로젝트 생성"}
+          {creating ? t('creating') : t('createProject')}
         </button>
       </div>
     </div>
@@ -352,6 +357,7 @@ function CreateProjectForm({ onClose, onCreate }) {
 // IFC 가져오기 모달
 // ================================================================
 function IfcImportModal({ onClose, onImport }) {
+  const t = useT('bimProjectList');
   const [projectType, setProjectType] = useState("Building");
   const [projectName, setProjectName] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
@@ -365,17 +371,17 @@ function IfcImportModal({ onClose, onImport }) {
   const handleFile = useCallback((file) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".ifc")) {
-      setErrorMsg("You can only import .ifc extension files.");
+      setErrorMsg(t('ifcOnly'));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setErrorMsg(`File size is too large. Only files smaller than 5 MB are supported`);
+      setErrorMsg(t('fileTooLarge'));
       return;
     }
     setErrorMsg("");
     setSelectedFile(file);
     if (!projectName) setProjectName(file.name.replace(/\.ifc$/i, ""));
-  }, [projectName]);
+  }, [projectName, t]);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -394,7 +400,7 @@ function IfcImportModal({ onClose, onImport }) {
       setPhase("done");
     } catch (e) {
       console.error("IFC parsing error:", e);
-      setErrorMsg(`IFC parsing fale: ${e?.message || String(e)}`);
+      setErrorMsg(`IFC parsing failed: ${e?.message || String(e)}`);
       setPhase("error");
     }
   }, [selectedFile]);
@@ -405,11 +411,11 @@ function IfcImportModal({ onClose, onImport }) {
     onImport(projectType, projectName.trim(), parsedElements, (project) => {
       if (project) onClose();
       else {
-        setErrorMsg("Project creation failed, please check server connection.");
+        setErrorMsg(t('projectCreationFailed'));
         setPhase("error");
       }
     });
-  }, [parsedElements, projectName, projectType, onImport, onClose]);
+  }, [parsedElements, projectName, projectType, onImport, onClose, t]);
 
   const typeStats = parsedElements
     ? parsedElements.reduce((acc, el) => {
@@ -427,7 +433,7 @@ function IfcImportModal({ onClose, onImport }) {
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-base font-bold text-white flex items-center gap-2">
-            📥 Import IFC Files
+            {t('importIFC')}
           </h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-200 text-xl leading-none">✕</button>
         </div>
@@ -465,9 +471,9 @@ function IfcImportModal({ onClose, onImport }) {
             <>
               <span className="text-3xl mb-2">📂</span>
               <p className="text-sm" style={{ color: TB.text2 }}>
-               Drag or <span className="text-blue-400 underline">click to select .ifc file</span>
+                {t('dragOrClick')} <span className="text-blue-400 underline">{t('clickToSelect')}</span>
               </p>
-              <p className="text-xs mt-1 text-gray-600">Revit, Civil3D, IFC 2x3 / IFC4</p>
+              <p className="text-xs mt-1 text-gray-600">{t('ifcSupport')}</p>
             </>
           )}
         </div>
@@ -475,7 +481,7 @@ function IfcImportModal({ onClose, onImport }) {
         {/* 프로젝트 유형 + 이름 */}
         <div className="flex gap-3 mb-4">
           <div className="flex-1">
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>Type</label>
+            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('type')}</label>
             <div className="flex gap-2">
               {PROJECT_TYPES.map(({ type, icon, color, bg }) => (
                 <button
@@ -494,12 +500,12 @@ function IfcImportModal({ onClose, onImport }) {
             </div>
           </div>
           <div className="flex-[1.5]">
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>Project name</label>
+            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('projectNameLabel2')}</label>
             <input
               type="text"
               value={projectName}
               onChange={e => setProjectName(e.target.value)}
-              placeholder="ありがと..."
+              placeholder={t('enterProjectName')}
               className="w-full px-3 py-2 rounded-lg text-sm outline-none"
               style={{
                 backgroundColor: "#152030",
@@ -514,7 +520,7 @@ function IfcImportModal({ onClose, onImport }) {
         {(phase === "parsing" || phase === "importing") && (
           <div className="mb-4">
             <div className="flex justify-between text-xs mb-1" style={{ color: TB.text2 }}>
-              <span>{phase === "parsing" ? "Analyzing..." : "Creating..."}</span>
+              <span>{phase === "parsing" ? t('analyzing') : t('creating2')}</span>
               <span>{progress}%</span>
             </div>
             <div className="w-full h-2 rounded-full bg-[#1c2a3a] overflow-hidden">
@@ -534,7 +540,7 @@ function IfcImportModal({ onClose, onImport }) {
           <div className="rounded-xl p-3 mb-4 text-xs"
                style={{ backgroundColor: "#0c2a1a", border: "1px solid #22c55e40" }}>
             <p className="text-green-400 font-semibold mb-2">
-              ✅ A total of {parsedElements.length} elements detected
+              {t('totalDetected', { count: parsedElements.length })}
             </p>
             <div className="flex flex-wrap gap-2">
               {Object.entries(typeStats).map(([type, count]) => (
@@ -562,7 +568,7 @@ function IfcImportModal({ onClose, onImport }) {
             className="flex-1 py-2.5 rounded-lg text-sm transition"
             style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
           >
-            Cancle
+            {t('cancel')}
           </button>
 
           {phase !== "done" ? (
@@ -578,7 +584,7 @@ function IfcImportModal({ onClose, onImport }) {
                 cursor: !selectedFile || phase === "parsing" ? "not-allowed" : "pointer",
               }}
             >
-              {phase === "parsing" ? "Analyzing..." : "File Analysis"}
+              {phase === "parsing" ? t('analyzing') : t('fileAnalysis')}
             </button>
           ) : (
             <button
@@ -593,7 +599,7 @@ function IfcImportModal({ onClose, onImport }) {
                 cursor: !projectName.trim() ? "not-allowed" : "pointer",
               }}
             >
-              {phase === "importing" ? "Creating..." : `📥 Import (${parsedElements?.length ?? 0} as a project)`}
+              {phase === "importing" ? t('creating2') : t('importProject', { count: parsedElements?.length ?? 0 })}
             </button>
           )}
         </div>
@@ -612,11 +618,14 @@ export default function BimProjectList({
   onCreateProject,
   onRenameProject,
   onImportIFC,
+  onConvertDrone,
   onDeleteProject,
 }) {
-  const [showCreate, setShowCreate]       = useState(false);
-  const [showIFCImport, setShowIFCImport] = useState(false);
-  const [search, setSearch]               = useState("");
+  const t = useT('bimProjectList');
+  const [showCreate, setShowCreate]         = useState(false);
+  const [showIFCImport, setShowIFCImport]   = useState(false);
+  const [showDroneModal, setShowDroneModal] = useState(false);
+  const [search, setSearch]                 = useState("");
 
   const invalidCount = (projectList ?? []).filter(p => isInvalidName(p.projectName)).length;
 
@@ -636,10 +645,10 @@ export default function BimProjectList({
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-              🏗 BIM
+              {t('pageTitle')}
             </h2>
             <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-              Project : <span className="text-white font-semibold">{projectList?.length ?? 0}</span>
+              {t('project')} : <span className="text-white font-semibold">{projectList?.length ?? 0}</span>
               {invalidCount > 0 && (
                 <span
                   className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium"
@@ -649,7 +658,7 @@ export default function BimProjectList({
                     border: `1px solid ${TB.warning}50`,
                   }}
                 >
-                  ⚠ No Name {invalidCount}EA
+                  {t('noNameEA', { count: invalidCount })}
                 </span>
               )}
             </p>
@@ -669,7 +678,7 @@ export default function BimProjectList({
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search project"
+              placeholder={t('searchPlaceholder')}
               className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
               style={{
                 backgroundColor: "#1c2a3a",
@@ -678,6 +687,18 @@ export default function BimProjectList({
               }}
             />
           </div>
+
+          {/* 드론 사진 분석 버튼 */}
+          <button
+            onClick={() => setShowDroneModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
+            style={{
+              backgroundColor: "#0d2a1a",
+              border: "1px solid #22c55e",
+            }}
+          >
+            {t('droneAnalysis')}
+          </button>
 
           {/* IFC 가져오기 버튼 */}
           {onImportIFC && (
@@ -689,7 +710,7 @@ export default function BimProjectList({
                 border: "1px solid #0ea5e9",
               }}
             >
-              📥 Add IFC project
+              {t('addIfc')}
             </button>
           )}
 
@@ -702,10 +723,23 @@ export default function BimProjectList({
               border: "1px solid #8b5cf6",
             }}
           >
-            {showCreate ? "✕ cancle" : "+ New project"}
+            {showCreate ? t('cancelNewProject') : t('newProject')}
           </button>
         </div>
       </div>
+
+      {/* 드론 사진 분석 모달 */}
+      {showDroneModal && (
+        <DroneAnalysisModal
+          onClose={() => setShowDroneModal(false)}
+          onConvertToBIM={onConvertDrone}
+          onProjectSelect={(project) => {
+            setShowDroneModal(false);
+            onProjectSelect(project);
+            setViceComponent('bim');
+          }}
+        />
+      )}
 
       {/* IFC 가져오기 모달 */}
       {showIFCImport && (
@@ -738,10 +772,7 @@ export default function BimProjectList({
           }}
         >
           <span className="text-lg">⚠</span>
-          <span>
-            이름이 설정되지 않은 프로젝트 <strong>{invalidCount}개</strong>가 있습니다.
-            카드의 이름 입력란에 직접 입력하여 수정할 수 있습니다.
-          </span>
+          <span dangerouslySetInnerHTML={{ __html: t('noNameWarning', { count: `<strong>${invalidCount}</strong>` }) }} />
         </div>
       )}
 
@@ -749,7 +780,7 @@ export default function BimProjectList({
           프로젝트 유형 필터 칩
           ============================================================ */}
       <div className="flex items-center gap-2 mb-5 flex-wrap">
-        <span className="text-xs" style={{ color: TB.text2 }}>Filter:</span>
+        <span className="text-xs" style={{ color: TB.text2 }}>{t('filter')}</span>
         {PROJECT_TYPES.map(({ type, icon, color }) => {
           const count = (projectList ?? []).filter(p => p.structureType === type).length;
           return (
@@ -773,7 +804,7 @@ export default function BimProjectList({
             className="flex items-center gap-1 px-2 py-1 rounded-full text-xs transition"
             style={{ border: "1px solid #253347", color: TB.text2 }}
           >
-            ✕ 초기화
+            {t('resetFilter')}
           </button>
         )}
       </div>
@@ -799,14 +830,14 @@ export default function BimProjectList({
             {search ? "🔍" : "🏗"}
           </div>
           <div className="text-lg font-semibold text-gray-400 mb-2">
-            {search ? `"${search}" 검색 결과 없음` : "프로젝트가 없습니다"}
+            {search ? t('searchEmpty', { search }) : t('noProjects')}
           </div>
           <div className="text-sm" style={{ color: TB.text2 }}>
             {search
-              ? "다른 검색어를 입력하거나 필터를 초기화하세요"
+              ? t('searchEmptyHint')
               : <>
-                  "+ 새 프로젝트" 버튼으로 첫 BIM 프로젝트를 만들어보세요 <br />
-                  <span className="opacity-60">교량(Bridge) 또는 건물(Building) 유형을 선택할 수 있습니다</span>
+                  {t('noProjectsHint')} <br />
+                  <span className="opacity-60">{t('bridgeOrBuilding')}</span>
                 </>
             }
           </div>
@@ -816,7 +847,7 @@ export default function BimProjectList({
               className="mt-4 px-4 py-2 rounded-lg text-sm transition"
               style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
             >
-              필터 초기화
+              {t('resetFilterBtn')}
             </button>
           )}
         </div>

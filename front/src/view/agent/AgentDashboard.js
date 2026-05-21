@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useT } from '../../i18n/LanguageContext';
 import {
   LineChart, Line,
   BarChart, Bar, Cell,
@@ -10,36 +11,18 @@ import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
 
 const API_CHAT = '/api/chat';
 
-// ────────────────────────────────────────────────────
-// Agent capabilities list
-// ────────────────────────────────────────────────────
-const CAPABILITIES = [
-  { icon: '🌡', title: 'Sensor Data Query', desc: 'Real-time temperature/humidity status and history analysis' },
-  { icon: '📊', title: 'Data Visualization',   desc: 'Display query results instantly as line/area/bar charts' },
-  { icon: '🏗', title: 'BIM Element Creation',   desc: 'Create/modify/delete columns, beams, walls, slabs via natural language' },
-  { icon: '📋', title: 'BIM Project Query', desc: 'Interactive query of project list, member count, and type statistics' },
-  { icon: '🚜', title: 'Simulation Control', desc: 'Control excavator pose, angle, position, and presets via natural language' },
-  { icon: '🖼', title: 'Image Analysis',     desc: 'Upload photos and analyze content with AI vision model' },
-  { icon: '🎤', title: 'Voice Chat',       desc: 'Ask questions via microphone and listen to answers via TTS' },
-  { icon: '📄', title: 'Document Export',   desc: 'Download conversation, sensor, and BIM data as CSV/TXT' },
-];
-
 const ELEMENT_TYPE_KOR = {
   IfcColumn: 'Column', IfcBeam: 'Beam', IfcWall: 'Wall', IfcSlab: 'Slab', IfcPier: 'Pier',
 };
 const ELEMENT_COLORS = ['#2196f3', '#4caf50', '#ff9800', '#e91e63', '#9c27b0', '#00bcd4'];
 
-const METRIC_OPTIONS = [
-  { value: 'both',        label: 'Temp + Humidity' },
-  { value: 'temperature', label: 'Temp only' },
-  { value: 'humidity',    label: 'Humidity only' },
-];
 const COUNT_OPTIONS = [10, 20, 50, 100];
 
 // ────────────────────────────────────────────────────
 // Main component
 // ────────────────────────────────────────────────────
 export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject, agentAvailable }) {
+  const t = useT('agent');
   // ── Chat state ──
   const [messages, setMessages] = useState([
     {
@@ -166,7 +149,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   }, [ttsEnabled]);
 
   const toggleListening = () => {
-    if (!recognitionRef.current) { alert('This browser does not support speech recognition.'); return; }
+    if (!recognitionRef.current) { alert(t('speechNotSupported')); return; }
     if (isListening) { recognitionRef.current.stop(); }
     else { recognitionRef.current.start(); setIsListening(true); }
   };
@@ -202,7 +185,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     const text = input.trim();
     if ((!text && !imageBase64) || loading) return;
 
-    const userContent = text || 'Please analyze this image.';
+    const userContent = text || t('imageAnalyze');
     setMessages(prev => [...prev, { role: 'user', content: userContent, intent: null, image: imagePreview }]);
     setInput('');
     const capturedImage = imageBase64;
@@ -261,7 +244,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
       }
     } catch {
       setMessages(prev => [...prev, {
-        role: 'assistant', content: 'An error occurred. Please try again later.', intent: 'chat',
+        role: 'assistant', content: t('errorMsg'), intent: 'chat',
       }]);
     } finally {
       setLoading(false);
@@ -270,7 +253,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 
   const clearHistory = async () => {
     await AxiosCustom.delete(`${API_CHAT}/history/${sessionId}`).catch(() => {});
-    setMessages([{ role: 'assistant', content: 'Conversation history cleared. Start a new conversation!', intent: 'chat' }]);
+    setMessages([{ role: 'assistant', content: t('clearHistory'), intent: 'chat' }]);
   };
 
   const exportChat = () => {
@@ -319,8 +302,8 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-4">
         <span className="text-5xl opacity-30">🤖</span>
-        <p className="text-gray-400 font-semibold">Local PC LLM Not Available</p>
-        <p className="text-gray-600 text-sm">Local PC LLM is not currently in use. Please use it later.</p>
+        <p className="text-gray-400 font-semibold">{t('llmOffline')}</p>
+        <p className="text-gray-600 text-sm">{t('llmOfflineDesc')}</p>
       </div>
     );
   }
@@ -331,19 +314,19 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
       <div className="flex items-center gap-3 mb-3 px-1">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-accent-green animate-pulse" />
-          <span className="text-sm font-semibold text-gray-200">AI Agent Studio</span>
+          <span className="text-sm font-semibold text-gray-200">{t('agentStudio')}</span>
         </div>
         {selectedProject && (
           <span className="text-xs text-accent-blue bg-[#1e3a5f] border border-[#2a5080] px-2 py-0.5 rounded-full truncate max-w-[120px]">
             BIM: {selectedProject.projectName}
           </span>
         )}
-        <span className="text-xs text-gray-500 ml-auto hidden sm:inline">Voice · Image · Data Query · BIM Creation</span>
+        <span className="text-xs text-gray-500 ml-auto hidden sm:inline">{t('capabilities')}</span>
       </div>
 
       {/* Mobile panel tab switch */}
       <div className="lg:hidden flex gap-1 mb-3 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
-        {[{ id: 'chat', label: '💬 Chat' }, { id: 'tools', label: '🛠 Tools' }].map(({ id, label }) => (
+        {[{ id: 'chat', label: t('chatTab') }, { id: 'tools', label: t('tools') }].map(({ id, label }) => (
           <button
             key={id}
             onClick={() => setMobilePanel(id)}
@@ -366,7 +349,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
         <div className={`flex-col flex-1 min-w-0 bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden ${mobilePanel === 'chat' ? 'flex' : 'hidden lg:flex'}`}>
           {/* Chat header */}
           <div className="flex items-center justify-between px-4 py-3 bg-[#162032] border-b border-[#253347]">
-            <span className="text-sm font-semibold text-gray-200">Chat</span>
+            <span className="text-sm font-semibold text-gray-200">{t('chat')}</span>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setTtsEnabled(v => !v)}
@@ -376,10 +359,10 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
                     : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
-                🔊 {ttsEnabled ? 'TTS On' : 'TTS'}
+                🔊 {ttsEnabled ? t('ttsOn') : t('tts')}
               </button>
               <button onClick={clearHistory} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
-                Reset
+                {t('reset')}
               </button>
             </div>
           </div>
@@ -409,7 +392,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           {/* Quick prompts */}
           <div className="px-4 pt-3 bg-[#162032] border-t border-[#253347]">
             <div className="flex flex-wrap gap-1.5">
-              {QUICK_PROMPTS.map(q => (
+              {[t('quickShowTemp'), t('quickBimList'), t('quickMemberCount'), t('quickAddColumn')].map(q => (
                 <button
                   key={q}
                   onClick={() => setInput(q)}
@@ -432,7 +415,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
               >📎</button>
               <button
                 onClick={toggleListening}
-                title={isListening ? 'Stop recording' : 'Voice input'}
+                title={isListening ? t('stopRecording') : t('voiceInput')}
                 className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all text-base shrink-0 ${
                   isListening
                     ? 'bg-red-600/30 text-red-400 border border-red-600/50 animate-pulse'
@@ -444,14 +427,14 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={isListening ? 'Listening...' : 'Type a message or speak...'}
+                placeholder={isListening ? t('listening') : t('typeOrSpeak')}
                 className="flex-1 bg-[#253347] text-gray-200 text-sm rounded-xl px-4 py-2.5 outline-none placeholder-gray-500 focus:ring-2 focus:ring-accent-blue/50"
               />
               <button
                 onClick={sendMessage}
                 disabled={loading || (!input.trim() && !imageBase64)}
                 className="px-5 py-2.5 rounded-xl bg-accent-blue text-white text-sm font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors shrink-0"
-              >Send</button>
+              >{t('send')}</button>
             </div>
           </div>
         </div>
@@ -461,10 +444,10 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           {/* Tabs */}
           <div className="flex border-b border-[#253347]">
             {[
-              { id: 'data',   label: '📊 Sensor' },
-              { id: 'bim',    label: '🏗 BIM'  },
-              { id: 'caps',   label: '🧠 Capabilities'  },
-              { id: 'export', label: '📄 Export' },
+              { id: 'data',   label: t('dataTab') },
+              { id: 'bim',    label: t('bimTab')  },
+              { id: 'caps',   label: t('capsTab')  },
+              { id: 'export', label: t('exportTab') },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -538,23 +521,30 @@ function DataPanel({
   selectedCount, setSelectedCount,
   onQuery,
 }) {
+  const t = useT('agent');
   const showTemp = selectedMetric === 'both' || selectedMetric === 'temperature';
   const showHum  = selectedMetric === 'both' || selectedMetric === 'humidity';
+
+  const METRIC_OPTIONS = [
+    { value: 'both',        label: t('tempHumidity') },
+    { value: 'temperature', label: t('tempOnly') },
+    { value: 'humidity',    label: t('humOnly') },
+  ];
 
   return (
     <div className="p-3 space-y-3">
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-2">
-        <KpiCard label="Current Temp" value={latestSensor?.temperature} unit="°C" color="#2196f3" />
-        <KpiCard label="Current Humidity" value={latestSensor?.humidity}    unit="%"  color="#4caf50" />
+        <KpiCard label={t('currentTemp')} value={latestSensor?.temperature} unit="°C" color="#2196f3" />
+        <KpiCard label={t('currentHumidity')} value={latestSensor?.humidity}    unit="%"  color="#4caf50" />
       </div>
 
       {/* Data query controls */}
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] space-y-3">
-        <p className="text-xs font-semibold text-gray-300">Data Query</p>
+        <p className="text-xs font-semibold text-gray-300">{t('dataQuery')}</p>
 
         <div>
-          <p className="text-xs text-gray-500 mb-1.5">Query Items</p>
+          <p className="text-xs text-gray-500 mb-1.5">{t('queryItems')}</p>
           <div className="flex gap-1 flex-wrap">
             {METRIC_OPTIONS.map(opt => (
               <button
@@ -573,7 +563,7 @@ function DataPanel({
         </div>
 
         <div>
-          <p className="text-xs text-gray-500 mb-1.5">Data Count</p>
+          <p className="text-xs text-gray-500 mb-1.5">{t('dataCount')}</p>
           <div className="flex gap-1">
             {COUNT_OPTIONS.map(n => (
               <button
@@ -597,12 +587,12 @@ function DataPanel({
           className="w-full py-2 rounded-xl bg-accent-blue text-white text-xs font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors flex items-center justify-center gap-1.5"
         >
           {loading ? (
-            <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />Querying...</>
-          ) : <>📊 Query &amp; Generate Chart</>}
+            <><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />{t('querying')}</>
+          ) : <>{t('queryChart')}</>}
         </button>
 
         {lastFetched && (
-          <p className="text-xs text-gray-600 text-right">Last fetched: {lastFetched}</p>
+          <p className="text-xs text-gray-600 text-right">{t('lastFetched')} {lastFetched}</p>
         )}
       </div>
 
@@ -610,7 +600,7 @@ function DataPanel({
       {sensorLogs && sensorLogs.length > 0 && (
         <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
           <p className="text-xs font-semibold text-gray-400 mb-3">
-            🌡 Sensor History — Latest {sensorLogs.length} records
+            {t('sensorHistory', { n: sensorLogs.length })}
           </p>
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={sensorLogs} margin={{ top: 4, right: 8, bottom: 4, left: -20 }}>
@@ -645,8 +635,8 @@ function DataPanel({
       {/* Empty state guidance */}
       {!loading && sensorLogs.length === 0 && (
         <p className="text-xs text-gray-500 text-center py-6">
-          Select a query item above and click [Query &amp; Generate Chart].
-          <br /><span className="opacity-60">Or say "Show temperature graph" in the chat.</span>
+          {t('queryHint')}
+          <br /><span className="opacity-60">{t('chatHint')}</span>
         </p>
       )}
     </div>
@@ -670,9 +660,20 @@ function KpiCard({ label, value, unit, color }) {
 // Capabilities panel
 // ────────────────────────────────────────────────────
 function CapsPanel() {
+  const t = useT('agent');
+  const CAPABILITIES = [
+    { icon: '🌡', title: t('cap1Title'), desc: t('cap1Desc') },
+    { icon: '📊', title: t('cap2Title'), desc: t('cap2Desc') },
+    { icon: '🏗', title: t('cap3Title'), desc: t('cap3Desc') },
+    { icon: '📋', title: t('cap4Title'), desc: t('cap4Desc') },
+    { icon: '🚜', title: t('cap5Title'), desc: t('cap5Desc') },
+    { icon: '🖼', title: t('cap6Title'), desc: t('cap6Desc') },
+    { icon: '🎤', title: t('cap7Title'), desc: t('cap7Desc') },
+    { icon: '📄', title: t('cap8Title'), desc: t('cap8Desc') },
+  ];
   return (
     <div className="p-3 space-y-2">
-      <p className="text-xs text-gray-500 mb-3">What this agent can do:</p>
+      <p className="text-xs text-gray-500 mb-3">{t('capsTitle')}</p>
       {CAPABILITIES.map((cap, i) => (
         <div key={i} className="flex gap-3 items-start bg-[#162032] rounded-xl px-3 py-3 border border-[#253347] hover:border-accent-blue/40 transition-colors">
           <span className="text-xl shrink-0">{cap.icon}</span>
@@ -694,21 +695,22 @@ function ExportPanel({
   onExportBimCsv, onExportBimExcel, onExportBimPdf,
   messageCount, sensorCount, bimProjectName, bimExporting,
 }) {
-  const bimDesc = bimProjectName ? `${bimProjectName}` : 'Select a project from the BIM tab';
+  const t = useT('agent');
+  const bimDesc = bimProjectName ? `${bimProjectName}` : t('selectProjectInBimTab');
   return (
     <div className="p-4 space-y-3">
-      <p className="text-xs text-gray-500 mb-1">Download conversation and data as files.</p>
+      <p className="text-xs text-gray-500 mb-1">{t('exportTitle')}</p>
 
       {/* Chat / Sensor */}
-      <ExportItem icon="💬" title="Export Chat" desc={`Current chat ${messageCount} messages → TXT`} label="Download" onClick={onExportChat} disabled={messageCount === 0} />
-      <ExportItem icon="🌡" title="Sensor Data CSV" desc={`Queried sensor logs ${sensorCount} records`} label="CSV" onClick={onExportSensor} disabled={sensorCount === 0} />
+      <ExportItem icon="💬" title={t('exportChat')} desc={t('exportChatDesc', { n: messageCount })} label={t('download')} onClick={onExportChat} disabled={messageCount === 0} />
+      <ExportItem icon="🌡" title={t('sensorCsv')} desc={t('sensorCsvDesc', { n: sensorCount })} label={t('csv')} onClick={onExportSensor} disabled={sensorCount === 0} />
 
       {/* BIM quantity report */}
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] space-y-2">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-lg">🏗</span>
           <div>
-            <p className="text-xs font-semibold text-gray-200">BIM Member Export</p>
+            <p className="text-xs font-semibold text-gray-200">{t('bimMemberExport')}</p>
             <p className="text-xs text-gray-500">{bimDesc}</p>
           </div>
         </div>
@@ -719,7 +721,7 @@ function ExportPanel({
             className="flex-1 text-xs px-2 py-1.5 rounded-lg bg-[#253347] text-gray-300 border border-[#334155]
                        hover:bg-[#2d4060] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            📋 CSV
+            📋 {t('csv')}
           </button>
           <button
             onClick={onExportBimExcel}
@@ -727,7 +729,7 @@ function ExportPanel({
             className="flex-1 text-xs px-2 py-1.5 rounded-lg bg-emerald-800/40 text-emerald-300 border border-emerald-700/50
                        hover:bg-emerald-700/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            📊 Quantity Sheet
+            {t('quantitySheet')}
           </button>
           <button
             onClick={onExportBimPdf}
@@ -735,19 +737,19 @@ function ExportPanel({
             className="flex-1 text-xs px-2 py-1.5 rounded-lg bg-purple-800/40 text-purple-300 border border-purple-700/50
                        hover:bg-purple-700/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            {bimExporting ? '⏳ Generating...' : '📄 PDF Drawing'}
+            {bimExporting ? t('generating') : t('pdfDrawing')}
           </button>
         </div>
       </div>
 
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347] mt-1">
-        <p className="text-xs text-gray-400 font-semibold mb-2">💡 Tips</p>
+        <p className="text-xs text-gray-400 font-semibold mb-2">{t('tips')}</p>
         <ul className="text-xs text-gray-500 space-y-1.5 list-disc list-inside">
-          <li>Select a project from the BIM tab to download Quantity Sheet / PDF</li>
-          <li>Quantity Sheet (Excel): Summary + full member list in 2 sheets</li>
-          <li>PDF Drawing: Report + 3D view screenshot (when using BIM editor)</li>
-          <li>🎤 Use the microphone button for voice questions</li>
-          <li>📎 Attach an image and request AI analysis</li>
+          <li>{t('tip1')}</li>
+          <li>{t('tip2')}</li>
+          <li>{t('tip3')}</li>
+          <li>{t('tip4')}</li>
+          <li>{t('tip5')}</li>
         </ul>
       </div>
     </div>
@@ -776,6 +778,7 @@ function ExportItem({ icon, title, desc, label, onClick, disabled }) {
 // BIM panel
 // ────────────────────────────────────────────────────
 function BimPanel({ projects, stats, total, targetProject, loading, onSelectProject }) {
+  const t = useT('agent');
   const TYPE_COLORS = {
     IfcColumn: '#2196f3', IfcBeam: '#4caf50', IfcWall: '#ff9800',
     IfcSlab: '#e91e63', IfcPier: '#9c27b0',
@@ -789,9 +792,9 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
   return (
     <div className="p-3 space-y-3">
       <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
-        <p className="text-xs font-semibold text-gray-300 mb-2">🏗 Project List ({projects.length})</p>
+        <p className="text-xs font-semibold text-gray-300 mb-2">{t('projectList', { n: projects.length })}</p>
         {projects.length === 0 ? (
-          <p className="text-xs text-gray-500 text-center py-3">No projects found.<br /><span className="opacity-60">Ask "Show my BIM project list"</span></p>
+          <p className="text-xs text-gray-500 text-center py-3">{t('noProjects')}<br /><span className="opacity-60">{t('askBimList')}</span></p>
         ) : (
           <div className="space-y-1.5 max-h-44 overflow-y-auto">
             {projects.map(p => {
@@ -805,7 +808,7 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
                     <p className="text-xs font-medium text-gray-200 truncate">{p.projectName}</p>
                     <p className="text-xs text-gray-500">{p.structureType}</p>
                   </div>
-                  {isSelected && <span className="text-xs text-accent-blue shrink-0">Selected</span>}
+                  {isSelected && <span className="text-xs text-accent-blue shrink-0">{t('selected')}</span>}
                 </button>
               );
             })}
@@ -816,10 +819,10 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
       {targetProject && (
         <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-300">📊 {targetProject.projectName} Member Stats</p>
+            <p className="text-xs font-semibold text-gray-300">{t('memberStats', { name: targetProject.projectName })}</p>
             {loading
               ? <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" />
-              : <span className="text-xs text-gray-500">Total {total}</span>}
+              : <span className="text-xs text-gray-500">{t('total', { n: total })}</span>}
           </div>
 
           {!loading && stats.length > 0 && (
@@ -849,14 +852,14 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
             </>
           )}
           {!loading && stats.length === 0 && (
-            <p className="text-xs text-gray-500 text-center py-3">No member data available.</p>
+            <p className="text-xs text-gray-500 text-center py-3">{t('noMemberData')}</p>
           )}
         </div>
       )}
 
       {!targetProject && (
         <p className="text-xs text-gray-500 text-center py-4">
-          Select a project above<br />to view member statistics.
+          {t('selectProjectForStats')}
         </p>
       )}
     </div>
@@ -866,15 +869,16 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
 // ────────────────────────────────────────────────────
 // Message bubble
 // ────────────────────────────────────────────────────
-const INTENT_BADGE = {
-  rag_db:      { label: 'Data Query',     color: 'text-green-400 bg-green-900/40 border-green-800/50'     },
-  bim_builder: { label: 'BIM Operation', color: 'text-blue-400 bg-blue-900/40 border-blue-800/50'       },
-  bim_query:   { label: 'BIM Query',     color: 'text-cyan-400 bg-cyan-900/40 border-cyan-800/50'        },
-  vision:      { label: 'Image Analysis', color: 'text-purple-400 bg-purple-900/40 border-purple-800/50' },
-  chat: null,
-};
 
 function AgentMessageBubble({ msg }) {
+  const t = useT('agent');
+  const INTENT_BADGE = {
+    rag_db:      { label: t('intentDataQuery'),     color: 'text-green-400 bg-green-900/40 border-green-800/50'     },
+    bim_builder: { label: t('intentBimOperation'),  color: 'text-blue-400 bg-blue-900/40 border-blue-800/50'       },
+    bim_query:   { label: t('intentBimQuery'),      color: 'text-cyan-400 bg-cyan-900/40 border-cyan-800/50'        },
+    vision:      { label: t('intentImageAnalysis'), color: 'text-purple-400 bg-purple-900/40 border-purple-800/50' },
+    chat: null,
+  };
   const isUser = msg.role === 'user';
   const badge = INTENT_BADGE[msg.intent];
 
@@ -911,6 +915,7 @@ function AgentMessageBubble({ msg }) {
 // Sensor inline chart (inside chat bubble)
 // ────────────────────────────────────────────────────
 function SensorInlineChart({ sensorData }) {
+  const t = useT('agent');
   const { sensor = [], latest, alerts = [] } = sensorData;
 
   const sensorRows = sensor.map(r => ({
@@ -942,7 +947,7 @@ function SensorInlineChart({ sensorData }) {
       {/* Sensor area chart */}
       {sensorRows.length > 1 && (
         <div className="bg-[#162032] rounded-xl p-3 border border-[#253347]">
-          <p className="text-xs font-semibold text-gray-400 mb-2">🌡 Temp/Humidity History ({sensorRows.length} records)</p>
+          <p className="text-xs font-semibold text-gray-400 mb-2">{t('sensorHistory', { n: sensorRows.length })}</p>
           <ResponsiveContainer width="100%" height={160}>
             <AreaChart data={sensorRows} margin={{ top: 4, right: 8, bottom: 4, left: -24 }}>
               <defs>
@@ -997,6 +1002,7 @@ function SensorInlineChart({ sensorData }) {
 // BIM inline summary
 // ────────────────────────────────────────────────────
 function BimInlineSummary({ bimData }) {
+  const t = useT('agent');
   const { projects, stats, total } = bimData;
   const TYPE_COLORS = {
     IfcColumn: '#2196f3', IfcBeam: '#4caf50', IfcWall: '#ff9800',
@@ -1008,7 +1014,7 @@ function BimInlineSummary({ bimData }) {
       {projects && projects.length > 0 && (
         <div className="bg-[#162032] rounded-xl border border-[#253347] overflow-hidden">
           <div className="px-3 py-2 border-b border-[#253347]">
-            <span className="text-xs font-semibold text-gray-300">🏗 BIM Projects ({projects.length})</span>
+            <span className="text-xs font-semibold text-gray-300">{t('projectList', { n: projects.length })}</span>
           </div>
           <div className="divide-y divide-[#253347]">
             {projects.slice(0, 5).map(p => (
@@ -1019,7 +1025,7 @@ function BimInlineSummary({ bimData }) {
               </div>
             ))}
             {projects.length > 5 && (
-              <div className="px-3 py-1.5 text-xs text-gray-500 text-center">...and {projects.length - 5} more</div>
+              <div className="px-3 py-1.5 text-xs text-gray-500 text-center">{t('moreProjects', { n: projects.length - 5 })}</div>
             )}
           </div>
         </div>
@@ -1028,7 +1034,7 @@ function BimInlineSummary({ bimData }) {
       {stats && stats.length > 0 && (
         <div className="bg-[#162032] rounded-xl border border-[#253347] overflow-hidden">
           <div className="px-3 py-2 border-b border-[#253347]">
-            <span className="text-xs font-semibold text-gray-300">📊 Member Stats — Total {total || 0}</span>
+            <span className="text-xs font-semibold text-gray-300">📊 {t('total', { n: total || 0 })}</span>
           </div>
           <div className="divide-y divide-[#253347]">
             {stats.map(s => {
@@ -1052,13 +1058,14 @@ function BimInlineSummary({ bimData }) {
 }
 
 function AgentTypingIndicator() {
+  const t = useT('agent');
   return (
     <div className="flex justify-start">
       <div className="bg-[#253347] rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center">
         {[0, 1, 2].map(i => (
           <div key={i} className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
         ))}
-        <span className="text-xs text-gray-500 ml-1">AI processing...</span>
+        <span className="text-xs text-gray-500 ml-1">{t('aiProcessing')}</span>
       </div>
     </div>
   );
@@ -1076,6 +1083,3 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-const QUICK_PROMPTS = [
-  'Show temperature graph', 'My BIM project list', 'Tell me the member count', 'Add column',
-];
