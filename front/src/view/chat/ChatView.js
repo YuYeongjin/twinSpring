@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import AxiosCustom from '../../axios/AxiosCustom';
+import { useT } from '../../i18n/LanguageContext';
 
 const API_BASE = `/api/chat`;
 
@@ -9,6 +10,7 @@ const API_BASE = `/api/chat`;
  * - Supports voice input (STT) / voice output (TTS) / image upload
  */
 export default function ChatView({ selectedProject, onBimUpdate, selectedSimulationProject }) {
+  const t = useT('chat');
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -94,7 +96,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     const text = input.trim();
     if ((!text && !imageBase64) || loading) return;
 
-    const userContent = text || 'Please analyze this image.';
+    const userContent = text || t('imageAnalyze');
     const userMsg = {
       role: 'user',
       content: userContent,
@@ -138,7 +140,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     } catch {
       setMessages(prev => [
         ...prev,
-        { role: 'assistant', content: 'An error occurred. Please try again later.', intent: 'chat' },
+        { role: 'assistant', content: t('errorMsg'), intent: 'chat' },
       ]);
     } finally {
       setLoading(false);
@@ -150,7 +152,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     setMessages([
       {
         role: 'assistant',
-        content: 'Chat history has been cleared. Start a new conversation!',
+        content: t('clearHistory'),
         intent: 'chat',
       },
     ]);
@@ -204,7 +206,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
                 className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
                 title="Clear chat"
               >
-                Reset
+                {t('reset')}
               </button>
               {/* Mobile-only close button */}
               <button
@@ -276,7 +278,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
               {/* Voice input */}
               <button
                 onClick={toggleListening}
-                title={isListening ? 'Stop recording' : 'Voice input'}
+                title={isListening ? t('stopRecording') : t('voiceInput')}
                 className={`text-lg shrink-0 transition-colors ${isListening ? 'text-red-400 animate-pulse' : 'text-gray-400 hover:text-gray-200'}`}
               >
                 🎤
@@ -287,7 +289,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={isListening ? 'Listening...' : 'Type a message...'}
+                placeholder={isListening ? t('listening') : t('typeOrSpeak')}
                 className="flex-1 bg-space-700 text-gray-200 text-sm rounded-lg px-3 py-2 outline-none placeholder-gray-500 focus:ring-1 focus:ring-accent-blue"
               />
               <button
@@ -295,7 +297,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
                 disabled={loading || (!input.trim() && !imageBase64)}
                 className="px-4 py-2 rounded-lg bg-accent-blue text-white text-sm font-medium disabled:opacity-40 hover:bg-blue-500 transition-colors"
               >
-                Send
+                {t('send')}
               </button>
             </div>
           </div>

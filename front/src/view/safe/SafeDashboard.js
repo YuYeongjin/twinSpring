@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { WS_BASE } from '../../axios/AxiosCustom';
+import { useT } from '../../i18n/LanguageContext';
 
 const DETECT_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
 
@@ -46,6 +47,7 @@ function buildSceneObjects(detections, imgW = 640, imgH = 480) {
 
 function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onError,
   makeCaptureRef, onStreamingChange, stopDetectRef }) {
+  const t = useT('safe');
   const videoRef = useRef(null);
   const [streaming, setStreaming] = useState(false);
   const [liveDetecting, setLiveDetecting] = useState(false);
@@ -57,7 +59,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
-    } catch (e) { setCamError('카메라 접근 실패: ' + e.message); }
+    } catch (e) { setCamError(t('cameraError') + e.message); }
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -110,7 +112,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
         if (!data) await new Promise(r => setTimeout(r, 500));
         else { onDetectResult?.(data); await new Promise(r => setTimeout(r, 5000)); }
       } catch (e) {
-        onError?.('탐지 오류: ' + e.message);
+        onError?.(t('detectionError') + e.message);
         await new Promise(r => setTimeout(r, 5000));
       }
     }
@@ -119,18 +121,18 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
 
   const canDetect = streaming;
   const serverColor = detectAvailable === true ? '#22c55e' : detectAvailable === false ? '#f87171' : '#6b7280';
-  const serverLabel = detectAvailable === true ? 'online' : detectAvailable === false ? 'offline' : 'checking…';
+  const serverLabel = detectAvailable === true ? t('online') : detectAvailable === false ? t('offline') : t('checking');
 
   return (
     <>
       {/* 헤더 */}
       <div className="px-4 py-2 border-b flex items-center gap-3 shrink-0 flex-wrap"
         style={{ borderColor: '#253347' }}>
-        <span className="text-sm font-semibold text-gray-300">Live Webcam</span>
+        <span className="text-sm font-semibold text-gray-300">{t('webcamTitle')}</span>
         <span className="w-2 h-2 rounded-full shrink-0"
           style={{ backgroundColor: streaming ? '#22c55e' : '#6b7280' }} />
         <span className="text-xs" style={{ color: streaming ? '#22c55e' : '#6b7280' }}>
-          {streaming ? 'ON' : 'OFF'}
+          {streaming ? t('on') : t('off')}
         </span>
         {liveDetecting && (
           <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
@@ -143,14 +145,14 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
           detect: {serverLabel}
         </span>
         {detectAvailable === false && (
-          <button onClick={checkDetectServer} className="text-xs text-blue-400 hover:text-blue-300">retry</button>
+          <button onClick={checkDetectServer} className="text-xs text-blue-400 hover:text-blue-300">{t('retry')}</button>
         )}
         <div className="ml-auto flex gap-2">
           {!streaming
             ? <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg"
-              style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>Start</button>
+              style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>{t('startCamera')}</button>
             : <button onClick={stopCamera} className="text-xs px-3 py-1 rounded-lg"
-              style={{ background: '#2a1010', border: '1px solid #ef4444', color: '#ef4444' }}>Stop</button>
+              style={{ background: '#2a1010', border: '1px solid #ef4444', color: '#ef4444' }}>{t('stopCamera')}</button>
           }
           <button onClick={toggleLiveDetect} disabled={!canDetect}
             className="text-xs px-3 py-1 rounded-lg transition"
@@ -160,7 +162,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
               color: liveDetecting ? '#fb923c' : canDetect ? '#93c5fd' : '#4b5563',
               cursor: canDetect ? 'pointer' : 'not-allowed',
             }}>
-            {liveDetecting ? '■ Stop Detect' : '▶ Live Detect'}
+            {liveDetecting ? t('stopDetectBtn') : t('liveDetectBtn')}
           </button>
         </div>
       </div>
@@ -172,7 +174,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
         {!streaming && !camError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <span className="text-4xl opacity-30">📷</span>
-            <p className="text-sm text-gray-600">The camera is off</p>
+            <p className="text-sm text-gray-600">{t('cameraOff')}</p>
           </div>
         )}
         {camError && (
@@ -181,7 +183,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
             <p className="text-xs text-red-400">{camError}</p>
             <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg mt-1"
               style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>
-              Try again
+              {t('tryAgain')}
             </button>
           </div>
         )}
@@ -298,6 +300,15 @@ function ObjectBox({ position, size, cls, confidence }) {
   );
 }
 
+function NoObjectsDetectedText() {
+  const t = useT('safe');
+  return (
+    <p style={{ color: '#4b5563', fontSize: '13px', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+      {t('noObjectsDetected')}
+    </p>
+  );
+}
+
 function MadeScene({ objects }) {
   return (
     <>
@@ -310,9 +321,7 @@ function MadeScene({ objects }) {
       <primitive object={new THREE.GridHelper(24, 24, 0x1a3a5a, 0x0d1f2d)} />
       {objects.length === 0
         ? <Html center position={[0, 2, 0]}>
-          <p style={{ color: '#4b5563', fontSize: '13px', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
-            No Objects Detected
-          </p>
+          <NoObjectsDetectedText />
         </Html>
         : objects.map(obj => obj.isPerson
           ? <PersonFigure key={obj.id} {...obj} />
@@ -326,24 +335,25 @@ function MadeScene({ objects }) {
 // ── 3D 씬 패널 (우측 상단) ────────────────────────────────────────
 
 function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasDetections, camStreaming, isFallback, madeFallback }) {
+  const t = useT('safe');
   const hasMade = madeObjects !== null;
 
   const makeDisabled = !camStreaming || !hasDetections || making || makeCooldown;
-  const makeLabel = making ? '⏳ Creating…'
-    : makeCooldown ? '⏳ Wait for 5 seconds…'
-      : !hasDetections ? '⬡ Make (Detection required)'
-        : isFallback ? '⬡ Make (Default)'
-          : '⬡ Make';
-  const makeTip = !camStreaming ? 'Turn on the camera first'
-    : !hasDetections ? 'Please do Live Detect first'
-      : 'Generating 3D as a result of recent detection (5 seconds cool down)';
+  const makeLabel = making ? t('creating')
+    : makeCooldown ? t('waitCooldown')
+      : !hasDetections ? t('makeDetectionRequired')
+        : isFallback ? t('makeDefault')
+          : t('make');
+  const makeTip = !camStreaming ? t('cameraTip')
+    : !hasDetections ? t('detectTip')
+      : t('makeTip');
 
   return (
     <>
       {/* 헤더 */}
       <div className="px-4 py-2 border-b shrink-0 flex items-center gap-2 flex-wrap"
         style={{ borderColor: '#253347' }}>
-        <span className="text-sm font-semibold text-gray-300">🛡 Safe Viewer</span>
+        <span className="text-sm font-semibold text-gray-300">{t('safeViewer')}</span>
 
         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${dangerous ? 'animate-pulse' : ''}`}
           style={{
@@ -351,7 +361,7 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
             border: `1px solid ${dangerous ? '#ef4444' : '#22c55e'}`,
             color: dangerous ? '#ef4444' : '#22c55e',
           }}>
-          {dangerous ? '⚠ DANGER' : '✓ SAFE'}
+          {dangerous ? `⚠ ${t('danger')}` : `✓ ${t('safe')}`}
         </span>
 
         <button onClick={onMake} disabled={makeDisabled} title={makeTip}
@@ -367,13 +377,13 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
 
         {hasMade && !making && (
           <span className="text-xs text-blue-400">
-            {madeObjects.length > 0 ? `${madeObjects.length} created` : 'No detection'}
+            {madeObjects.length > 0 ? t('objectsCreated', { n: madeObjects.length }) : t('noDetectionResult')}
           </span>
         )}
         {(isFallback || madeFallback) && (
           <span className="text-xs px-2 py-0.5 rounded-full shrink-0"
             style={{ background: '#1e1000', border: '1px solid #d97706', color: '#d97706' }}>
-            ⚠ Default
+            {t('defaultBadge')}
           </span>
         )}
       </div>
@@ -392,6 +402,7 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
 // ── 로그 패널 (하단) ──────────────────────────────────────────────
 
 function LogPanel({ detectionHistory }) {
+  const t = useT('safe');
   const totalScans = detectionHistory.length;
   const dangerCount = detectionHistory.filter(h => h.dangerous).length;
   const helmetViolations = detectionHistory.filter(h => h.noHelmet).length;
@@ -399,10 +410,10 @@ function LogPanel({ detectionHistory }) {
   const lastEntry = detectionHistory[0];
 
   const STATS = [
-    { label: 'Scans', value: totalScans, color: '#60a5fa' },
-    { label: 'Danger', value: dangerCount, color: '#ef4444' },
-    { label: 'No Helmet', value: helmetViolations, color: '#f97316' },
-    { label: 'Restricted', value: areaViolations, color: '#a855f7' },
+    { label: t('scans'), value: totalScans, color: '#60a5fa' },
+    { label: t('dangerStat'), value: dangerCount, color: '#ef4444' },
+    { label: t('noHelmetStat'), value: helmetViolations, color: '#f97316' },
+    { label: t('restrictedStat'), value: areaViolations, color: '#a855f7' },
   ];
 
   function fmtTime(d) { return d.toLocaleTimeString('ko-KR', { hour12: false }); }
@@ -414,10 +425,10 @@ function LogPanel({ detectionHistory }) {
       {/* 통계 헤더 */}
       <div className="px-4 py-2 border-b flex items-center gap-3"
         style={{ borderColor: '#253347' }}>
-        <span className="text-sm font-semibold text-gray-300">📋 Detection Log</span>
+        <span className="text-sm font-semibold text-gray-300">{t('detectionLog')}</span>
         {lastEntry && (
           <span className="text-xs text-gray-600 ml-auto">
-            Updated {fmtTime(lastEntry.time)}
+            {t('logUpdated', { time: fmtTime(lastEntry.time) })}
           </span>
         )}
       </div>
@@ -438,7 +449,7 @@ function LogPanel({ detectionHistory }) {
       <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
         {detectionHistory.length === 0 ? (
           <div className="flex items-center justify-center text-xs text-gray-600 py-6">
-            Waiting for detection results…
+            {t('waitingDetection')}
           </div>
         ) : (
           detectionHistory.map((entry, i) => (
@@ -457,12 +468,12 @@ function LogPanel({ detectionHistory }) {
               <span className="flex-1 truncate" style={{ color: '#d1d5db' }}>
                 {entry.dangerous ? (
                   <>
-                    {entry.noHelmet && <span style={{ color: '#f97316' }}>No Helmet </span>}
-                    {entry.restricted && <span style={{ color: '#a855f7' }}>Restricted </span>}
+                    {entry.noHelmet && <span style={{ color: '#f97316' }}>{t('noHelmetLabel')} </span>}
+                    {entry.restricted && <span style={{ color: '#a855f7' }}>{t('restrictedLabel')} </span>}
                   </>
                 ) : (
                   <span style={{ color: '#4b5563' }}>
-                    {entry.count > 0 ? `${entry.count} detected` : 'Clear'}
+                    {entry.count > 0 ? t('detectedCount', { n: entry.count }) : t('clear')}
                   </span>
                 )}
               </span>
@@ -472,7 +483,7 @@ function LogPanel({ detectionHistory }) {
               {entry.fallback && (
                 <span className="shrink-0 text-xs px-1 rounded"
                   style={{ background: '#1e1000', border: '1px solid #d9770650', color: '#d97706' }}>
-                  basic
+                  {t('basic')}
                 </span>
               )}
             </div>
@@ -486,6 +497,7 @@ function LogPanel({ detectionHistory }) {
 // ── 메인 대시보드 ─────────────────────────────────────────────────
 
 export default function SafeDashboard() {
+  const t = useT('safe');
   const [safeEvent, setSafeEvent] = useState(null);
   const [lastResult, setLastResult] = useState(null);
   const [detectError, setDetectError] = useState('');
@@ -594,7 +606,7 @@ export default function SafeDashboard() {
           style={{ backgroundColor: '#3a0f0f', borderColor: '#ef4444' }}>
           <span className="text-xl">🚨</span>
           <div className="flex-1">
-            <p className="text-red-300 font-semibold">Danger Detected</p>
+            <p className="text-red-300 font-semibold">{t('dangerDetected')}</p>
             {safeEvent?.message && <p className="text-red-400 text-sm mt-0.5">{safeEvent.message}</p>}
           </div>
           <button onClick={() => setSafeEvent(null)} className="text-gray-500 hover:text-gray-300 text-lg">✕</button>
@@ -616,8 +628,8 @@ export default function SafeDashboard() {
           style={{ backgroundColor: '#1e1000', borderColor: '#d97706' }}>
           <span className="text-xl mt-0.5 shrink-0">⚠</span>
           <div className="flex-1 min-w-0">
-            <p className="text-amber-300 font-semibold text-sm">Developing Page</p>
-            <p className="text-amber-700 text-xs mt-0.5">Testing...</p>
+            <p className="text-amber-300 font-semibold text-sm">{t('developingPage')}</p>
+            <p className="text-amber-700 text-xs mt-0.5">{t('testing')}</p>
           </div>
           <button onClick={() => setDevNoticeDismissed(true)}
             className="text-gray-500 hover:text-gray-300 text-lg shrink-0 leading-none">✕</button>
@@ -630,11 +642,8 @@ export default function SafeDashboard() {
           style={{ backgroundColor: '#1e1000', borderColor: '#d97706' }}>
           <span className="text-xl mt-0.5 shrink-0">⚠</span>
           <div className="flex-1 min-w-0">
-            <p className="text-amber-300 font-semibold text-sm">Detect Server Offline</p>
-            <p className="text-amber-700 text-xs mt-0.5">
-              Enabling the Python Detect server enables YOLO-based precision detection.
-              Currently operating in Spring default color detection mode — may be less accurate.
-            </p>
+            <p className="text-amber-300 font-semibold text-sm">{t('detectServerOffline')}</p>
+            <p className="text-amber-700 text-xs mt-0.5">{t('detectServerOfflineDesc')}</p>
           </div>
           <button onClick={() => setOfflineNoticeDismissed(true)}
             className="text-gray-500 hover:text-gray-300 text-lg shrink-0 leading-none">✕</button>

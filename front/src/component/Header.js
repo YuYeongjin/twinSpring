@@ -1,17 +1,25 @@
 import { useEffect, useRef, useState } from "react";
+import { useLanguage, useT } from "../i18n/LanguageContext";
 
-const NAV_ITEMS = [
-  { id: "",                    label: "Home",       icon: "🏠" },
-  { id: "bim-projects",        label: "BIM",        icon: "🏗" },
-  { id: "simulation-projects", label: "Simulation", icon: "🚜" },
-  { id: "safe",                label: "Safe",       icon: "🦺" },
-  { id: "test",                label: "Test",       icon: "🧪" },
+const NAV_IDS = [
+  { id: "",                    key: "home",       icon: "🏠" },
+  { id: "bim-projects",        key: "bim",        icon: "🏗" },
+  { id: "simulation-projects", key: "simulation", icon: "🚜" },
+  { id: "safe",                key: "safe",       icon: "🦺" },
+  { id: "test",                key: "test",       icon: "🧪" },
 ];
 
+const LANGS = ['en', 'ko', 'ja'];
+
 export default function Header({ viewComponent, setViceComponent, agentAvailable }) {
+  const { lang, setLang } = useLanguage();
+  const t = useT('header');
+
   const [time, setTime] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+
+  const NAV_ITEMS = NAV_IDS.map(({ id, key, icon }) => ({ id, label: t(key), icon }));
 
   useEffect(() => {
     const update = () => {
@@ -88,7 +96,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
                   }}
                 >
                   <span className="text-base">{icon}</span>
-                  <span>{label}{disabled ? " (offline)" : ""}</span>
+                  <span>{label}{disabled ? " " + t('offline') : ""}</span>
                 </button>
               );
             })}
@@ -96,6 +104,24 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
         )}
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* Language switcher */}
+          <div className="hidden sm:flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-lg px-1 py-0.5">
+            {LANGS.map(l => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                className="px-2 py-0.5 rounded text-xs font-semibold transition-all"
+                style={{
+                  backgroundColor: lang === l ? "#1e3a5f" : "transparent",
+                  color: lang === l ? "#60a5fa" : "#8896a4",
+                  border: lang === l ? "1px solid #2a5080" : "1px solid transparent",
+                }}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
           {/* Clock — desktop only */}
           <div className="hidden sm:block text-xs sm:text-sm text-gray-400 whitespace-nowrap">
             KST {time}
@@ -107,7 +133,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
               onClick={() => setMenuOpen(v => !v)}
               className="md:hidden flex items-center justify-center w-9 h-9 rounded-lg transition-colors"
               style={{ backgroundColor: menuOpen ? "#1e3a5f" : "transparent", border: "1px solid #253347" }}
-              aria-label="Toggle Menu"
+              aria-label={t('toggleMenu')}
               aria-expanded={menuOpen}
             >
               <span className="text-gray-300 text-lg leading-none select-none">
@@ -138,13 +164,30 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
                 }}
               >
                 <span className="text-2xl w-8 text-center">{icon}</span>
-                <span className="flex-1 text-left text-base">{label}{disabled ? " (offline)" : ""}</span>
+                <span className="flex-1 text-left text-base">{label}{disabled ? " " + t('offline') : ""}</span>
                 {isActive && !disabled && (
                   <span className="w-2 h-2 rounded-full bg-accent-blue" />
                 )}
               </button>
             );
           })}
+          {/* Mobile language switcher */}
+          <div className="flex items-center gap-2 px-6 py-3 border-t border-[#1a2a3a]">
+            {LANGS.map(l => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                className="px-3 py-1 rounded text-xs font-semibold transition-all"
+                style={{
+                  backgroundColor: lang === l ? "#1e3a5f" : "transparent",
+                  color: lang === l ? "#60a5fa" : "#8896a4",
+                  border: lang === l ? "1px solid #2a5080" : "1px solid #253347",
+                }}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
           <div className="px-6 py-3 text-xs text-gray-500 border-t border-[#1a2a3a]">
             KST {time}
           </div>

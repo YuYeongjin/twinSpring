@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useT } from "../../i18n/LanguageContext";
 
 // ================================================================
 // 디자인 토큰
@@ -21,6 +22,7 @@ function isInvalidName(name) {
 // 인라인 이름 편집
 // ================================================================
 function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
+  const t = useT('simProjectList');
   const [value, setValue] = useState(isInvalidName(currentName) ? "" : currentName);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
@@ -51,7 +53,7 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
           if (e.key === "Enter") handleSave();
           if (e.key === "Escape") onCancel();
         }}
-        placeholder="Enter project name..."
+        placeholder={t('enterProjectName')}
         className="flex-1 px-2 py-1 rounded text-xs outline-none min-w-0"
         style={{ backgroundColor: "#0d1b2a", border: "1px solid #3b82f6", color: TB.text1 }}
       />
@@ -87,6 +89,7 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
 const DANGER = "#f44336";
 
 function ProjectCard({ item, onOpen, onRename, onDelete }) {
+  const t = useT('simProjectList');
   const [editing, setEditing] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [active, setActive] = useState(false);
@@ -125,7 +128,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
         <>
           {invalid && (
             <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: TB.warning }}>
-              ⚠ Please enter a name
+              {t('pleaseEnterName')}
             </div>
           )}
           <InlineNameEditor
@@ -148,7 +151,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
             className="text-xs px-2 py-0.5 rounded-full font-medium"
             style={{ backgroundColor: "#1a2a0a", color: "#f5a623", border: "1px solid #f5a62340" }}
           >
-            Excavator
+            {t('excavator')}
           </span>
         </div>
       )}
@@ -161,21 +164,21 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
             style={{ backgroundColor: '#1d4ed8', border: '1px solid #3b82f6', color: '#fff' }}
           >
-            Open
+            {t('open')}
           </button>
           <button
             onClick={e => { e.stopPropagation(); setEditing(true); setActive(false); }}
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
             style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
           >
-            Rename
+            {t('rename')}
           </button>
           <button
             onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
             style={{ backgroundColor: '#450a0a', border: `1px solid ${DANGER}`, color: DANGER }}
           >
-            Delete
+            {t('delete')}
           </button>
         </div>
       )}
@@ -183,21 +186,21 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
       {/* 삭제 확인 */}
       {!editing && showActions && confirmDelete && (
         <div onClick={e => e.stopPropagation()}>
-          <p className="text-xs mt-3 mb-2" style={{ color: TB.warning }}>Really delete?</p>
+          <p className="text-xs mt-3 mb-2" style={{ color: TB.warning }}>{t('reallyDelete')}</p>
           <div className="flex gap-1.5">
             <button
               onClick={e => { e.stopPropagation(); onDelete(item.projectId); }}
               className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
               style={{ backgroundColor: '#7f1d1d', border: `1px solid ${DANGER}`, color: '#fff' }}
             >
-              Delete
+              {t('deleteBtn')}
             </button>
             <button
               onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
               className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
               style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
             >
-              Cancel
+              {t('cancelBtn')}
             </button>
           </div>
         </div>
@@ -208,7 +211,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
           className="mt-3 text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1"
           style={{ backgroundColor: `${TB.warning}20`, color: TB.warning, border: `1px solid ${TB.warning}50` }}
         >
-          ⚠ No Name
+          {t('noNameBadge')}
         </div>
       )}
     </div>
@@ -219,6 +222,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
 // 신규 프로젝트 생성 폼
 // ================================================================
 function CreateProjectForm({ onClose, onCreate }) {
+  const t = useT('simProjectList');
   const [projectName, setProjectName] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -236,7 +240,7 @@ function CreateProjectForm({ onClose, onCreate }) {
     <div className={`${TB.card} p-6 mb-6`} style={{ borderLeft: "3px solid #f5a623" }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          Create New Project
+          {t('createNewProject')}
         </h3>
         <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition text-lg leading-none">
           ✕
@@ -246,14 +250,14 @@ function CreateProjectForm({ onClose, onCreate }) {
       <div className="flex flex-col gap-4 md:flex-row md:items-end">
         <div className="flex-1">
           <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
-            Project Name
+            {t('projectNameLabel')}
           </label>
           <input
             type="text"
             value={projectName}
             onChange={e => setProjectName(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSubmit()}
-            placeholder="Enter project name..."
+            placeholder={t('projectNamePlaceholder')}
             autoFocus
             className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
             style={{ backgroundColor: "#152030", border: "1px solid #253347", color: TB.text1 }}
@@ -270,7 +274,7 @@ function CreateProjectForm({ onClose, onCreate }) {
             cursor: !projectName.trim() || creating ? "not-allowed" : "pointer",
           }}
         >
-          {creating ? "Creating…" : "Create Project"}
+          {creating ? t('creating') : t('createProject')}
         </button>
       </div>
     </div>
@@ -288,6 +292,7 @@ export default function SimulationProjectList({
   onRenameProject,
   onDeleteProject,
 }) {
+  const t = useT('simProjectList');
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -305,16 +310,16 @@ export default function SimulationProjectList({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            🚜 Simulation Projects
+            {t('title')}
           </h2>
           <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-            Total <span className="text-white font-semibold">{projectList?.length ?? 0}</span> projects
+            {t('totalProjects', { n: projectList?.length ?? 0 })}
             {invalidCount > 0 && (
               <span
                 className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium"
                 style={{ backgroundColor: `${TB.warning}20`, color: TB.warning, border: `1px solid ${TB.warning}50` }}
               >
-                ⚠ No name {invalidCount}
+                {t('noNameCount', { n: invalidCount })}
               </span>
             )}
           </p>
@@ -329,7 +334,7 @@ export default function SimulationProjectList({
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search projects..."
+              placeholder={t('searchPlaceholder')}
               className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
               style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text1 }}
             />
@@ -343,7 +348,7 @@ export default function SimulationProjectList({
               border: "1px solid #f5a623",
             }}
           >
-            {showCreate ? "✕ Cancel" : "+ New Project"}
+            {showCreate ? t('cancel') : t('newProject')}
           </button>
         </div>
       </div>
@@ -363,10 +368,7 @@ export default function SimulationProjectList({
           style={{ backgroundColor: `${TB.warning}15`, border: `1px solid ${TB.warning}40`, color: TB.warning }}
         >
           <span className="text-lg">⚠</span>
-          <span>
-            <strong>{invalidCount}</strong> project{invalidCount > 1 ? 's have' : ' has'} no name set.
-            Click the name field on the card to rename.
-          </span>
+          <span>{t('noNameWarning', { n: invalidCount })}</span>
         </div>
       )}
 
@@ -387,12 +389,10 @@ export default function SimulationProjectList({
         <div className="flex flex-col items-center justify-center py-32 text-center">
           <div className="text-7xl mb-5">{search ? "🔍" : "🚜"}</div>
           <div className="text-lg font-semibold text-gray-400 mb-2">
-            {search ? `No results for "${search}"` : "No projects found"}
+            {search ? t('noResults', { search }) : t('noProjects')}
           </div>
           <div className="text-sm" style={{ color: TB.text2 }}>
-            {search
-              ? "Try a different keyword or clear the search"
-              : 'Click "+ New Project" to create your first simulation project'}
+            {search ? t('tryDifferentKeyword') : t('createFirst')}
           </div>
           {search && (
             <button
@@ -400,7 +400,7 @@ export default function SimulationProjectList({
               className="mt-4 px-4 py-2 rounded-lg text-sm transition"
               style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
             >
-              Clear Search
+              {t('clearSearch')}
             </button>
           )}
         </div>
