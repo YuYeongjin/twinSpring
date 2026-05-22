@@ -1,0 +1,64 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'yeongjin95/twin-agent'
+        DOCKER_REGISTRY = 'https://registry.hub.docker.com'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Lint') {
+            steps {
+                dir('agent') {
+                    sh '''
+                        pip install flake8 --quiet --break-system-packages 2>/dev/null \
+                            || pip install flake8 --quiet
+                        flake8 . \
+                            --exclude=__pycache__,chroma_db,.env \
+                            --max-line-length=120 \
+                            || true
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                dir('agent') {
+                    script {
+                        dockerImage = docker.build("${DOCKER_IMAGE}:${BUILD_NUMBER}")
+                    }
+                }
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                script {
+                    docker.withRegistry(DOCKER_REGISTRY, 'docker-hub-credentials') {
+                        dockerImage.push("${BUILD_NUMBER}")
+                        dockerImage.push('latest')
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh "docker rmi ${DOCKER_IMAGE}:${BUILD_NUMBER} || true"
+        }
+        success {
+            echo "[agent] 빌드 성공 - ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+        }
+        failure {
+            echo "[agent] 빌드 실패"
+        }
+    }
+}
