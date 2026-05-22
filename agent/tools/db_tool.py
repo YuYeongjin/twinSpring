@@ -1,16 +1,16 @@
-import pymysql
-from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+import psycopg2
+import psycopg2.extras
+from config import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
 
 
 def get_connection():
-    return pymysql.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        db=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        charset="utf8mb4",
-        cursorclass=pymysql.cursors.DictCursor,
+    return psycopg2.connect(
+        host=VECTOR_DB_HOST,
+        port=VECTOR_DB_PORT,
+        dbname=VECTOR_DB_NAME,
+        user=VECTOR_DB_USER,
+        password=VECTOR_DB_PASSWORD,
+        cursor_factory=psycopg2.extras.RealDictCursor,
     )
 
 
@@ -19,9 +19,9 @@ def query_sensor_data(limit: int = 10) -> list[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT * FROM SENSOR_DATA ORDER BY timestamp DESC LIMIT %s", (limit,)
+                'SELECT * FROM "SENSOR_DATA" ORDER BY timestamp DESC LIMIT %s', (limit,)
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
 
 
 def run_custom_query(sql: str, params: tuple = ()) -> list[dict]:
@@ -32,7 +32,7 @@ def run_custom_query(sql: str, params: tuple = ()) -> list[dict]:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
 
 
 def query_bim_projects() -> list[dict]:
@@ -44,7 +44,7 @@ def query_bim_projects() -> list[dict]:
                 "structure_type AS structureType, span_count AS spanCount "
                 "FROM bim_project ORDER BY project_name ASC"
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
 
 
 def query_bim_element_stats(project_id: str) -> list[dict]:
@@ -57,7 +57,7 @@ def query_bim_element_stats(project_id: str) -> list[dict]:
                 "GROUP BY element_type ORDER BY elementCount DESC",
                 (project_id,),
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
 
 
 def query_bim_elements(project_id: str, limit: int = 200) -> list[dict]:
@@ -72,7 +72,7 @@ def query_bim_elements(project_id: str, limit: int = 200) -> list[dict]:
                 "ORDER BY element_type, element_id LIMIT %s",
                 (project_id, limit),
             )
-            return cur.fetchall()
+            return [dict(row) for row in cur.fetchall()]
 
 
 def query_bim_total_count(project_id: str) -> int:

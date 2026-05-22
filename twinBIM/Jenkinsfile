@@ -45,16 +45,15 @@ pipeline {
             }
         }
 
-        stage('Publish (linux-arm64)') {
-            // Raspberry Pi 배포 타겟
+        stage('Publish (linux-x64)') {
             steps {
                 dir('twinBIM') {
                     sh '''
                         dotnet publish \
                             --configuration Release \
-                            --runtime linux-arm64 \
+                            --runtime linux-x64 \
                             --self-contained true \
-                            --output publish-arm64 \
+                            --output publish-amd64 \
                             /p:PublishSingleFile=true \
                             /p:PublishTrimmed=false
                     '''
@@ -66,10 +65,9 @@ pipeline {
             steps {
                 dir('twinBIM') {
                     script {
-                        // Dockerfile은 TARGETARCH=arm64 기준으로 publish-arm64/ 를 복사
                         dockerImage = docker.build(
                             "${DOCKER_IMAGE}:${BUILD_NUMBER}",
-                            "--build-arg TARGETARCH=arm64 ."
+                            "--build-arg TARGETARCH=amd64 ."
                         )
                     }
                 }
@@ -86,13 +84,26 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy to K8s') {
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh """
+                        kubectl set image deployment/bim \
+                            bim=${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                            -n twinspring
+                        kubectl rollout status deployment/bim -n twinspring --timeout=120s
+                    """
+                }
+            }
+        }
     }
 
     post {
         always {
             sh "docker rmi ${DOCKER_IMAGE}:${BUILD_NUMBER} || true"
             dir('twinBIM') {
-                sh 'rm -rf publish-arm64 || true'
+                sh 'rm -rf publish-amd64 || true'
             }
         }
         success {

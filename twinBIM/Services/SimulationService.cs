@@ -31,24 +31,24 @@ namespace BimProcessorApi.Services
         {
             await _context.Database.ExecuteSqlRawAsync(@"
                 CREATE TABLE IF NOT EXISTS simulation_excavator (
-                    excavator_id   VARCHAR(50)    NOT NULL PRIMARY KEY,
-                    position_x     DOUBLE         NOT NULL DEFAULT 0,
-                    position_y     DOUBLE         NOT NULL DEFAULT 0,
-                    position_z     DOUBLE         NOT NULL DEFAULT 0,
-                    body_rotation  DOUBLE         NOT NULL DEFAULT 0,
-                    swing_angle    DOUBLE         NOT NULL DEFAULT 0,
-                    boom_angle     DOUBLE         NOT NULL DEFAULT 35,
-                    arm_angle      DOUBLE         NOT NULL DEFAULT 60,
-                    bucket_angle   DOUBLE         NOT NULL DEFAULT -25,
-                    operation_mode VARCHAR(30)    NOT NULL DEFAULT 'IDLE',
-                    soil_in_bucket DOUBLE         NOT NULL DEFAULT 0,
-                    height_map_data MEDIUMTEXT    NULL,
-                    updated_at     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                    excavator_id    VARCHAR(50)      NOT NULL PRIMARY KEY,
+                    position_x      DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    position_y      DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    position_z      DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    body_rotation   DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    swing_angle     DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    boom_angle      DOUBLE PRECISION NOT NULL DEFAULT 35,
+                    arm_angle       DOUBLE PRECISION NOT NULL DEFAULT 60,
+                    bucket_angle    DOUBLE PRECISION NOT NULL DEFAULT -25,
+                    operation_mode  VARCHAR(30)      NOT NULL DEFAULT 'IDLE',
+                    soil_in_bucket  DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    height_map_data TEXT             NULL,
+                    updated_at      TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
             ");
-            // 기존 테이블에 컬럼이 없을 경우 추가 (MySQL은 IF NOT EXISTS 미지원으로 try-catch)
-            try { await _context.Database.ExecuteSqlRawAsync("ALTER TABLE simulation_excavator ADD COLUMN soil_in_bucket DOUBLE NOT NULL DEFAULT 0"); } catch { }
-            try { await _context.Database.ExecuteSqlRawAsync("ALTER TABLE simulation_excavator ADD COLUMN height_map_data MEDIUMTEXT NULL"); } catch { }
+            // PostgreSQL은 ADD COLUMN IF NOT EXISTS 지원
+            await _context.Database.ExecuteSqlRawAsync("ALTER TABLE simulation_excavator ADD COLUMN IF NOT EXISTS soil_in_bucket DOUBLE PRECISION NOT NULL DEFAULT 0");
+            await _context.Database.ExecuteSqlRawAsync("ALTER TABLE simulation_excavator ADD COLUMN IF NOT EXISTS height_map_data TEXT NULL");
         }
 
         public async Task<ExcavatorState> GetStateAsync(string excavatorId = "EX-001")

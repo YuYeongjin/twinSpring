@@ -64,6 +64,19 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy to K8s') {
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh """
+                        kubectl set image deployment/spring \
+                            spring=${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                            -n twinspring
+                        kubectl rollout status deployment/spring -n twinspring --timeout=120s
+                    """
+                }
+            }
+        }
     }
 
     post {
