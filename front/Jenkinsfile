@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                dir('front') {
+                    sh 'npm ci'
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                dir('front') {
+                    sh 'npm run build'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir('front') {
+                    sh 'CI=true npm test -- --watchAll=false --passWithNoTests'
+                }
+            }
+        }
+
+        stage('Archive Artifact') {
+            steps {
+                // Spring 파이프라인에서 unstash 'front-build' 로 참조
+                stash name: 'front-build', includes: 'front/build/**'
+                archiveArtifacts artifacts: 'front/build/**', fingerprint: true
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "[front] 빌드 성공 (#${BUILD_NUMBER})"
+        }
+        failure {
+            echo "[front] 빌드 실패"
+        }
+    }
+}

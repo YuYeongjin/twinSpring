@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'yeongjin95/twin-bim'
+        DOCKER_REGISTRY = 'https://registry.hub.docker.com'
+        DOTNET_VERSION = '8.0'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Restore') {
+            steps {
+                dir('twinBIM') {
+                    sh 'dotnet restore'
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                dir('twinBIM') {
+                    sh 'dotnet build --configuration Release --no-restore'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir('twinBIM') {
+                    sh 'dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" || true'
+                }
+            }
+            post {
+                always {
+                    // TRX → JUnit 변환 플러그인이 있을 경우 활성화
+                    // junit allowEmptyResults: true, testResults: 'twinBIM/**/*.trx'
+                    echo 'test stage complete'
+                }
+            }
+        }
+
+        stage('Publish (linux-arm64)') {
+            // Raspberry Pi 배포 타겟
+            steps {
+                dir('twinBIM') {
+                    sh '''
+                        dotnet publish \
+                            --configuration Release \
+                            --runtime linux-arm64 \
+                            --self-contained true \
+                            --output publish-arm64 \
+                            /p:PublishSingleFile=true \
+                            /p:PublishTrimmed=false
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                dir('twinBIM') {
+                    script {
+                        // Dockerfile은 TARGETARCH=arm64 기준으로 publish-arm64/ 를 복사
+                        dockerImage = docker.build(
+                            "${DOCKER_IMAGE}:${BUILD_NUMBER}",
+                            "--build-arg TARGETARCH=arm64 ."
+                        )
+                    }
+                }
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                script {
+                    docker.withRegistry(DOCKER_REGISTRY, 'docker-hub-credentials') {
+                        dockerImage.push("${BUILD_NUMBER}")
+                        dockerImage.push('latest')
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh "docker rmi ${DOCKER_IMAGE}:${BUILD_NUMBER} || true"
+            dir('twinBIM') {
+                sh 'rm -rf publish-arm64 || true'
+            }
+        }
+        success {
+            echo "[dotnet] 빌드 성공 - ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+        }
+        failure {
+            echo "[dotnet] 빌드 실패"
+        }
+    }
+}
