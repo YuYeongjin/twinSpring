@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MySql.EntityFrameworkCore.Extensions;
+using Npgsql.EntityFrameworkCore.PostgreSQL;
 using BimProcessorApi.Data;
 using BimProcessorApi.Services;
 using BimProcessorApi.Models; 
@@ -30,18 +30,16 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddAuthorization();
 
 
-// 2. ⚠️ [핵심 추가] MySQL DB Context 등록
-var connectionString = builder.Configuration.GetConnectionString("MySqlConnection");
+// 2. PostgreSQL DB Context 등록
+var connectionString = builder.Configuration.GetConnectionString("PostgreSQLConnection");
 
 if (string.IsNullOrEmpty(connectionString))
 {
-    // DB 연결 문자열이 없을 경우 예외 발생 (이전 오류 해결 코드)
-    throw new InvalidOperationException("MySQL Connection string 'MySqlConnection' not found in configuration. Please ensure appsettings.json is present and includes the 'MySqlConnection' connection string.");
+    throw new InvalidOperationException("Connection string 'PostgreSQLConnection' not found in configuration. Please ensure appsettings.json includes the 'PostgreSQLConnection' connection string.");
 }
 
 builder.Services.AddDbContext<BimDbContext>(options =>
-    // MySQL Provider를 사용하여 연결 문자열 설정
-    options.UseMySQL(connectionString)
+    options.UseNpgsql(connectionString)
 );
 
 // 3. BIM 서비스 등록

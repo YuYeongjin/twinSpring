@@ -1,13 +1,14 @@
 version: '3.3'
 services:
   db:
-    image: biarms/mysql:5.7
+    image: pgvector/pgvector:pg16
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: "Abcd1234"
-      MYSQL_DATABASE: "digital_twin"
+      POSTGRES_PASSWORD: "Abcd1234"
+      POSTGRES_DB: "digital_twin"
+      POSTGRES_USER: "postgres"
     volumes:
-      - ./mysql_data:/var/lib/mysql
+      - ./postgresql_data:/var/lib/postgresql/data
 
   mqtt:
     image: eclipse-mosquitto:2.0
@@ -26,7 +27,7 @@ services:
     ports:
       - "5112:5112"
     environment:
-      ConnectionStrings__MySqlConnection: "server=db;port=3306;database=digital_twin;user=root;password=Abcd1234;"
+      ConnectionStrings__PostgreSQLConnection: "Host=db;Port=5432;Database=digital_twin;Username=postgres;Password=Abcd1234;"
       ASPNETCORE_URLS: "http://+:5112"
 
   sensor:
@@ -95,7 +96,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mariadb://db:3306/digital_twin
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/digital_twin
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: "Abcd1234"
       MQTT_BROKER_URL: tcp://mqtt:1883

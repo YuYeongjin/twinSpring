@@ -7,64 +7,46 @@ CREATE TABLE IF NOT EXISTS bim_project
     project_name   VARCHAR(200) NULL,
     structure_type VARCHAR(500) NULL,
     span_count     VARCHAR(200) NULL
-    );
+);
 
 -- ================================================================
 -- BIM 요소 테이블
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_element
 (
-    project_id   VARCHAR(200) NULL,
-    element_id   VARCHAR(200) NOT NULL PRIMARY KEY,
-    element_type VARCHAR(500) NULL,
-    position_x   DOUBLE       NULL,
-    position_y   DOUBLE       NULL,
-    position_z   DOUBLE       NULL,
-    size_x       DOUBLE       NULL,
-    size_y       DOUBLE       NULL,
-    size_z       DOUBLE       NULL,
-    material     VARCHAR(255) NULL,
+    project_id   VARCHAR(200)     NULL,
+    element_id   VARCHAR(200)     NOT NULL PRIMARY KEY,
+    element_type VARCHAR(500)     NULL,
+    position_x   DOUBLE PRECISION NULL,
+    position_y   DOUBLE PRECISION NULL,
+    position_z   DOUBLE PRECISION NULL,
+    size_x       DOUBLE PRECISION NULL,
+    size_y       DOUBLE PRECISION NULL,
+    size_z       DOUBLE PRECISION NULL,
+    material     VARCHAR(255)     NULL,
     CONSTRAINT bim_element_ibfk_1
-    FOREIGN KEY (project_id) REFERENCES bim_project (project_id),
-    -- [수정] MySQL 5.7 호환을 위해 테이블 생성 시점에 인덱스 추가
-    INDEX idx_project_id (project_id)
-    );
+        FOREIGN KEY (project_id) REFERENCES bim_project (project_id)
+);
+CREATE INDEX IF NOT EXISTS idx_project_id ON bim_element (project_id);
 
 -- ================================================================
 -- 센서 데이터 테이블 (DHT11 등)
 -- ================================================================
 CREATE TABLE IF NOT EXISTS SENSOR_DATA
 (
-    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     location    VARCHAR(100) NOT NULL,
-    temperature DOUBLE       NOT NULL,
-    humidity    DOUBLE,
-    timestamp   DATETIME(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
-    );
+    temperature DOUBLE PRECISION NOT NULL,
+    humidity    DOUBLE PRECISION,
+    timestamp   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ================================================================
 -- bim_element 회전 컬럼 마이그레이션 (기존 테이블에 컬럼 추가)
 -- ================================================================
-SET @col_rx = (SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bim_element' AND COLUMN_NAME = 'rotation_x');
-SET @sql_rx = IF(@col_rx = 0,
-    'ALTER TABLE bim_element ADD COLUMN rotation_x DOUBLE NULL DEFAULT 0',
-    'SELECT 1');
-PREPARE stmt FROM @sql_rx; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
-SET @col_ry = (SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bim_element' AND COLUMN_NAME = 'rotation_y');
-SET @sql_ry = IF(@col_ry = 0,
-    'ALTER TABLE bim_element ADD COLUMN rotation_y DOUBLE NULL DEFAULT 0',
-    'SELECT 1');
-PREPARE stmt FROM @sql_ry; EXECUTE stmt; DEALLOCATE PREPARE stmt;
-
-SET @col_rz = (SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bim_element' AND COLUMN_NAME = 'rotation_z');
-SET @sql_rz = IF(@col_rz = 0,
-    'ALTER TABLE bim_element ADD COLUMN rotation_z DOUBLE NULL DEFAULT 0',
-    'SELECT 1');
-PREPARE stmt FROM @sql_rz; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS rotation_x DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS rotation_y DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS rotation_z DOUBLE PRECISION DEFAULT 0;
 
 -- ================================================================
 -- BIM 레이어 테이블
@@ -75,12 +57,12 @@ CREATE TABLE IF NOT EXISTS bim_layer
     project_id  VARCHAR(200) NOT NULL,
     layer_name  VARCHAR(200) NOT NULL DEFAULT 'layer',
     color       VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
-    visible     TINYINT(1)   NOT NULL DEFAULT 1,
+    visible     BOOLEAN      NOT NULL DEFAULT TRUE,
     element_ids TEXT         NULL,
     sort_order  INT          NOT NULL DEFAULT 0,
-    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_bim_layer_project (project_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bim_layer_project ON bim_layer (project_id);
 
 -- ================================================================
 -- BIM 부재 커스텀 색상 테이블
@@ -89,28 +71,28 @@ CREATE TABLE IF NOT EXISTS bim_element_color
 (
     element_id VARCHAR(200) NOT NULL PRIMARY KEY,
     project_id VARCHAR(200) NOT NULL,
-    color      VARCHAR(20)  NOT NULL,
-    INDEX idx_bim_color_project (project_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    color      VARCHAR(20)  NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bim_color_project ON bim_element_color (project_id);
 
 -- ================================================================
 -- BIM 선 테이블
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_line
 (
-    line_id    VARCHAR(64)  NOT NULL PRIMARY KEY,
-    project_id VARCHAR(64)  NOT NULL,
-    start_x    DOUBLE       NOT NULL DEFAULT 0,
-    start_y    DOUBLE       NOT NULL DEFAULT 0,
-    start_z    DOUBLE       NOT NULL DEFAULT 0,
-    end_x      DOUBLE       NOT NULL DEFAULT 0,
-    end_y      DOUBLE       NOT NULL DEFAULT 0,
-    end_z      DOUBLE       NOT NULL DEFAULT 0,
-    color      VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
-    line_width DOUBLE       NOT NULL DEFAULT 2,
-    created_at TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_bim_line_project (project_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    line_id    VARCHAR(64)      NOT NULL PRIMARY KEY,
+    project_id VARCHAR(64)      NOT NULL,
+    start_x    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    start_y    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    start_z    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    end_x      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    end_y      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    end_z      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    color      VARCHAR(20)      NOT NULL DEFAULT '#60a5fa',
+    line_width DOUBLE PRECISION NOT NULL DEFAULT 2,
+    created_at TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bim_line_project ON bim_line (project_id);
 
 -- ================================================================
 -- 시뮬레이션 프로젝트 테이블
@@ -119,26 +101,26 @@ CREATE TABLE IF NOT EXISTS simulation_project
 (
     project_id   VARCHAR(64)  NOT NULL PRIMARY KEY,
     project_name VARCHAR(200) NOT NULL,
-    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    created_at   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ================================================================
 -- 시뮬레이션 상태 테이블 (지형 + 장비 선택 포함)
 -- ================================================================
 CREATE TABLE IF NOT EXISTS simulation_state
 (
-    excavator_id        VARCHAR(64)   NOT NULL PRIMARY KEY,
-    position_x          DOUBLE        NOT NULL DEFAULT 0,
-    position_y          DOUBLE        NOT NULL DEFAULT 0,
-    position_z          DOUBLE        NOT NULL DEFAULT 0,
-    body_rotation       DOUBLE        NOT NULL DEFAULT 0,
-    swing_angle         DOUBLE        NOT NULL DEFAULT 0,
-    boom_angle          DOUBLE        NOT NULL DEFAULT 35,
-    arm_angle           DOUBLE        NOT NULL DEFAULT 60,
-    bucket_angle        DOUBLE        NOT NULL DEFAULT -25,
-    operation_mode      VARCHAR(20)   NOT NULL DEFAULT 'IDLE',
-    soil_in_bucket      DOUBLE        NOT NULL DEFAULT 0,
-    selected_machine_id VARCHAR(20)   NOT NULL DEFAULT '0.6W',
-    height_map_data     LONGTEXT      NULL,
-    updated_at          TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    excavator_id        VARCHAR(64)      NOT NULL PRIMARY KEY,
+    position_x          DOUBLE PRECISION NOT NULL DEFAULT 0,
+    position_y          DOUBLE PRECISION NOT NULL DEFAULT 0,
+    position_z          DOUBLE PRECISION NOT NULL DEFAULT 0,
+    body_rotation       DOUBLE PRECISION NOT NULL DEFAULT 0,
+    swing_angle         DOUBLE PRECISION NOT NULL DEFAULT 0,
+    boom_angle          DOUBLE PRECISION NOT NULL DEFAULT 35,
+    arm_angle           DOUBLE PRECISION NOT NULL DEFAULT 60,
+    bucket_angle        DOUBLE PRECISION NOT NULL DEFAULT -25,
+    operation_mode      VARCHAR(20)      NOT NULL DEFAULT 'IDLE',
+    soil_in_bucket      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    selected_machine_id VARCHAR(20)      NOT NULL DEFAULT '0.6W',
+    height_map_data     TEXT             NULL,
+    updated_at          TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
