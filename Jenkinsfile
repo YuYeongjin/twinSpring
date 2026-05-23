@@ -20,12 +20,13 @@ pipeline {
         }
 
         stage('Build Frontend') {
-            // pom.xml의 maven-antrun-plugin이 front/build를 static 리소스로 복사
             steps {
                 dir('front') {
                     sh 'npm ci'
                     sh 'npx update-browserslist-db@latest'
-                    sh 'npm run build'
+                    withEnv(['CI=false']) {
+                        sh 'npm run build'
+                    }
                 }
             }
         }
