@@ -71,8 +71,8 @@ pipeline {
                     sh """
                         kubectl set image deployment/spring \
                             spring=${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                            -n twinspring
-                        kubectl rollout status deployment/spring -n twinspring --timeout=120s
+                            -n twin-spring
+                        kubectl rollout status deployment/spring -n twin-spring --timeout=120s
                     """
                 }
             }

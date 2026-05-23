@@ -55,8 +55,8 @@ pipeline {
                     sh """
                         kubectl set image deployment/agent \
                             agent=${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                            -n twinspring
-                        kubectl rollout status deployment/agent -n twinspring --timeout=120s
+                            -n twin-agent
+                        kubectl rollout status deployment/agent -n twin-agent --timeout=120s
                     """
                 }
             }
