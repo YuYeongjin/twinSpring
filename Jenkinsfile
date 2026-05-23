@@ -24,6 +24,7 @@ pipeline {
             steps {
                 dir('front') {
                     sh 'npm ci'
+                    sh 'npx update-browserslist-db@latest'
                     sh 'npm run build'
                 }
             }
