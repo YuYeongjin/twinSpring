@@ -52,8 +52,8 @@ pipeline {
                     sh """
                         kubectl set image deployment/detect \
                             detect=${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                            -n twinspring
-                        kubectl rollout status deployment/detect -n twinspring --timeout=120s
+                            -n twin-detect
+                        kubectl rollout status deployment/detect -n twin-detect --timeout=120s
                     """
                 }
             }

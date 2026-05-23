@@ -91,8 +91,8 @@ pipeline {
                     sh """
                         kubectl set image deployment/bim \
                             bim=${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                            -n twinspring
-                        kubectl rollout status deployment/bim -n twinspring --timeout=120s
+                            -n twin-bim
+                        kubectl rollout status deployment/bim -n twin-bim --timeout=120s
                     """
                 }
             }
