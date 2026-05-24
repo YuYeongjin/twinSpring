@@ -1,0 +1,25 @@
+# Python 캐시
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 로컬 YOLO 모델 (Dockerfile에서 curl로 다운로드)
+yolov8n.pt
+
+# 로그
+*.log
+detect_server.log
+detect_server_err.log
+
+# 환경 설정
+.env
+
+# 개발 도구
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# 문서
+*.md
