@@ -36,6 +36,7 @@ pipeline {
     post {
         always {
             sh "docker rmi ${DOCKER_IMAGE}:${BUILD_NUMBER} || true"
+            sh "docker rmi ${DOCKER_IMAGE}:latest || true"
             cleanWs()
         }
         success {
