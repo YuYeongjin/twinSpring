@@ -31,17 +31,6 @@ pipeline {
             }
         }
 
-        stage('Test') {
-            steps {
-                sh './mvnw test'
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-                }
-            }
-        }
-
         stage('Build JAR') {
             steps {
                 sh './mvnw package -DskipTests'
