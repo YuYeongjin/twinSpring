@@ -13,6 +13,8 @@ pipeline {
         DOCKER_CREDENTIALS_ID = 'docker-hub-credentials'
     }
 
+
+
     stages {
         stage('Checkout') {
             steps {
@@ -34,7 +36,10 @@ pipeline {
 
         stage('Build JAR') {
             steps {
-                sh './mvnw package -DskipTests'
+                dir('spring') {
+                    sh 'chmod +x mvnw'
+                    sh './mvnw package -DskipTests'
+                }
             }
         }
 

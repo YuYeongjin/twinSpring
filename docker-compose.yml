@@ -66,9 +66,9 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       LLM_MODEL: gemma3:12b
       DB_HOST: db
-      DB_PORT: "3306"
+      DB_PORT: "5432"
       DB_NAME: digital_twin
-      DB_USER: root
+      DB_USER: postgres
       DB_PASSWORD: "Abcd1234"
       SPRING_BASE_URL: http://app:8080
 
@@ -97,7 +97,7 @@ services:
       - "8080:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/digital_twin
-      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: "Abcd1234"
       MQTT_BROKER_URL: tcp://mqtt:1883
       MQTT_TOPIC: test/topic
