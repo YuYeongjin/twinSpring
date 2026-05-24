@@ -103,7 +103,7 @@ services:
       MQTT_TOPIC: test/topic
       BIM_SERVER_URL: http://bim-api:5112
       AGENT_URL: http://agent:7070
-      DETECT_URL: http://detect:5001
+      DETECT_SERVER_URL: http://detect:5001
   nginx-proxy:
     image: 'jc21/nginx-proxy-manager:latest'
     container_name: nginx-proxy
