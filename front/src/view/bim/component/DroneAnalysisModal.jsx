@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useT, useLanguage } from '../../../i18n/LanguageContext';
 
 // ── Marching Squares ──────────────────────────────────────────────────────────
@@ -137,73 +137,46 @@ function drawChain(ctx,chain,sx,sy){
   ctx.stroke();
 }
 
-// ── BIM terrain elements ──────────────────────────────────────────────────────
-function buildTerrainElements(smoothed,cols,rows,scaleW,scaleH,elevRange,elevMin,refElev,target){
-  const step=Math.max(1,Math.round(Math.sqrt((cols*rows)/target)));
-  const cw=+(((scaleW/cols)*step).toFixed(3)),ch=+(((scaleH/rows)*step).toFixed(3));
-  const els=[];
-  for(let r=0;r<rows;r+=step)for(let c=0;c<cols;c+=step){
-    let sum=0,cnt=0;
-    for(let dr=0;dr<step&&r+dr<rows;dr++)for(let dc=0;dc<step&&c+dc<cols;dc++){sum+=smoothed[r+dr][c+dc];cnt++;}
-    const t=cnt?sum/cnt:0,elev=+(( t*elevRange+elevMin).toFixed(3));
-    const h=Math.max(0.2,Math.abs(elev));
-    els.push({
-      elementType:'IfcSlab',material:elev>refElev?'Terrain Cut':'Terrain Fill',
-      positionX:+(((c+step/2)/cols*scaleW-scaleW/2).toFixed(3)),
-      positionY:0,
-      positionZ:+(((r+step/2)/rows*scaleH-scaleH/2).toFixed(3)),
-      sizeX:cw,sizeY:+h.toFixed(3),sizeZ:ch,rotationX:0,rotationY:0,rotationZ:0,
-    });
+// ── Sobel edge detection ──────────────────────────────────────────────────────
+function sobelEdge(grid){
+  const R=grid.length,C=grid[0].length;
+  const out=Array.from({length:R},()=>new Float32Array(C));
+  for(let y=1;y<R-1;y++)for(let x=1;x<C-1;x++){
+    const gx=(-grid[y-1][x-1]+grid[y-1][x+1]
+              -2*grid[y][x-1]+2*grid[y][x+1]
+              -grid[y+1][x-1]+grid[y+1][x+1]);
+    const gy=(-grid[y-1][x-1]-2*grid[y-1][x]-grid[y-1][x+1]
+              +grid[y+1][x-1]+2*grid[y+1][x]+grid[y+1][x+1]);
+    out[y][x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)*3.5);
   }
-  return els;
+  return out;
 }
-// 2D 평면도용 BIM 라인 (Y+0.5로 올려서 지형 위에 표시)
-function buildContourLines(contours,cols,rows,scaleW,scaleH,elevRange,elevMin,maxN){
-  const sx=scaleW/cols,sz=scaleH/rows,lines=[];
-  for(const{segs,t,major,elev}of contours){
-    if(!major)continue;
-    for(const[p1,p2]of segs){
-      if(lines.length>=maxN)break;
-      const x1=+(( p1[0]*sx-scaleW/2).toFixed(3)),z1=+(( p1[1]*sz-scaleH/2).toFixed(3));
-      const x2=+(( p2[0]*sx-scaleW/2).toFixed(3)),z2=+(( p2[1]*sz-scaleH/2).toFixed(3));
-      const e=+(elev+0.5).toFixed(3); // 지형 슬래브 위로 0.5m 올림
-      lines.push({startX:x1,startY:e,startZ:z1,endX:x2,endY:e,endZ:z2,
-        color:elevHex(t),lineWidth:2,pointsJson:JSON.stringify([[x1,e,z1],[x2,e,z2]]),closed:false,shapeHeight:0});
-    }
+
+// ── 도면 선 변환 (엣지 맵 → 평면 BIM 폴리라인) ────────────────────────────
+function buildDrawingLines(edgeGrid,cols,rows,scaleW,scaleH,threshold,maxN){
+  const sx=scaleW/cols,sy=scaleH/rows,lines=[];
+  const segs=marchingSquares(edgeGrid,threshold);
+  const chains=chainSegments(segs);
+  for(const chain of chains){
     if(lines.length>=maxN)break;
+    if(chain.length<2)continue;
+    const pts=chain.map(([cx,cy])=>[
+      +((cx*sx-scaleW/2).toFixed(3)),
+      0,
+      +((cy*sy-scaleH/2).toFixed(3)),
+    ]);
+    const first=pts[0],last=pts[pts.length-1];
+    lines.push({
+      startX:first[0],startY:0,startZ:first[2],
+      endX:last[0],endY:0,endZ:last[2],
+      color:'#93c5fd',
+      lineWidth:1,
+      pointsJson:JSON.stringify(pts),
+      closed:false,shapeHeight:0,
+    });
   }
   return lines;
 }
-
-// 3D BIM용 IfcBeam 등고선 요소 (레이어 할당용, 지형 0.5m 위)
-function buildContourBeams(contours,cols,rows,scaleW,scaleH,elevRange,elevMin,maxN){
-  const sx=scaleW/cols,sz=scaleH/rows,beams=[];
-  for(const{segs,t,major,elev}of contours){
-    if(!major)continue;
-    for(const[p1,p2]of segs){
-      if(beams.length>=maxN)break;
-      const x1=p1[0]*sx-scaleW/2, z1=p1[1]*sz-scaleH/2;
-      const x2=p2[0]*sx-scaleW/2, z2=p2[1]*sz-scaleH/2;
-      const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
-      if(len<0.05)continue;
-      beams.push({
-        elementType:'IfcBeam',
-        material:`Contour ${elev.toFixed(0)}m`,
-        positionX:+(((x1+x2)/2).toFixed(3)),
-        positionY:+(elev+0.5).toFixed(3), // 지형 위 0.5m
-        positionZ:+(((z1+z2)/2).toFixed(3)),
-        sizeX:+len.toFixed(3),sizeY:0.12,sizeZ:0.12,
-        rotationX:0,
-        rotationY:+Math.atan2(dz,dx).toFixed(5), // XZ 평면 방향 정렬
-        rotationZ:0,
-      });
-    }
-    if(beams.length>=maxN)break;
-  }
-  return beams;
-}
-
-const RES={coarse:80,medium:320,fine:750};
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSelect}){
@@ -229,8 +202,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
   const[tab,setTab]=useState('upload');
 
   const[cvName,setCvName]=useState('');
-  const[cvRes,setCvRes]=useState('medium');
-  const[cvLines,setCvLines]=useState(true);
+  const[cvThreshold,setCvThreshold]=useState(0.15); // Sobel 엣지 감도 (낮을수록 더 많은 선)
   const[cvBusy,setCvBusy]=useState(false);
   const[cvDone,setCvDone]=useState(null);
 
@@ -277,7 +249,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
         const diff=smooth[r][c]*elevRange+elevMin-refElev;
         if(diff>0)cut+=diff*pa;else fill-=diff*pa;
       }
-      setResult({contours,refChains,smooth,shade,cols,rows,img,refT,
+      setResult({contours,refChains,smooth,shade,cols,rows,img,refT,raw,
         stats:{cut:Math.round(cut),fill:Math.round(fill),net:Math.round(cut-fill),
                area:Math.round(scaleW*scaleH),cols,rows,pa:pa.toFixed(4)}});
       setTab('result');setBusy(false);
@@ -405,26 +377,30 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
 
   const convertBIM=useCallback(()=>{
     if(!result||!onConvertToBIM||!cvName.trim())return;
-    const{smooth,cols,rows,contours}=result;
-    const elevRange=elevMax-elevMin;
+    const{raw,smooth,cols,rows}=result;
     setCvBusy(true);setCvDone(null);
-    // 지형 슬래브 (🏔 지형 레이어)
-    const terrainEls=buildTerrainElements(smooth,cols,rows,scaleW,scaleH,elevRange,elevMin,refElev,RES[cvRes]??320);
-    // 등고선 IfcBeam 요소 (📐 등고선 레이어 — 지형 위 0.5m)
-    const contourBeams=cvLines?buildContourBeams(contours,cols,rows,scaleW,scaleH,elevRange,elevMin,150):[];
-    // 2D 평면도용 BIM 라인
-    const contourLines=cvLines?buildContourLines(contours,cols,rows,scaleW,scaleH,elevRange,elevMin,150):[];
-    onConvertToBIM('Building',cvName.trim(),terrainEls,contourBeams,contourLines,proj=>{
+
+    // Sobel 엣지 감지: raw 그리드가 있으면 가볍게 블러 후 사용, 없으면 smooth 사용
+    const src=raw?gaussianBlur(raw,0.8):smooth;
+    const edges=sobelEdge(src);
+    // 평면 폴리라인 생성 (Y=0, Slab/Beam 없음)
+    const drawingLines=buildDrawingLines(edges,cols,rows,scaleW,scaleH,cvThreshold,600);
+
+    onConvertToBIM('Building',cvName.trim(),[],[],drawingLines,proj=>{
       setCvBusy(false);
       if(proj){setCvDone('ok');setTimeout(()=>{if(onProjectSelect)onProjectSelect(proj);},1200);}
       else setCvDone('err');
     });
-  },[result,onConvertToBIM,onProjectSelect,cvName,cvRes,cvLines,elevMin,elevMax,refElev,scaleW,scaleH]);
+  },[result,onConvertToBIM,onProjectSelect,cvName,cvThreshold,scaleW,scaleH]);
 
-  const elemCount=result?(()=>{
-    const s=Math.max(1,Math.round(Math.sqrt((result.cols*result.rows)/(RES[cvRes]??320))));
-    return Math.ceil(result.cols/s)*Math.ceil(result.rows/s);
-  })():0;
+  // 현재 threshold에서 예상 폴리라인 수 (Sobel 맵 미리 실행)
+  const lineCount=useMemo(()=>{
+    if(!result)return 0;
+    const src=result.raw?gaussianBlur(result.raw,0.8):result.smooth;
+    const edges=sobelEdge(src);
+    const segs=marchingSquares(edges,cvThreshold);
+    return Math.min(chainSegments(segs).length,600);
+  },[result,cvThreshold]);
 
   const T2='#8896a4';
 
@@ -673,19 +649,19 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                   </button>
                 </div>
 
-                {/* BIM Conversion */}
+                {/* BIM Conversion — 선(폴리라인) 전용 */}
                 {onConvertToBIM&&(
                   <div className="mx-3 mb-4 rounded-xl p-4 space-y-3"
                        style={{backgroundColor:'#0e0820',border:'1px solid #4c1d95',
                          boxShadow:'0 0 20px #7c3aed15'}}>
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base"
-                           style={{background:'linear-gradient(135deg,#4c1d95,#7c3aed)',border:'1px solid #7c3aed50'}}>
-                        🏗
+                           style={{background:'linear-gradient(135deg,#1e3a5f,#2563eb)',border:'1px solid #3b82f650'}}>
+                        📐
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-violet-300">{t('bimConvert')}</p>
-                        <p className="text-xs" style={{color:T2}}>{t('terrainMeshContour')}</p>
+                        <p className="text-xs font-bold text-blue-300">{t('bimConvert')}</p>
+                        <p className="text-xs" style={{color:T2}}>{t('drawingLineConvert')}</p>
                       </div>
                     </div>
 
@@ -709,40 +685,31 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                                className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none"
                                style={{backgroundColor:'#060f18',border:'1px solid #4c1d95'}}/>
 
+                        {/* 엣지 감도 슬라이더 */}
                         <div>
-                          <div className="flex justify-between text-xs mb-2">
-                            <span style={{color:T2}}>{t('gridResolution')}</span>
-                            <span className="text-violet-400 font-medium">{t('elementsCount', { count: elemCount })}</span>
+                          <div className="flex justify-between text-xs mb-1.5">
+                            <span style={{color:T2}}>{t('edgeSensitivity')}</span>
+                            <span className="text-blue-300 font-medium">
+                              {t('polylineCount',{count:lineCount})}
+                            </span>
                           </div>
-                          <div className="flex gap-1.5">
-                            {[['coarse',t('low'),80],['medium',t('medium'),320],['fine',t('high'),750]].map(([k,l,n])=>(
-                              <button key={k} onClick={()=>setCvRes(k)}
-                                      className="flex-1 py-2 rounded-lg text-xs font-medium transition"
-                                      style={{
-                                        backgroundColor:cvRes===k?'#4c1d95':'#060f18',
-                                        border:`1px solid ${cvRes===k?'#7c3aed':'#2d1a4a'}`,
-                                        color:cvRes===k?'#c4b5fd':'#6b7280',
-                                      }}>
-                                <div>{l}</div>
-                                <div className="opacity-50 text-xs">~{n}</div>
-                              </button>
-                            ))}
+                          <input type="range" min={0.05} max={0.45} step={0.05}
+                                 value={cvThreshold}
+                                 onChange={e=>setCvThreshold(+e.target.value)}
+                                 className="w-full accent-blue-500"/>
+                          <div className="flex justify-between text-xs mt-1" style={{color:'#475569'}}>
+                            <span>{t('moreLines')}</span>
+                            <span>{t('fewerLines')}</span>
                           </div>
                         </div>
-
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={cvLines} onChange={e=>setCvLines(e.target.checked)}
-                                 className="accent-violet-500 w-3.5 h-3.5"/>
-                          <span className="text-xs text-gray-300">{t('includeContours')}</span>
-                        </label>
 
                         <button onClick={convertBIM} disabled={!cvName.trim()||cvBusy}
                                 className="w-full py-2.5 rounded-xl text-xs font-bold text-white transition-all"
                                 style={{
-                                  background:cvName.trim()&&!cvBusy?'linear-gradient(135deg,#7c3aed,#4c1d95)':'#0e0820',
-                                  border:`1px solid ${cvName.trim()?'#7c3aed':'#2d1a4a'}`,
+                                  background:cvName.trim()&&!cvBusy?'linear-gradient(135deg,#2563eb,#1d4ed8)':'#0e0820',
+                                  border:`1px solid ${cvName.trim()?'#3b82f6':'#1e2a3a'}`,
                                   cursor:!cvName.trim()||cvBusy?'not-allowed':'pointer',
-                                  boxShadow:cvName.trim()&&!cvBusy?'0 0 16px #7c3aed45':'none',
+                                  boxShadow:cvName.trim()&&!cvBusy?'0 0 16px #3b82f645':'none',
                                 }}>
                           {cvBusy?(
                             <span className="flex items-center justify-center gap-2">

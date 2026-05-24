@@ -57,6 +57,8 @@ public interface BimService {
     // ── 선 (로컬 MariaDB) ──────────────────────────────────────────
     List<BimLineDTO> getLinesByProject(String projectId);
     BimLineDTO createLine(BimLineDTO line);
+    /** 다수 선 일괄 삽입 — 도면 사진 변환 등 대량 삽입에 사용 */
+    List<BimLineDTO> createLinesBatch(List<BimLineDTO> lines);
     BimLineDTO updateLine(BimLineDTO line);
     void deleteLine(String lineId);
     void deleteLinesByProject(String projectId);

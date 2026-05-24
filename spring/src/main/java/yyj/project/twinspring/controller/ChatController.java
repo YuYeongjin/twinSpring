@@ -30,7 +30,8 @@ public class ChatController {
     }
 
     /**
-     * 사용자 메시지를 AI Agent로 전달하고 응답 반환
+     * 사용자 메시지를 AI Agent로 전달하고 응답 반환 (Full Multi-Agent 라우팅)
+     * Agent 탭에서 사용 — LangGraph 전체 라우팅 실행
      *
      * Body 예시:
      * {
@@ -43,6 +44,16 @@ public class ChatController {
     @PostMapping("/message")
     public ResponseEntity<ChatResponseDTO> sendMessage(@RequestBody ChatRequestDTO request) {
         ChatResponseDTO response = chatService.sendMessage(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 단순 챗봇 응답 — LangGraph 라우팅 없이 chat 노드만 호출
+     * 다른 탭의 우측 하단 ChatView에서 사용
+     */
+    @PostMapping("/simple")
+    public ResponseEntity<ChatResponseDTO> sendSimpleMessage(@RequestBody ChatRequestDTO request) {
+        ChatResponseDTO response = chatService.sendSimpleMessage(request);
         return ResponseEntity.ok(response);
     }
 

@@ -15,7 +15,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Hello! I am the Digital Twin AI Assistant.\nI can help with sensor data queries, BIM element creation, and more.',
+      content: t('chatWelcome'),
       intent: 'chat',
     },
   ]);
@@ -120,11 +120,9 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
         data = res.data;
       } else {
         const history = messages.map(m => ({ role: m.role, content: m.content }));
-        const res = await AxiosCustom.post(`${API_BASE}/message`, {
+        const res = await AxiosCustom.post(`${API_BASE}/simple`, {
           sessionId,
           message: text,
-          projectId: selectedProject?.projectId || null,
-          simulationProjectId: selectedSimulationProject?.projectId || null,
           history,
         });
         data = res.data;
@@ -133,10 +131,6 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
       const assistantMsg = { role: 'assistant', content: data.response, intent: data.intent };
       setMessages(prev => [...prev, assistantMsg]);
       speak(data.response);
-
-      if (data.intent === 'bim_builder' && onBimUpdate) {
-        onBimUpdate();
-      }
     } catch {
       setMessages(prev => [
         ...prev,
@@ -248,13 +242,13 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
             style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}>
             {/* Quick prompt buttons */}
             <div className="flex gap-1 mb-2 flex-wrap">
-              {QUICK_PROMPTS.map(q => (
+              {QUICK_PROMPT_KEYS.map(key => (
                 <button
-                  key={q}
-                  onClick={() => setInput(q)}
+                  key={key}
+                  onClick={() => setInput(t(key))}
                   className="text-xs bg-space-700 hover:bg-space-600 text-gray-400 hover:text-gray-200 px-2 py-1 rounded-full transition-colors"
                 >
-                  {q}
+                  {t(key)}
                 </button>
               ))}
             </div>
@@ -310,9 +304,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
 // ── Subcomponents ───────────────────────────────────────────────
 
 const INTENT_BADGE = {
-  rag_db:      { label: 'Data Query',     color: 'text-accent-green bg-green-900/40' },
-  bim_builder: { label: 'BIM Task',       color: 'text-accent-blue bg-blue-900/40'   },
-  vision:      { label: 'Image Analysis', color: 'text-purple-400 bg-purple-900/40'  },
+  vision: { label: 'Image Analysis', color: 'text-purple-400 bg-purple-900/40' },
   chat: null,
 };
 
@@ -361,4 +353,5 @@ function TypingIndicator() {
   );
 }
 
-const QUICK_PROMPTS = ['Current temperature?', 'Check alerts'];
+// Quick prompts are rendered via t() inside the component; this array holds i18n keys
+const QUICK_PROMPT_KEYS = ['chatQuick1', 'chatQuick2', 'chatQuick3'];

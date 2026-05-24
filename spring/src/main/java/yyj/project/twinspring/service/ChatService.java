@@ -12,8 +12,11 @@ import java.util.List;
  */
 public interface ChatService {
 
-    /** 메시지를 Agent에게 전달하고 응답을 반환 */
+    /** 메시지를 Agent에게 전달하고 응답을 반환 (Full Multi-Agent 라우팅) */
     ChatResponseDTO sendMessage(ChatRequestDTO request);
+
+    /** 단순 챗봇 응답 — LangGraph 라우팅 없이 chat 노드만 직접 호출 */
+    ChatResponseDTO sendSimpleMessage(ChatRequestDTO request);
 
     /** 이미지 + 텍스트를 Agent 비전 모델로 분석 */
     ChatResponseDTO sendMultimodal(MultimodalRequestDTO request);

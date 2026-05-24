@@ -81,19 +81,30 @@ CREATE INDEX IF NOT EXISTS idx_bim_color_project ON bim_element_color (project_i
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_line
 (
-    line_id    VARCHAR(64)      NOT NULL PRIMARY KEY,
-    project_id VARCHAR(64)      NOT NULL,
-    start_x    DOUBLE PRECISION NOT NULL DEFAULT 0,
-    start_y    DOUBLE PRECISION NOT NULL DEFAULT 0,
-    start_z    DOUBLE PRECISION NOT NULL DEFAULT 0,
-    end_x      DOUBLE PRECISION NOT NULL DEFAULT 0,
-    end_y      DOUBLE PRECISION NOT NULL DEFAULT 0,
-    end_z      DOUBLE PRECISION NOT NULL DEFAULT 0,
-    color      VARCHAR(20)      NOT NULL DEFAULT '#60a5fa',
-    line_width DOUBLE PRECISION NOT NULL DEFAULT 2,
-    created_at TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
+    line_id      VARCHAR(64)      NOT NULL PRIMARY KEY,
+    project_id   VARCHAR(64)      NOT NULL,
+    start_x      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    start_y      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    start_z      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    end_x        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    end_y        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    end_z        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    color        VARCHAR(20)      NOT NULL DEFAULT '#60a5fa',
+    line_width   DOUBLE PRECISION NOT NULL DEFAULT 2,
+    points_json  TEXT             NULL,
+    closed       BOOLEAN          NOT NULL DEFAULT FALSE,
+    shape_height DOUBLE PRECISION NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_bim_line_project ON bim_line (project_id);
+
+-- ================================================================
+-- bim_line 컬럼 마이그레이션 (기존 테이블에 컬럼 추가)
+-- points_json / closed / shape_height 가 없는 기존 DB 대응
+-- ================================================================
+ALTER TABLE bim_line ADD COLUMN IF NOT EXISTS points_json  TEXT;
+ALTER TABLE bim_line ADD COLUMN IF NOT EXISTS closed       BOOLEAN          NOT NULL DEFAULT FALSE;
+ALTER TABLE bim_line ADD COLUMN IF NOT EXISTS shape_height DOUBLE PRECISION NOT NULL DEFAULT 0;
 
 -- ================================================================
 -- 시뮬레이션 프로젝트 테이블

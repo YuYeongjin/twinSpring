@@ -12,6 +12,35 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from state import AgentState
 from llm_config import llm_precise
 
+
+
+# Tab information / usage guide
+_TAB_GUIDE_KEYWORDS = re.compile(
+    # Tab-specific: "simulation 탭 설명해줘", "safe 탭 어떻게 써?", "test tab guide"
+    r"(simulation|시뮬레이션|bim|test|테스트|safe|안전)\s*탭.{0,20}(설명|안내|기능|뭐|어떻게|사용|도움|가이드|소개|알려)"
+    r"|(설명|안내|기능|사용법|사용방법|도움|가이드|소개).{0,15}탭"
+    # Tab overview
+    r"|탭.{0,10}(종류|목록|전체|모두|뭐가|어떤)"
+    r"|어떤\s*탭.{0,10}(있|있나|있어|있습니까)"
+    r"|대시보드.{0,15}(안내|소개|설명|기능)"
+    # Test tab specific
+    r"|test\s*탭|테스트\s*탭|충돌\s*테스트.{0,20}(어떻게|뭐야|설명|사용|안내|가이드)"
+    r"|키보드\s*(단축키|조작법|컨트롤|제어|사용법)"
+    r"|collision\s*test.{0,20}(how|what|guide|use)"
+    # Safe tab specific
+    r"|safe\s*탭|safety\s*탭|안전\s*탭|안전\s*모니터링.{0,20}(어떻게|설명|뭐야|안내)"
+    r"|헬멧\s*감지.{0,20}(어떻게|설명|뭐야)|webcam\s*detect"
+    # BIM tab (as tab info, not BIM operations)
+    r"|bim\s*탭|bim\s*뷰어.{0,20}(설명|안내|사용법|기능)"
+    r"|bim\s*viewer.{0,20}(how|guide|use|what)"
+    # Simulation tab (as tab info, not simulator commands)
+    r"|simulation\s*탭|시뮬레이션\s*탭|시뮬레이션\s*대시보드.{0,20}(설명|안내|기능)"
+    # English equivalents
+    r"|tab\s*(overview|guide|help|tutorial)|what\s*(tabs|features).{0,20}(available|exist)"
+    r"|how\s*to\s*use\s*(the\s*)?(simulation|bim|test|safe)\s*(tab|dashboard)",
+    re.IGNORECASE,
+)
+
 _RAG_DB_KEYWORDS = re.compile(
     r"온도|습도|센서|알림|경보|알람|임계|threshold"
     r"|현재\s*(상태|값|데이터)|최근|조회|확인|얼마|몇\s*도"
@@ -58,11 +87,12 @@ _SIMULATION_KEYWORDS = re.compile(
 )
 
 _SYSTEM_PROMPT = SystemMessage(content=(
-    "Classify the user message into exactly one of: rag_db, bim_builder, bim_query, simulation_controller, chat\n"
-    "- rag_db: sensor data query or building status check\n"
+    "Classify the user message into exactly one of: rag_db, bim_builder, bim_query, simulation_controller, tab_guide, chat\n"
+    "- rag_db: sensor data query or building status check (temperature, humidity, alerts)\n"
     "- bim_builder: create/modify/delete BIM elements (column, beam, wall, slab, etc.)\n"
     "- bim_query: list BIM projects, check element count/statistics/composition\n"
     "- simulation_controller: excavator simulation control (set angles, presets, reset, status query)\n"
+    "- tab_guide: explain or give usage guidance for a dashboard tab (simulation, bim, test, safe)\n"
     "- chat: general conversation\n"
     "Respond with exactly one word."
 ))
@@ -77,6 +107,9 @@ def analyze_node(state: AgentState) -> dict:
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
 
     # Keyword matching (fast path) — checked in priority order
+    # tab_guide is checked first so "simulation 탭 설명해줘" doesn't fall into simulation_controller
+    if _TAB_GUIDE_KEYWORDS.search(user_text):
+        return {"intent": "tab_guide"}
     if _SIMULATION_KEYWORDS.search(user_text):
         return {"intent": "simulation_controller"}
     if _BIM_QUERY_KEYWORDS.search(user_text):
@@ -93,7 +126,9 @@ def analyze_node(state: AgentState) -> dict:
             HumanMessage(content=user_text),
         ])
         raw = response.content.strip().lower()
-        if "simulation" in raw or "excavator" in raw:
+        if "tab_guide" in raw or "tab" in raw and "guide" in raw:
+            intent = "tab_guide"
+        elif "simulation" in raw or "excavator" in raw:
             intent = "simulation_controller"
         elif "bim_query" in raw or "query" in raw:
             intent = "bim_query"

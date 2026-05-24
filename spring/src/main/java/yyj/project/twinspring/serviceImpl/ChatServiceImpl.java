@@ -132,6 +132,54 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    public ChatResponseDTO sendSimpleMessage(ChatRequestDTO request) {
+        String sessionId = request.getSessionId() != null ? request.getSessionId() : "default";
+
+        // 세션 이력 로드 (최근 20턴)
+        List<ChatMessageDTO> history = sessions.computeIfAbsent(sessionId, k -> new ArrayList<>());
+        int start = Math.max(0, history.size() - 20);
+        List<ChatMessageDTO> recentHistory = history.subList(start, history.size());
+
+        // Python /chat-simple 요청 바디 구성 (context 불필요 — chat 노드만 사용)
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("message", request.getMessage());
+        body.put("session_id", sessionId);
+
+        ArrayNode historyArray = body.putArray("history");
+        for (ChatMessageDTO msg : recentHistory) {
+            ObjectNode msgNode = historyArray.addObject();
+            msgNode.put("role", msg.getRole());
+            msgNode.put("content", msg.getContent());
+        }
+
+        // context 빈 객체 전달 (스키마 호환)
+        body.putObject("context");
+
+        String agentResponse;
+        try {
+            String raw = agentClient.post()
+                    .uri("/chat-simple")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            JsonNode json = objectMapper.readTree(raw);
+            agentResponse = json.path("response").asText("응답을 받지 못했습니다.");
+        } catch (Exception e) {
+            log.error("Simple Chat Agent 호출 실패: {}", e.getMessage());
+            agentResponse = "AI Agent에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+        }
+
+        // 세션 이력 저장
+        history.add(new ChatMessageDTO("user", request.getMessage()));
+        history.add(new ChatMessageDTO("assistant", agentResponse));
+
+        return new ChatResponseDTO(agentResponse, "chat", sessionId);
+    }
+
+    @Override
     public ChatResponseDTO sendMultimodal(MultimodalRequestDTO request) {
         String sessionId = request.getSessionId() != null ? request.getSessionId() : "default";
 

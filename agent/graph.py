@@ -6,6 +6,7 @@ Flow:
                                        → bim_builder          → END
                                        → bim_query            → END
                                        → simulation_controller → END
+                                       → tab_guide            → END
                                        → chat                 → END
 """
 
@@ -17,6 +18,7 @@ from nodes.bim_builder import bim_builder_node
 from nodes.bim_query import bim_query_node
 from nodes.chat import chat_node
 from nodes.simulation_controller import simulation_controller_node
+from nodes.tab_guide import tab_guide_node
 
 
 def build_graph():
@@ -27,7 +29,8 @@ def build_graph():
     builder.add_node("bim_builder",           bim_builder_node)           # Node 3: BIM element create/edit/delete
     builder.add_node("bim_query",             bim_query_node)             # Node 4: BIM project/element stats query
     builder.add_node("simulation_controller", simulation_controller_node) # Node 5: excavator simulation control
-    builder.add_node("chat",                  chat_node)                  # Node 6: general conversation
+    builder.add_node("tab_guide",             tab_guide_node)             # Node 6: dashboard tab info & usage guide
+    builder.add_node("chat",                  chat_node)                  # Node 7: general conversation
 
     builder.add_edge(START, "analyze")
 
@@ -36,11 +39,12 @@ def build_graph():
         "analyze",
         route_by_intent,
         {
-            "rag_db":               "rag_db",
-            "bim_builder":          "bim_builder",
-            "bim_query":            "bim_query",
+            "rag_db":                "rag_db",
+            "bim_builder":           "bim_builder",
+            "bim_query":             "bim_query",
             "simulation_controller": "simulation_controller",
-            "chat":                 "chat",
+            "tab_guide":             "tab_guide",
+            "chat":                  "chat",
         },
     )
 
@@ -48,6 +52,7 @@ def build_graph():
     builder.add_edge("bim_builder",          END)
     builder.add_edge("bim_query",            END)
     builder.add_edge("simulation_controller", END)
+    builder.add_edge("tab_guide",            END)
     builder.add_edge("chat",                 END)
 
     return builder.compile()

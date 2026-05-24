@@ -344,6 +344,10 @@ public class BimServiceImpl implements BimService {
                     dto.setEndZ(toDouble(row.get("endZ")));
                     dto.setColor((String) row.getOrDefault("color", "#60a5fa"));
                     dto.setLineWidth(toDouble(row.getOrDefault("lineWidth", 2.0)));
+                    dto.setPointsJson((String) row.get("pointsJson"));
+                    Object closed = row.get("closed");
+                    dto.setClosed(closed != null && (closed.equals(true) || closed.equals(1) || "1".equals(closed.toString())));
+                    dto.setShapeHeight(toDouble(row.getOrDefault("shapeHeight", 0.0)));
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -356,6 +360,21 @@ public class BimServiceImpl implements BimService {
         }
         bimDAO.insertLine(buildLineParams(line));
         return line;
+    }
+
+    @Override
+    public List<BimLineDTO> createLinesBatch(List<BimLineDTO> lines) {
+        if (lines == null || lines.isEmpty()) return List.of();
+        for (BimLineDTO line : lines) {
+            if (line.getLineId() == null || line.getLineId().isBlank()) {
+                line.setLineId("line-" + UUID.randomUUID().toString().substring(0, 12));
+            }
+        }
+        List<Map<String, Object>> params = lines.stream()
+                .map(this::buildLineParams)
+                .collect(Collectors.toList());
+        bimDAO.insertLinesBatch(params);
+        return lines;
     }
 
     @Override

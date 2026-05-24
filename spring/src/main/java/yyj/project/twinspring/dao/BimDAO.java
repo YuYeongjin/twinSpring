@@ -34,6 +34,9 @@ public interface BimDAO {
 
     void insertLine(Map<String, Object> line);
 
+    /** 다수 선 일괄 삽입 (도면 변환 등 대량 삽입용) */
+    void insertLinesBatch(List<Map<String, Object>> lines);
+
     void updateLine(Map<String, Object> line);
 
     void deleteLine(@Param("lineId") String lineId);

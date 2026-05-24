@@ -1,1 +1,30 @@
+# Secrets — never commit
 .env
+
+# Virtual environment
+venv/
+.venv/
+
+# ChromaDB vector store (local, regenerate with init_rag.py)
+chroma_db/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
