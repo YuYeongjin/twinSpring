@@ -31,12 +31,24 @@ builder.Services.AddAuthorization();
 
 
 // 2. PostgreSQL DB Context 등록
-var connectionString = builder.Configuration.GetConnectionString("PostgreSQLConnection");
+// 우선순위: 환경변수 DB_CONNECTION_STRING > appsettings.json ConnectionStrings:PostgreSQLConnection
+// Kubernetes: Secret에서 DB_CONNECTION_STRING 환경변수로 주입
+// 로컬 개발: appsettings.json의 localhost 기본값 사용
+var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+    ?? builder.Configuration.GetConnectionString("PostgreSQLConnection");
 
 if (string.IsNullOrEmpty(connectionString))
 {
-    throw new InvalidOperationException("Connection string 'PostgreSQLConnection' not found in configuration. Please ensure appsettings.json includes the 'PostgreSQLConnection' connection string.");
+    throw new InvalidOperationException(
+        "DB 연결 문자열을 찾을 수 없습니다. " +
+        "환경변수 'DB_CONNECTION_STRING' 또는 appsettings.json의 'ConnectionStrings:PostgreSQLConnection'을 설정하세요.");
 }
+
+var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Startup");
+if (Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") != null)
+    logger.LogInformation("[DB] 환경변수 DB_CONNECTION_STRING 사용");
+else
+    logger.LogInformation("[DB] appsettings.json 기본값 사용 (로컬 개발)");
 
 builder.Services.AddDbContext<BimDbContext>(options =>
     options.UseNpgsql(connectionString)
