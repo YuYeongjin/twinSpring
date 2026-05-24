@@ -57,14 +57,12 @@ pipeline {
 
         stage('Deploy to K8s') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh """
-                        kubectl set image deployment/spring \
-                            spring=${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                            -n twin-spring
-                        kubectl rollout status deployment/spring -n twin-spring --timeout=120s
-                    """
-                }
+                sh """
+                    kubectl set image deployment/spring \
+                        spring=${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                        -n twin-spring
+                    kubectl rollout status deployment/spring -n twin-spring --timeout=120s
+                """
             }
         }
     }
