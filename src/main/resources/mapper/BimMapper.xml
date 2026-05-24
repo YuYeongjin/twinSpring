@@ -67,7 +67,7 @@
     <insert id="upsertColor" parameterType="map">
         INSERT INTO bim_element_color (element_id, project_id, color)
         VALUES (#{elementId}, #{projectId}, #{color})
-        ON DUPLICATE KEY UPDATE color = #{color}
+        ON CONFLICT (element_id) DO UPDATE SET color = EXCLUDED.color
     </insert>
 
     <!-- 단일 부재 색상 삭제 -->
