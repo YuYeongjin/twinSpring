@@ -45,7 +45,8 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                // 빌드 컨텍스트: ./spring (Dockerfile과 target/*.jar 모두 spring/ 아래에 있음)
+                sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ./spring"
                 sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
             }
         }
@@ -63,10 +64,10 @@ pipeline {
         stage('Deploy to K8s') {
             steps {
                 sh """
-                    kubectl set image deployment/spring \
-                        spring=${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                        -n twin-spring
-                    kubectl rollout status deployment/spring -n twin-spring --timeout=120s
+                    kubectl set image deployment/twin-spring \
+                        twin-spring=${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                        -n twin
+                    kubectl rollout status deployment/twin-spring -n twin --timeout=120s
                 """
             }
         }
