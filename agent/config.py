@@ -5,7 +5,7 @@ load_dotenv()
 
 # LLM (Ollama)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5:14b")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5:3b")
 
 # Database (PostgreSQL + pgvector)
 VECTOR_DB_HOST = os.getenv("VECTOR_DB_HOST", "localhost")
