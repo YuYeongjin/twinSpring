@@ -1,9 +1,21 @@
-# ──────────────────────────────────────────────────────────────────────
-# [무거운 레이어] PyTorch를 끌어오는 패키지 — 거의 변경되지 않음
-# sentence-transformers → torch (~1.5 GB), transformers 등
-# chromadb → 대형 벡터 DB 의존성
-# langchain-huggingface → sentence-transformers에 의존
-# ──────────────────────────────────────────────────────────────────────
-sentence-transformers>=3.0.0
+# ══════════════════════════════════════════════════════════════
+#  Layer 1 — Heavy ML / Embedding dependencies
+#  Install FIRST so Docker can cache this layer independently.
+#
+#  These packages pull PyTorch (~1.5 GB) and related libs.
+#  On CPU-only servers add:
+#    --extra-index-url https://download.pytorch.org/whl/cpu
+#  to pip install to avoid downloading the CUDA build.
+#
+#  Install:  pip install -r requirements-base.txt
+# ══════════════════════════════════════════════════════════════
+
+# Vector store
 chromadb>=0.5.0
+
+# Sentence embeddings (intfloat/multilingual-e5-small etc.)
+# Pulls torch, transformers, tokenizers
+sentence-transformers>=3.0.0
+
+# LangChain HuggingFace integration
 langchain-huggingface>=0.1.0

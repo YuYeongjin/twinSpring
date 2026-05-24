@@ -56,11 +56,16 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
 
   const startCamera = useCallback(async () => {
     setCamError('');
+    // getUserMedia requires HTTPS (or localhost). Block immediately with a clear message.
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setCamError(t('cameraHttpsRequired'));
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
     } catch (e) { setCamError(t('cameraError') + e.message); }
-  }, []);
+  }, [t]);
 
   const stopCamera = useCallback(() => {
     liveDetectingRef.current = false;

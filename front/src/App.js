@@ -142,11 +142,10 @@ function App() {
         });
       }
 
-      // 3) 2D 평면도용 BIM 라인
+      // 3) 도면 선 일괄 삽입 (배치 API 사용 — 개별 POST 수백 번 방지)
       if (contourLines.length > 0) {
-        await Promise.all(
-          contourLines.map(line => AxiosCustom.post('/api/bim/line', { ...line, projectId: pid }))
-        );
+        const linePayload = contourLines.map(line => ({ ...line, projectId: pid }));
+        await AxiosCustom.post('/api/bim/line/batch', linePayload);
       }
 
       await refreshProjectList();

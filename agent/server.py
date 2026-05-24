@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage
 from graph import graph
 from llm_config import llm_chat
+from nodes.chat import chat_node
 
 app = FastAPI(title="Digital Twin AI Agent", version="2.0.0")
 
@@ -107,6 +108,44 @@ def chat(req: ChatRequest):
         bimData=result.get("bim_data"),
         sensorData=result.get("sensor_data"),
     )
+
+
+@app.post("/chat-simple", response_model=ChatResponse)
+def chat_simple(req: ChatRequest):
+    """Simple chatbot endpoint — skips LangGraph routing, answers directly via chat node."""
+
+    history_messages = []
+    for msg in req.history:
+        if msg.role == "user":
+            history_messages.append(HumanMessage(content=msg.content))
+        else:
+            history_messages.append(AIMessage(content=msg.content))
+
+    messages = history_messages + [HumanMessage(content=req.message)]
+
+    state = {
+        "messages": messages,
+        "intent": "chat",
+        "query_result": None,
+        "context": None,
+        "bim_project_id": None,
+        "simulation_project_id": None,
+        "pending_action": None,
+    }
+
+    try:
+        result = chat_node(state)
+    except Exception:
+        traceback.print_exc()
+        return ChatResponse(
+            response="An error occurred while processing your request. Please try again.",
+            intent="chat",
+        )
+
+    msgs = result.get("messages", [])
+    last_content = msgs[-1].content if msgs else "No response received."
+
+    return ChatResponse(response=last_content, intent="chat")
 
 
 @app.post("/chat-multimodal", response_model=ChatResponse)

@@ -182,6 +182,13 @@ public class BimController {
         return ResponseEntity.status(HttpStatus.CREATED).body(bimService.createLine(line));
     }
 
+    /** 다수 선 일괄 삽입 — 도면 변환 등 대량 삽입에 사용 */
+    @PostMapping("/line/batch")
+    public ResponseEntity<List<BimLineDTO>> createLinesBatch(@RequestBody List<BimLineDTO> lines) {
+        if (lines == null || lines.isEmpty()) return ResponseEntity.ok(List.of());
+        return ResponseEntity.status(HttpStatus.CREATED).body(bimService.createLinesBatch(lines));
+    }
+
     @PutMapping("/line")
     public ResponseEntity<BimLineDTO> updateLine(@RequestBody BimLineDTO line) {
         return ResponseEntity.ok(bimService.updateLine(line));

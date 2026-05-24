@@ -1,14 +1,31 @@
-# ──────────────────────────────────────────────────────────────────────
-# [가벼운 레이어] 앱 로직 패키지 — requirements-base.txt 설치 이후 적용
-# ──────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+#  Layer 2 — Application dependencies
+#  Install AFTER requirements-base.txt.
+#
+#  Install:  pip install -r requirements.txt
+# ══════════════════════════════════════════════════════════════
+
+# ── LangGraph / LangChain ──────────────────────────────────────
 langgraph>=0.2.0
 langchain>=0.3.0
-langchain-ollama>=0.2.0
-langchain-chroma>=0.1.0
-langchain-community>=0.3.0
-psycopg2-binary>=2.9.0
-influxdb-client>=1.44.0
-python-dotenv>=1.0.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0          # Ollama LLM integration
+langchain-chroma>=0.1.0          # ChromaDB vector store integration
+langchain-community>=0.3.0       # Community tools & utilities
+
+# ── Web framework ──────────────────────────────────────────────
 fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-httpx>=0.28.0
+uvicorn[standard]>=0.32.0        # ASGI server (includes websockets, httptools)
+pydantic>=2.0.0
+
+# ── Database ───────────────────────────────────────────────────
+psycopg2-binary>=2.9.0           # PostgreSQL driver (binary, no build tools needed)
+
+# ── IoT / Time-series ──────────────────────────────────────────
+influxdb-client>=1.44.0          # InfluxDB 2.x client
+
+# ── HTTP client ────────────────────────────────────────────────
+httpx>=0.28.0                    # Async-capable HTTP client (used for simulation API calls)
+
+# ── Utilities ──────────────────────────────────────────────────
+python-dotenv>=1.0.0             # .env file loader

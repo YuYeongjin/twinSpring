@@ -389,10 +389,15 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             </div>
           )}
 
-          {/* Quick prompts */}
+          {/* Quick prompts — context-aware */}
           <div className="px-4 pt-3 bg-[#162032] border-t border-[#253347]">
             <div className="flex flex-wrap gap-1.5">
-              {[t('quickShowTemp'), t('quickBimList'), t('quickMemberCount'), t('quickAddColumn')].map(q => (
+              {(selectedProject
+                ? [t('quickShowTemp'), t('quickMemberCount'), t('quickAddColumn'), t('quickTabGuide')]
+                : selectedSimulationProject
+                  ? [t('quickShowTemp'), t('quickSimStatus'), t('quickSimDig'), t('quickTestTab')]
+                  : [t('quickShowTemp'), t('quickBimList'), t('quickSimTab'), t('quickTabGuide')]
+              ).map(q => (
                 <button
                   key={q}
                   onClick={() => setInput(q)}
@@ -876,6 +881,7 @@ function AgentMessageBubble({ msg }) {
     rag_db:      { label: t('intentDataQuery'),     color: 'text-green-400 bg-green-900/40 border-green-800/50'     },
     bim_builder: { label: t('intentBimOperation'),  color: 'text-blue-400 bg-blue-900/40 border-blue-800/50'       },
     bim_query:   { label: t('intentBimQuery'),      color: 'text-cyan-400 bg-cyan-900/40 border-cyan-800/50'        },
+    tab_guide:   { label: t('intentTabGuide'),      color: 'text-amber-400 bg-amber-900/40 border-amber-800/50'    },
     vision:      { label: t('intentImageAnalysis'), color: 'text-purple-400 bg-purple-900/40 border-purple-800/50' },
     chat: null,
   };
