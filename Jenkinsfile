@@ -10,6 +10,7 @@ pipeline {
     environment {
         DOCKER_IMAGE = 'yeongjin95/twin-spring'
         DOCKER_REGISTRY = 'https://registry.hub.docker.com'
+        DOCKER_CREDENTIALS_ID = 'docker-hub-credentials'
     }
 
     stages {
@@ -39,19 +40,17 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                script {
-                    dockerImage = docker.build("${DOCKER_IMAGE}:${BUILD_NUMBER}")
-                }
+                sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
             }
         }
 
         stage('Docker Push') {
             steps {
-                script {
-                    docker.withRegistry(DOCKER_REGISTRY, 'docker-hub-credentials') {
-                        dockerImage.push("${BUILD_NUMBER}")
-                        dockerImage.push('latest')
-                    }
+                withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASSWORD')]) {
+                    sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USER --password-stdin"
+                    sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                    sh "docker push ${DOCKER_IMAGE}:latest"
                 }
             }
         }
