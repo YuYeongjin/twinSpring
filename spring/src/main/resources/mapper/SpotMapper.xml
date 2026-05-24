@@ -4,7 +4,7 @@
 <mapper namespace="yyj.project.twinspring.dao.SpotDAO">
 
     <insert id="insertData" parameterType="yyj.project.twinspring.dto.SensorDTO">
-        INSERT INTO SENSOR_DATA (location, temperature, timestamp,humidity)
+        INSERT INTO sensor_data (location, temperature, timestamp, humidity)
         VALUES (
             #{location},
             #{temperature},
@@ -14,7 +14,7 @@
     </insert>
 
     <select id="getAll">
-        SELECT * FROM SENSOR_DATA LIMIT 100
+        SELECT * FROM sensor_data LIMIT 100
     </select>
 
     <select id="getAvgData" parameterType="map" resultType="map">

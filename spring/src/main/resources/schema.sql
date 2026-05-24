@@ -31,8 +31,9 @@ CREATE INDEX IF NOT EXISTS idx_project_id ON bim_element (project_id);
 
 -- ================================================================
 -- 센서 데이터 테이블 (DHT11 등)
+-- ※ PostgreSQL은 따옴표 없는 식별자를 소문자로 저장 → 실제 테이블명: sensor_data
 -- ================================================================
-CREATE TABLE IF NOT EXISTS SENSOR_DATA
+CREATE TABLE IF NOT EXISTS sensor_data
 (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     location    VARCHAR(100) NOT NULL,

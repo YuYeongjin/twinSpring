@@ -9,13 +9,13 @@
 
     <!-- 프로젝트의 모든 레이어 조회 (sort_order ASC) -->
     <select id="getLayersByProject" parameterType="string" resultType="map">
-        SELECT layer_id    AS layerId,
-               project_id  AS projectId,
-               layer_name  AS layerName,
+        SELECT layer_id    AS "layerId",
+               project_id  AS "projectId",
+               layer_name  AS "layerName",
                color,
                visible,
-               element_ids AS elementIds,
-               sort_order  AS sortOrder
+               element_ids AS "elementIds",
+               sort_order  AS "sortOrder"
         FROM bim_layer
         WHERE project_id = #{projectId}
         ORDER BY sort_order ASC, created_at ASC
@@ -56,8 +56,8 @@
 
     <!-- 프로젝트의 모든 커스텀 색상 조회 -->
     <select id="getColorsByProject" parameterType="string" resultType="map">
-        SELECT element_id AS elementId,
-               project_id AS projectId,
+        SELECT element_id AS "elementId",
+               project_id AS "projectId",
                color
         FROM bim_element_color
         WHERE project_id = #{projectId}
@@ -113,20 +113,20 @@
     <!-- ★ ALTER TABLE 실행 전: 기본 컬럼만 사용 (에러 방지)
          ALTER TABLE 실행 후: 아래 주석 SQL로 교체하면 다중점/도형이 DB에 영구 저장됨 -->
     <select id="getLinesByProject" parameterType="string" resultType="map">
-        SELECT line_id    AS lineId,
-               project_id AS projectId,
-               start_x    AS startX,
-               start_y    AS startY,
-               start_z    AS startZ,
-               end_x      AS endX,
-               end_y      AS endY,
-               end_z      AS endZ,
+        SELECT line_id    AS "lineId",
+               project_id AS "projectId",
+               start_x    AS "startX",
+               start_y    AS "startY",
+               start_z    AS "startZ",
+               end_x      AS "endX",
+               end_y      AS "endY",
+               end_z      AS "endZ",
                color,
-               line_width AS lineWidth
+               line_width AS "lineWidth"
                <!-- ALTER TABLE 완료 후 아래 3줄 주석 해제:
-               ,points_json  AS pointsJson
+               ,points_json  AS "pointsJson"
                ,closed
-               ,shape_height AS shapeHeight
+               ,shape_height AS "shapeHeight"
                -->
         FROM bim_line
         WHERE project_id = #{projectId}
@@ -176,10 +176,10 @@
 
     <!-- 전체 프로젝트 목록 -->
     <select id="getAllProjects" resultType="map">
-        SELECT project_id    AS projectId,
-               project_name  AS projectName,
-               structure_type AS structureType,
-               span_count    AS spanCount
+        SELECT project_id     AS "projectId",
+               project_name   AS "projectName",
+               structure_type AS "structureType",
+               span_count     AS "spanCount"
         FROM bim_project
         ORDER BY project_name ASC
     </select>
@@ -193,38 +193,38 @@
 
     <!-- 프로젝트 단건 조회 -->
     <select id="getProjectById" parameterType="string" resultType="map">
-        SELECT project_id    AS projectId,
-               project_name  AS projectName,
-               structure_type AS structureType,
-               span_count    AS spanCount
+        SELECT project_id     AS "projectId",
+               project_name   AS "projectName",
+               structure_type AS "structureType",
+               span_count     AS "spanCount"
         FROM bim_project
         WHERE project_id = #{projectId}
     </select>
 
     <!-- 프로젝트별 부재 타입 통계 (count by element_type) -->
     <select id="getElementStatsByProject" parameterType="string" resultType="map">
-        SELECT element_type AS elementType,
-               COUNT(*)     AS elementCount
+        SELECT element_type AS "elementType",
+               COUNT(*)     AS "elementCount"
         FROM bim_element
         WHERE project_id = #{projectId}
         GROUP BY element_type
-        ORDER BY elementCount DESC
+        ORDER BY 2 DESC
     </select>
 
     <!-- 프로젝트별 전체 부재 목록 (CSV 내보내기 용) -->
     <select id="getElementsByProject" parameterType="string" resultType="map">
-        SELECT element_id  AS elementId,
-               element_type AS elementType,
+        SELECT element_id   AS "elementId",
+               element_type AS "elementType",
                material,
-               position_x  AS positionX,
-               position_y  AS positionY,
-               position_z  AS positionZ,
-               size_x      AS sizeX,
-               size_y      AS sizeY,
-               size_z      AS sizeZ,
-               rotation_x  AS rotationX,
-               rotation_y  AS rotationY,
-               rotation_z  AS rotationZ
+               position_x   AS "positionX",
+               position_y   AS "positionY",
+               position_z   AS "positionZ",
+               size_x       AS "sizeX",
+               size_y       AS "sizeY",
+               size_z       AS "sizeZ",
+               rotation_x   AS "rotationX",
+               rotation_y   AS "rotationY",
+               rotation_z   AS "rotationZ"
         FROM bim_element
         WHERE project_id = #{projectId}
         ORDER BY element_type, element_id
