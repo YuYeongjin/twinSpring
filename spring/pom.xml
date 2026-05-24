@@ -121,7 +121,7 @@
                         <configuration>
                             <target>
                                 <copy todir="${project.build.outputDirectory}/public">
-                                    <fileset dir="${basedir}/front/build"/>
+                                    <fileset dir="${basedir}/../front/build"/>
                                 </copy>
                             </target>
                         </configuration>

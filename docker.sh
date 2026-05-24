@@ -3,7 +3,7 @@ set -e
 
 # 1. Spring Boot JAR 빌드
 echo "===== Maven Build Start ====="
-./mvnw clean package -DskipTests
+cd spring && ./mvnw clean package -DskipTests && cd ..
 
 # 2. twinBIM .NET 퍼블리시 (폴더명을 Docker 아키텍처 이름과 매칭)
 echo "===== twinBIM dotnet publish ====="
@@ -25,7 +25,7 @@ docker buildx build \
   --no-cache \
   -t yeongjin95/twin-spring:latest \
   -t yeongjin95/twin-spring:v1.0.1 \
-  --push .
+  --push ./spring
 
 # 5. BIM API 이미지 (에뮬레이션 없이 COPY만 수행하여 매우 빠름)
 echo "===== Building twin-bim ====="

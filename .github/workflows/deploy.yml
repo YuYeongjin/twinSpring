@@ -31,6 +31,7 @@ jobs:
 
       # 1-2. Spring Boot Maven 빌드
       - name: Build Spring Boot
+        working-directory: ./spring
         run: |
           chmod +x mvnw
           ./mvnw clean package -DskipTests
@@ -64,7 +65,7 @@ jobs:
       - name: Build and Push twin-spring
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./spring
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: yeongjin95/twin-spring:latest
