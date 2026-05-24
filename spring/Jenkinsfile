@@ -60,6 +60,28 @@ pipeline {
                 }
             }
         }
+        stage('Update Manifest') {
+                    steps {
+                        withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
+                            sh """
+                                git clone https://${GIT_USER}:${GIT_PASS}@github.com/YuYeongjin/digitalTwinCICD.git
+                                cd digitalTwinCICD
+
+                                git config user.name "${GIT_USER}"
+                                git config user.email "${GIT_USER}@users.noreply.github.com"
+
+                                sed -i "s|image: yeongjin95/twin-spring:.*|image: yeongjin95/twin-spring:${BUILD_NUMBER}|" spring/deployment/deployment.yaml
+
+                                git add spring/deployment/deployment.yaml
+                                git commit -m "update spring image tag to ${BUILD_NUMBER}"
+                                git push origin main
+
+                                cd ..
+                                rm -rf digitalTwinCICD
+                            """
+                        }
+                    }
+                }
     }
 
     post {
