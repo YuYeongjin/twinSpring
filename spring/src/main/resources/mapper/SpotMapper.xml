@@ -8,7 +8,7 @@
         VALUES (
             #{location},
             #{temperature},
-            #{timestamp},
+            CAST(#{timestamp} AS timestamp with time zone),
             #{humidity}
             )
     </insert>
