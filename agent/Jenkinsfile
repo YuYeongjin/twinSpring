@@ -13,28 +13,6 @@ pipeline {
             }
         }
 
-        stage('Lint with Auto-pip') {
-            steps {
-                dir('agent') {
-                    sh '''
-                        if ! command -v pip &> /dev/null; then
-                            sudo apt-get update && sudo apt-get install -y python3-pip || \
-                            (apt-get update && apt-get install -y python3-pip)
-
-                            if ! command -v pip &> /dev/null && command -v pip3 &> /dev/null; then
-                                ln -s /usr/bin/pip3 /usr/bin/pip || true
-                            fi
-                        fi
-
-                        pip install flake8 --quiet --break-system-packages 2>/dev/null \
-                            || pip install flake8 --quiet
-
-                        flake8 . --exclude=__pycache__,chroma_db,.env --max-line-length=120 || true
-                    '''
-                }
-            }
-        }
-
         stage('Docker Build') {
             steps {
                 dir('agent') {
