@@ -2,11 +2,10 @@
 using Microsoft.AspNetCore.Mvc;
 using BimProcessorApi.Models;
 using BimProcessorApi.Services;
-using Google.Protobuf;
 using System.Text.Json;
 using System.Text;
 [ApiController]
-[Route("api/[controller]")] // 이 컨트롤러의 기본 경로: /api/bim
+[Route("api/[controller]")]
 public class BimController : ControllerBase
 {
     private readonly BimService _bimService;
