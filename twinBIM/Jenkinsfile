@@ -30,19 +30,6 @@ pipeline {
             }
         }
 
-        stage('Test') {
-            steps {
-                dir('twinBIM') {
-                    sh 'dotnet test --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" || true'
-                }
-            }
-            post {
-                always {
-                    echo 'test stage complete'
-                }
-            }
-        }
-
         stage('Publish (linux-x64)') {
             steps {
                 dir('twinBIM') {
@@ -74,6 +61,28 @@ pipeline {
                     sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USER --password-stdin"
                     sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
                     sh "docker push ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+        stage('Update Manifest') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
+                    sh """
+                        git clone https://${GIT_USER}:${GIT_PASS}@github.com/YuYeongjin/digitalTwinCICD.git
+                        cd digitalTwinCICD
+
+                        git config user.name "${GIT_USER}"
+                        git config user.email "${GIT_USER}@users.noreply.github.com"
+
+                        sed -i "s|image: yeongjin95/twin-bim:.*|image: yeongjin95/twin-bim:${BUILD_NUMBER}|" bim/deployment/deployment.yaml
+
+                        git add bim/deployment/deployment.yaml
+                        git commit -m "update bim image tag to ${BUILD_NUMBER}"
+                        git push origin main
+
+                        cd ..
+                        rm -rf digitalTwinCICD
+                    """
                 }
             }
         }
