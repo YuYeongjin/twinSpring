@@ -1,0 +1,25 @@
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.219.105:5001
+Press CTRL+C to quit
+127.0.0.1 - - [12/May/2026 22:32:21] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:32:52] "POST /detect HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:33:37] "POST /detect HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:35:35] "POST /detect HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:45:04] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:45:19] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:49:04] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:49:05] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:56:44] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:56:44] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:56:55] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:56:55] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:57:28] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:57:28] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:58:28] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:58:28] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 22:58:34] "POST /detect HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 23:39:56] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 23:41:33] "GET /status HTTP/1.1" 200 -
+127.0.0.1 - - [12/May/2026 23:42:06] "GET /status HTTP/1.1" 200 -

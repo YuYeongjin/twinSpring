@@ -1,0 +1,25 @@
+# 벡터 DB 데이터 (런타임 데이터, 이미지에 포함 불필요)
+chroma_db/
+
+# Python 캐시
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 환경 설정
+.env
+*.env.*
+
+# 개발 도구
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# 로그
+*.log
+
+# 테스트/문서
+*.md
+init.txt
