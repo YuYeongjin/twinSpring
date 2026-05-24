@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = 'yeongjin95/twin-bim'
-        DOCKER_REGISTRY = 'https://registry.hub.docker.com'
+        DOCKER_CREDENTIALS_ID = 'docker-hub-credentials'
         DOTNET_VERSION = '8.0'
     }
 
@@ -38,8 +38,6 @@ pipeline {
             }
             post {
                 always {
-                    // TRX → JUnit 변환 플러그인이 있을 경우 활성화
-                    // junit allowEmptyResults: true, testResults: 'twinBIM/**/*.trx'
                     echo 'test stage complete'
                 }
             }
@@ -64,23 +62,18 @@ pipeline {
         stage('Docker Build') {
             steps {
                 dir('twinBIM') {
-                    script {
-                        dockerImage = docker.build(
-                            "${DOCKER_IMAGE}:${BUILD_NUMBER}",
-                            "--build-arg TARGETARCH=amd64 ."
-                        )
-                    }
+                    sh "docker build --build-arg TARGETARCH=amd64 -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
                 }
             }
         }
 
         stage('Docker Push') {
             steps {
-                script {
-                    docker.withRegistry(DOCKER_REGISTRY, 'docker-hub-credentials') {
-                        dockerImage.push("${BUILD_NUMBER}")
-                        dockerImage.push('latest')
-                    }
+                withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS_ID, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASSWORD')]) {
+                    sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USER --password-stdin"
+                    sh "docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}"
+                    sh "docker push ${DOCKER_IMAGE}:latest"
                 }
             }
         }
@@ -105,6 +98,7 @@ pipeline {
             dir('twinBIM') {
                 sh 'rm -rf publish-amd64 || true'
             }
+            cleanWs()
         }
         success {
             echo "[dotnet] 빌드 성공 - ${DOCKER_IMAGE}:${BUILD_NUMBER}"
