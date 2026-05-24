@@ -23,7 +23,7 @@
             COALESCE(AVG(humidity))    AS humidity
         FROM sensor_data
         WHERE location = #{location}
-          AND `timestamp` >= #{start_time}
-</select>
+          AND "timestamp" >= #{start_time}::timestamptz
+    </select>
 
 </mapper>
