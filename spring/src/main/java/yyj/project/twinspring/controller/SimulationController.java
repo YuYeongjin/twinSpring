@@ -1,5 +1,7 @@
 package yyj.project.twinspring.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,12 +12,15 @@ import yyj.project.twinspring.dto.SimulationDTO;
 import yyj.project.twinspring.dto.SimulationProjectDTO;
 import yyj.project.twinspring.service.SimulationService;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/simulation")
 public class SimulationController {
+
+    private static final Logger log = LoggerFactory.getLogger(SimulationController.class);
 
     private final SimulationService simulationService;
     private final WebClient webClient;
@@ -34,7 +39,22 @@ public class SimulationController {
                 .bodyValue(body)
                 .retrieve()
                 .toEntity(new ParameterizedTypeReference<Map<String, Object>>() {})
-                .onErrorResume(e -> Mono.just(ResponseEntity.status(503).build()));
+                .onErrorResume(e -> {
+                    // C# BIM 서버 미응답 시 로그 남기고 안전 기본값 반환 (503 대신 200)
+                    log.warn("[Physics] twinBIM 서버 미응답: {}", e.getMessage());
+                    Map<String, Object> safeResult = new HashMap<>();
+                    safeResult.put("dangerLevel", "SAFE");
+                    safeResult.put("wobbleAmplitude", 0.0);
+                    safeResult.put("wobbleFrequency", 2.5);
+                    safeResult.put("tipDirectionX", 0.0);
+                    safeResult.put("tipDirectionZ", 1.0);
+                    safeResult.put("isStable", true);
+                    safeResult.put("tipAngle", 0.0);
+                    safeResult.put("groundPressure", 0.0);
+                    safeResult.put("message", "Physics server unavailable – using safe defaults");
+                    safeResult.put("serverAvailable", false);
+                    return Mono.just(ResponseEntity.ok(safeResult));
+                });
     }
 
     // ── 굴착기 상태 ────────────────────────────────────────────────

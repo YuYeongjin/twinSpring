@@ -21,7 +21,7 @@ function isInvalidName(name) {
 // ================================================================
 // 인라인 이름 편집
 // ================================================================
-function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
+function InlineNameEditor({ projectId, currentName, onSave, onCancel, onSaved }) {
   const t = useT('simProjectList');
   const [value, setValue] = useState(isInvalidName(currentName) ? "" : currentName);
   const [saving, setSaving] = useState(false);
@@ -38,7 +38,9 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
     setSaving(true);
     onSave(projectId, trimmed, (ok) => {
       setSaving(false);
-      if (ok) onCancel();
+      // 저장 성공 시 onSaved 사용 — onCancel의 stale closure(!invalid 가드) 우회
+      if (ok) onSaved ? onSaved() : onCancel();
+      else onCancel();
     });
   }
 
@@ -136,6 +138,7 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
             currentName={item.projectName}
             onSave={onRename}
             onCancel={() => !invalid && setEditing(false)}
+            onSaved={() => setEditing(false)}
           />
         </>
       ) : (

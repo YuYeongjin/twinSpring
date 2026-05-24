@@ -7,7 +7,7 @@ import { Client } from '@stomp/stompjs';
 import { WS_BASE } from '../../axios/AxiosCustom';
 import { useT } from '../../i18n/LanguageContext';
 
-const DETECT_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
+const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
 
 const NO_HELMET_CLASSES = new Set(['no-hard-hat', 'no-helmet', 'no_hard_hat', 'no_helmet', 'person']);
 const RESTRICTED_CLASSES = new Set(['restricted', 'prohibited', 'danger-zone', 'danger_zone', 'restricted-area']);
@@ -88,7 +88,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
     const form = new FormData();
     form.append('file', blob, 'capture.jpg');
-    const res = await fetch(`${DETECT_URL}/api/detection/detect`, { method: 'POST', body: form });
+    const res = await fetch(`${DETECT_SERVER_URL}/api/detection/detect`, { method: 'POST', body: form });
     if (!res.ok) throw new Error(`${res.status}`);
     const data = await res.json();
     return { ...data, _imgW: imgW, _imgH: imgH };
@@ -545,7 +545,7 @@ export default function SafeDashboard() {
     setDetectAvailable(null);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
-    fetch(`${DETECT_URL}/api/detection/status`, { signal: controller.signal })
+    fetch(`${DETECT_SERVER_URL}/api/detection/status`, { signal: controller.signal })
       .then(r => setDetectAvailable(r.ok))
       .catch(() => setDetectAvailable(false))
       .finally(() => clearTimeout(timer));
