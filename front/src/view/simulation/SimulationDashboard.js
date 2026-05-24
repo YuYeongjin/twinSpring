@@ -1463,7 +1463,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     };
   }, [autoSim]);
 
-  // ── 자동 서버 동기화 (2초, 지형 + 장비 선택 포함) ──
+  // ── 자동 서버 동기화 (10초, 지형 + 장비 선택 포함) ──
+  // 2초 → 10초: C# 타임아웃(5s)과 겹쳐 요청이 누적되는 문제 방지
   useEffect(() => {
     const id = setInterval(() => {
       setSyncStatus('syncing');
@@ -1478,7 +1479,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       AxiosCustom.put('/api/simulation/excavator', payload)
         .then(() => setSyncStatus('synced'))
         .catch(() => setSyncStatus('error'));
-    }, 2000);
+    }, 10000);
     return () => clearInterval(id);
   }, [selectedProject?.projectId]);
 
@@ -1648,7 +1649,11 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     };
     AxiosCustom.put('/api/simulation/excavator', payload)
       .then(() => setSyncStatus('synced'))
-      .catch(() => setSyncStatus('error'));
+      .catch(() => {
+        // DB 저장 실패 시 표시, 3초 뒤 idle 복귀
+        setSyncStatus('error');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      });
   };
 
   // ── Earthwork Excel Export ────────────────────────────────────────────────
@@ -2471,7 +2476,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 버튼 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '8px', color: '#4ade80', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
-            💾 Save State (C# Server)
+            💾 Save State
           </button>
           <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '8px', color: '#fbbf24', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
             🗑 Clear Terrain
@@ -2815,7 +2820,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 액션 버튼 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '10px', color: '#4ade80', padding: '14px', fontSize: '14px', cursor: 'pointer', fontWeight: 600 }}>
-            💾 Save State (C# Server)
+            💾 Save State
           </button>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '10px', color: '#fbbf24', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🗑 Clear Terrain</button>

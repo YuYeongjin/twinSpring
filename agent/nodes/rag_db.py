@@ -48,23 +48,30 @@ def _fetch_db_context(targets: list[str]) -> tuple[str, dict]:
     structured: dict = {}
 
     if "sensor" in targets:
-        rows = query_sensor_data(limit=20)
-        parts.append(f"[Sensor]\n{_rows_to_text(rows)}")
-        structured["sensor"] = [
-            {
-                "time": _fmt_time(r.get("timestamp")),
-                "temperature": _safe_float(r.get("temperature") or r.get("temp")),
-                "humidity": _safe_float(r.get("humidity")),
-            }
-            for r in reversed(rows)   # oldest first
-        ]
+        try:
+            rows = query_sensor_data(limit=20)
+        except Exception as e:
+            rows = []
+            parts.append(f"[Sensor] DB unavailable: {e}")
+
         if rows:
+            parts.append(f"[Sensor]\n{_rows_to_text(rows)}")
+            structured["sensor"] = [
+                {
+                    "time": _fmt_time(r.get("timestamp")),
+                    "temperature": _safe_float(r.get("temperature") or r.get("temp")),
+                    "humidity": _safe_float(r.get("humidity")),
+                }
+                for r in reversed(rows)   # oldest first
+            ]
             latest = rows[0]
             structured["latest"] = {
                 "temperature": _safe_float(latest.get("temperature") or latest.get("temp")),
                 "humidity": _safe_float(latest.get("humidity")),
                 "timestamp": _fmt_time(latest.get("timestamp")),
             }
+        elif not parts:
+            parts.append("[Sensor] No sensor data found in DB.")
 
     context_text = "\n\n".join(parts) if parts else "No data found."
     return context_text, structured

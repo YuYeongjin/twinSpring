@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import yyj.project.twinspring.dao.SimulationDAO;
 import yyj.project.twinspring.dto.SimulationDTO;
 import yyj.project.twinspring.dto.SimulationProjectDTO;
@@ -30,50 +31,58 @@ public class SimulationServiceImpl implements SimulationService {
         this.simulationDAO = simulationDAO;
     }
 
-    // ── 굴착기 상태 (MariaDB 우선, C# 서버 보조) ─────────────────
+    // ── 굴착기 상태 (PostgreSQL 우선, C# 서버 보조) ─────────────────
 
     @Override
     public Mono<SimulationDTO> getExcavatorState(String excavatorId) {
-        // MariaDB에서 먼저 로드 (지형 데이터 포함)
-        Map<String, Object> row = simulationDAO.getSimulationState(excavatorId);
-        if (row != null) {
-            return Mono.just(rowToDTO(row));
-        }
-        // DB에 없으면 C# 서버 시도 후 기본값 반환
-        return webClient.get()
-            .uri("/api/simulation/excavator/" + excavatorId)
-            .retrieve()
-            .bodyToMono(SimulationDTO.class)
-            .doOnError(e -> log.warn("굴착기 상태 조회 실패: {}", e.getMessage()))
-            .onErrorResume(e -> Mono.just(defaultState(excavatorId)));
+        // JDBC 블로킹 호출을 boundedElastic 스레드 풀에서 실행 (Netty I/O 스레드 점유 방지)
+        return Mono.fromCallable(() -> simulationDAO.getSimulationState(excavatorId))
+            .subscribeOn(Schedulers.boundedElastic())
+            .flatMap(row -> {
+                if (row != null) return Mono.just(rowToDTO(row));
+                // DB에 없으면 C# 서버 시도 후 기본값 반환
+                return webClient.get()
+                    .uri("/api/simulation/excavator/" + excavatorId)
+                    .retrieve()
+                    .bodyToMono(SimulationDTO.class)
+                    .doOnError(e -> log.warn("굴착기 상태 조회 실패: {}", e.getMessage()))
+                    .onErrorResume(e -> Mono.just(defaultState(excavatorId)));
+            });
     }
 
     @Override
     public Mono<SimulationDTO> updateExcavatorState(SimulationDTO state) {
-        // MariaDB에 저장 (지형 + 장비 선택 포함)
-        simulationDAO.upsertSimulationState(dtoToRow(state));
-        // C# 서버에도 전달 시도 (실패해도 무시)
-        return webClient.put()
-            .uri("/api/simulation/excavator")
-            .bodyValue(state)
-            .retrieve()
-            .bodyToMono(SimulationDTO.class)
-            .doOnError(e -> log.warn("굴착기 상태 C# 저장 실패: {}", e.getMessage()))
-            .onErrorResume(e -> Mono.just(state));
+        // JDBC 블로킹 저장을 boundedElastic 에서 실행한 뒤 C# 서버로 전달 시도
+        return Mono.fromCallable(() -> {
+                simulationDAO.upsertSimulationState(dtoToRow(state));
+                return state;
+            })
+            .subscribeOn(Schedulers.boundedElastic())
+            .flatMap(savedState -> webClient.put()
+                .uri("/api/simulation/excavator")
+                .bodyValue(savedState)
+                .retrieve()
+                .bodyToMono(SimulationDTO.class)
+                .doOnError(e -> log.warn("굴착기 상태 C# 저장 실패: {}", e.getMessage()))
+                .onErrorResume(e -> Mono.just(savedState)));
     }
 
     @Override
     public Mono<SimulationDTO> resetExcavatorState(String excavatorId) {
         SimulationDTO def = defaultState(excavatorId);
-        simulationDAO.upsertSimulationState(dtoToRow(def));
-        return webClient.post()
-            .uri(uriBuilder -> uriBuilder
-                .path("/api/simulation/excavator/reset")
-                .queryParam("excavatorId", excavatorId)
-                .build())
-            .retrieve()
-            .bodyToMono(SimulationDTO.class)
-            .onErrorResume(e -> Mono.just(def));
+        return Mono.fromCallable(() -> {
+                simulationDAO.upsertSimulationState(dtoToRow(def));
+                return def;
+            })
+            .subscribeOn(Schedulers.boundedElastic())
+            .flatMap(resetState -> webClient.post()
+                .uri(uriBuilder -> uriBuilder
+                    .path("/api/simulation/excavator/reset")
+                    .queryParam("excavatorId", excavatorId)
+                    .build())
+                .retrieve()
+                .bodyToMono(SimulationDTO.class)
+                .onErrorResume(e -> Mono.just(resetState)));
     }
 
     private SimulationDTO defaultState(String excavatorId) {

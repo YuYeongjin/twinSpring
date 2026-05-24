@@ -3,9 +3,16 @@
 
 <mapper namespace="yyj.project.twinspring.dao.SimulationDAO">
 
+    <!--
+        ※ PostgreSQL은 따옴표 없는 SQL 식별자(alias)를 소문자로 반환합니다.
+          resultType="map" 에서 camelCase 키를 보존하려면 별칭을 큰따옴표로 감싸야 합니다.
+          예) AS projectId  → JDBC에서 "projectid" 반환 (소문자) → row.get("projectId") = null  ✗
+              AS "projectId"→ JDBC에서 "projectId" 반환 (원본)  → row.get("projectId") = 값   ✓
+    -->
+
     <select id="getAllSimulationProjects" resultType="map">
-        SELECT project_id   AS projectId,
-               project_name AS projectName
+        SELECT project_id   AS "projectId",
+               project_name AS "projectName"
         FROM simulation_project
         ORDER BY created_at ASC
     </select>
@@ -27,19 +34,19 @@
     </delete>
 
     <select id="getSimulationState" parameterType="string" resultType="map">
-        SELECT excavator_id        AS excavatorId,
-               position_x         AS positionX,
-               position_y         AS positionY,
-               position_z         AS positionZ,
-               body_rotation      AS bodyRotation,
-               swing_angle        AS swingAngle,
-               boom_angle         AS boomAngle,
-               arm_angle          AS armAngle,
-               bucket_angle       AS bucketAngle,
-               operation_mode     AS operationMode,
-               soil_in_bucket     AS soilInBucket,
-               selected_machine_id AS selectedMachineId,
-               height_map_data    AS heightMapData
+        SELECT excavator_id         AS "excavatorId",
+               position_x          AS "positionX",
+               position_y          AS "positionY",
+               position_z          AS "positionZ",
+               body_rotation       AS "bodyRotation",
+               swing_angle         AS "swingAngle",
+               boom_angle          AS "boomAngle",
+               arm_angle           AS "armAngle",
+               bucket_angle        AS "bucketAngle",
+               operation_mode      AS "operationMode",
+               soil_in_bucket      AS "soilInBucket",
+               selected_machine_id AS "selectedMachineId",
+               height_map_data     AS "heightMapData"
         FROM simulation_state
         WHERE excavator_id = #{excavatorId}
     </select>
