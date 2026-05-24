@@ -77,19 +77,6 @@ pipeline {
                 }
             }
         }
-
-        stage('Deploy to K8s') {
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh """
-                        kubectl set image deployment/bim \
-                            bim=${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                            -n twin-bim
-                        kubectl rollout status deployment/bim -n twin-bim --timeout=120s
-                    """
-                }
-            }
-        }
     }
 
     post {

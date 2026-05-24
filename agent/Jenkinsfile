@@ -46,19 +46,6 @@ pipeline {
                 }
             }
         }
-
-        stage('Deploy to K8s') {
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh """
-                        kubectl set image deployment/agent \
-                            agent=${DOCKER_IMAGE}:${BUILD_NUMBER} \
-                            -n twin-agent
-                        kubectl rollout status deployment/agent -n twin-agent --timeout=120s
-                    """
-                }
-            }
-        }
     }
 
     post {
