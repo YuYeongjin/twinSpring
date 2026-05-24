@@ -7,6 +7,7 @@ const NAV_IDS = [
   { id: "simulation-projects", key: "simulation", icon: "🚜" },
   { id: "safe",                key: "safe",       icon: "🦺" },
   { id: "test",                key: "test",       icon: "🧪" },
+  { id: "agent",               key: "agent",      icon: "🤖" },
 ];
 
 const LANGS = ['en', 'ko', 'ja'];

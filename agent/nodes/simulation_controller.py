@@ -17,6 +17,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from state import AgentState
 from llm_config import llm_precise
 from config import SPRING_BASE_URL
+from lang_util import detect_lang, translate_reply
 
 EXCAVATOR_ID = "EX-001"
 
@@ -135,7 +136,7 @@ _DEFAULT_STATE = {
 }
 
 
-def simulation_controller_node(state: AgentState) -> dict:
+def _simulation_controller_impl(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
     sim_project_id = state.get("simulation_project_id")
@@ -281,3 +282,29 @@ def simulation_controller_node(state: AgentState) -> dict:
             "• **Move position** — 'Move to position x=5, z=3'\n"
             "• **Reset** — 'Reset excavator'"
         ))]}
+
+
+def simulation_controller_node(state: AgentState) -> dict:
+    """
+    Multi-language entry point.
+    Runs _simulation_controller_impl, then translates the reply to the user's language.
+    Language is detected from the last 5 messages for robustness.
+    """
+    recent_text = " ".join(
+        msg.content for msg in state["messages"][-5:]
+        if hasattr(msg, "content")
+    )
+    lang = detect_lang(recent_text)
+
+    result = _simulation_controller_impl(state)
+
+    if lang != "en" and result.get("messages"):
+        result = {
+            **result,
+            "messages": [
+                AIMessage(content=translate_reply(msg.content, lang))
+                if (hasattr(msg, "content") and msg.content) else msg
+                for msg in result["messages"]
+            ],
+        }
+    return result

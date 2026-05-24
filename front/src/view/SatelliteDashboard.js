@@ -204,7 +204,7 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
           0. Quick Access — tab shortcut cards
           모바일: KPI 카드 아래 (order-3), 데스크탑: 최상단 (order-1)
           ================================================================ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 order-3 sm:order-1">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 order-3 sm:order-1">
         {[
           {
             id: 'bim-projects',
@@ -233,6 +233,13 @@ export default function SatelliteDashboard({ setViceComponent, onProjectSelect, 
             label: 'Collision Test',
             color: '#38bdf8',
             desc: 'BIM + Simulation combined — validate equipment clearance against building models.',
+          },
+          {
+            id: 'agent',
+            icon: '🤖',
+            label: 'AI Agent',
+            color: '#a855f7',
+            desc: 'Natural language BIM creation, sensor data query, excavator control, and voice chat.',
           },
         ].map(({ id, icon, label, color, desc }) => (
           <button
