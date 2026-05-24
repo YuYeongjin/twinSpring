@@ -11,6 +11,7 @@ from tools.db_tool import (
     query_sensor_data,
 )
 from tools.rag_tool import search_as_text
+from lang_util import detect_lang, lang_instruction
 
 _KEYWORDS = {
     "sensor":    re.compile(r"센서|온도|습도|dht|sensor|temperature|humidity", re.I),
@@ -18,11 +19,12 @@ _KEYWORDS = {
     "threshold": re.compile(r"임계|threshold|기준값|설정값", re.I),
 }
 
-_SYSTEM = SystemMessage(content=(
+# Base system prompt — language instruction is appended dynamically per request
+_SYSTEM_BASE = (
     "You are a Smart Building Digital Twin assistant. "
-    "Answer clearly and specifically in English based on the provided data. "
+    "Answer clearly and specifically based on the provided data. "
     "Include numerical values in your answers."
-))
+)
 
 
 def _detect_targets(text: str) -> list[str]:
@@ -100,6 +102,16 @@ def rag_db_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
 
+    # Detect language from recent context for robustness
+    recent_text = " ".join(
+        msg.content for msg in state["messages"][-5:]
+        if hasattr(msg, "content")
+    )
+    lang = detect_lang(recent_text)
+    note = lang_instruction(lang)
+    system_content = _SYSTEM_BASE + (" " + note if note else "")
+    system = SystemMessage(content=system_content)
+
     # 1. DB query (text + structured data)
     targets = _detect_targets(user_text)
     db_context, sensor_data = _fetch_db_context(targets)
@@ -112,7 +124,7 @@ def rag_db_node(state: AgentState) -> dict:
 
     try:
         response = llm_chat.invoke([
-            _SYSTEM,
+            system,
             HumanMessage(content=f"{combined}\n\nQuestion: {user_text}"),
         ])
         content = response.content.strip()

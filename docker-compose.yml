@@ -65,11 +65,11 @@ services:
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
       LLM_MODEL: qwen2.5:3b
-      DB_HOST: db
-      DB_PORT: "5432"
-      DB_NAME: digital_twin
-      DB_USER: postgres
-      DB_PASSWORD: "Abcd1234"
+      VECTOR_DB_HOST: db
+      VECTOR_DB_PORT: "5432"
+      VECTOR_DB_NAME: digital_twin
+      VECTOR_DB_USER: postgres
+      VECTOR_DB_PASSWORD: "Abcd1234"
       SPRING_BASE_URL: http://app:8080
 
   detect:

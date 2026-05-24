@@ -5,10 +5,12 @@ Node: General chat node (Ollama - gemma3:12b)
 from langchain_core.messages import SystemMessage, AIMessage
 from state import AgentState
 from llm_config import llm_chat
+from lang_util import detect_lang, lang_instruction
 
-_SYSTEM = SystemMessage(content=(
+# Base system prompt — language instruction is appended dynamically per request
+_SYSTEM_BASE = (
     "You are a Smart Building Digital Twin AI assistant.\n"
-    "Respond in English, in a friendly and natural manner.\n\n"
+    "Respond in a friendly and natural manner.\n\n"
 
     "## What you can do\n\n"
 
@@ -44,11 +46,23 @@ _SYSTEM = SystemMessage(content=(
     "- Remind the user that a BIM project must be selected before creating elements.\n"
     "- If unsure about something, say so honestly.\n"
     "- Keep responses concise; use lists only when necessary."
-))
+)
 
 
 def chat_node(state: AgentState) -> dict:
-    messages = [_SYSTEM] + list(state["messages"])
+    # Detect language from recent conversation context (more robust than single message)
+    recent_text = " ".join(
+        msg.content for msg in state["messages"][-5:]
+        if hasattr(msg, "content")
+    )
+    lang = detect_lang(recent_text)
+    note = lang_instruction(lang)
+
+    # Build dynamic system message with language instruction
+    system_content = _SYSTEM_BASE + (f"\n\n{note}" if note else "")
+    system = SystemMessage(content=system_content)
+
+    messages = [system] + list(state["messages"])
     try:
         response = llm_chat.invoke(messages)
         content = response.content.strip()

@@ -31,6 +31,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from state import AgentState
 from llm_config import llm_precise
 from config import SPRING_BASE_URL
+from lang_util import detect_lang, translate_reply
 
 # Default element sizes by type: (sizeX, sizeY, sizeZ) unit: m
 _DEFAULT_SIZES = {
@@ -582,7 +583,7 @@ _COMPOSITE_LIST_MSG = (
 )
 
 
-def bim_builder_node(state: AgentState) -> dict:
+def _bim_builder_impl(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
     project_id = state.get("bim_project_id")
@@ -771,3 +772,29 @@ def bim_builder_node(state: AgentState) -> dict:
         "query_result": json.dumps(action, ensure_ascii=False),
         "pending_action": None,
     }
+
+
+def bim_builder_node(state: AgentState) -> dict:
+    """
+    Multi-language entry point.
+    Runs _bim_builder_impl, then translates the reply to the user's language.
+    Language is detected from the last 5 messages for robustness in multi-step flows.
+    """
+    recent_text = " ".join(
+        msg.content for msg in state["messages"][-5:]
+        if hasattr(msg, "content")
+    )
+    lang = detect_lang(recent_text)
+
+    result = _bim_builder_impl(state)
+
+    if lang != "en" and result.get("messages"):
+        result = {
+            **result,
+            "messages": [
+                AIMessage(content=translate_reply(msg.content, lang))
+                if (hasattr(msg, "content") and msg.content) else msg
+                for msg in result["messages"]
+            ],
+        }
+    return result

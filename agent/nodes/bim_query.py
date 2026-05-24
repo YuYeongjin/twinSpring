@@ -15,13 +15,15 @@ from tools.db_tool import (
     query_bim_element_stats,
     query_bim_total_count,
 )
+from lang_util import detect_lang, lang_instruction
 
-_SYSTEM = SystemMessage(content=(
+# Base system prompt — language instruction is appended dynamically per request
+_SYSTEM_BASE = (
     "You are a BIM data analysis assistant. "
-    "Answer clearly and specifically in English based on the provided BIM data. "
+    "Answer clearly and specifically based on the provided BIM data. "
     "Include numerical values such as element counts, types, and ratios. "
     "Use markdown tables when appropriate."
-))
+)
 
 # Project ID mention pattern
 _PROJECT_ID_PAT = re.compile(r"[a-f0-9\-]{8,}", re.I)
@@ -51,6 +53,16 @@ def bim_query_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
     project_id = state.get("bim_project_id")
+
+    # Build language-aware system message
+    recent_text = " ".join(
+        msg.content for msg in state["messages"][-5:]
+        if hasattr(msg, "content")
+    )
+    lang = detect_lang(recent_text)
+    note = lang_instruction(lang)
+    system_content = _SYSTEM_BASE + (" " + note if note else "")
+    _SYSTEM = SystemMessage(content=system_content)
 
     bim_data: dict = {}
     context_parts = []
