@@ -13,18 +13,6 @@ pipeline {
             }
         }
 
-        stage('Lint') {
-            steps {
-                dir('detect') {
-                    sh '''
-                        pip install flake8 --quiet --break-system-packages 2>/dev/null \
-                            || pip install flake8 --quiet
-                        flake8 detect.py --max-line-length=120 || true
-                    '''
-                }
-            }
-        }
-
         stage('Docker Build') {
             steps {
                 dir('detect') {
@@ -48,7 +36,6 @@ pipeline {
     post {
         always {
             sh "docker rmi ${DOCKER_IMAGE}:${BUILD_NUMBER} || true"
-            sh "docker rmi ${DOCKER_IMAGE}:latest || true"
             cleanWs()
         }
         success {
