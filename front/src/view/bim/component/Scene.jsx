@@ -669,6 +669,8 @@ export default function Scene({
     ifcMeshes = null,
     // 카메라 자동 맞춤 수동 트리거 (숫자가 바뀌면 재맞춤)
     fitCameraTrigger = 0,
+    // 표준 뷰 프리셋: 'iso'|'top'|'front'|'right'|'left'|'back' + 타임스탬프
+    viewPreset = null,
 }) {
     const { camera } = useThree();
     const transformRef     = useRef();
@@ -708,6 +710,54 @@ export default function Scene({
         }
         return verts;
     }, [snapEnabled, pendingElement, lineDrawMode, lines, modelData]);
+
+    // ── 표준 뷰 프리셋 ────────────────────────────────────────────────
+    // viewPreset = { id: 'iso'|'top'|'front'|'right'|'left'|'back', ts: number }
+    const prevPresetRef = useRef(null);
+    useEffect(() => {
+        if (!viewPreset || !orbitRef.current) return;
+        if (prevPresetRef.current === viewPreset.ts) return;
+        prevPresetRef.current = viewPreset.ts;
+
+        // 모델 AABB → 중심 + 스팬 계산
+        let cx = 0, cy = 0, cz = 0, span = 20;
+        if (modelData.length > 0) {
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+            for (const el of modelData) {
+                const px = Number(el.positionX)||0, py = Number(el.positionY)||0, pz = Number(el.positionZ)||0;
+                const hx = (Number(el.sizeX)||0.1)/2, sy = Number(el.sizeY)||0.1, hz = (Number(el.sizeZ)||0.1)/2;
+                if (px-hx < minX) minX = px-hx; if (px+hx > maxX) maxX = px+hx;
+                if (py    < minY) minY = py;      if (py+sy  > maxY) maxY = py+sy;
+                if (pz-hz < minZ) minZ = pz-hz; if (pz+hz > maxZ) maxZ = pz+hz;
+            }
+            cx = (minX+maxX)/2; cy = (minY+maxY)/2; cz = (minZ+maxZ)/2;
+            span = Math.max(maxX-minX, maxY-minY, maxZ-minZ, 1);
+        }
+        const d = span * 1.6;
+        const center = new THREE.Vector3(cx, cy, cz);
+
+        // Three.js 좌표계: Y=위(높이), X=동, Z=남(IFC Y)
+        // BIM 표준 뷰 (IFC Z-up 기준으로 레이블)
+        const positions = {
+            iso:   new THREE.Vector3(cx+d*0.65, cy+d*0.55, cz+d*0.65), // 등각
+            top:   new THREE.Vector3(cx, cy+d,  cz),                     // 평면도 (위에서 아래)
+            bottom:new THREE.Vector3(cx, cy-d,  cz),                     // 하면도
+            front: new THREE.Vector3(cx, cy,    cz+d),                   // 정면도
+            back:  new THREE.Vector3(cx, cy,    cz-d),                   // 배면도
+            right: new THREE.Vector3(cx+d, cy,  cz),                     // 우측면도
+            left:  new THREE.Vector3(cx-d, cy,  cz),                     // 좌측면도
+        };
+
+        const pos = positions[viewPreset.id];
+        if (!pos) return;
+
+        camera.position.copy(pos);
+        camera.lookAt(center);
+        orbitRef.current.target.copy(center);
+        orbitRef.current.update();
+    }, [viewPreset]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── 카메라 추적 + 미니맵 네비게이션 ─────────────────────────────
     useFrame(() => {
