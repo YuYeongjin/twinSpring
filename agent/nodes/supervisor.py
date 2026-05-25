@@ -24,18 +24,27 @@ from state import AgentState
 
 # ── 키워드 패턴 ────────────────────────────────────────────────────────────────
 
-# 센서 에이전트: 온습도 데이터
+# 센서 에이전트: 온습도 데이터 (한/영/일)
 _SENSOR_KEYWORDS = re.compile(
-    r"온도|습도|센서|알림|경보|알람|임계|threshold"
+    # 한국어
+    r"온도|습도|센서|알림|경보|알람|임계"
     r"|현재\s*(상태|값|데이터)|최근\s*(데이터|기록)"
     r"|얼마|몇\s*도|몇\s*퍼센트"
-    r"|temperature|humidity|sensor|alert|alarm"
-    r"|current\s*(status|value|data)|recent\s*(data|records)",
+    # 영어
+    r"|temperature|humidity|sensor|alert|alarm|threshold"
+    r"|current\s*(status|value|data)|recent\s*(data|records)"
+    # 일본어
+    r"|温度|湿度|センサー|気温|室温"
+    r"|温度グラフ|湿度グラフ|温度.{0,5}(グラフ|表示|確認|教|見せ)"
+    r"|現在の(温度|湿度|気温)|最新の?(温度|湿度|センサ)"
+    r"|温度.{0,5}(履歴|データ|記録)|センサー?(データ|値|状態)"
+    r"|アラート|アラーム|閾値",
     re.IGNORECASE,
 )
 
-# BIM 에이전트: 부재 생성/삭제/수정 + 조회 + 드론/구조해석/IFC
+# BIM 에이전트: 부재 생성/삭제/수정 + 조회 + 드론/구조해석/IFC (한/영/일)
 _BIM_KEYWORDS = re.compile(
+    # 한국어
     r"bim|ifc"
     r"|기둥|IfcColumn|보(?!\w)|IfcBeam|벽|IfcWall|슬래브|IfcSlab|교각|IfcPier"
     r"|추가|생성|만들|삭제|제거|수정|변경"
@@ -43,76 +52,118 @@ _BIM_KEYWORDS = re.compile(
     r"|부재\s*(수|개수|목록|현황|통계|구성|종류|몇\s*개|조회)"
     r"|몇\s*(개의|개|종류).*부재"
     r"|피사의?\s*사탑|에펠탑|피라미드|인천대교|교각구조|건물골조|교량경간"
-    r"|드론\s*(사진|분석|촬영|영상|이미지|어떻게|안내)"
-    r"|구조\s*(해석|분석|안전도|하중)"
+    r"|드론\s*(사진|분析|촬영|영상|이미지|어떻게|안내)"
+    r"|구조\s*(해석|분析|안전도|하중)"
+    # 영어
     r"|drone|aerial\s*(photo|image|analysis)"
     r"|structural\s*(analysis|assessment|load)"
-    r"|ifc\s*(가져오기|임포트|불러오기|변환|import)"
-    r"|column|beam|wall|slab|pier"
+    r"|ifc\s*(import|export)|column|beam|wall|slab|pier"
     r"|add|create|delete|remove|modify"
-    r"|타워|tower|pyramid|구조물|건축물|랜드마크"
-    r"|내\s*프로젝트|내\s*bim"
-    r"|project\s*(list|overview|stats)|element\s*(count|stats|list)",
+    r"|tower|pyramid|landmark"
+    r"|project\s*(list|overview|stats)|element\s*(count|stats|list)"
+    # 일본어
+    r"|柱|梁|壁|スラブ|橋脚"
+    r"|プロジェクト\s*(一覧|リスト|作成|確認|状況)"
+    r"|部材\s*(数|一覧|統計|種類|追加|削除)"
+    r"|追加する|作成する|削除する|変更する|修正する"
+    r"|ドローン\s*(写真|分析|撮影|画像)"
+    r"|構造\s*(解析|分析|荷重)"
+    r"|BIMモデル|IFCファイル",
     re.IGNORECASE,
 )
 
-# 시뮬레이션 에이전트: 굴착기 제어
+# 시뮬레이션 에이전트: 굴착기 제어 (한/영/일)
 _SIMULATION_KEYWORDS = re.compile(
-    r"굴착기|굴삭기|excavator"
-    r"|붐\s*(각도|올려|내려|설정|변경)|boom\s*(angle|up|down)"
-    r"|암\s*(각도|굴절|설정|변경)|arm\s*(angle|bend)"
-    r"|버킷\s*(각도|설정|변경|열어|닫아)|bucket\s*(angle)"
-    r"|선회\s*(각도|설정|변경)|swing\s*(angle)"
+    # 한국어
+    r"굴착기|굴삭기"
+    r"|붐\s*(각도|올려|내려|설정|변경)"
+    r"|암\s*(각도|굴절|설정|변경)"
+    r"|버킷\s*(각도|설정|변경|열어|닫아)"
+    r"|선회\s*(각도|설정|변경)"
     r"|dig\s*자세|dump\s*자세|travel\s*자세|idle\s*자세"
     r"|굴착\s*(자세|모드|프리셋)|덤핑\s*(자세|모드|프리셋)"
     r"|이동\s*자세|대기\s*자세"
     r"|시뮬레이션\s*(상태|제어|조회|초기화|리셋)"
-    r"|굴착기\s*(상태|초기화|리셋|위치|이동)",
+    r"|굴착기\s*(상태|초기화|리셋|위치|이동)"
+    # 영어
+    r"|excavator"
+    r"|boom\s*(angle|up|down)|arm\s*(angle|bend)"
+    r"|bucket\s*(angle)|swing\s*(angle)"
+    # 일본어
+    r"|掘削機|ショベルカー|バックホウ|ユンボ"
+    r"|ブーム\s*(角度|上げ|下げ|設定)"
+    r"|アーム\s*(角度|設定|変更)"
+    r"|バケット\s*(角度|設定|開|閉)"
+    r"|旋回\s*(角度|設定)"
+    r"|掘削\s*(姿勢|モード)|ダンプ\s*(姿勢|モード)"
+    r"|シミュレーション\s*(状態|制御|リセット|初期化)",
     re.IGNORECASE,
 )
 
-# Safe 에이전트: 안전 모니터링
+# Safe 에이전트: 안전 모니터링 (한/영/일)
 _SAFE_KEYWORDS = re.compile(
+    # 한국어
     r"헬멧\s*(감지|착용|미착용|위반|인식|탐지|현황)"
     r"|안전모\s*(감지|착용|미착용|위반|인식)"
     r"|침입\s*(감지|탐지|이벤트|기록)"
     r"|yolo|감지\s*(서버|상태|결과|이벤트)"
     r"|안전\s*(위반|통계|이력|이벤트|현황|감지|모니터|모니터링)"
-    r"|restricted\s*area|제한\s*구역"
-    r"|감지\s*카메라|detection\s*server"
+    r"|제한\s*구역|감지\s*카메라"
     r"|최근\s*(감지|이벤트|위반)"
+    # 영어
     r"|helmet\s*(detect|violation)|safety\s*(violation|event|stats|log)"
     r"|webcam\s*(detect|status)|detection\s*(event|log|history|status)"
-    r"|safe\s*탭.*(?:어떻게|설명|안내|기능|사용)"
-    r"|safety\s*monitoring.{0,20}(?:how|guide|use|explain)",
+    r"|restricted\s*area|detection\s*server"
+    r"|safety\s*monitoring.{0,20}(?:how|guide|use|explain)"
+    # 일본어
+    r"|ヘルメット\s*(検知|着用|未着用|違反|認識)"
+    r"|侵入\s*(検知|検出|イベント|記録)"
+    r"|安全\s*(違反|統計|履歴|イベント|状況|監視|モニタリング)"
+    r"|制限区域|検知カメラ"
+    r"|最近の(検知|イベント|違反)"
+    r"|安全監視.{0,20}(方法|説明|使い方|機能)",
     re.IGNORECASE,
 )
 
-# Test 에이전트: 충돌 테스트 탭
+# Test 에이전트: 충돌 테스트 탭 (한/영/일)
 _TEST_KEYWORDS = re.compile(
+    # 한국어
     r"충돌\s*(테스트|검사|감지|이력|로그|기록|이벤트)"
     r"|키보드\s*(단축키|조작법|컨트롤|제어|사용법|키|버튼)"
+    r"|충돌\s*테스트.{0,20}(?:어떻게|뭐야|설명|사용|안내|가이드)"
+    r"|충돌\s*로그"
+    r"|w\s*a\s*s\s*d|wasd.{0,20}(?:이동|조작|키)"
+    # 영어
     r"|collision\s*(test|log|history|event|detect)"
     r"|keyboard\s*(shortcut|control|key|how)"
-    r"|test\s*탭.{0,20}(?:어떻게|설명|안내|기능|사용|뭐야)"
-    r"|충돌\s*테스트.{0,20}(?:어떻게|뭐야|설명|사용|안내|가이드)"
-    r"|충돌\s*로그|collision\s*(log|history)"
-    r"|w\s*a\s*s\s*d|wasd.{0,20}(?:이동|조작|키)"
-    r"|test\s*tab.{0,20}(?:how|guide|use|what|explain)",
+    r"|test\s*tab.{0,20}(?:how|guide|use|what|explain)"
+    # 일본어
+    r"|衝突\s*(テスト|検査|検出|ログ|履歴|イベント)"
+    r"|キーボード\s*(ショートカット|操作|制御|使い方|キー)"
+    r"|衝突テスト.{0,20}(方法|説明|使い方|ガイド)"
+    r"|衝突ログ",
     re.IGNORECASE,
 )
 
-# Tab 안내: 일반 탭 사용법 (위 전문 에이전트에 해당하지 않는 경우)
+# Tab 안내: 일반 탭 사용법 (한/영/일)
 _TAB_GUIDE_KEYWORDS = re.compile(
+    # 한국어
     r"(simulation|시뮬레이션|bim)\s*탭.{0,20}(설명|안내|기능|뭐|어떻게|사용|도움|가이드)"
     r"|(설명|안내|기능|사용법|가이드).{0,15}탭"
     r"|탭.{0,10}(종류|목록|전체|모두|뭐가|어떤)"
     r"|어떤\s*탭.{0,10}(있|있나|있어|있습니까)"
     r"|대시보드.{0,15}(안내|소개|설명|기능)"
     r"|bim\s*(뷰어|viewer).{0,20}(설명|안내|사용법|기능)"
+    # 영어
     r"|tab\s*(overview|guide|help|tutorial)"
     r"|what\s*(tabs|features).{0,20}(available|exist)"
-    r"|how\s*to\s*use\s*(the\s*)?(simulation|bim)\s*(tab|dashboard)",
+    r"|how\s*to\s*use\s*(the\s*)?(simulation|bim)\s*(tab|dashboard)"
+    # 일본어
+    r"|(シミュレーション|BIM)\s*タブ.{0,20}(説明|案内|機能|使い方|ガイド)"
+    r"|タブ.{0,10}(種類|一覧|全部|どんな)"
+    r"|どの\s*タブ.{0,10}(ある|あります)"
+    r"|ダッシュボード.{0,15}(案内|紹介|説明|機能)"
+    r"|BIM\s*(ビューア|ビューワー).{0,20}(説明|使い方|機能)",
     re.IGNORECASE,
 )
 

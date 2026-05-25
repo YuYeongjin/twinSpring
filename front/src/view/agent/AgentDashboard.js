@@ -1052,13 +1052,13 @@ function AgentMessageBubble({ msg }) {
           )}
         </div>
 
-        {/* Sensor data inline chart */}
-        {!isUser && msg.intent === 'rag_db' && msg.sensorData && (
+        {/* Sensor data inline chart — multi-agent(sensor_agent) + 레거시(rag_db) */}
+        {!isUser && (msg.intent === 'sensor_agent' || msg.intent === 'rag_db') && msg.sensorData && (
           <SensorInlineChart sensorData={msg.sensorData} />
         )}
 
-        {/* BIM query inline summary */}
-        {!isUser && msg.intent === 'bim_query' && msg.bimData && (
+        {/* BIM query inline summary — multi-agent(bim_agent) + 레거시(bim_query) */}
+        {!isUser && (msg.intent === 'bim_agent' || msg.intent === 'bim_query') && msg.bimData && (
           <BimInlineSummary bimData={msg.bimData} />
         )}
       </div>
