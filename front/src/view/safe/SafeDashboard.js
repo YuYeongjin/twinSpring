@@ -4,10 +4,23 @@ import { OrbitControls, Box, Plane, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
-import { WS_BASE } from '../../axios/AxiosCustom';
 import { useT } from '../../i18n/LanguageContext';
 
 const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
+
+/**
+ * SockJS 연결 URL을 항상 절대 경로로 반환한다.
+ *
+ * K8s nginx-ingress 환경에서 SockJS에 상대경로('/ws/sensor')를 넘기면
+ * 일부 버전에서 URL 재구성이 불안정하다.
+ * window.location 기반으로 프로토콜·호스트를 명시적으로 붙여준다.
+ */
+function buildWsUrl(path) {
+  if (typeof window === 'undefined') return path;
+  const proto = window.location.protocol; // 'https:' or 'http:'
+  const host  = window.location.host;     // 'example.com' or 'twin.local'
+  return `${proto}//${host}${path}`;
+}
 
 const NO_HELMET_CLASSES = new Set(['no-hard-hat', 'no-helmet', 'no_hard_hat', 'no_helmet', 'person']);
 const RESTRICTED_CLASSES = new Set(['restricted', 'prohibited', 'danger-zone', 'danger_zone', 'restricted-area']);
@@ -54,18 +67,55 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
   const [camError, setCamError] = useState('');
   const liveDetectingRef = useRef(false);
 
+  // t를 ref로 보관 — startCamera가 언어 변경 때마다 재생성되어
+  // useEffect 무한루프가 발생하는 것을 완전히 차단
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
+
   const startCamera = useCallback(async () => {
+    const tr = tRef.current;
     setCamError('');
-    // getUserMedia requires HTTPS (or localhost). Block immediately with a clear message.
-    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      setCamError(t('cameraHttpsRequired'));
+
+    // 1) Secure Context 체크
+    if (!window.isSecureContext) {
+      setCamError('[K8s] 페이지가 Secure Context가 아닙니다. HTTPS 인증서를 확인하거나 브라우저 주소창에서 직접 https://를 확인하세요.');
       return;
     }
+    // 2) mediaDevices API 가용성 체크
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCamError('[브라우저] navigator.mediaDevices.getUserMedia 를 지원하지 않습니다. — ' + tr('cameraHttpsRequired'));
+      return;
+    }
+    // 3) Permissions-Policy 체크 (K8s ingress가 camera=() 헤더를 내려보낼 경우)
+    if (navigator.permissions) {
+      try {
+        const perm = await navigator.permissions.query({ name: 'camera' });
+        if (perm.state === 'denied') {
+          setCamError('[권한 거부] 브라우저가 이 사이트의 카메라를 차단했습니다. 브라우저 설정 → 사이트 권한에서 카메라를 허용해 주세요.');
+          return;
+        }
+      } catch (_) { /* permissions API 미지원 브라우저는 무시 */ }
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
-    } catch (e) { setCamError(t('cameraError') + e.message); }
-  }, [t]);
+    } catch (e) {
+      // NotAllowedError: 사용자 거부 또는 Permissions-Policy 차단
+      // NotFoundError: 카메라 없음
+      // NotReadableError: 카메라가 다른 앱에서 사용 중
+      const name = e.name ?? '';
+      if (name === 'NotAllowedError') {
+        setCamError('[권한 거부] 카메라 접근이 차단되었습니다. K8s Ingress의 Permissions-Policy 헤더를 확인하거나 브라우저 주소창 자물쇠 → 카메라를 "허용"으로 설정하세요.');
+      } else if (name === 'NotFoundError') {
+        setCamError('[장치 없음] 연결된 카메라를 찾을 수 없습니다.');
+      } else if (name === 'NotReadableError') {
+        setCamError('[장치 사용 중] 카메라가 다른 앱에서 사용 중입니다. 다른 탭/앱을 닫고 다시 시도하세요.');
+      } else {
+        setCamError(tr('cameraError') + e.message);
+      }
+    }
+  }, []); // ← 의존성 없음: tRef를 통해 최신 t를 참조하므로 안전
 
   const stopCamera = useCallback(() => {
     liveDetectingRef.current = false;
@@ -563,10 +613,14 @@ export default function SafeDashboard() {
   }, [checkDetectServer]);
 
   useEffect(() => {
+    // K8s nginx-ingress 환경에서 SockJS에 상대경로를 넘기면 URL 재구성이 불안정.
+    // window.location 기반 절대 URL을 명시적으로 구성한다.
+    const wsUrl = buildWsUrl('/ws/sensor');
     const client = new Client({
-      webSocketFactory: () => new SockJS(`${WS_BASE}/ws/sensor`),
+      webSocketFactory: () => new SockJS(wsUrl),
       reconnectDelay: 5000,
       onConnect: () => client.subscribe('/topic/safe', msg => setSafeEvent(JSON.parse(msg.body))),
+      onStompError: () => { /* 재접속은 reconnectDelay가 처리 — 콘솔 오류 억제 */ },
     });
     client.activate();
     stompRef.current = client;
