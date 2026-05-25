@@ -39,7 +39,7 @@ _SYSTEM = SystemMessage(content=(
 _react_agent = create_react_agent(
     model=llm_chat,
     tools=SIMULATION_TOOLS,
-    state_modifier=_SYSTEM,
+    prompt=_SYSTEM,
 )
 
 # 빠른 키워드 → preset 매핑

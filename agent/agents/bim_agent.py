@@ -49,7 +49,7 @@ _SYSTEM = SystemMessage(content=(
 _react_agent = create_react_agent(
     model=llm_chat,
     tools=BIM_TOOLS,
-    state_modifier=_SYSTEM,
+    prompt=_SYSTEM,
 )
 
 # BIM 쿼리 전용 키워드 (통계·목록 조회 — 기존 bim_query_node 사용)
