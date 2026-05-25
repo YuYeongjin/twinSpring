@@ -497,6 +497,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ── 스냅 (꼭짓점 자동 흡착) ────────────────────────────────────
     const [snapEnabled, setSnapEnabled] = useState(true);
 
+    // ── IFC 카메라 맞춤 수동 트리거 ──────────────────────────────────
+    const [fitCameraTrigger, setFitCameraTrigger] = useState(0);
+
     // ── 뷰 모드 ────────────────────────────────────────────────────
     const [viewMode, setViewMode] = useState('3d'); // '3d' | '2d'
     const [bimSubView, setBimSubView] = useState('editor'); // 'editor' | 'structural'
@@ -1041,6 +1044,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             </span>
                         </button>
 
+                        {/* IFC 카메라 맞춤 버튼 — IFC 모델이 로드된 경우에만 표시 */}
+                        {ifcMeshes && ifcMeshes.length > 0 && (
+                            <button
+                                onClick={() => setFitCameraTrigger(v => v + 1)}
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition bg-sky-800/60 text-sky-300 border border-sky-600/60 hover:bg-sky-700/70"
+                                title="IFC 모델 전체가 화면에 맞도록 카메라를 재배치합니다"
+                            >
+                                ⊡ 카메라 맞춤
+                            </button>
+                        )}
+
                         {/* 레이어 패널 토글 */}
                         <button
                             onClick={() => setShowLayerPanel(v => !v)}
@@ -1372,6 +1386,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     onLineVertexSave={saveLineVertexDrag}
                                                     snapEnabled={snapEnabled}
                                                     ifcMeshes={ifcMeshes}
+                                                    fitCameraTrigger={fitCameraTrigger}
                                                 />
                                             </View>
 
