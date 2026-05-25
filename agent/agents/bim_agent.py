@@ -30,19 +30,21 @@ from nodes.bim_query import bim_query_node
 
 # ── 시스템 프롬프트 ────────────────────────────────────────────────────────────
 _SYSTEM = SystemMessage(content=(
-    "You are a BIM (Building Information Modeling) specialist. "
-    "You can query BIM project lists, element statistics, create structural elements, "
-    "explain drone analysis, structural analysis, and IFC file import. "
-    "\n\nTool usage guidelines:"
-    "\n- list_bim_projects: use first when asked about projects."
-    "\n- get_bim_stats: use with a specific project_id to get element counts."
-    "\n- create_bim_element: use when asked to add a column, beam, wall, slab, or pier."
-    "\n- create_composite_structure: use for preset structures (pier, frame, Eiffel Tower, etc.)."
-    "\n- create_bim_project: use only when explicitly asked to create a NEW project."
-    "\n- get_drone_analysis_info: use when asked about drone/aerial photo analysis."
-    "\n- get_structural_analysis: use when asked about structural analysis or load distribution."
-    "\n- get_ifc_import_guide: use when asked about importing IFC files."
-    "\n\nAlways include element counts and project names in your responses."
+    "You are a BIM (Building Information Modeling) specialist.\n\n"
+
+    "CRITICAL RULE: Always call a tool FIRST. Never answer without tool data.\n\n"
+
+    "Tool selection:\n"
+    "- list_bim_projects: call FIRST for any question about projects or project lists.\n"
+    "- get_bim_stats: call with project_id to get element counts per type.\n"
+    "- create_bim_element: when asked to ADD a column, beam, wall, slab, or pier.\n"
+    "- create_composite_structure: for preset structures (pier, frame, Eiffel Tower, etc.).\n"
+    "- create_bim_project: ONLY when explicitly asked to CREATE a NEW project.\n"
+    "- get_drone_analysis_info: when asked about drone/aerial photo analysis.\n"
+    "- get_structural_analysis: when asked about structural analysis or load distribution.\n"
+    "- get_ifc_import_guide: when asked about IFC file import.\n\n"
+
+    "After tool results: respond in 2-3 sentences. Include project names and element counts."
 ))
 
 # ReAct 에이전트 (조회·안내용)
@@ -55,19 +57,33 @@ _react_agent = create_react_agent(
 # BIM 쿼리 전용 키워드 (통계·목록 조회 — 기존 bim_query_node 사용)
 import re
 _QUERY_ONLY_PAT = re.compile(
+    # 한국어
     r"프로젝트\s*(목록|리스트|현황|보여|알려|확인|몇\s*개)"
     r"|부재\s*(수|개수|목록|현황|통계|구성|종류|몇\s*개)"
     r"|몇\s*(개의|개|종류).*부재"
-    r"|project\s*(list|stats)|element\s*(count|stats)",
+    # 영어
+    r"|project\s*(list|stats|overview)|element\s*(count|stats|list)"
+    r"|how\s*many.{0,10}(project|element|member)"
+    # 일본어 (.{0,3} 로 の/を/が 등 조사 허용)
+    r"|プロジェクト.{0,3}(一覧|リスト|現状|確認|状況|いくつ|何個|教えて|見せて)"
+    r"|部材.{0,3}(数|一覧|統計|種類|構成|いくつ|何個)"
+    r"|何個.{0,10}(部材|プロジェクト)|いくつ.{0,10}(部材|プロジェクト)",
     re.IGNORECASE,
 )
 
 # 직접 API 호출이 필요한 변경 작업 키워드
 _MUTATION_PAT = re.compile(
+    # 한국어
     r"기둥|IfcColumn|보(?!\w)|IfcBeam|벽|IfcWall|슬래브|IfcSlab|교각|IfcPier"
     r"|추가|생성|만들|삭제|제거|수정|변경"
     r"|피사의\s*사탑|에펠탑|피라미드|인천대교|교각구조|건물골조|교량경간"
-    r"|column|beam|wall|slab|pier|add|create|delete|remove",
+    # 영어
+    r"|column|beam|wall|slab|pier|add|create|delete|remove|modify"
+    r"|tower|pyramid|landmark|bridge\s*span|building\s*frame"
+    # 일본어
+    r"|柱|梁|壁|スラブ|橋脚"
+    r"|追加|作成|作って|削除|除去|修正|変更|変えて"
+    r"|エッフェル塔|ピラミッド|ピサの斜塔|橋脚構造|建物骨組",
     re.IGNORECASE,
 )
 

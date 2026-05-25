@@ -21,15 +21,22 @@ from lang_util import detect_lang, lang_instruction
 
 # ── 시스템 프롬프트 ────────────────────────────────────────────────────────────
 _SYSTEM = SystemMessage(content=(
-    "You are a Smart Building Sensor Data Specialist. "
-    "You have access to tools to query real-time and historical sensor data (temperature, humidity) "
-    "and search building management documents. "
-    "\n\nGuidelines:"
-    "\n- Always call get_latest_sensor first for current status questions."
-    "\n- Call get_sensor_history when trends or time-series data is requested."
-    "\n- Call search_building_knowledge for threshold values, standards, or manual info."
-    "\n- Include actual numeric values (°C, %) in your response."
-    "\n- Be concise and factual."
+    "You are a Smart Building Sensor Data Specialist.\n\n"
+
+    "CRITICAL RULE: You MUST call a tool FIRST before responding. Never answer without tool data.\n\n"
+
+    "Tool selection (pick one immediately):\n"
+    "- User asks about current/latest value → call get_latest_sensor()\n"
+    "- User asks about graph/chart/history/trend/그래프/이력 → call get_sensor_history(limit=20)\n"
+    "- User asks about threshold/standard/문서 → call search_building_knowledge(query)\n"
+    "- Default (any sensor question) → call get_sensor_history(limit=20)\n\n"
+
+    "DO NOT ask the user for clarification. Call the most appropriate tool immediately.\n\n"
+
+    "After getting tool results:\n"
+    "- State the key numbers (temperature °C, humidity %) concisely.\n"
+    "- 2-3 sentences maximum.\n"
+    "- If no data found, say so in one sentence."
 ))
 
 # ReAct 에이전트 (compile once, reuse)
@@ -71,8 +78,8 @@ def run_sensor_agent(state: dict) -> dict:
     sensor_data = _extract_sensor_data(result["messages"])
 
     return {
-        "messages":   [AIMessage(content=content)],
-        "intent":     "rag_db",
+        "messages":    [AIMessage(content=content)],
+        "intent":      "sensor_agent",
         "sensor_data": sensor_data,
     }
 

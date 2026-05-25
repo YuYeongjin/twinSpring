@@ -35,11 +35,23 @@ def detect_lang(text: str) -> str:
 def lang_instruction(lang: str) -> str:
     """
     Return a language-specific instruction string to append to system prompts.
-    Empty string for English (no extra instruction needed).
+
+    영어·일본어는 LLM 이 장문을 생성하는 경향이 있어 명시적 길이 제한을 추가합니다.
+    짧은 응답 → 처리 시간 단축 → 에러 메시지 노출 방지.
     """
     instructions = {
         'ko': '반드시 한국어로 답변하세요.',
-        'ja': '必ず日本語で返答してください。',
+        'en': (
+            'Reply in English. '
+            'Be concise — 2 to 3 sentences for simple questions. '
+            'Do not add unnecessary explanations or filler phrases.'
+        ),
+        'ja': (
+            '必ず日本語だけで返答してください。'
+            '漢字・ひらがな・カタカナのみ使用してください。'
+            '中国語の語句（给、您、或者、请、確認您 など）は絶対に使わないでください。'
+            '簡潔に2〜3文以内で答えてください。'
+        ),
     }
     return instructions.get(lang, '')
 

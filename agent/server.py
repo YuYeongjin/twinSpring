@@ -180,7 +180,10 @@ def chat_stream(req: ChatRequest):
                 done_event = {
                     "done":       True,
                     "response":   last_content,
-                    "intent":     intent,
+                    # agent 가 반환한 refined intent 우선 사용
+                    # (bim_query/bim_builder/sensor_agent 등 세부 구분 보존)
+                    # agent 가 intent 를 반환하지 않은 경우 supervisor intent 로 폴백
+                    "intent":     full_result.get("intent") or intent,
                     "nextAgent":  next_agent,
                     "bimData":    full_result.get("bim_data"),
                     "sensorData": full_result.get("sensor_data"),
