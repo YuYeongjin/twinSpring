@@ -63,7 +63,7 @@ export const translations = {
       importProject: '📥 Import ({count} elements as project)',
       projectCreationFailed: 'Project creation failed, please check server connection.',
       ifcOnly: 'You can only import .ifc extension files.',
-      fileTooLarge: 'File size is too large. Only files smaller than 5 MB are supported',
+      fileTooLarge: 'File size is too large. Only files smaller than 20 MB are supported',
       noNameEA: '⚠ No Name {count}',
     },
     bimDashboard: {
@@ -508,7 +508,7 @@ export const translations = {
       importProject: '📥 가져오기 ({count}개 요소로 프로젝트 생성)',
       projectCreationFailed: '프로젝트 생성에 실패했습니다. 서버 연결을 확인해주세요.',
       ifcOnly: '.ifc 확장자 파일만 가져올 수 있습니다.',
-      fileTooLarge: '파일 크기가 너무 큽니다. 5MB 이하의 파일만 지원됩니다',
+      fileTooLarge: '파일 크기가 너무 큽니다. 20MB 이하의 파일만 지원됩니다',
       noNameEA: '⚠ 이름 없음 {count}개',
     },
     bimDashboard: {
@@ -953,7 +953,7 @@ export const translations = {
       importProject: '📥 インポート（{count}要素でプロジェクト作成）',
       projectCreationFailed: 'プロジェクト作成に失敗しました。サーバー接続を確認してください。',
       ifcOnly: '.ifc拡張子のファイルのみインポートできます。',
-      fileTooLarge: 'ファイルサイズが大きすぎます。5MB以下のファイルのみ対応しています',
+      fileTooLarge: 'ファイルサイズが大きすぎます。20MB以下のファイルのみ対応しています',
       noNameEA: '⚠ 名前なし {count}件',
     },
     bimDashboard: {
