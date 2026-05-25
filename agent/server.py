@@ -1,11 +1,11 @@
 """
-FastAPI server - exposes LangGraph Agent as REST API
+FastAPI server - exposes LangGraph Multi-Agent as REST API
 
 Run: uvicorn server:app --host 0.0.0.0 --port 7070 --reload
 """
 
 import traceback
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage
@@ -13,7 +13,7 @@ from graph import graph
 from llm_config import llm_chat
 from nodes.chat import chat_node
 
-app = FastAPI(title="Digital Twin AI Agent", version="2.0.0")
+app = FastAPI(title="Digital Twin AI Agent", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,8 +46,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     intent: str | None = None
-    bimData: dict | None = None       # Structured data returned from bim_query node
-    sensorData: dict | None = None    # Sensor/energy data returned from rag_db node
+    nextAgent: str | None = None      # Which specialized agent handled the request
+    bimData: dict | None = None       # Structured data returned from bim_agent
+    sensorData: dict | None = None    # Sensor/energy data returned from sensor_agent
 
 class MultimodalRequest(BaseModel):
     message: str = "Please analyze this image."
@@ -76,13 +77,16 @@ def chat(req: ChatRequest):
     pending_action = session_data.get("pending_action")
 
     initial_state = {
-        "messages": messages,
-        "intent": None,
-        "query_result": None,
-        "context": None,
+        "messages":              messages,
+        "intent":                None,
+        "next_agent":            None,
+        "query_result":          None,
+        "context":               None,
         "bim_project_id":        req.context.projectId,
         "simulation_project_id": req.context.simulationProjectId,
-        "pending_action": pending_action,
+        "bim_data":              None,
+        "sensor_data":           None,
+        "pending_action":        pending_action,
     }
 
     try:
@@ -99,12 +103,13 @@ def chat(req: ChatRequest):
         "pending_action": result.get("pending_action")
     }
 
-    messages = result.get("messages", [])
-    last_content = messages[-1].content if messages else "No response received."
+    result_messages = result.get("messages", [])
+    last_content = result_messages[-1].content if result_messages else "No response received."
 
     return ChatResponse(
         response=last_content,
         intent=result.get("intent"),
+        nextAgent=result.get("next_agent"),
         bimData=result.get("bim_data"),
         sensorData=result.get("sensor_data"),
     )
@@ -124,13 +129,16 @@ def chat_simple(req: ChatRequest):
     messages = history_messages + [HumanMessage(content=req.message)]
 
     state = {
-        "messages": messages,
-        "intent": "chat",
-        "query_result": None,
-        "context": None,
-        "bim_project_id": None,
+        "messages":              messages,
+        "intent":                "chat",
+        "next_agent":            "chat",
+        "query_result":          None,
+        "context":               None,
+        "bim_project_id":        None,
         "simulation_project_id": None,
-        "pending_action": None,
+        "bim_data":              None,
+        "sensor_data":           None,
+        "pending_action":        None,
     }
 
     try:

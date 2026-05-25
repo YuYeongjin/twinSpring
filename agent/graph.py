@@ -1,59 +1,76 @@
 """
-LangGraph graph definition
+LangGraph Multi-Agent 그래프 정의 (AtoA 구조)
 
-Flow:
-  START → analyze → (route_by_intent) → rag_db               → END
-                                       → bim_builder          → END
-                                       → bim_query            → END
-                                       → simulation_controller → END
-                                       → tab_guide            → END
-                                       → chat                 → END
+흐름:
+  START → supervisor → (route_by_next_agent)
+            ├─ sensor_agent      → END
+            ├─ bim_agent         → END
+            ├─ simulation_agent  → END
+            ├─ safe_agent        → END
+            ├─ test_agent        → END
+            ├─ tab_guide         → END
+            └─ chat              → END
+
+각 전문 에이전트는 create_react_agent(ReAct 루프)로 동작하며
+도구를 자율적으로 선택·호출합니다.
 """
 
 from langgraph.graph import StateGraph, START, END
+
 from state import AgentState
-from nodes.analyzer import analyze_node, route_by_intent
-from nodes.rag_db import rag_db_node
-from nodes.bim_builder import bim_builder_node
-from nodes.bim_query import bim_query_node
-from nodes.chat import chat_node
-from nodes.simulation_controller import simulation_controller_node
+from nodes.supervisor import supervisor_node, route_by_next_agent
+
+# ── 전문 에이전트 ──────────────────────────────────────────────────────────────
+from agents.sensor_agent import run_sensor_agent
+from agents.bim_agent import run_bim_agent
+from agents.simulation_agent import run_simulation_agent
+from agents.safe_agent import run_safe_agent
+from agents.test_agent import run_test_agent
+
+# ── 레거시 노드 (tab_guide · chat 은 기존 구현 유지) ─────────────────────────
 from nodes.tab_guide import tab_guide_node
+from nodes.chat import chat_node
 
 
 def build_graph():
     builder = StateGraph(AgentState)
 
-    builder.add_node("analyze",               analyze_node)               # Node 1: prompt analysis
-    builder.add_node("rag_db",                rag_db_node)                # Node 2: RAG + DB query
-    builder.add_node("bim_builder",           bim_builder_node)           # Node 3: BIM element create/edit/delete
-    builder.add_node("bim_query",             bim_query_node)             # Node 4: BIM project/element stats query
-    builder.add_node("simulation_controller", simulation_controller_node) # Node 5: excavator simulation control
-    builder.add_node("tab_guide",             tab_guide_node)             # Node 6: dashboard tab info & usage guide
-    builder.add_node("chat",                  chat_node)                  # Node 7: general conversation
+    # ── 노드 등록 ──────────────────────────────────────────────────────────────
+    builder.add_node("supervisor",        supervisor_node)     # 라우팅 판단
+    builder.add_node("sensor_agent",      run_sensor_agent)    # 온습도 센서
+    builder.add_node("bim_agent",         run_bim_agent)       # BIM 전문 에이전트
+    builder.add_node("simulation_agent",  run_simulation_agent)# 굴착기 시뮬레이션
+    builder.add_node("safe_agent",        run_safe_agent)      # 안전 모니터링
+    builder.add_node("test_agent",        run_test_agent)      # 충돌 테스트 탭
+    builder.add_node("tab_guide",         tab_guide_node)      # 일반 탭 안내
+    builder.add_node("chat",              chat_node)           # 일반 대화
 
-    builder.add_edge(START, "analyze")
+    # ── 엣지 정의 ──────────────────────────────────────────────────────────────
+    builder.add_edge(START, "supervisor")
 
-    # Conditional edge: analyze → each node
+    # supervisor → 전문 에이전트 (조건부 라우팅)
     builder.add_conditional_edges(
-        "analyze",
-        route_by_intent,
+        "supervisor",
+        route_by_next_agent,
         {
-            "rag_db":                "rag_db",
-            "bim_builder":           "bim_builder",
-            "bim_query":             "bim_query",
-            "simulation_controller": "simulation_controller",
-            "tab_guide":             "tab_guide",
-            "chat":                  "chat",
+            "sensor_agent":     "sensor_agent",
+            "bim_agent":        "bim_agent",
+            "simulation_agent": "simulation_agent",
+            "safe_agent":       "safe_agent",
+            "test_agent":       "test_agent",
+            "tab_guide":        "tab_guide",
+            "chat":             "chat",
         },
     )
 
-    builder.add_edge("rag_db",               END)
-    builder.add_edge("bim_builder",          END)
-    builder.add_edge("bim_query",            END)
-    builder.add_edge("simulation_controller", END)
-    builder.add_edge("tab_guide",            END)
-    builder.add_edge("chat",                 END)
+    # 각 에이전트 → END
+    builder.add_edge("sensor_agent",     END)
+    builder.add_edge("bim_agent",        END)
+    builder.add_edge("simulation_agent", END)
+    builder.add_edge("safe_agent",       END)
+    builder.add_edge("test_agent",       END)
+    builder.add_edge("tab_guide",        END)
+    builder.add_edge("chat",             END)
 
     return builder.compile()
 

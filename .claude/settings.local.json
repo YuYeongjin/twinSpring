@@ -54,7 +54,8 @@
       "Bash(grep -E \"^\\(ERROR|Failed to compile|src\\\\\\\\\\\\\\\\\\)\")",
       "Bash(dir C:\\\\Users\\\\svvo2\\\\Desktop\\\\yeongjin\\\\project\\\\twinSpring\\\\front\\\\src\\\\view\\\\agent *)",
       "Bash(npx --no-install react-scripts build)",
-      "PowerShell(head *)"
+      "PowerShell(head *)",
+      "Bash(findstr /C:\"upstream-keepalive\" /C:\"proxy-next-upstream\" /C:\"proxy-connect-timeout\")"
     ]
   }
 }
