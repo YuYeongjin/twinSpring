@@ -153,12 +153,11 @@ function sobelEdge(grid){
 }
 
 // ── 도면 선 변환 (엣지 맵 → 평면 BIM 폴리라인) ────────────────────────────
-function buildDrawingLines(edgeGrid,cols,rows,scaleW,scaleH,threshold,maxN){
+function buildDrawingLines(edgeGrid,cols,rows,scaleW,scaleH,threshold){
   const sx=scaleW/cols,sy=scaleH/rows,lines=[];
   const segs=marchingSquares(edgeGrid,threshold);
   const chains=chainSegments(segs);
   for(const chain of chains){
-    if(lines.length>=maxN)break;
     if(chain.length<2)continue;
     const pts=chain.map(([cx,cy])=>[
       +((cx*sx-scaleW/2).toFixed(3)),
@@ -383,7 +382,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     // Sobel 엣지 감지 → 도면 폴리라인 (선 형태)
     const src=raw?gaussianBlur(raw,0.8):smooth;
     const edges=sobelEdge(src);
-    const drawingLines=buildDrawingLines(edges,cols,rows,scaleW,scaleH,cvThreshold,600);
+    const drawingLines=buildDrawingLines(edges,cols,rows,scaleW,scaleH,cvThreshold);
 
     // ── 절토/성토 Slab 생성 ─────────────────────────────────────────
     // 블록별 평균 밝기(고도)를 계산한 뒤 전체 블록을 밝기 순으로 정렬
@@ -425,14 +424,17 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     });
   },[result,onConvertToBIM,onProjectSelect,cvName,cvThreshold,scaleW,scaleH]);
 
-  // 현재 threshold에서 예상 폴리라인 수 (Sobel 맵 미리 실행)
+  // 현재 threshold에서 예상 폴리라인 수 (Sobel 맵 미리 실행, 제한 없음)
   const lineCount=useMemo(()=>{
     if(!result)return 0;
     const src=result.raw?gaussianBlur(result.raw,0.8):result.smooth;
     const edges=sobelEdge(src);
     const segs=marchingSquares(edges,cvThreshold);
-    return Math.min(chainSegments(segs).length,600);
+    return chainSegments(segs).length;
   },[result,cvThreshold]);
+
+  // 경고 표시 조건: 슬라이더 최대치이거나 선이 300개 초과
+  const showLineWarning = lineCount > 300 || cvThreshold >= 0.40;
 
   const T2='#8896a4';
 
@@ -721,18 +723,29 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                         <div>
                           <div className="flex justify-between text-xs mb-1.5">
                             <span style={{color:T2}}>{t('edgeSensitivity')}</span>
-                            <span className="text-blue-300 font-medium">
-                              {t('polylineCount',{count:lineCount})}
+                            <span className="font-medium"
+                                  style={{color: lineCount === 0 ? '#6b7280' : showLineWarning ? '#f59e0b' : '#93c5fd'}}>
+                              {lineCount === 0
+                                ? t('noLines')
+                                : t('polylineCount', {count: lineCount})}
                             </span>
                           </div>
-                          <input type="range" min={0.05} max={0.45} step={0.05}
+                          <input type="range" min={0.0} max={0.45} step={0.05}
                                  value={cvThreshold}
                                  onChange={e=>setCvThreshold(+e.target.value)}
                                  className="w-full accent-blue-500"/>
                           <div className="flex justify-between text-xs mt-1" style={{color:'#475569'}}>
+                            <span>{t('noLinesLabel')}</span>
                             <span>{t('moreLines')}</span>
-                            <span>{t('fewerLines')}</span>
                           </div>
+                          {/* 경고: 선이 많으면 시간 소요 안내 */}
+                          {showLineWarning && lineCount > 0 && (
+                            <div className="flex items-start gap-1.5 mt-2 rounded-lg px-2.5 py-2 text-xs"
+                                 style={{backgroundColor:'#2a1a08',border:'1px solid #92400e',color:'#fbbf24'}}>
+                              <span className="shrink-0 mt-0.5">⚠️</span>
+                              <span>{t('manyLinesWarning', {count: lineCount})}</span>
+                            </div>
+                          )}
                         </div>
 
                         <button onClick={convertBIM} disabled={!cvName.trim()||cvBusy}
