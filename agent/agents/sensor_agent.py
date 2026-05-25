@@ -36,7 +36,7 @@ _SYSTEM = SystemMessage(content=(
 _react_agent = create_react_agent(
     model=llm_chat,
     tools=SENSOR_TOOLS,
-    state_modifier=_SYSTEM,
+    prompt=_SYSTEM,
 )
 
 
