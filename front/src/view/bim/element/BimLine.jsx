@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { Line } from '@react-three/drei';
 import * as THREE from 'three';
 
@@ -27,8 +27,10 @@ function getPoints(line) {
 }
 
 export function BimLine({ line, selected, onClick }) {
-    const color   = selected ? '#00e5ff' : (line.color ?? '#60a5fa');
-    const width   = (line.lineWidth ?? 2) + (selected ? 1.5 : 0);
+    const [hovered, setHovered] = useState(false);
+
+    const color   = selected ? '#00e5ff' : hovered ? '#bfdbfe' : (line.color ?? '#60a5fa');
+    const width   = (line.lineWidth ?? 2) + (selected ? 2 : hovered ? 1 : 0);
     const closed  = !!line.closed;
     const height  = Number(line.shapeHeight ?? 0);
     const points  = useMemo(() => getPoints(line), [line]);
@@ -76,8 +78,23 @@ export function BimLine({ line, selected, onClick }) {
         onClick?.(line.lineId);
     };
 
+    const handlePointerOver = (e) => {
+        e.stopPropagation();
+        setHovered(true);
+        document.body.style.cursor = 'pointer';
+    };
+
+    const handlePointerOut = () => {
+        setHovered(false);
+        document.body.style.cursor = '';
+    };
+
     return (
-        <group onClick={handleClick}>
+        <group
+            onClick={handleClick}
+            onPointerOver={handlePointerOver}
+            onPointerOut={handlePointerOut}
+        >
             {/* ── 솔리드 도형 (돌출) ── */}
             {isSolid && extrudeGeom && (
                 <mesh geometry={extrudeGeom}>
@@ -99,10 +116,10 @@ export function BimLine({ line, selected, onClick }) {
                 />
             )}
 
-            {/* ── 꼭짓점 마커 ── */}
-            {points.map((pos, i) => (
+            {/* ── 꼭짓점 마커 (비선택 상태만) — 선택됐을 때는 LineVertexHandles가 드래그 핸들 표시 ── */}
+            {!selected && points.map((pos, i) => (
                 <mesh key={i} position={[pos[0], pos[1], pos[2]]}>
-                    <sphereGeometry args={[selected ? 0.12 : 0.07, 8, 8]} />
+                    <sphereGeometry args={[hovered ? 0.10 : 0.07, 8, 8]} />
                     <meshBasicMaterial color={i === 0 ? '#4ade80' : color} />
                 </mesh>
             ))}
