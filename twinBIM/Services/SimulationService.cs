@@ -72,8 +72,9 @@ namespace BimProcessorApi.Services
             newState.BucketAngle = Clamp(newState.BucketAngle, Limits["BucketAngle"]);
             newState.UpdatedAt   = DateTime.UtcNow;
 
-            var existing = await _context.ExcavatorStates
-                .FirstOrDefaultAsync(e => e.ExcavatorId == newState.ExcavatorId);
+            var anyExisting = await _context.ExcavatorStates
+                .AsNoTracking()
+                .AnyAsync(e => e.ExcavatorId == newState.ExcavatorId);
 
             if (existing == null)
             {
@@ -82,19 +83,7 @@ namespace BimProcessorApi.Services
                 return newState;
             }
 
-            existing.PositionX     = newState.PositionX;
-            existing.PositionY     = newState.PositionY;
-            existing.PositionZ     = newState.PositionZ;
-            existing.BodyRotation  = newState.BodyRotation;
-            existing.SwingAngle    = newState.SwingAngle;
-            existing.BoomAngle     = newState.BoomAngle;
-            existing.ArmAngle      = newState.ArmAngle;
-            existing.BucketAngle   = newState.BucketAngle;
-            existing.OperationMode = newState.OperationMode;
-            existing.SoilInBucket  = newState.SoilInBucket;
-            existing.HeightMapData = newState.HeightMapData;
-            existing.UpdatedAt     = newState.UpdatedAt;
-
+            _context.Entry(newState).State = EntityState.Modified;
             await _context.SaveChangesAsync();
             return existing;
         }
