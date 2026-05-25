@@ -666,7 +666,12 @@ export default function SafeDashboard() {
           <span className="text-xl">🚨</span>
           <div className="flex-1">
             <p className="text-red-300 font-semibold">{t('dangerDetected')}</p>
-            {safeEvent?.message && <p className="text-red-400 text-sm mt-0.5">{safeEvent.message}</p>}
+            <p className="text-red-400 text-sm mt-0.5">
+              {safeEvent?.noHelmet && safeEvent?.restricted ? t('msgBoth')
+                : safeEvent?.noHelmet   ? t('msgNoHelmet')
+                : safeEvent?.restricted ? t('msgRestricted')
+                : ''}
+            </p>
           </div>
           <button onClick={() => setSafeEvent(null)} className="text-gray-500 hover:text-gray-300 text-lg">✕</button>
         </div>

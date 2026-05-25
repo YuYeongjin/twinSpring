@@ -76,7 +76,7 @@ namespace BimProcessorApi.Services
                 .AsNoTracking()
                 .AnyAsync(e => e.ExcavatorId == newState.ExcavatorId);
 
-            if (existing == null)
+            if (anyExisting == null)
             {
                 _context.ExcavatorStates.Add(newState);
                 await _context.SaveChangesAsync();
@@ -85,7 +85,7 @@ namespace BimProcessorApi.Services
 
             _context.Entry(newState).State = EntityState.Modified;
             await _context.SaveChangesAsync();
-            return existing;
+            return newState;
         }
 
         public KinematicsResult CalculateKinematics(ExcavatorState s)
