@@ -20,7 +20,6 @@ import re
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from state import AgentState
-from llm_config import llm_precise
 
 
 # ── 키워드 패턴 ────────────────────────────────────────────────────────────────
@@ -117,19 +116,6 @@ _TAB_GUIDE_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# LLM 분류 시스템 프롬프트
-_SYSTEM_PROMPT = SystemMessage(content=(
-    "Classify the user message into exactly one of: "
-    "sensor_agent, bim_agent, simulation_agent, safe_agent, test_agent, tab_guide, chat\n\n"
-    "- sensor_agent: temperature/humidity sensor data queries, alert thresholds\n"
-    "- bim_agent: BIM element creation/deletion/query, drone analysis, structural analysis, IFC import, project management\n"
-    "- simulation_agent: excavator simulation control (angles, presets, position, reset, status)\n"
-    "- safe_agent: safety monitoring, helmet detection, YOLO server, restricted area intrusion, safety statistics\n"
-    "- test_agent: collision test tab, keyboard shortcuts, collision event log\n"
-    "- tab_guide: general dashboard tab usage guide (simulation tab, BIM tab overview)\n"
-    "- chat: general conversation unrelated to above domains\n\n"
-    "Respond with exactly one word."
-))
 
 
 def supervisor_node(state: AgentState) -> dict:
@@ -169,32 +155,10 @@ def supervisor_node(state: AgentState) -> dict:
     if _TAB_GUIDE_KEYWORDS.search(user_text):
         return {"intent": "tab_guide", "next_agent": "tab_guide"}
 
-    # ── LLM 최종 판단 ────────────────────────────────────────────────────────
-    try:
-        response = llm_precise.invoke([
-            _SYSTEM_PROMPT,
-            HumanMessage(content=user_text),
-        ])
-        raw = response.content.strip().lower()
-
-        if "test" in raw:
-            agent = "test_agent"
-        elif "safe" in raw:
-            agent = "safe_agent"
-        elif "simulation" in raw or "excavator" in raw:
-            agent = "simulation_agent"
-        elif "bim" in raw:
-            agent = "bim_agent"
-        elif "sensor" in raw or "rag" in raw or "db" in raw:
-            agent = "sensor_agent"
-        elif "tab" in raw or "guide" in raw:
-            agent = "tab_guide"
-        else:
-            agent = "chat"
-    except Exception:
-        agent = "chat"
-
-    return {"intent": agent, "next_agent": agent}
+    # ── 7. 기본값: 일반 대화 (LLM 호출 없이 즉시 반환) ──────────────────────
+    # 키워드에 해당하지 않는 모든 메시지는 chat으로 라우팅
+    # 기존 LLM 폴백 제거 → supervisor가 항상 ~1ms 이내 완료됨
+    return {"intent": "chat", "next_agent": "chat"}
 
 
 def route_by_next_agent(state: AgentState) -> str:

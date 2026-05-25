@@ -18,6 +18,40 @@ function getLangCode(lang) {
 
 const API_CHAT = '/api/chat';
 
+// ── Agent step 상태 레이블 (다국어) ──────────────────────────────────────────
+const STEP_LABELS = {
+  ko: {
+    classifying:       '질문 분류 중...',
+    sensor_agent:      '센서 데이터 조회 중...',
+    bim_agent:         'BIM Agent 처리 중...',
+    simulation_agent:  '시뮬레이션 Agent 처리 중...',
+    safe_agent:        '안전 모니터링 Agent 처리 중...',
+    test_agent:        '충돌 테스트 Agent 처리 중...',
+    tab_guide:         '탭 안내 준비 중...',
+    generating:        '답변 생성 중...',
+  },
+  en: {
+    classifying:       'Classifying question...',
+    sensor_agent:      'Fetching sensor data...',
+    bim_agent:         'BIM Agent processing...',
+    simulation_agent:  'Simulation Agent processing...',
+    safe_agent:        'Safety Monitoring Agent processing...',
+    test_agent:        'Collision Test Agent processing...',
+    tab_guide:         'Preparing tab guide...',
+    generating:        'Generating response...',
+  },
+  ja: {
+    classifying:       '質問を分類中...',
+    sensor_agent:      'センサーデータ取得中...',
+    bim_agent:         'BIM エージェント処理中...',
+    simulation_agent:  'シミュレーションエージェント処理中...',
+    safe_agent:        '安全監視エージェント処理中...',
+    test_agent:        '衝突テストエージェント処理中...',
+    tab_guide:         'タブガイドを準備中...',
+    generating:        '回答を生成中...',
+  },
+};
+
 const ELEMENT_TYPE_KOR = {
   IfcColumn: 'Column', IfcBeam: 'Beam', IfcWall: 'Wall', IfcSlab: 'Slab', IfcPier: 'Pier',
 };
@@ -203,7 +237,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     setLastFetched(new Date().toLocaleTimeString(getLangCode(lang)));
   }, [lang]);
 
-  // ── Send message ──
+  // ── Send message (SSE streaming) ──
   const sendMessage = async () => {
     const text = input.trim();
     if ((!text && !imageBase64) || loading) return;
@@ -216,59 +250,117 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     setLoading(true);
 
     try {
-      let data;
+      // 이미지(멀티모달)는 스트리밍 없이 기존 방식 유지
       if (capturedImage) {
         const res = await AxiosCustom.post(`${API_CHAT}/multimodal`, {
           sessionId, message: userContent, imageBase64: capturedImage,
         });
-        data = res.data;
-      } else {
-        const history = messages.map(m => ({ role: m.role, content: m.content }));
-        const res = await AxiosCustom.post(`${API_CHAT}/message`, {
-          sessionId, message: text,
+        const data = res.data;
+        setMessages(prev => [...prev, {
+          role: 'assistant', content: data.response, intent: data.intent,
+        }]);
+        speak(data.response);
+        return;
+      }
+
+      // 텍스트 메시지: SSE 스트리밍
+      const history = messages.map(m => ({ role: m.role, content: m.content }));
+
+      // 빈 assistant 버블을 먼저 추가 — 초기 상태 "질문 분류 중..."
+      const initStatus = (STEP_LABELS[lang] || STEP_LABELS.ko).classifying;
+      setMessages(prev => [...prev, { role: 'assistant', content: '', intent: 'chat', _streaming: true, _status: initStatus }]);
+
+      const response = await fetch(`${API_CHAT}/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          message: text,
           projectId: selectedProject?.projectId || null,
           simulationProjectId: selectedSimulationProject?.projectId || null,
           history,
+        }),
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const updateLastMsg = (updater) =>
+        setMessages(prev => {
+          const msgs = [...prev];
+          msgs[msgs.length - 1] = updater(msgs[msgs.length - 1]);
+          return msgs;
         });
-        data = res.data;
-      }
 
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: data.response,
-        intent: data.intent,
-        bimData: data.bimData,
-        sensorData: data.sensorData,
-      }]);
-      speak(data.response);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      if (data.intent === 'rag_db') {
-        setActiveTab('data');
-        if (data.sensorData) {
-          applySensorData(data.sensorData);
-        } else {
-          fetchSensorData(selectedCount);
-        }
-      }
-      if (data.intent === 'bim_builder' && onBimUpdate) onBimUpdate();
-      if (data.intent === 'bim_query') {
-        setActiveTab('bim');
-        if (data.bimData) {
-          if (data.bimData.projects) setBimProjects(data.bimData.projects);
-          if (data.bimData.stats)    setBimStats(data.bimData.stats);
-          if (data.bimData.total != null) setBimTotal(data.bimData.total);
-          if (data.bimData.targetProjectId) {
-            const proj = (data.bimData.projects || []).find(
-              p => p.projectId === data.bimData.targetProjectId
-            );
-            setBimTargetProject(proj || { projectId: data.bimData.targetProjectId });
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // 마지막 불완전한 줄은 다음 청크와 합침
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const raw = line.slice(6).trim();
+          if (!raw) continue;
+
+          let event;
+          try { event = JSON.parse(raw); } catch { continue; }
+
+          if (event.step) {
+            // step 이벤트: 버블 상태 텍스트 업데이트
+            const label = (STEP_LABELS[lang] || STEP_LABELS.ko)[event.step] || event.step;
+            updateLastMsg(msg => ({ ...msg, _status: label }));
+          } else if (event.done) {
+            // 완료 이벤트: 구조화 데이터 처리
+            updateLastMsg(msg => ({
+              ...msg,
+              content: event.response || msg.content,
+              intent: event.intent,
+              bimData: event.bimData || null,
+              sensorData: event.sensorData || null,
+              _streaming: false,
+            }));
+            speak(event.response || '');
+
+            if (event.intent === 'rag_db') {
+              setActiveTab('data');
+              if (event.sensorData) applySensorData(event.sensorData);
+              else fetchSensorData(selectedCount);
+            }
+            if (event.intent === 'bim_builder' && onBimUpdate) onBimUpdate();
+            if (event.intent === 'bim_query' && event.bimData) {
+              setActiveTab('bim');
+              if (event.bimData.projects) setBimProjects(event.bimData.projects);
+              if (event.bimData.stats)    setBimStats(event.bimData.stats);
+              if (event.bimData.total != null) setBimTotal(event.bimData.total);
+              if (event.bimData.targetProjectId) {
+                const proj = (event.bimData.projects || []).find(
+                  p => p.projectId === event.bimData.targetProjectId
+                );
+                setBimTargetProject(proj || { projectId: event.bimData.targetProjectId });
+              }
+            }
+          } else if (event.content) {
+            // 토큰 청크: 버블에 실시간 추가
+            updateLastMsg(msg => ({ ...msg, content: msg.content + event.content }));
           }
         }
       }
     } catch {
-      setMessages(prev => [...prev, {
-        role: 'assistant', content: t('errorMsg'), intent: 'chat',
-      }]);
+      setMessages(prev => {
+        const msgs = [...prev];
+        // 스트리밍 중 오류: 버블이 이미 있으면 내용 교체, 없으면 새로 추가
+        if (msgs.length && msgs[msgs.length - 1]._streaming) {
+          msgs[msgs.length - 1] = { role: 'assistant', content: t('errorMsg'), intent: 'chat' };
+          return msgs;
+        }
+        return [...msgs, { role: 'assistant', content: t('errorMsg'), intent: 'chat' }];
+      });
     } finally {
       setLoading(false);
     }
@@ -395,7 +487,8 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             {messages.map((msg, i) => (
               <AgentMessageBubble key={i} msg={msg} />
             ))}
-            {loading && <AgentTypingIndicator />}
+            {/* 이미지(멀티모달) 전송 시에만 별도 타이핑 인디케이터 표시 — 텍스트 스트리밍은 버블 안에 상태 표시 */}
+            {loading && !messages.some(m => m._streaming) && <AgentTypingIndicator />}
             <div ref={bottomRef} />
           </div>
 
@@ -923,7 +1016,20 @@ function AgentMessageBubble({ msg }) {
         <div className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words leading-relaxed ${
           isUser ? 'bg-accent-blue text-white rounded-br-sm' : 'bg-[#253347] text-gray-200 rounded-bl-sm'
         }`}>
-          {msg.content}
+          {/* 스트리밍 중이고 아직 토큰이 없으면 step 상태 표시 */}
+          {msg._streaming && !msg.content ? (
+            <span className="flex items-center gap-2">
+              <span className="flex gap-1">
+                {[0, 1, 2].map(i => (
+                  <span key={i} className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce"
+                    style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </span>
+              <span className="text-gray-400 text-xs">{msg._status}</span>
+            </span>
+          ) : (
+            msg.content
+          )}
         </div>
 
         {/* Sensor data inline chart */}

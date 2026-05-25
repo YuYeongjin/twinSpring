@@ -4,14 +4,18 @@ FastAPI server - exposes LangGraph Multi-Agent as REST API
 Run: uvicorn server:app --host 0.0.0.0 --port 7070 --reload
 """
 
+import json
 import traceback
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from graph import graph
 from llm_config import llm_chat
-from nodes.chat import chat_node
+from nodes.chat import chat_node, _SYSTEM_BASE
+from nodes.supervisor import supervisor_node
+from lang_util import detect_lang, lang_instruction
 
 app = FastAPI(title="Digital Twin AI Agent", version="3.0.0")
 
@@ -113,6 +117,115 @@ def chat(req: ChatRequest):
         bimData=result.get("bim_data"),
         sensorData=result.get("sensor_data"),
     )
+
+
+@app.post("/chat-stream")
+def chat_stream(req: ChatRequest):
+    """
+    스트리밍 버전의 /chat 엔드포인트 (SSE).
+
+    흐름:
+      1. supervisor 로 intent 판단 (blocking, ~2-5초)
+      2. intent == 'chat'  → llm_chat.stream() 으로 토큰 단위 스트리밍
+         intent != 'chat'  → 기존 graph.invoke() 결과를 단일 이벤트로 반환
+         (BIM·센서 등은 DB 쿼리 위주라 스트리밍 불필요)
+
+    SSE 이벤트 형식:
+      data: {"content": "안녕"}          ← 토큰 chunk (chat 전용)
+      data: {"done": true, "response": "...", "intent": "chat", ...}  ← 완료 신호
+    """
+    history_messages = []
+    for msg in req.history:
+        if msg.role == "user":
+            history_messages.append(HumanMessage(content=msg.content))
+        else:
+            history_messages.append(AIMessage(content=msg.content))
+    messages = history_messages + [HumanMessage(content=req.message)]
+
+    session_data = _session_store.get(req.session_id, {})
+    pending_action = session_data.get("pending_action")
+
+    initial_state = {
+        "messages":              messages,
+        "intent":                None,
+        "next_agent":            None,
+        "query_result":          None,
+        "context":               None,
+        "bim_project_id":        req.context.projectId,
+        "simulation_project_id": req.context.simulationProjectId,
+        "bim_data":              None,
+        "sensor_data":           None,
+        "pending_action":        pending_action,
+    }
+
+    def generate():
+        try:
+            # ── 1단계: 질문 분류 (keyword 기반, ~1ms) ─────────────────────
+            yield f"data: {json.dumps({'step': 'classifying'}, ensure_ascii=False)}\n\n"
+
+            sup_result = supervisor_node(initial_state)
+            intent = sup_result.get("intent", "chat")
+            next_agent = sup_result.get("next_agent", "chat")
+
+            if intent != "chat":
+                # ── 2a: 전문 Agent 처리 ────────────────────────────────────
+                yield f"data: {json.dumps({'step': intent}, ensure_ascii=False)}\n\n"
+
+                merged = {**initial_state, **sup_result}
+                full_result = graph.invoke(merged)
+                result_messages = full_result.get("messages", [])
+                last_content = result_messages[-1].content if result_messages else ""
+                _session_store[req.session_id] = {"pending_action": full_result.get("pending_action")}
+
+                done_event = {
+                    "done":       True,
+                    "response":   last_content,
+                    "intent":     intent,
+                    "nextAgent":  next_agent,
+                    "bimData":    full_result.get("bim_data"),
+                    "sensorData": full_result.get("sensor_data"),
+                }
+                yield f"data: {json.dumps(done_event, ensure_ascii=False)}\n\n"
+                return
+
+            # ── 2b: chat — 답변 스트리밍 ──────────────────────────────────
+            yield f"data: {json.dumps({'step': 'generating'}, ensure_ascii=False)}\n\n"
+
+            recent_text = " ".join(
+                m.content for m in messages[-5:] if hasattr(m, "content")
+            )
+            lang = detect_lang(recent_text)
+            note = lang_instruction(lang)
+            system_content = _SYSTEM_BASE + (f"\n\n{note}" if note else "")
+            final_messages = [SystemMessage(content=system_content)] + list(messages)
+
+            full_content = ""
+            for chunk in llm_chat.stream(final_messages):
+                if chunk.content:
+                    full_content += chunk.content
+                    yield f"data: {json.dumps({'content': chunk.content}, ensure_ascii=False)}\n\n"
+
+            _session_store[req.session_id] = {"pending_action": None}
+            done_event = {
+                "done":       True,
+                "response":   full_content,
+                "intent":     "chat",
+                "nextAgent":  "chat",
+                "bimData":    None,
+                "sensorData": None,
+            }
+            yield f"data: {json.dumps(done_event, ensure_ascii=False)}\n\n"
+
+        except Exception:
+            traceback.print_exc()
+            error_event = {
+                "done":     True,
+                "response": "An error occurred while processing your request. Please try again.",
+                "intent":   "chat",
+            }
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.post("/chat-simple", response_model=ChatResponse)

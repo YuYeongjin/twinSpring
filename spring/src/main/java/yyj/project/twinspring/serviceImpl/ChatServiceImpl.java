@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 
@@ -239,6 +240,56 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.warn("Agent 세션 초기화 실패 (무시): {}", e.getMessage());
         }
+    }
+
+    @Override
+    public Flux<String> streamMessage(ChatRequestDTO request) {
+        String sessionId = request.getSessionId() != null ? request.getSessionId() : "default";
+
+        List<ChatMessageDTO> history = sessions.computeIfAbsent(sessionId, k -> new ArrayList<>());
+        int start = Math.max(0, history.size() - 20);
+        List<ChatMessageDTO> recentHistory = history.subList(start, history.size());
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("message", request.getMessage());
+        body.put("session_id", sessionId);
+
+        ArrayNode historyArray = body.putArray("history");
+        for (ChatMessageDTO msg : recentHistory) {
+            ObjectNode msgNode = historyArray.addObject();
+            msgNode.put("role", msg.getRole());
+            msgNode.put("content", msg.getContent());
+        }
+
+        ObjectNode context = body.putObject("context");
+        if (request.getProjectId() != null) context.put("projectId", request.getProjectId());
+        else context.putNull("projectId");
+        if (request.getSimulationProjectId() != null) context.put("simulationProjectId", request.getSimulationProjectId());
+        else context.putNull("simulationProjectId");
+
+        // Agent의 /chat-stream SSE를 그대로 클라이언트에 프록시
+        return agentClient.post()
+                .uri("/chat-stream")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToFlux(String.class)
+                .doOnNext(line -> {
+                    // done 이벤트에서 대화 이력 저장
+                    if (line.startsWith("data: ") && line.contains("\"done\":true")) {
+                        try {
+                            String json = line.substring(6);
+                            JsonNode node = objectMapper.readTree(json);
+                            String response = node.path("response").asText("");
+                            if (!response.isEmpty()) {
+                                history.add(new ChatMessageDTO("user", request.getMessage()));
+                                history.add(new ChatMessageDTO("assistant", response));
+                            }
+                        } catch (Exception e) {
+                            log.warn("스트림 done 이벤트 파싱 실패: {}", e.getMessage());
+                        }
+                    }
+                });
     }
 
     @Override
