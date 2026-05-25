@@ -155,6 +155,130 @@ function LayerRow({
 }
 
 // ================================================================
+// 도면선 그룹 (선 전용 가상 레이어 — DB 레이어와 별도)
+// ================================================================
+function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDeleteLine, onSelectLine, selectedLineId }) {
+    const [expanded, setExpanded] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState(false);
+
+    if (lines.length === 0) return null;
+
+    // 표시할 최대 항목 수 (성능)
+    const PREVIEW_LIMIT = 50;
+    const shown = lines.slice(0, PREVIEW_LIMIT);
+
+    return (
+        <div
+            className="rounded-xl overflow-hidden mb-2"
+            style={{ border: `1px solid ${visible ? '#93c5fd60' : '#253347'}` }}
+        >
+            {/* 헤더 */}
+            <div
+                className="flex items-center gap-2 px-3 py-2.5"
+                style={{ backgroundColor: visible ? '#93c5fd12' : '#1c2a3a' }}
+            >
+                {/* 색상 닷 (고정 파란색) */}
+                <div className="w-4 h-4 rounded-full flex-shrink-0 border-2 border-white/20 shadow"
+                     style={{ backgroundColor: '#60a5fa' }} />
+
+                {/* 이름 */}
+                <span className="flex-1 text-xs font-medium truncate"
+                      style={{ color: visible ? '#e2e8f0' : '#8896a4' }}>
+                    📐 도면선
+                </span>
+
+                {/* 선 수 뱃지 */}
+                <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: '#60c5fa30', color: visible ? '#60a5fa' : '#8896a4' }}>
+                    {lines.length}
+                </span>
+
+                {/* 펼치기 */}
+                <button
+                    onClick={() => setExpanded(v => !v)}
+                    className="text-gray-500 hover:text-gray-300 transition text-xs w-4"
+                >
+                    {expanded ? '▾' : '▸'}
+                </button>
+
+                {/* 가시성 토글 */}
+                <button
+                    onClick={onToggleVisible}
+                    className="transition text-base leading-none"
+                    style={{ color: visible ? '#e2e8f0' : '#4b5563' }}
+                    title={visible ? '선 숨기기' : '선 표시'}
+                >
+                    {visible ? '👁' : '🙈'}
+                </button>
+
+                {/* 전체 삭제 */}
+                {!confirmDelete ? (
+                    <button
+                        onClick={() => setConfirmDelete(true)}
+                        className="text-gray-600 hover:text-red-400 transition text-xs leading-none"
+                        title="전체 삭제"
+                    >
+                        🗑
+                    </button>
+                ) : (
+                    <div className="flex items-center gap-1 ml-1">
+                        <button
+                            onClick={() => { onClearLines(); setConfirmDelete(false); }}
+                            className="text-xs px-1.5 py-0.5 rounded font-semibold"
+                            style={{ backgroundColor: '#7f1d1d', color: '#fca5a5', border: '1px solid #ef4444' }}
+                        >
+                            확인
+                        </button>
+                        <button
+                            onClick={() => setConfirmDelete(false)}
+                            className="text-xs px-1.5 py-0.5 rounded"
+                            style={{ backgroundColor: '#1c2a3a', color: '#8896a4', border: '1px solid #253347' }}
+                        >
+                            취소
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* 선 목록 (펼쳤을 때) */}
+            {expanded && (
+                <div className="bg-[#0f1d2d] max-h-60 overflow-y-auto">
+                    {shown.map((line, idx) => {
+                        const isSelected = line.lineId === selectedLineId;
+                        return (
+                            <div
+                                key={line.lineId}
+                                onClick={() => onSelectLine?.(line.lineId)}
+                                className="flex items-center gap-2 px-4 py-1.5 border-t border-[#1e2d3d] hover:bg-[#1c2a3a] transition group cursor-pointer"
+                                style={{ backgroundColor: isSelected ? '#0f2a4a' : undefined }}
+                            >
+                                <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
+                                     style={{ backgroundColor: line.color ?? '#60a5fa' }} />
+                                <span className="text-xs text-gray-400 flex-1 truncate">
+                                    Line {idx + 1}
+                                </span>
+                                <button
+                                    onClick={e => { e.stopPropagation(); onDeleteLine?.(line.lineId); }}
+                                    className="text-gray-700 hover:text-red-400 transition text-xs opacity-0 group-hover:opacity-100"
+                                    title="삭제"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        );
+                    })}
+                    {lines.length > PREVIEW_LIMIT && (
+                        <div className="px-4 py-2 text-xs text-gray-600 text-center border-t border-[#1e2d3d]">
+                            … 외 {lines.length - PREVIEW_LIMIT}개 더 있음
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ================================================================
 // 메인 LayerPanel
 // ================================================================
 export default function LayerPanel({
@@ -171,6 +295,14 @@ export default function LayerPanel({
     onSetElementColor,
     onClearElementColor,
     onSelectElement,
+    // ── 도면선 그룹 ──────────────────────────
+    lines = [],
+    linesVisible = true,
+    onToggleLinesVisible,
+    onClearLines,
+    onDeleteLine,
+    onSelectLine,
+    selectedLineId,
 }) {
     const [expandedLayers, setExpandedLayers] = useState(new Set());
 
@@ -210,6 +342,17 @@ export default function LayerPanel({
                     + Layer
                 </button>
             </div>
+
+            {/* ── 도면선 가상 레이어 ── */}
+            <LinesGroup
+                lines={lines}
+                visible={linesVisible}
+                onToggleVisible={onToggleLinesVisible}
+                onClearLines={onClearLines}
+                onDeleteLine={onDeleteLine}
+                onSelectLine={onSelectLine}
+                selectedLineId={selectedLineId}
+            />
 
             {/* ── 레이어 목록 ── */}
             {layers.length === 0 ? (

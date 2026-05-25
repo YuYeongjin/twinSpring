@@ -426,6 +426,136 @@ function LinePreview({ lineStart, lineColor, lineWidth, drawHeight, snapVertices
 }
 
 // ================================================================
+// 선 꼭짓점 좌표 추출 (BimLine과 동일한 로직)
+// ================================================================
+function getLinePoints(line) {
+    if (line?.pointsJson) {
+        try {
+            const p = typeof line.pointsJson === 'string'
+                ? JSON.parse(line.pointsJson) : line.pointsJson;
+            if (Array.isArray(p) && p.length >= 2) return p;
+        } catch (_) {}
+    }
+    return [line?.start ?? [0, 0, 0], line?.end ?? [1, 0, 1]];
+}
+
+// ================================================================
+// 선 꼭짓점 드래그 핸들 (선택된 선에만 표시 — CAD 도면 편집 방식)
+// ================================================================
+function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChange }) {
+    const { camera, gl } = useThree();
+
+    const getNDC = useCallback((cx, cy) => {
+        const r = gl.domElement.getBoundingClientRect();
+        return new THREE.Vector2(
+            ((cx - r.left) / r.width)  *  2 - 1,
+            ((cy - r.top)  / r.height) * -2 + 1,
+        );
+    }, [gl]);
+
+    const makeDragHandler = useCallback((vertexIndex) => (e) => {
+        e.stopPropagation();
+        onDragStateChange?.(true);
+        document.body.style.cursor = 'crosshair';
+
+        // 드래그 시작 시점의 꼭짓점 좌표를 기준점으로 고정
+        const basePoints = getLinePoints(line).map(p => [p[0], p[1] ?? 0, p[2]]);
+        const planeY = basePoints[vertexIndex]?.[1] ?? 0;
+        const plane  = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+        const rc     = new THREE.Raycaster();
+        const hit    = new THREE.Vector3();
+        let latestPoints = basePoints;
+
+        const onMove = (ev) => {
+            rc.setFromCamera(getNDC(ev.clientX, ev.clientY), camera);
+            if (!rc.ray.intersectPlane(plane, hit)) return;
+
+            latestPoints = basePoints.map((p, i) =>
+                i === vertexIndex
+                    ? [parseFloat(hit.x.toFixed(3)), planeY, parseFloat(hit.z.toFixed(3))]
+                    : p
+            );
+            onVertexUpdate?.(line.lineId, {
+                pointsJson: JSON.stringify(latestPoints),
+                start: latestPoints[0],
+                end:   latestPoints[latestPoints.length - 1],
+            });
+        };
+
+        const onUp = () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup',   onUp);
+            document.body.style.cursor = '';
+            onDragStateChange?.(false);
+            onVertexSave?.(line.lineId, latestPoints);
+        };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup',   onUp);
+    }, [line, camera, getNDC, onVertexUpdate, onVertexSave, onDragStateChange]);
+
+    const points = getLinePoints(line);
+
+    return (
+        <group>
+            {points.map((pos, i) => {
+                const isFirst = i === 0;
+                const isLast  = i === points.length - 1 && !line.closed;
+                const handleColor = isFirst ? '#4ade80' : isLast ? '#f87171' : '#00e5ff';
+
+                return (
+                    <group key={i}>
+                        {/* 드래그 가능한 꼭짓점 구체 */}
+                        <mesh
+                            position={[pos[0], (pos[1] ?? 0) + 0.001, pos[2]]}
+                            onPointerDown={makeDragHandler(i)}
+                            onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'crosshair'; }}
+                            onPointerOut={() => { document.body.style.cursor = ''; }}
+                            renderOrder={1000}
+                        >
+                            <sphereGeometry args={[0.22, 14, 14]} />
+                            <meshBasicMaterial color={handleColor} depthTest={false} />
+                        </mesh>
+
+                        {/* 외곽 링 (드래그 가능 표시) */}
+                        <mesh
+                            position={[pos[0], (pos[1] ?? 0) + 0.001, pos[2]]}
+                            rotation={[-Math.PI / 2, 0, 0]}
+                            renderOrder={999}
+                        >
+                            <torusGeometry args={[0.34, 0.04, 8, 32]} />
+                            <meshBasicMaterial color={handleColor} transparent opacity={0.55} depthTest={false} />
+                        </mesh>
+
+                        {/* 꼭짓점 인덱스 레이블 (0 = 시작점) */}
+                        {isFirst && (
+                            <mesh position={[pos[0], (pos[1] ?? 0) + 0.42, pos[2]]}>
+                                <sphereGeometry args={[0.08, 6, 6]} />
+                                <meshBasicMaterial color="#4ade80" depthTest={false} />
+                            </mesh>
+                        )}
+                    </group>
+                );
+            })}
+
+            {/* 중간 꼭짓점 수 표시 라인 (꼭짓점이 3개 이상일 때) */}
+            {points.length >= 3 && points.slice(0, -1).map((pos, i) => {
+                const next = points[i + 1];
+                const mx = (pos[0] + next[0]) / 2;
+                const mz = (pos[2] + next[2]) / 2;
+                const my = ((pos[1] ?? 0) + (next[1] ?? 0)) / 2;
+                return (
+                    <mesh key={`mid-${i}`} position={[mx, my + 0.001, mz]} renderOrder={998}>
+                        <sphereGeometry args={[0.09, 6, 6]} />
+                        <meshBasicMaterial color="#94a3b8" transparent opacity={0.7} depthTest={false} />
+                    </mesh>
+                );
+            })}
+        </group>
+    );
+}
+
+// ================================================================
 // 메인 Scene
 // ================================================================
 export default function Scene({
@@ -454,6 +584,9 @@ export default function Scene({
     lineColor  = '#60a5fa',
     lineWidth  = 2,
     onLineClick,
+    // 선 꼭짓점 드래그
+    onLineVertexUpdate,
+    onLineVertexSave,
     // 스냅
     snapEnabled = true,
     // IFC 실제 지오메트리 (옵션) — 있으면 BimElement 박스 대신 렌더링
@@ -462,13 +595,17 @@ export default function Scene({
     const { camera } = useThree();
     const transformRef     = useRef();
     const orbitRef         = useRef();
-    const [isDragging,          setIsDragging]          = useState(false);
-    const [isResizeDragging,    setIsResizeDragging]    = useState(false);
+    const [isDragging,            setIsDragging]            = useState(false);
+    const [isResizeDragging,      setIsResizeDragging]      = useState(false);
+    const [isLineVertexDragging,  setIsLineVertexDragging]  = useState(false);
     const startPositionsRef = useRef({});
 
     // ── 스냅 꼭짓점 수집 ─────────────────────────────────────────────
+    // 스냅은 부재 배치(pendingElement) 또는 선 작도(lineDrawMode=click) 중에만 활성화
+    // → 일반 선택/편집 중에는 빈 배열을 반환해 인디케이터/핸들 스냅을 완전 비활성화
     const snapVertices = useMemo(() => {
         if (!snapEnabled) return [];
+        if (!pendingElement && lineDrawMode !== 'click') return [];
         const verts = [];
         for (const line of lines) {
             if (line.start) verts.push(line.start);
@@ -492,7 +629,7 @@ export default function Scene({
             verts.push([ex, ey+esy, ez]);
         }
         return verts;
-    }, [snapEnabled, lines, modelData]);
+    }, [snapEnabled, pendingElement, lineDrawMode, lines, modelData]);
 
     // ── 카메라 추적 + 미니맵 네비게이션 ─────────────────────────────
     useFrame(() => {
@@ -585,8 +722,8 @@ export default function Scene({
         onLineClick?.(pt);
     };
 
-    // OrbitControls: 드래그 중 / 리사이즈 핸들 드래그 중 / 선택모드 / 선 작도 중 비활성화
-    const orbitEnabled = !isDragging && !isResizeDragging && !isSelectMode && lineDrawMode !== 'click';
+    // OrbitControls: 드래그 중 / 리사이즈 핸들 드래그 중 / 선 꼭짓점 드래그 중 / 선택모드 / 선 작도 중 비활성화
+    const orbitEnabled = !isDragging && !isResizeDragging && !isLineVertexDragging && !isSelectMode && lineDrawMode !== 'click';
 
     // 리사이즈 핸들 표시 조건
     const showHandles = selectedElement && !pendingElement && !isSelectMode;
@@ -653,8 +790,9 @@ export default function Scene({
                 />
             )}
 
-            {/* 꼭짓점 스냅 인디케이터 — 배치·선 작도 모드 제외한 일반 뷰에서 표시 */}
-            {!pendingElement && lineDrawMode !== 'click' && (
+            {/* 꼭짓점 스냅 인디케이터 — 배치(pendingElement) 또는 선 작도 중에만 표시
+                일반 선택/편집 모드에서는 렌더링 자체를 하지 않아 레이캐스트 간섭 원천 차단 */}
+            {(!!pendingElement || lineDrawMode === 'click') && (
                 <VertexSnapIndicator
                     snapVertices={snapVertices}
                     snapEnabled={snapEnabled}
@@ -704,6 +842,19 @@ export default function Scene({
                     onClick={onLineSelect}
                 />
             ))}
+
+            {/* 선 꼭짓점 드래그 핸들 — 선이 선택됐고 작도 모드가 아닐 때 표시 */}
+            {selectedLineId && lineDrawMode === 'off' && (() => {
+                const selLine = lines.find(l => l.lineId === selectedLineId);
+                return selLine ? (
+                    <LineVertexHandles
+                        line={selLine}
+                        onVertexUpdate={onLineVertexUpdate}
+                        onVertexSave={onLineVertexSave}
+                        onDragStateChange={setIsLineVertexDragging}
+                    />
+                ) : null;
+            })()}
 
             {/* 월드 좌표계 축 (X=빨강, Y=초록, Z=파랑) */}
             <axesHelper args={[5]} />

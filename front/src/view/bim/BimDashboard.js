@@ -551,6 +551,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     // ── 선 작도 상태 ───────────────────────────────────────────────
     const [lines, setLines] = useState([]);
+    const [linesVisible, setLinesVisible] = useState(true);
     const [lineDrawMode, setLineDrawMode] = useState('off'); // 'off' | 'click' | 'coord'
     const [lineStart, setLineStart] = useState(null);
     const [lineDrawHeight, setLineDrawHeight] = useState(0);
@@ -626,6 +627,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         setLineDrawMode('off');
     }, [selectedProject]);
 
+    // 가시성 필터: 레이어 패널에서 선 전체를 숨길 수 있음
+    const visibleLines = linesVisible ? lines : [];
+
     const cancelLineDraw = useCallback(() => {
         setLineStart(null);
     }, []);
@@ -634,6 +638,33 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const updateLineData = useCallback((lineId, updates) => {
         setLines(prev => prev.map(l => l.lineId === lineId ? { ...l, ...updates } : l));
     }, []);
+
+    /**
+     * 꼭짓점 드래그 완료 → 서버 저장
+     * latestPoints: 드래그 핸들러가 가지고 있는 최신 꼭짓점 배열
+     * (lines state가 비동기 업데이트 중일 수 있으므로 latestPoints를 직접 사용)
+     */
+    const saveLineVertexDrag = useCallback((lineId, latestPoints) => {
+        // lines ref를 사용하지 않고 latestPoints를 직접 사용해 stale closure 방지
+        setLines(prev => {
+            const line = prev.find(l => l.lineId === lineId);
+            if (!line) return prev;
+            const body = {
+                lineId,
+                projectId: selectedProject?.projectId,
+                startX: latestPoints[0][0], startY: latestPoints[0][1] ?? 0, startZ: latestPoints[0][2],
+                endX: latestPoints[latestPoints.length - 1][0],
+                endY: latestPoints[latestPoints.length - 1][1] ?? 0,
+                endZ: latestPoints[latestPoints.length - 1][2],
+                color: line.color, lineWidth: line.lineWidth,
+                pointsJson: JSON.stringify(latestPoints),
+                closed: line.closed, shapeHeight: line.shapeHeight,
+            };
+            AxiosCustom.put(`${API_BASE}/line`, body)
+                .catch(err => console.error('꼭짓점 드래그 저장 실패:', err));
+            return prev; // state 자체는 이미 updateLineData로 업데이트됨
+        });
+    }, [selectedProject]);
 
     /** 선 데이터 서버에 저장 (PUT) */
     const saveUpdateLine = useCallback((lineData) => {
@@ -691,6 +722,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const handleMiniMapNavigate = useCallback((x, z) => {
         navigationTargetRef.current = { x, z };
     }, []);
+
+    // 부재 클릭 시 선 선택 해제 (cross-selection 방지)
+    const handleElementSelectAndClearLine = useCallback((el, meshRef) => {
+        if (el) setSelectedLineId(null);
+        handleElementSelect(el, meshRef);
+    }, [handleElementSelect]);
 
     const currentProjectId = useMemo(
         () => selectedProject?.projectId ?? modelData?.[0]?.projectId ?? null,
@@ -852,7 +889,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             if (e.key === 'r' || e.key === 'R') setTransformMode('rotate');
             if (e.key === 's' || e.key === 'S') setTransformMode('scale');
             if (e.key === 'q' || e.key === 'Q') toggleSelectMode();
-            if ((e.key === 'Delete' || e.key === 'Backspace') && !pendingElement) deleteSelectedElements();
+            if ((e.key === 'Delete' || e.key === 'Backspace') && !pendingElement) {
+                // 선이 선택됐으면 선 삭제, 아니면 부재 삭제
+                if (selectedLineId) {
+                    deleteLine(selectedLineId);
+                } else {
+                    deleteSelectedElements();
+                }
+            }
             if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
                 e.preventDefault();
                 undo();
@@ -863,13 +907,18 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     cancelLineDraw();
                 } else if (pendingElement) { cancelPlacement(); }
                 else if (isSelectMode) { toggleSelectMode(); }
-                else { setSelectedElement(null); setSelectedElements(new Set()); }
+                else {
+                    setSelectedElement(null);
+                    setSelectedElements(new Set());
+                    setSelectedLineId(null);
+                }
             }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [selectedElement, pendingElement, isSelectMode, lineDrawMode, deleteSelectedElements,
-        cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements, undo, cancelLineDraw]);
+        cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements,
+        undo, cancelLineDraw, selectedLineId, deleteLine, setSelectedLineId]);
 
     return (
         <div className="w-full bg-space-900 pb-2 flex flex-col overflow-hidden" style={{height:'85vh'}} >
@@ -1240,15 +1289,30 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     {viewMode === '2d' ? (
                                         <Plan2DView
                                             modelData={visibleModelData}
-                                            lines={lines}
+                                            lines={visibleLines}
                                             selectedElement={selectedElement}
-                                            onElementSelect={handleElementSelect}
+                                            onElementSelect={handleElementSelectAndClearLine}
+                                            selectedElements={selectedElements}
+                                            isSelectMode={isSelectMode}
+                                            onRubberBandSelect={applyRubberBandSelection}
                                             pendingElement={pendingElement}
                                             onPlacementConfirm={({ x, z }) => confirmPlacement({ x, z }, currentProjectId)}
                                             lineDrawMode={lineDrawMode}
                                             lineStart={lineStart}
                                             onLineClick={handleLineClick}
                                             snapEnabled={snapEnabled}
+                                            selectedLineId={selectedLineId}
+                                            onLineVertexUpdate={updateLineData}
+                                            onLineVertexSave={saveLineVertexDrag}
+                                            onLineSelect={(id) => {
+                                                setSelectedLineId(id);
+                                                if (id) {
+                                                    setLeftTab('line');
+                                                    setShowLeftPanel(true);
+                                                    setSelectedElement(null);
+                                                    setSelectedElements(new Set());
+                                                }
+                                            }}
                                         />
                                     ) : (<>
 
@@ -1272,7 +1336,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             <View track={mainViewRef}>
                                                 <Scene
                                                     modelData={visibleModelData}
-                                                    onElementSelect={handleElementSelect}
+                                                    onElementSelect={handleElementSelectAndClearLine}
                                                     selectedElement={selectedElement}
                                                     selectedElements={selectedElements}
                                                     updateElementData={updateElementData}
@@ -1286,11 +1350,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     envPreset={envPreset}
                                                     navigationTargetRef={navigationTargetRef}
                                                     pushUndo={pushUndo}
-                                                    lines={lines}
+                                                    lines={visibleLines}
                                                     selectedLineId={selectedLineId}
                                                     onLineSelect={(id) => {
                                                         setSelectedLineId(id);
-                                                        if (id) setLeftTab('line');
+                                                        if (id) {
+                                                            setLeftTab('line');
+                                                            setShowLeftPanel(true);
+                                                            // 부재 선택 해제
+                                                            setSelectedElement(null);
+                                                            setSelectedElements(new Set());
+                                                        }
                                                     }}
                                                     lineDrawMode={lineDrawMode}
                                                     lineDrawHeight={lineDrawHeight}
@@ -1298,6 +1368,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     lineColor={lineColor}
                                                     lineWidth={lineWidth}
                                                     onLineClick={handleLineClick}
+                                                    onLineVertexUpdate={updateLineData}
+                                                    onLineVertexSave={saveLineVertexDrag}
                                                     snapEnabled={snapEnabled}
                                                     ifcMeshes={ifcMeshes}
                                                 />
@@ -1434,7 +1506,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 title={t('layerManager')}
                                 right={
                                     <div className="flex items-center gap-2">
-                                        <Chip color="green">{layers.length} {t('itemsUnit')}</Chip>
+                                        <Chip color="green">{layers.length + (lines.length > 0 ? 1 : 0)} {t('itemsUnit')}</Chip>
                                         <button
                                             onClick={() => setShowLayerPanel(false)}
                                             className="text-gray-500 hover:text-gray-300 transition text-sm leading-none"
@@ -1461,7 +1533,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         onRemoveFromLayer={removeFromLayer}
                                         onSetElementColor={setElementColor}
                                         onClearElementColor={clearElementColor}
-                                        onSelectElement={(el) => handleElementSelect(el, null)}
+                                        onSelectElement={(el) => handleElementSelectAndClearLine(el, null)}
+                                        lines={lines}
+                                        linesVisible={linesVisible}
+                                        onToggleLinesVisible={() => setLinesVisible(v => !v)}
+                                        onClearLines={clearLines}
+                                        onDeleteLine={deleteLine}
+                                        onSelectLine={(lineId) => {
+                                            setSelectedLineId(lineId);
+                                            if (lineId) setLeftTab('line');
+                                        }}
+                                        selectedLineId={selectedLineId}
                                     />
                                 </div>
                             </Card>
