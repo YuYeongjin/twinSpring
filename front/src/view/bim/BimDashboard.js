@@ -500,6 +500,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ── IFC 카메라 맞춤 수동 트리거 ──────────────────────────────────
     const [fitCameraTrigger, setFitCameraTrigger] = useState(0);
 
+    // ── 표준 뷰 프리셋 ────────────────────────────────────────────────
+    const [viewPreset, setViewPreset] = useState(null);
+    const applyViewPreset = useCallback((id) => {
+        setViewPreset({ id, ts: Date.now() });
+    }, []);
+
     // ── 뷰 모드 ────────────────────────────────────────────────────
     const [viewMode, setViewMode] = useState('3d'); // '3d' | '2d'
     const [bimSubView, setBimSubView] = useState('editor'); // 'editor' | 'structural'
@@ -1387,6 +1393,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     snapEnabled={snapEnabled}
                                                     ifcMeshes={ifcMeshes}
                                                     fitCameraTrigger={fitCameraTrigger}
+                                                    viewPreset={viewPreset}
                                                 />
                                             </View>
 
@@ -1395,6 +1402,31 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             </GizmoHelper>
 
                                         </Canvas>
+
+                                        {/* ── 표준 뷰 프리셋 버튼 (좌하단 수직 배치) ── */}
+                                        <div className="absolute bottom-16 left-3 z-20 pointer-events-auto flex flex-col gap-1 hidden sm:flex">
+                                            {[
+                                                { id: 'iso',   label: 'ISO',  title: '등각뷰 (Isometric)' },
+                                                { id: 'top',   label: 'TOP',  title: '평면도 (Plan / Z-up 기준 위)' },
+                                                { id: 'front', label: 'FRT',  title: '정면도 (Front Elevation)' },
+                                                { id: 'right', label: 'RGT',  title: '우측면도 (Right Elevation)' },
+                                                { id: 'left',  label: 'LFT',  title: '좌측면도 (Left Elevation)' },
+                                                { id: 'back',  label: 'BCK',  title: '배면도 (Back Elevation)' },
+                                            ].map(({ id, label, title }) => (
+                                                <button
+                                                    key={id}
+                                                    onClick={() => applyViewPreset(id)}
+                                                    title={title}
+                                                    className={`w-10 h-8 rounded text-xs font-bold transition-all ${
+                                                        viewPreset?.id === id
+                                                            ? 'bg-blue-600/80 text-white border border-blue-400'
+                                                            : 'bg-space-800/80 text-gray-400 border border-space-600 hover:bg-space-700/80 hover:text-gray-200'
+                                                    }`}
+                                                >
+                                                    {label}
+                                                </button>
+                                            ))}
+                                        </div>
 
                                         {/* 미니맵 앵커 + MiniMapCanvas (별도 Canvas, portal) — 모바일 숨김 */}
                                         <div
