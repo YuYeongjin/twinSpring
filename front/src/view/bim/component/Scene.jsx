@@ -52,6 +52,82 @@ function CameraSync({ cameraRef }) {
 }
 
 // ================================================================
+// IFC 로드 시 카메라 자동 맞춤 (Auto-fit)
+// IFC 모델의 AABB를 계산해 전체가 화면에 들어오도록 카메라를 재배치한다.
+// fitTrigger 가 바뀌면 수동으로도 재실행된다.
+// ================================================================
+function CameraAutoFit({ ifcMeshes, modelData, orbitRef, fitTrigger }) {
+    const { camera } = useThree();
+    const prevRef = useRef({ meshes: null, trigger: -1 });
+
+    useEffect(() => {
+        if (!ifcMeshes || ifcMeshes.length === 0) {
+            prevRef.current = { meshes: null, trigger: -1 };
+            return;
+        }
+        // 메시도 같고 트리거도 같으면 이미 처리된 것
+        if (prevRef.current.meshes === ifcMeshes && prevRef.current.trigger === fitTrigger) return;
+        prevRef.current = { meshes: ifcMeshes, trigger: fitTrigger };
+
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+        if (modelData && modelData.length > 0) {
+            // 빠른 경로: BimElementDTO AABB 사용
+            for (const el of modelData) {
+                const px = Number(el.positionX) || 0;
+                const py = Number(el.positionY) || 0;
+                const pz = Number(el.positionZ) || 0;
+                const hx = (Number(el.sizeX) || 0.1) / 2;
+                const sy = Number(el.sizeY) || 0.1;
+                const hz = (Number(el.sizeZ) || 0.1) / 2;
+                if (px - hx < minX) minX = px - hx;
+                if (px + hx > maxX) maxX = px + hx;
+                if (py       < minY) minY = py;
+                if (py + sy  > maxY) maxY = py + sy;
+                if (pz - hz < minZ) minZ = pz - hz;
+                if (pz + hz > maxZ) maxZ = pz + hz;
+            }
+        } else {
+            // 느린 경로: 첫 번째 메시 정점 직접 순회 (fallback)
+            const m = ifcMeshes[0];
+            for (let i = 0; i < m.positions.length; i += 3) {
+                const x = m.positions[i], y = m.positions[i + 1], z = m.positions[i + 2];
+                if (x < minX) minX = x; if (x > maxX) maxX = x;
+                if (y < minY) minY = y; if (y > maxY) maxY = y;
+                if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+            }
+        }
+
+        if (!isFinite(minX)) return;
+
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const cz = (minZ + maxZ) / 2;
+
+        // 모델의 최대 치수를 기준으로 카메라 거리 산출
+        const span   = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 0.5);
+        const fovRad = (camera.fov * Math.PI) / 180;
+        const dist   = (span / 2) / Math.tan(fovRad / 2) * 1.8; // 1.8배 여유
+
+        // 북동 45° 사선에서 바라보도록 카메라 배치
+        camera.position.set(
+            cx + dist * 0.65,
+            cy + dist * 0.55,
+            cz + dist * 0.65,
+        );
+        camera.lookAt(cx, cy, cz);
+
+        if (orbitRef?.current) {
+            orbitRef.current.target.set(cx, cy, cz);
+            orbitRef.current.update();
+        }
+    }, [ifcMeshes, modelData, fitTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return null;
+}
+
+// ================================================================
 // 부재 리사이즈 핸들 (CAD 스타일)
 // ================================================================
 function ElementResizeHandles({
@@ -591,6 +667,8 @@ export default function Scene({
     snapEnabled = true,
     // IFC 실제 지오메트리 (옵션) — 있으면 BimElement 박스 대신 렌더링
     ifcMeshes = null,
+    // 카메라 자동 맞춤 수동 트리거 (숫자가 바뀌면 재맞춤)
+    fitCameraTrigger = 0,
 }) {
     const { camera } = useThree();
     const transformRef     = useRef();
@@ -731,6 +809,16 @@ export default function Scene({
     return (
         <>
             <CameraSync cameraRef={cameraRef} />
+
+            {/* IFC 로드 시 카메라 자동 맞춤 */}
+            {ifcMeshes && ifcMeshes.length > 0 && (
+                <CameraAutoFit
+                    ifcMeshes={ifcMeshes}
+                    modelData={modelData}
+                    orbitRef={orbitRef}
+                    fitTrigger={fitCameraTrigger}
+                />
+            )}
 
             <OrbitControls ref={orbitRef} enabled={orbitEnabled} enableZoom makeDefault />
 
