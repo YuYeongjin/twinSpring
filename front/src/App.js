@@ -13,7 +13,7 @@ import SimulationDashboard from './view/simulation/SimulationDashboard';
 import SimulationProjectList from './view/simulation/SimulationProjectList';
 import SafeDashboard from './view/safe/SafeDashboard';
 import TestDashboard from './view/test/TestDashboard';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 function App() {
   const t = useT('app');
@@ -30,6 +30,10 @@ function App() {
   const [modelData, setModelData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [projectList, setProjectList] = useState([]);
+
+  // ── IFC 실제 지오메트리 캐시 (세션 동안 유지, 재렌더링 없음) ───────
+  // Map: projectId → IfcMeshData[]
+  const ifcMeshesRef = useRef(new Map());
 
   // ── Simulation projects ───────────────────────────────────────
   const [simulationProjectList, setSimulationProjectList] = useState([]);
@@ -118,16 +122,33 @@ function App() {
       const pid = project.projectId;
       const newId = () => 'ELEM-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
-      // 1) 지형 슬래브 배치 + 레이어 생성
+      // 1) 절토/성토 슬래브 배치 + 레이어 분리 생성
       let terrainIds = [];
       if (terrainEls.length > 0) {
-        const payload = terrainEls.map(el => ({ ...el, elementId: newId(), projectId: pid }));
+        // _color 필드는 내부 마킹용이므로 API 전송 전 제거
+        const payload = terrainEls.map(el => {
+          const { _color, ...rest } = el;
+          return { ...rest, elementId: newId(), projectId: pid };
+        });
         terrainIds = payload.map(e => e.elementId);
         await AxiosCustom.post('/api/bim/elements/batch', payload);
-        await AxiosCustom.post('/api/bim/layer', {
-          projectId: pid, layerName: '🏔 지형', color: '#52a86b',
-          visible: true, elementIds: terrainIds, sortOrder: 1,
-        });
+
+        // 절토(빨강) / 성토(초록) 레이어 분리
+        const cutIds  = terrainEls.map((el, i) => el._color === '#ef4444' ? terrainIds[i] : null).filter(Boolean);
+        const fillIds = terrainEls.map((el, i) => el._color === '#22c55e' ? terrainIds[i] : null).filter(Boolean);
+
+        if (cutIds.length > 0) {
+          await AxiosCustom.post('/api/bim/layer', {
+            projectId: pid, layerName: '⛏️ 절토', color: '#ef4444',
+            visible: true, elementIds: cutIds, sortOrder: 2,
+          });
+        }
+        if (fillIds.length > 0) {
+          await AxiosCustom.post('/api/bim/layer', {
+            projectId: pid, layerName: '🚛 성토', color: '#22c55e',
+            visible: true, elementIds: fillIds, sortOrder: 3,
+          });
+        }
       }
 
       // 2) 등고선 IfcBeam 배치 + 레이어 생성 (지형 위에 렌더링)
@@ -158,8 +179,9 @@ function App() {
 
   // ---------------------------------------------------------------
   // Import BIM project from IFC elements
+  // ifcMeshes: 실제 Three.js 지오메트리 (클라이언트 캐시, DB 미저장)
   // ---------------------------------------------------------------
-  const importIfcProject = useCallback(async (type, name, elements, callback) => {
+  const importIfcProject = useCallback(async (type, name, elements, ifcMeshes, callback) => {
     try {
       // 이름 중복 시 자동 증가: "이름" → "이름 (1)" → "이름 (2)"
       const existingNames = new Set((projectList || []).map(p => p.projectName));
@@ -183,6 +205,11 @@ function App() {
           projectId: project.projectId,
         }));
         await AxiosCustom.post('/api/bim/elements/batch', payload);
+      }
+
+      // IFC 실제 지오메트리를 클라이언트 캐시에 저장 (DB 미저장)
+      if (ifcMeshes && ifcMeshes.length > 0) {
+        ifcMeshesRef.current.set(project.projectId, ifcMeshes);
       }
 
       await refreshProjectList();
@@ -348,6 +375,10 @@ function App() {
       );
     }
     if (viewComponent === 'bim') {
+      // IFC 세션 캐시에서 현재 프로젝트의 실제 지오메트리 조회
+      const currentIfcMeshes = selectedProject
+        ? (ifcMeshesRef.current.get(selectedProject.projectId) ?? null)
+        : null;
       return (
         <BimDashboard
           setViceComponent={setViceComponent}
@@ -356,6 +387,7 @@ function App() {
           setModelData={setModelData}
           selectedProject={selectedProject}
           onConvertDrone={convertDroneProject}
+          ifcMeshes={currentIfcMeshes}
         />
       );
     }

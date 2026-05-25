@@ -4,6 +4,7 @@ import { OrbitControls, TransformControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
 import { BimLine } from '../element/BimLine';
+import { IFCMeshGroup } from '../element/IFCMeshGroup';
 import SkyEnvironment from './SkyEnvironment';
 
 // ================================================================
@@ -455,6 +456,8 @@ export default function Scene({
     onLineClick,
     // 스냅
     snapEnabled = true,
+    // IFC 실제 지오메트리 (옵션) — 있으면 BimElement 박스 대신 렌더링
+    ifcMeshes = null,
 }) {
     const { camera } = useThree();
     const transformRef     = useRef();
@@ -613,23 +616,33 @@ export default function Scene({
                 />
             )}
 
-            {/* BIM 부재 */}
-            {modelData.map(element => (
-                <BimElement
-                    key={element.elementId}
-                    element={{
-                        ...element,
-                        selected:      selectedElement?.data?.elementId === element.elementId,
-                        multiSelected: selectedElements?.has(element.elementId) &&
-                                       selectedElement?.data?.elementId !== element.elementId,
-                    }}
+            {/* BIM 부재 — IFC 실제 지오메트리가 있으면 대체 렌더링 */}
+            {ifcMeshes && ifcMeshes.length > 0 ? (
+                <IFCMeshGroup
+                    ifcMeshes={ifcMeshes}
+                    modelData={modelData}
                     onElementSelect={onElementSelect}
-                    isPlacementMode={!!pendingElement}
+                    selectedElement={selectedElement}
+                    selectedElements={selectedElements}
                 />
-            ))}
+            ) : (
+                modelData.map(element => (
+                    <BimElement
+                        key={element.elementId}
+                        element={{
+                            ...element,
+                            selected:      selectedElement?.data?.elementId === element.elementId,
+                            multiSelected: selectedElements?.has(element.elementId) &&
+                                           selectedElement?.data?.elementId !== element.elementId,
+                        }}
+                        onElementSelect={onElementSelect}
+                        isPlacementMode={!!pendingElement}
+                    />
+                ))
+            )}
 
-            {/* CAD 리사이즈 핸들 */}
-            {showHandles && (
+            {/* CAD 리사이즈 핸들 — IFC 모드에서는 숨김 */}
+            {showHandles && !ifcMeshes?.length && (
                 <ElementResizeHandles
                     element={selectedElement.data}
                     updateElementData={updateElementData}
