@@ -8,8 +8,10 @@ import io.netty.channel.ChannelOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
@@ -267,18 +269,32 @@ public class ChatServiceImpl implements ChatService {
         if (request.getSimulationProjectId() != null) context.put("simulationProjectId", request.getSimulationProjectId());
         else context.putNull("simulationProjectId");
 
-        // Agent의 /chat-stream SSE를 그대로 클라이언트에 프록시
+        /*
+         * SSE 프록시 방식:
+         *   bodyToFlux(String.class)         — 네트워크 청크 단위 읽기
+         *                                       여러 SSE 이벤트가 한 청크로 묶이면 파싱 깨짐 → 500
+         *   bodyToFlux(ServerSentEvent<String>) — SSE 포맷을 직접 파싱 (이벤트 단위 보장)
+         *                                       data 필드만 추출해 반환 → 정확하고 안전
+         *
+         * Spring MVC + WebFlux 공존(starter-web + starter-webflux) 환경에서
+         * Flux<String> 반환은 ReactiveAdapterRegistry 를 통해 정상 동작합니다.
+         * Spring SSE 포매터가 각 String 요소를 "data: {json}\n\n" 으로 래핑해 클라이언트에 전송.
+         */
         return agentClient.post()
                 .uri("/chat-stream")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
-                .bodyToFlux(String.class)
-                .doOnNext(line -> {
+                // ServerSentEvent<String> → Python SSE 를 이벤트 단위로 정확히 파싱
+                .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
+                // data 필드가 있는 이벤트만 (id-only, comment 이벤트 제외)
+                .filter(sse -> sse.data() != null && !sse.data().isBlank())
+                // 순수 JSON 문자열 추출 ("data: " 접두사 없음)
+                .map(ServerSentEvent::data)
+                .doOnNext(json -> {
                     // done 이벤트에서 대화 이력 저장
-                    if (line.startsWith("data: ") && line.contains("\"done\":true")) {
+                    if (json.contains("\"done\":true")) {
                         try {
-                            String json = line.substring(6);
                             JsonNode node = objectMapper.readTree(json);
                             String response = node.path("response").asText("");
                             if (!response.isEmpty()) {

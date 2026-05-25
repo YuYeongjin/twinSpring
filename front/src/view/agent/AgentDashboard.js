@@ -18,6 +18,12 @@ function getLangCode(lang) {
 
 const API_CHAT = '/api/chat';
 
+// SSE 스트리밍은 fetch() 로 호출 — AxiosCustom 은 스트리밍 미지원
+// 상대경로로 쓰면 React 개발서버(3000)으로 날아가므로 환경별 base 명시
+const SPRING_BASE = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:8080'
+  : '';
+
 // ── Agent step 상태 레이블 (다국어) ──────────────────────────────────────────
 const STEP_LABELS = {
   ko: {
@@ -270,7 +276,9 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
       const initStatus = (STEP_LABELS[lang] || STEP_LABELS.ko).classifying;
       setMessages(prev => [...prev, { role: 'assistant', content: '', intent: 'chat', _streaming: true, _status: initStatus }]);
 
-      const response = await fetch(`${API_CHAT}/stream`, {
+      // SSE 스트리밍: Spring Gateway 경유 (/api/chat/stream)
+      // fetch() 는 상대경로 시 React 개발서버(3000)로 날아가므로 SPRING_BASE 명시
+      const response = await fetch(`${SPRING_BASE}/api/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -304,8 +312,10 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
         buffer = lines.pop(); // 마지막 불완전한 줄은 다음 청크와 합침
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const raw = line.slice(6).trim();
+          // Spring SSE: "data:{json}"  (공백 없음)
+          // Python SSE: "data: {json}" (공백 있음) — 직접 연결 시 대비
+          if (!line.startsWith('data:')) continue;
+          const raw = line.slice(5).trim();   // "data:" 5자 제거 + 앞뒤 공백 trim
           if (!raw) continue;
 
           let event;
@@ -327,13 +337,16 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             }));
             speak(event.response || '');
 
-            if (event.intent === 'rag_db') {
+            // 센서 데이터 갱신 — multi-agent(sensor_agent) + 레거시(rag_db) 모두 대응
+            if (event.intent === 'sensor_agent' || event.intent === 'rag_db') {
               setActiveTab('data');
               if (event.sensorData) applySensorData(event.sensorData);
               else fetchSensorData(selectedCount);
             }
-            if (event.intent === 'bim_builder' && onBimUpdate) onBimUpdate();
-            if (event.intent === 'bim_query' && event.bimData) {
+            // BIM 뷰어 갱신 — multi-agent(bim_agent) + 레거시(bim_builder)
+            if ((event.intent === 'bim_agent' || event.intent === 'bim_builder') && onBimUpdate) onBimUpdate();
+            // BIM 통계 패널 — multi-agent(bim_agent) + 레거시(bim_query)
+            if ((event.intent === 'bim_agent' || event.intent === 'bim_query') && event.bimData) {
               setActiveTab('bim');
               if (event.bimData.projects) setBimProjects(event.bimData.projects);
               if (event.bimData.stats)    setBimStats(event.bimData.stats);
@@ -994,11 +1007,18 @@ function BimPanel({ projects, stats, total, targetProject, loading, onSelectProj
 function AgentMessageBubble({ msg }) {
   const t = useT('agent');
   const INTENT_BADGE = {
-    rag_db:      { label: t('intentDataQuery'),     color: 'text-green-400 bg-green-900/40 border-green-800/50'     },
-    bim_builder: { label: t('intentBimOperation'),  color: 'text-blue-400 bg-blue-900/40 border-blue-800/50'       },
-    bim_query:   { label: t('intentBimQuery'),      color: 'text-cyan-400 bg-cyan-900/40 border-cyan-800/50'        },
-    tab_guide:   { label: t('intentTabGuide'),      color: 'text-amber-400 bg-amber-900/40 border-amber-800/50'    },
-    vision:      { label: t('intentImageAnalysis'), color: 'text-purple-400 bg-purple-900/40 border-purple-800/50' },
+    // ── 레거시 intent 값 ──────────────────────────────────────────────────
+    rag_db:           { label: t('intentDataQuery'),       color: 'text-green-400 bg-green-900/40 border-green-800/50'     },
+    bim_builder:      { label: t('intentBimOperation'),    color: 'text-blue-400 bg-blue-900/40 border-blue-800/50'        },
+    bim_query:        { label: t('intentBimQuery'),        color: 'text-cyan-400 bg-cyan-900/40 border-cyan-800/50'        },
+    tab_guide:        { label: t('intentTabGuide'),        color: 'text-amber-400 bg-amber-900/40 border-amber-800/50'     },
+    vision:           { label: t('intentImageAnalysis'),   color: 'text-purple-400 bg-purple-900/40 border-purple-800/50'  },
+    // ── Multi-Agent intent 값 ────────────────────────────────────────────
+    sensor_agent:     { label: t('intentDataQuery'),       color: 'text-green-400 bg-green-900/40 border-green-800/50'     },
+    bim_agent:        { label: t('intentBimOperation'),    color: 'text-blue-400 bg-blue-900/40 border-blue-800/50'        },
+    simulation_agent: { label: t('intentSimulation'),      color: 'text-indigo-400 bg-indigo-900/40 border-indigo-800/50'  },
+    safe_agent:       { label: t('intentSafety'),          color: 'text-red-400 bg-red-900/40 border-red-800/50'           },
+    test_agent:       { label: t('intentCollisionTest'),   color: 'text-orange-400 bg-orange-900/40 border-orange-800/50'  },
     chat: null,
   };
   const isUser = msg.role === 'user';
