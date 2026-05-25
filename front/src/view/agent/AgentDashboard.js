@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useT } from '../../i18n/LanguageContext';
+import { useT, useLanguage } from '../../i18n/LanguageContext';
 import {
   LineChart, Line,
   BarChart, Bar, Cell,
@@ -8,6 +8,13 @@ import {
 } from 'recharts';
 import AxiosCustom from '../../axios/AxiosCustom';
 import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
+
+/** BCP-47 language tag for Web Speech API */
+function getLangCode(lang) {
+  if (lang === 'ja') return 'ja-JP';
+  if (lang === 'en') return 'en-US';
+  return 'ko-KR';
+}
 
 const API_CHAT = '/api/chat';
 
@@ -23,11 +30,13 @@ const COUNT_OPTIONS = [10, 20, 50, 100];
 // ────────────────────────────────────────────────────
 export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject, agentAvailable }) {
   const t = useT('agent');
+  const { lang } = useLanguage();
   // ── Chat state ──
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState(() => [
     {
       role: 'assistant',
-      content: 'Hello! This is AI Agent Studio.\nSupports voice, image, data query, and BIM tasks.\nHow can I help you?',
+      // t is resolved at component mount; greeting matches the active language
+      content: t('greeting'),
       intent: 'chat',
     },
   ]);
@@ -72,7 +81,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
     const rec = new SR();
-    rec.lang = 'ko-KR';
+    rec.lang = getLangCode(lang);   // set from current language at mount
     rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = (e) => {
@@ -82,7 +91,15 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     rec.onend = () => setIsListening(false);
     rec.onerror = () => setIsListening(false);
     recognitionRef.current = rec;
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // init once; lang synced in the effect below
+
+  // ── Sync STT lang when UI language changes ──
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = getLangCode(lang);
+    }
+  }, [lang]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -91,6 +108,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   // ── Sensor data fetch ──
   const fetchSensorData = useCallback(async (count = selectedCount) => {
     setDataLoading(true);
+    const locale = getLangCode(lang);
     try {
       const [latestRes, logsRes] = await Promise.allSettled([
         AxiosCustom.get('/api/sensor/latest'),
@@ -103,17 +121,17 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
         setRawLogs(sliced);
         setSensorLogs(sliced.map((d, i) => ({
           name: d.timestamp
-            ? new Date(d.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+            ? new Date(d.timestamp).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
             : `${i + 1}`,
           Temp: d.temperature ?? d.temp ?? null,
           Humidity: d.humidity ?? null,
         })));
-        setLastFetched(new Date().toLocaleTimeString('en-US'));
+        setLastFetched(new Date().toLocaleTimeString(locale));
       }
     } catch { /* 무시 */ } finally {
       setDataLoading(false);
     }
-  }, [selectedCount]);
+  }, [selectedCount, lang]);
 
   // Initial data load on mount
   useEffect(() => {
@@ -144,14 +162,19 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     if (!ttsEnabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = 'ko-KR'; utt.rate = 1.0;
+    utt.lang = getLangCode(lang); utt.rate = 1.0;
     window.speechSynthesis.speak(utt);
-  }, [ttsEnabled]);
+  }, [ttsEnabled, lang]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) { alert(t('speechNotSupported')); return; }
     if (isListening) { recognitionRef.current.stop(); }
-    else { recognitionRef.current.start(); setIsListening(true); }
+    else {
+      // Re-apply language right before starting in case it changed
+      recognitionRef.current.lang = getLangCode(lang);
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
   };
 
   // ── Image ──
@@ -177,8 +200,8 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     if (sd.latest) {
       setLatestSensor(prev => ({ ...(prev || {}), ...sd.latest }));
     }
-    setLastFetched(new Date().toLocaleTimeString('en-US'));
-  }, []);
+    setLastFetched(new Date().toLocaleTimeString(getLangCode(lang)));
+  }, [lang]);
 
   // ── Send message ──
   const sendMessage = async () => {
