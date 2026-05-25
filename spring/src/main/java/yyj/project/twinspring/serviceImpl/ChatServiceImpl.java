@@ -4,13 +4,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.netty.channel.ChannelOption;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
 
 import java.time.Duration;
 import yyj.project.twinspring.dto.ChatMessageDTO;
@@ -46,9 +49,16 @@ public class ChatServiceImpl implements ChatService {
             ObjectMapper objectMapper,
             @Value("${agent.url:http://localhost:7070}") String agentUrl
     ) {
+        // LLM(Ollama) 응답은 영어/일본어 등 언어에 따라 수 분이 걸릴 수 있음
+        // responseTimeout 없이 build()하면 Reactor Netty 기본 acquire timeout(45초)에 걸려 504 발생
+        HttpClient agentHttpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)   // 연결 실패는 5초 내 감지
+                .responseTimeout(Duration.ofMinutes(10));               // LLM 응답 최대 10분 대기
+
         this.agentClient = builder
                 .baseUrl(agentUrl)
                 .defaultHeader("Content-Type", "application/json")
+                .clientConnector(new ReactorClientHttpConnector(agentHttpClient))
                 .build();
         this.objectMapper = objectMapper;
     }
@@ -98,6 +108,7 @@ public class ChatServiceImpl implements ChatService {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(String.class)
+                    .timeout(Duration.ofMinutes(10))  // 안전망: 10분 초과 시 TimeoutException
                     .block();
 
             JsonNode json = objectMapper.readTree(raw);
@@ -163,6 +174,7 @@ public class ChatServiceImpl implements ChatService {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(String.class)
+                    .timeout(Duration.ofMinutes(10))
                     .block();
 
             JsonNode json = objectMapper.readTree(raw);
@@ -196,6 +208,7 @@ public class ChatServiceImpl implements ChatService {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(String.class)
+                    .timeout(Duration.ofMinutes(10))
                     .block();
 
             JsonNode json = objectMapper.readTree(raw);
