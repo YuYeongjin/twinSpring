@@ -38,7 +38,8 @@ public class SimulationController {
                 .uri("/api/simulation/physics/evaluate")
                 .bodyValue(body)
                 .retrieve()
-                .toEntity(new ParameterizedTypeReference<Map<String, Object>>() {})
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                .map(responseBody -> ResponseEntity.ok(responseBody))
                 .onErrorResume(e -> {
                     // C# BIM 서버 미응답 시 로그 남기고 안전 기본값 반환 (503 대신 200)
                     log.warn("[Physics] twinBIM 서버 미응답: {}", e.getMessage());
