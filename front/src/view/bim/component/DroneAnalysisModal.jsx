@@ -377,16 +377,48 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
 
   const convertBIM=useCallback(()=>{
     if(!result||!onConvertToBIM||!cvName.trim())return;
-    const{raw,smooth,cols,rows}=result;
+    const{raw,smooth,cols,rows,refT}=result;
     setCvBusy(true);setCvDone(null);
 
-    // Sobel 엣지 감지: raw 그리드가 있으면 가볍게 블러 후 사용, 없으면 smooth 사용
+    // Sobel 엣지 감지 → 도면 폴리라인 (선 형태)
     const src=raw?gaussianBlur(raw,0.8):smooth;
     const edges=sobelEdge(src);
-    // 평면 폴리라인 생성 (Y=0, Slab/Beam 없음)
     const drawingLines=buildDrawingLines(edges,cols,rows,scaleW,scaleH,cvThreshold,600);
 
-    onConvertToBIM('Building',cvName.trim(),[],[],drawingLines,proj=>{
+    // ── 절토/성토 Slab 생성 ─────────────────────────────────────────
+    // 블록별 평균 밝기(고도)를 계산한 뒤 전체 블록을 밝기 순으로 정렬
+    // → 상위 50%를 절토(빨강), 하위 50%를 성토(초록)로 분류
+    // 이미지 전체 밝기와 무관하게 항상 양쪽 색상이 나오도록 순위 기반 분류
+    const GROUP=Math.max(4,Math.ceil(Math.min(cols,rows)/25));
+    const slabSX=+((scaleW/cols*GROUP).toFixed(3));
+    const slabSZ=+((scaleH/rows*GROUP).toFixed(3));
+
+    const rawBlocks=[];
+    for(let r=0;r<rows-GROUP;r+=GROUP){
+      for(let c=0;c<cols-GROUP;c+=GROUP){
+        let s=0,n=0;
+        for(let dr=0;dr<GROUP&&r+dr<rows;dr++)
+          for(let dc=0;dc<GROUP&&c+dc<cols;dc++){s+=smooth[r+dr][c+dc];n++;}
+        const avg=s/n;
+        const wx=+((c/cols*scaleW-scaleW/2+slabSX/2).toFixed(3));
+        const wz=+((r/rows*scaleH-scaleH/2+slabSZ/2).toFixed(3));
+        rawBlocks.push({avg,wx,wz});
+      }
+    }
+
+    // 순위 기반: 밝기 내림차순 정렬 → 상위 절반=절토(빨강), 하위 절반=성토(초록)
+    const sorted=[...rawBlocks].sort((a,b)=>b.avg-a.avg);
+    const half=Math.ceil(sorted.length/2);
+    sorted.forEach((b,i)=>{b._color=i<half?'#ef4444':'#22c55e';});
+
+    const terrainEls=rawBlocks.map(b=>({
+      elementType:'IfcSlab',material:'Earthwork',
+      positionX:b.wx,positionY:-0.05,positionZ:b.wz,
+      sizeX:slabSX,sizeY:0.1,sizeZ:slabSZ,
+      _color:b._color, // 절토=빨강, 성토=초록
+    }));
+
+    onConvertToBIM('Building',cvName.trim(),terrainEls,[],drawingLines,proj=>{
       setCvBusy(false);
       if(proj){setCvDone('ok');setTimeout(()=>{if(onProjectSelect)onProjectSelect(proj);},1200);}
       else setCvDone('err');

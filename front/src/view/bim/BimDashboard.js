@@ -447,7 +447,7 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
 // 메인 BIM 대시보드
 // ================================================================
 
-export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone }) {
+export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes }) {
     const {
         saveUpdateElement,
         selectedElement, setSelectedElement,
@@ -1299,6 +1299,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     lineWidth={lineWidth}
                                                     onLineClick={handleLineClick}
                                                     snapEnabled={snapEnabled}
+                                                    ifcMeshes={ifcMeshes}
                                                 />
                                             </View>
 

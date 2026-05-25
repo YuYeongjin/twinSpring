@@ -364,7 +364,8 @@ function IfcImportModal({ onClose, onImport }) {
   const [dragging, setDragging]         = useState(false);
   const [phase, setPhase]               = useState("idle"); // idle | parsing | importing | done | error
   const [progress, setProgress]         = useState(0);
-  const [parsedElements, setParsedElements] = useState(null);
+  // parseIfcFile now returns { elements, ifcMeshes }
+  const [parsedData, setParsedData]     = useState(null);
   const [errorMsg, setErrorMsg]         = useState("");
   const fileInputRef = useRef(null);
 
@@ -395,8 +396,9 @@ function IfcImportModal({ onClose, onImport }) {
     setProgress(0);
     setErrorMsg("");
     try {
-      const elements = await parseIfcFile(selectedFile, setProgress);
-      setParsedElements(elements);
+      // parseIfcFile now returns { elements, ifcMeshes }
+      const result = await parseIfcFile(selectedFile, setProgress);
+      setParsedData(result);
       setPhase("done");
     } catch (e) {
       console.error("IFC parsing error:", e);
@@ -406,17 +408,19 @@ function IfcImportModal({ onClose, onImport }) {
   }, [selectedFile]);
 
   const handleImport = useCallback(() => {
-    if (!parsedElements || !projectName.trim()) return;
+    if (!parsedData || !projectName.trim()) return;
+    const { elements, ifcMeshes } = parsedData;
     setPhase("importing");
-    onImport(projectType, projectName.trim(), parsedElements, (project) => {
+    onImport(projectType, projectName.trim(), elements, ifcMeshes, (project) => {
       if (project) onClose();
       else {
         setErrorMsg(t('projectCreationFailed'));
         setPhase("error");
       }
     });
-  }, [parsedElements, projectName, projectType, onImport, onClose, t]);
+  }, [parsedData, projectName, projectType, onImport, onClose, t]);
 
+  const parsedElements = parsedData?.elements ?? null;
   const typeStats = parsedElements
     ? parsedElements.reduce((acc, el) => {
         acc[el.elementType] = (acc[el.elementType] || 0) + 1;

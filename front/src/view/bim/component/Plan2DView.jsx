@@ -182,40 +182,50 @@ export default function Plan2DView({
       ctx.translate(cx2, cy2);
       ctx.rotate(-ry);
 
-      // ── fill ──────────────────────────────────────────────────
+      // ── fill / stroke ─────────────────────────────────────────
       if (el.elementType === 'IfcSlab') {
-        ctx.fillStyle = isSel ? '#0e2840' : isMultiSel ? '#1a0b36' : cfg.fill;
+        // Slab: resolvedColor(절토/성토 레이어 색상) 우선, 없으면 기본 fill
+        const slabColor = el.resolvedColor || cfg.fill;
+        if (isSel) {
+          ctx.fillStyle = '#0e2840';
+        } else if (isMultiSel) {
+          ctx.fillStyle = '#1a0b36';
+        } else {
+          // 절토/성토 색상은 반투명하게 채움
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = slabColor;
+        }
         ctx.fillRect(-w / 2, -h / 2, w, h);
-        ctx.strokeStyle = isMultiSel ? '#7c3aed' : '#333';
-        ctx.lineWidth = isMultiSel ? 0.5 : 0.5;
-        ctx.setLineDash(isMultiSel ? [] : [4, 4]);
+        ctx.globalAlpha = 1;
+        // 외곽선
+        ctx.strokeStyle = isSel ? '#00d4ff' : isMultiSel ? '#7c3aed' : slabColor;
+        ctx.lineWidth = isSel ? 2 : isMultiSel ? 1 : 1.2;
+        ctx.setLineDash(isMultiSel ? [] : []);
         ctx.strokeRect(-w / 2, -h / 2, w, h);
         ctx.setLineDash([]);
       } else {
-        ctx.fillStyle = isSel ? '#0c2238' : isMultiSel ? '#1a0b36' : cfg.fill;
-        ctx.fillRect(-w / 2, -h / 2, w, h);
+        // 비-Slab: 외곽선(line) 형태만 — 채움 없음
+        if (isMultiSel) {
+          ctx.fillStyle = 'rgba(124,58,237,0.12)';
+          ctx.fillRect(-w / 2, -h / 2, w, h);
+        }
+        // 외곽선 전용 (fill 없음)
+        ctx.strokeStyle = isSel ? '#00d4ff' : isMultiSel ? '#a78bfa' : cfg.stroke;
+        ctx.lineWidth   = isSel ? 2.5 : isMultiSel ? 2 : cfg.lw;
+        ctx.setLineDash(cfg.dash);
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+        ctx.setLineDash([]);
+
+        if (el.elementType === 'IfcColumn' && w > 6 && h > 6) {
+          ctx.strokeStyle = isSel ? '#00d4ff' : isMultiSel ? '#a78bfa' : '#555';
+          ctx.lineWidth = 0.6;
+          ctx.beginPath();
+          ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(w / 2, h / 2);
+          ctx.moveTo(w / 2, -h / 2);  ctx.lineTo(-w / 2, h / 2);
+          ctx.stroke();
+        }
       }
 
-      // 다중 선택: 반투명 보라 overlay
-      if (isMultiSel) {
-        ctx.fillStyle = 'rgba(124,58,237,0.22)';
-        ctx.fillRect(-w / 2, -h / 2, w, h);
-      }
-
-      // ── stroke ────────────────────────────────────────────────
-      ctx.strokeStyle = isSel ? '#00d4ff' : isMultiSel ? '#a78bfa' : cfg.stroke;
-      ctx.lineWidth   = isSel ? 2.5 : isMultiSel ? 2 : cfg.lw;
-      ctx.setLineDash([]);
-      ctx.strokeRect(-w / 2, -h / 2, w, h);
-
-      if (el.elementType === 'IfcColumn' && w > 6 && h > 6) {
-        ctx.strokeStyle = isSel ? '#00d4ff' : isMultiSel ? '#a78bfa' : '#555';
-        ctx.lineWidth = 0.6;
-        ctx.beginPath();
-        ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(w / 2, h / 2);
-        ctx.moveTo(w / 2, -h / 2);  ctx.lineTo(-w / 2, h / 2);
-        ctx.stroke();
-      }
       if (w > 24 && h > 12) {
         ctx.fillStyle = isSel ? '#7ecfff' : isMultiSel ? '#c4b5fd' : '#777';
         ctx.font = `${Math.min(11, w * 0.25, h * 0.4)}px monospace`;
@@ -348,9 +358,20 @@ export default function Plan2DView({
 
     // ── 범례 ──────────────────────────────────────────────────────
     let lx = 20, ly = H - 14;
-    for (const [, cfg] of Object.entries(TYPE_CFG)) {
-      ctx.fillStyle = cfg.fill; ctx.strokeStyle = cfg.stroke; ctx.lineWidth = 1;
-      ctx.fillRect(lx, ly, 12, 12); ctx.strokeRect(lx, ly, 12, 12);
+    for (const [type, cfg] of Object.entries(TYPE_CFG)) {
+      if (type === 'IfcSlab') {
+        // Slab: 반투명 채움 + 외곽선
+        ctx.fillStyle = cfg.fill; ctx.globalAlpha = 0.35;
+        ctx.fillRect(lx, ly, 12, 12); ctx.globalAlpha = 1;
+        ctx.strokeStyle = cfg.stroke; ctx.lineWidth = 1.2;
+        ctx.strokeRect(lx, ly, 12, 12);
+      } else {
+        // 비-Slab: 외곽선만
+        ctx.strokeStyle = cfg.stroke; ctx.lineWidth = 1.2;
+        ctx.setLineDash(cfg.dash);
+        ctx.strokeRect(lx, ly, 12, 12);
+        ctx.setLineDash([]);
+      }
       ctx.fillStyle = '#aaa'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
       ctx.fillText(cfg.label, lx + 14, ly + 9);
       lx += 42;
