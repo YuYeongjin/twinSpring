@@ -1,18 +1,28 @@
 https://yjtwin.duckdns.org/
 <br />
-
+<hr>
 <p>
-1. BIM : IFC series BIM, structural analysis function
+1. BIM : Drone Photo Extraction, IFC Series BIM, Structural Analysis Function
 </p>
 <p>
-2. Simulation : Earthenware volume and equipment safety notification function with excavator simulation
-</p>
-
-<p>
-3. Test: Bring BIM data to test excavations and detect collisions
+2. Simulation : earthwork volume and equipment safety notification function through excavator simulation
 </p>
 <p>
-4. Safe: Using the Camera to wear safety equipment and detect entry into dangerous areas
+3. Testing: Take BIM data and test excavation and detect collisions
+</p>
+<p>
+4. Safety: Using the camera to detect entry into dangerous areas wearing safety gear
+</p>
+<p>
+5. AI Agent: describing each tab and developing multilingual agent functions
+</p>
+<hr>
+<p>
+Building a Kubernetes CICD Environment on a Private Server
+</p>
+<hr>
+<p>
+Project Architecture
 </p>
 
 <img width="727" height="534" alt="아키텍처" src="https://github.com/user-attachments/assets/51c593c3-a5b9-41cc-8512-66295dd25afc" />
