@@ -54,8 +54,14 @@ public class ChatController {
      * text/event-stream 으로 토큰을 스트리밍 — 영어/일본어 504 방지
      *
      * SSE 이벤트:
+     *   data: {"step": "classifying"}        ← 분류 중
+     *   data: {"step": "sensor_agent"}       ← 에이전트 선택
      *   data: {"content": "안녕"}            ← 토큰 chunk
-     *   data: {"done": true, "response": "...", "intent": "chat", ...}  ← 완료
+     *   data: {"done": true, "response": "...", "intent": "...", ...}  ← 완료
+     *
+     * 헤더:
+     *   X-Accel-Buffering: no  → Nginx 버퍼링 비활성화 (SSE 즉시 전달)
+     *   Cache-Control: no-cache
      */
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> streamMessage(@RequestBody ChatRequestDTO request) {
