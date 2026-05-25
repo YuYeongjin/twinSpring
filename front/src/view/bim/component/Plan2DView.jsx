@@ -11,6 +11,28 @@ const TYPE_CFG = {
 const DEFAULT_CFG = { fill: '#2a2a2a', stroke: '#808080', label: '?', lw: 1.0, dash: [] };
 
 const SNAP_THRESHOLD_PX = 18;
+const LINE_HIT_PX = 7;    // 선 클릭 허용 반경 (픽셀)
+const VERTEX_HIT_PX = 14; // 꼭짓점 드래그 감지 반경 (픽셀)
+
+/** 점 (px,pz) → 선분 (ax,az)-(bx,bz) 최단 거리 (세계 좌표) */
+function distToSegment(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  if (len2 === 0) return Math.hypot(px - ax, pz - az);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / len2));
+  return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
+}
+
+/** line 데이터에서 꼭짓점 배열 추출 */
+function getLinePoints2D(line) {
+  if (line.pointsJson) {
+    try {
+      const p = typeof line.pointsJson === 'string' ? JSON.parse(line.pointsJson) : line.pointsJson;
+      if (Array.isArray(p) && p.length >= 2) return p;
+    } catch (_) {}
+  }
+  return [line.start, line.end];
+}
 
 function toCanvas(wx, wz, vp) {
   return [vp.x + wx * vp.scale, vp.y - wz * vp.scale];
@@ -76,6 +98,8 @@ export default function Plan2DView({
   snapEnabled = true,
   isSelectMode = false, onRubberBandSelect,
   selectedElements = new Set(),
+  selectedLineId = null, onLineSelect = null,
+  onLineVertexUpdate = null, onLineVertexSave = null,
 }) {
   const canvasRef  = useRef(null);
   const vpRef      = useRef({ x: 0, y: 0, scale: 20 });
@@ -84,6 +108,8 @@ export default function Plan2DView({
   const fittedRef  = useRef(false);
   const mouseRef   = useRef({ cx: -9999, cy: -9999 });
   const snapRef    = useRef(null);
+  // { active, lineId, vtxIdx, pts } — 꼭짓점 드래그 상태
+  const vertexDragRef = useRef({ active: false, lineId: null, vtxIdx: -1, pts: null });
 
   const [, setTick] = useState(0);
   const redraw = useCallback(() => setTick(t => t + 1), []);
@@ -137,15 +163,12 @@ export default function Plan2DView({
 
     // ── 선 (lines) ────────────────────────────────────────────────
     for (const line of lines) {
-      let pts = [];
-      if (line.pointsJson) {
-        try { pts = typeof line.pointsJson === 'string' ? JSON.parse(line.pointsJson) : line.pointsJson; }
-        catch (_) { pts = [line.start, line.end]; }
-      } else { pts = [line.start, line.end]; }
+      const pts = getLinePoints2D(line);
       if (!pts.length) continue;
+      const isSel = line.lineId === selectedLineId;
       ctx.save();
-      ctx.strokeStyle = line.color ?? '#60a5fa';
-      ctx.lineWidth = Math.max(0.5, (line.lineWidth ?? 2) * 0.5);
+      ctx.strokeStyle = isSel ? '#00e5ff' : (line.color ?? '#60a5fa');
+      ctx.lineWidth = Math.max(0.5, (line.lineWidth ?? 2) * 0.5) + (isSel ? 1.5 : 0);
       ctx.setLineDash([]);
       ctx.beginPath();
       const [s0x, s0y] = toCanvas(pts[0][0], pts[0][2], vp);
@@ -156,10 +179,21 @@ export default function Plan2DView({
       }
       if (line.closed) ctx.closePath();
       ctx.stroke();
-      for (const pt of pts) {
+      // 꼭짓점 마커 (선택된 선은 색상 구분 + 크기 강조)
+      const vtxR = isSel ? 5 : 3;
+      for (let i = 0; i < pts.length; i++) {
+        const pt = pts[i];
         const [ppx, ppy] = toCanvas(pt[0], pt[2], vp);
-        ctx.beginPath(); ctx.arc(ppx, ppy, 3, 0, Math.PI * 2);
-        ctx.fillStyle = line.color ?? '#60a5fa'; ctx.fill();
+        ctx.beginPath(); ctx.arc(ppx, ppy, vtxR, 0, Math.PI * 2);
+        if (isSel) {
+          const vtxColor = i === 0 ? '#4ade80'
+            : i === pts.length - 1 ? '#f87171'
+            : '#00e5ff';
+          ctx.fillStyle = vtxColor; ctx.fill();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.stroke();
+        } else {
+          ctx.fillStyle = line.color ?? '#60a5fa'; ctx.fill();
+        }
       }
       ctx.restore();
     }
@@ -376,7 +410,7 @@ export default function Plan2DView({
       ctx.fillText(cfg.label, lx + 14, ly + 9);
       lx += 42;
     }
-  }, [modelData, lines, selectedElement, selectedElements, lineDrawMode, lineStart, pendingElement, snapEnabled, isSelectMode]);
+  }, [modelData, lines, selectedElement, selectedElements, lineDrawMode, lineStart, pendingElement, snapEnabled, isSelectMode, selectedLineId]);
 
   // ── 초기 fit ──────────────────────────────────────────────────────
   // 데이터가 완전히 비워질 때(프로젝트 전환)만 재fit 허용.
@@ -423,14 +457,16 @@ export default function Plan2DView({
     const newScale = Math.max(2, Math.min(200, vp.scale * factor));
     const ratio = newScale / vp.scale;
     vpRef.current = { scale: newScale, x: mx + (vp.x - mx) * ratio, y: my + (vp.y - my) * ratio };
-    // 줌 후 스냅 재계산
-    if (snapEnabled) {
+    // 줌 후 스냅 재계산 (배치 / 선 작도 모드에서만)
+    if (snapEnabled && (lineDrawMode === 'click' || !!pendingElement)) {
       const [wx, wz] = fromCanvas(mx, my, vpRef.current);
       const snap = findNearestSnap(wx, wz, allSnapPoints, SNAP_THRESHOLD_PX, vpRef.current.scale);
       snapRef.current = snap ? { wx: snap[0], wz: snap[1] } : null;
+    } else {
+      snapRef.current = null;
     }
     draw();
-  }, [draw, snapEnabled, allSnapPoints]);
+  }, [draw, snapEnabled, allSnapPoints, lineDrawMode, pendingElement]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -460,9 +496,40 @@ export default function Plan2DView({
       dragRef.current = { active: false, lx: e.clientX, ly: e.clientY, moved: false };
       return;
     }
+
+    // ── 선택된 선의 꼭짓점 드래그 감지 ──────────────────────────────
+    if (selectedLineId) {
+      const canvas2 = canvasRef.current;
+      if (canvas2) {
+        const rect2 = canvas2.getBoundingClientRect();
+        const cx2 = e.clientX - rect2.left;
+        const cy2 = e.clientY - rect2.top;
+        const vp = vpRef.current;
+        const [wx, wz] = fromCanvas(cx2, cy2, vp);
+        const vtxHitThr = VERTEX_HIT_PX / vp.scale;
+        const selLine = lines.find(l => l.lineId === selectedLineId);
+        if (selLine) {
+          const pts = getLinePoints2D(selLine);
+          for (let i = 0; i < pts.length; i++) {
+            if (Math.hypot(wx - pts[i][0], wz - pts[i][2]) <= vtxHitThr) {
+              // 꼭짓점 드래그 시작
+              vertexDragRef.current = {
+                active: true,
+                lineId: selectedLineId,
+                vtxIdx: i,
+                pts: pts.map(p => [...p]), // 깊은 복사
+              };
+              dragRef.current = { active: false, lx: 0, ly: 0, moved: false };
+              return; // 패닝 비활성화
+            }
+          }
+        }
+      }
+    }
+
     dragRef.current = { active: true, lx: e.clientX, ly: e.clientY, moved: false };
     if (canvasRef.current) canvasRef.current.style.cursor = 'grabbing';
-  }, [isSelectMode, pendingElement, lineDrawMode]);
+  }, [isSelectMode, pendingElement, lineDrawMode, selectedLineId, lines]);
 
   const handlePointerMove = useCallback((e) => {
     const canvas = canvasRef.current;
@@ -480,6 +547,35 @@ export default function Plan2DView({
       return;
     }
 
+    // ── 꼭짓점 드래그 중 ──────────────────────────────────────────
+    if (vertexDragRef.current.active) {
+      const [wx, wz] = fromCanvas(cx, cy, vpRef.current);
+      const { lineId, vtxIdx, pts } = vertexDragRef.current;
+      pts[vtxIdx][0] = wx;
+      pts[vtxIdx][2] = wz;
+      dragRef.current.moved = true; // 드래그 완료 후 click 이벤트 억제
+      onLineVertexUpdate?.(lineId, {
+        pointsJson: JSON.stringify(pts),
+        start: pts[0],
+        end: pts[pts.length - 1],
+      });
+      if (canvasRef.current) canvasRef.current.style.cursor = 'crosshair';
+      draw();
+      return;
+    }
+
+    // ── 선택된 선의 꼭짓점 위에 있을 때 커서 변경 ────────────────
+    if (selectedLineId && !dragRef.current.active) {
+      const [wx, wz] = fromCanvas(cx, cy, vpRef.current);
+      const vtxHitThr = VERTEX_HIT_PX / vpRef.current.scale;
+      const selLine = lines.find(l => l.lineId === selectedLineId);
+      if (selLine) {
+        const pts = getLinePoints2D(selLine);
+        const nearVtx = pts.some(p => Math.hypot(wx - p[0], wz - p[2]) <= vtxHitThr);
+        if (canvasRef.current) canvasRef.current.style.cursor = nearVtx ? 'grab' : 'crosshair';
+      }
+    }
+
     // 패닝
     if (dragRef.current.active) {
       const dx = e.clientX - dragRef.current.lx;
@@ -490,8 +586,8 @@ export default function Plan2DView({
       vpRef.current = { ...vpRef.current, x: vpRef.current.x + dx, y: vpRef.current.y + dy };
     }
 
-    // 스냅 인디케이터 갱신
-    if (snapEnabled) {
+    // 스냅 인디케이터 갱신 (배치 / 선 작도 모드에서만)
+    if (snapEnabled && (lineDrawMode === 'click' || !!pendingElement)) {
       const [wx, wz] = fromCanvas(cx, cy, vpRef.current);
       const snap = findNearestSnap(wx, wz, allSnapPoints, SNAP_THRESHOLD_PX, vpRef.current.scale);
       snapRef.current = snap ? { wx: snap[0], wz: snap[1] } : null;
@@ -500,9 +596,19 @@ export default function Plan2DView({
     }
 
     draw();
-  }, [draw, isSelectMode, snapEnabled, allSnapPoints]);
+  }, [draw, isSelectMode, snapEnabled, allSnapPoints, lineDrawMode, pendingElement, selectedLineId, lines, onLineVertexUpdate]);
 
   const handlePointerUp = useCallback(() => {
+    // ── 꼭짓점 드래그 완료 → 서버 저장 ──────────────────────────
+    if (vertexDragRef.current.active) {
+      const { lineId, pts } = vertexDragRef.current;
+      vertexDragRef.current = { active: false, lineId: null, vtxIdx: -1, pts: null };
+      onLineVertexSave?.(lineId, pts);
+      if (canvasRef.current) canvasRef.current.style.cursor = 'crosshair';
+      draw();
+      return;
+    }
+
     // rubber band 완료 → 2D 선택 계산
     if (isSelectMode && rubberRef.current.active) {
       rubberRef.current.active = false;
@@ -541,14 +647,20 @@ export default function Plan2DView({
     }
     dragRef.current.active = false;
     if (canvasRef.current) canvasRef.current.style.cursor = 'crosshair';
-  }, [isSelectMode, modelData, onRubberBandSelect, draw]);
+  }, [isSelectMode, modelData, onRubberBandSelect, draw, onLineVertexSave]);
 
   const handlePointerLeave = useCallback(() => {
+    // 꼭짓점 드래그 중 이탈 → 저장 (손 떼기와 동일)
+    if (vertexDragRef.current.active) {
+      const { lineId, pts } = vertexDragRef.current;
+      vertexDragRef.current = { active: false, lineId: null, vtxIdx: -1, pts: null };
+      onLineVertexSave?.(lineId, pts);
+    }
     dragRef.current.active = false;
     mouseRef.current = { cx: -9999, cy: -9999 };
     snapRef.current = null;
     draw();
-  }, [draw]);
+  }, [draw, onLineVertexSave]);
 
   // ── 클릭: 선 작도 / 배치 / 선택 ──────────────────────────────────
   const handleClick = useCallback((e) => {
@@ -586,21 +698,52 @@ export default function Plan2DView({
       return;
     }
 
-    // 일반 선택
-    if (!onElementSelect) return;
+    // ── 선 클릭 감지 ─────────────────────────────────────────────
+    if (onLineSelect) {
+      const hitThr = LINE_HIT_PX / vp.scale;
+      for (const line of [...lines].reverse()) {
+        const pts = getLinePoints2D(line);
+        let hit = false;
+        for (let i = 0; i < pts.length - 1 && !hit; i++) {
+          if (distToSegment(wx, wz, pts[i][0], pts[i][2], pts[i+1][0], pts[i+1][2]) <= hitThr) {
+            hit = true;
+          }
+        }
+        if (!hit && line.closed && pts.length >= 3) {
+          if (distToSegment(wx, wz, pts[pts.length-1][0], pts[pts.length-1][2], pts[0][0], pts[0][2]) <= hitThr) {
+            hit = true;
+          }
+        }
+        if (hit) {
+          onLineSelect(line.lineId);
+          if (onElementSelect) onElementSelect(null, null, false);
+          return;
+        }
+      }
+    }
+
+    // ── 부재 클릭 감지 ───────────────────────────────────────────
+    if (!onElementSelect) {
+      if (!isSelectMode) onLineSelect?.(null);
+      return;
+    }
     for (const el of [...modelData].reverse()) {
       const px = Number(el.positionX) || 0;
       const pz = Number(el.positionZ) || 0;
       const hx = (Number(el.sizeX) || 0.1) / 2;
       const hz = (Number(el.sizeZ) || 0.1) / 2;
       if (wx >= px - hx && wx <= px + hx && wz >= pz - hz && wz <= pz + hz) {
+        onLineSelect?.(null);
         onElementSelect(el, null, false);
         return;
       }
     }
-    // select mode에서 빈 공간 클릭 시 선택 유지 (해제 안 함)
-    if (!isSelectMode) onElementSelect(null, null, false);
-  }, [isSelectMode, modelData, onElementSelect, lineDrawMode, onLineClick, pendingElement, onPlacementConfirm, snapEnabled]);
+    // 빈 공간 클릭 → 모두 해제 (select mode에서는 유지)
+    if (!isSelectMode) {
+      onLineSelect?.(null);
+      onElementSelect(null, null, false);
+    }
+  }, [isSelectMode, modelData, lines, onElementSelect, onLineSelect, lineDrawMode, onLineClick, pendingElement, onPlacementConfirm, snapEnabled]);
 
   // ── 전체보기 ──────────────────────────────────────────────────────
   const handleFit = useCallback(() => {
