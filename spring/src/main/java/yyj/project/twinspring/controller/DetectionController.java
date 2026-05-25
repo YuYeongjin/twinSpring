@@ -132,12 +132,13 @@ public class DetectionController {
         boolean dangerous = noHelmet || restricted;
 
         Map<String, Object> event = Map.of(
-                "filename", filename,
-                "detections", detections,
-                "noHelmet", noHelmet,
-                "restricted", restricted,
-                "dangerous", dangerous,
-                "message", buildMessage(noHelmet, restricted)
+                "filename",    filename,
+                "detections",  detections,
+                "noHelmet",    noHelmet,
+                "restricted",  restricted,
+                "dangerous",   dangerous,
+                // 언어 중립 코드 — 프론트엔드가 언어에 맞게 번역
+                "messageCode", buildMessageCode(noHelmet, restricted)
         );
 
         ws.convertAndSend("/topic/safe", event);
@@ -145,10 +146,14 @@ public class DetectionController {
         return Map.of("received", detections.size(), "dangerous", dangerous);
     }
 
-    private String buildMessage(boolean noHelmet, boolean restricted) {
-        if (noHelmet && restricted) return "안전헬멧 미착용 + 출입금지구역 접근 감지";
-        if (noHelmet) return "안전헬멧 미착용 감지";
-        if (restricted) return "출입금지구역 접근 감지";
-        return "이상 없음";
+    /**
+     * 언어 중립 메시지 코드 반환 — 프론트엔드가 i18n 키로 번역합니다.
+     * NO_HELMET_RESTRICTED | NO_HELMET | RESTRICTED | SAFE
+     */
+    private String buildMessageCode(boolean noHelmet, boolean restricted) {
+        if (noHelmet && restricted) return "NO_HELMET_RESTRICTED";
+        if (noHelmet)               return "NO_HELMET";
+        if (restricted)             return "RESTRICTED";
+        return "SAFE";
     }
 }
