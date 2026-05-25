@@ -1,7 +1,9 @@
 package yyj.project.twinspring.controller;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 
 import java.util.Map;
 import yyj.project.twinspring.dto.ChatMessageDTO;
@@ -45,6 +47,19 @@ public class ChatController {
     public ResponseEntity<ChatResponseDTO> sendMessage(@RequestBody ChatRequestDTO request) {
         ChatResponseDTO response = chatService.sendMessage(request);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Agent /chat-stream SSE 프록시
+     * text/event-stream 으로 토큰을 스트리밍 — 영어/일본어 504 방지
+     *
+     * SSE 이벤트:
+     *   data: {"content": "안녕"}            ← 토큰 chunk
+     *   data: {"done": true, "response": "...", "intent": "chat", ...}  ← 완료
+     */
+    @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> streamMessage(@RequestBody ChatRequestDTO request) {
+        return chatService.streamMessage(request);
     }
 
     /**

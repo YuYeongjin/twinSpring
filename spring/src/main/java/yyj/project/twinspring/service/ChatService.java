@@ -4,6 +4,7 @@ import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
 import yyj.project.twinspring.dto.MultimodalRequestDTO;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -29,4 +30,7 @@ public interface ChatService {
 
     /** Agent 서버 헬스체크 */
     boolean isAgentAvailable();
+
+    /** Agent /chat-stream 을 프록시하는 SSE 스트림 */
+    Flux<String> streamMessage(ChatRequestDTO request);
 }
