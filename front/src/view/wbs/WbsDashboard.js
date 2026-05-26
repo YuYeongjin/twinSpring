@@ -3,7 +3,9 @@ import AxiosCustom from "../../axios/AxiosCustom";
 import GanttChart from "./component/GanttChart";
 import WbsTaskTable from "./component/WbsTaskTable";
 import ProjectLinkPanel from "./component/ProjectLinkPanel";
+import WbsAlertLogPanel from "./component/WbsAlertLogPanel";
 import { useT } from "../../i18n/LanguageContext";
+import { unreadCount, ALERT_EVENT } from "../../utils/alertStore";
 
 // ── 디자인 토큰 ─────────────────────────────────────────────────
 const TB = {
@@ -175,7 +177,67 @@ function SidebarItem({ project, selected, onSelect, onEdit, onDelete }) {
 // ══════════════════════════════════════════════════════════════════
 //  메인 대시보드
 // ══════════════════════════════════════════════════════════════════
-export default function WbsDashboard({ onNavigateToTab }) {
+// ── 온습도 칩 ────────────────────────────────────────────────────
+function SensorChip({ sensorLatest, sensorWsStatus }) {
+  if (!sensorLatest) {
+    // 아직 데이터 없음 — 연결 중 표시
+    return (
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg shrink-0"
+           style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
+        <span className="text-xs animate-pulse" style={{ color: "#475569" }}>
+          {sensorWsStatus === 'connected' ? '🌡 —°C  💧 —%' : '📡 …'}
+        </span>
+      </div>
+    );
+  }
+
+  const temp = sensorLatest.temperature != null ? Number(sensorLatest.temperature).toFixed(1) : null;
+  const hum  = sensorLatest.humidity    != null ? Math.round(Number(sensorLatest.humidity))    : null;
+
+  // 색상: 온도 범위에 따라
+  const tempColor = temp == null ? "#64748b"
+    : temp > 35   ? "#f87171"   // 위험
+    : temp > 28   ? "#fb923c"   // 주의
+    : temp > 10   ? "#4ade80"   // 정상
+    :               "#60a5fa";  // 저온
+
+  const humColor = hum == null ? "#64748b"
+    : hum > 80 ? "#60a5fa"
+    : hum < 30 ? "#fb923c"
+    :             "#94a3b8";
+
+  return (
+    <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg shrink-0"
+         style={{ backgroundColor: "#0d1b2a", border: "1px solid #1a2a3a" }}>
+      {/* 온도 */}
+      <span className="flex items-center gap-1 text-xs font-mono">
+        <span>🌡</span>
+        <span style={{ color: tempColor }}>{temp != null ? `${temp}°C` : "—"}</span>
+      </span>
+
+      {/* 구분 */}
+      <span style={{ color: "#253347" }}>│</span>
+
+      {/* 습도 */}
+      <span className="flex items-center gap-1 text-xs font-mono">
+        <span>💧</span>
+        <span style={{ color: humColor }}>{hum != null ? `${hum}%` : "—"}</span>
+      </span>
+
+      {/* 위치 */}
+      {sensorLatest.location && (
+        <>
+          <span style={{ color: "#253347" }}>│</span>
+          <span className="text-xs truncate max-w-[64px]" style={{ color: "#334155" }}>
+            {sensorLatest.location}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsStatus }) {
   const t = useT('wbs');
 
   // ── 데이터 상태 ──────────────────────────────────────────────
@@ -188,14 +250,16 @@ export default function WbsDashboard({ onNavigateToTab }) {
   // ── UI 상태 ──────────────────────────────────────────────────
   const [sidebarOpen,     setSidebarOpen]     = useState(true);
   const [selectedProject, setSelected]        = useState(null);
-  const [detailTab,       setDetailTab]       = useState("gantt"); // gantt|table|link
+  const [detailTab,       setDetailTab]       = useState("gantt"); // gantt|table|link|log
   const [showModal,       setShowModal]       = useState(false);
   const [editingProject,  setEditingProject]  = useState(null);
   const [search,          setSearch]          = useState("");
   const [statusFilter,    setStatusFilter]    = useState(""); // "" | "IN_PROGRESS" | ...
+  const [alertBadge,      setAlertBadge]      = useState(() => unreadCount());
 
   const sidebarRef = useRef(null);
 
+  
   const handleNavigate = useCallback((link) => {
     if (onNavigateToTab) onNavigateToTab(link);
   }, [onNavigateToTab]);
@@ -204,15 +268,22 @@ export default function WbsDashboard({ onNavigateToTab }) {
   const loadProjects = useCallback(() =>
     AxiosCustom.get("/api/wbs/projects").then(r => setProjects(r.data)).catch(() => {}),
   []);
-
+  
   const loadAllTasks = useCallback(() =>
     AxiosCustom.get("/api/wbs/tasks").then(r => setAllTasks(r.data)).catch(() => {}),
   []);
-
+  
   useEffect(() => {
     Promise.all([loadProjects(), loadAllTasks()]).finally(() => setLoading(false));
   }, [loadProjects, loadAllTasks]);
 
+  // ── 알림 뱃지: alertStore 변경 시 갱신 ─────────────────────────
+  useEffect(() => {
+    const onAlert = () => setAlertBadge(unreadCount());
+    window.addEventListener(ALERT_EVENT, onAlert);
+    return () => window.removeEventListener(ALERT_EVENT, onAlert);
+  }, []);
+  
   // ── 프로젝트 선택 (토글) ─────────────────────────────────────
   const selectProject = useCallback(async (project) => {
     if (selectedProject?.projectId === project.projectId) {
@@ -228,13 +299,18 @@ export default function WbsDashboard({ onNavigateToTab }) {
       setTaskLoading(false);
     }
   }, [selectedProject]);
-
+  // 사이드바 아이템 선택 — 모바일이면 자동 닫기
+  const handleSidebarSelect = useCallback((proj) => {
+    selectProject(proj);
+    if (window.innerWidth < 768) setSidebarOpen(false);
+  }, [selectProject]);
+  
   // ── CRUD ─────────────────────────────────────────────────────
   const handleCreate = useCallback(async (formData) => {
     await AxiosCustom.post("/api/wbs/project", formData);
     await loadProjects(); await loadAllTasks();
   }, [loadProjects, loadAllTasks]);
-
+  
   const handleUpdate = useCallback(async (formData) => {
     await AxiosCustom.put(`/api/wbs/project/${editingProject.projectId}`, formData);
     await loadProjects(); setEditingProject(null);
@@ -323,56 +399,74 @@ export default function WbsDashboard({ onNavigateToTab }) {
   // ══════════════════════════════════════════════════════════════
   //  렌더
   // ══════════════════════════════════════════════════════════════
+
+  // 사이드바 아이템 선택 — 모바일이면 자동 닫기
+  // const handleSidebarSelect = useCallback((proj) => {
+  //   selectProject(proj);
+  //   if (window.innerWidth < 768) setSidebarOpen(false);
+  // }, [selectProject]);
+
   return (
-    <div className="flex flex-col gap-0 -mx-2 sm:-mx-4 -mt-4 sm:-mt-6"
-         style={{ minHeight: "calc(100vh - 60px)" }}>
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-[#06111c]">
 
-      {/* ── 상단 컨트롤 바 ── */}
-      <div className="flex items-center gap-2 px-3 py-2.5 flex-wrap"
-           style={{
-             backgroundColor: "#06111c",
-             borderBottom: "1px solid #1a2a3a",
-           }}>
+      {/* ════════════════════════════════
+          상단 컨트롤 바
+          ════════════════════════════════ */}
+      <div className="shrink-0" style={{ borderBottom: "1px solid #1a2a3a" }}>
 
-        {/* 햄버거 */}
-        <button
-          onClick={() => setSidebarOpen(v => !v)}
-          title={sidebarOpen ? t('sidebarTitle') : t('addSiteBtn')}
-          className="flex items-center justify-center w-8 h-8 rounded-lg transition shrink-0"
-          style={{
-            backgroundColor: sidebarOpen ? "#1e3a5f" : "#1c2a3a",
-            border: `1px solid ${sidebarOpen ? "#3b82f6" : "#253347"}`,
-          }}>
-          <span className="text-base leading-none select-none"
-                style={{ color: sidebarOpen ? "#60a5fa" : "#8896a4" }}>
-            {sidebarOpen ? "✕" : "☰"}
-          </span>
-        </button>
+        {/* 1행: 고정 요소 (넘침 없는 단일 줄) */}
+        <div className="flex items-center gap-2 px-3 h-11">
 
-        {/* 타이틀 */}
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-base font-bold text-white">🏗 {t('title')}</span>
-          <span className="text-sm font-semibold" style={{ color: "#60a5fa" }}>
+          {/* 사이드바 토글 */}
+          <button
+            onClick={() => setSidebarOpen(v => !v)}
+            className="flex items-center justify-center w-8 h-8 rounded-lg transition shrink-0"
+            style={{
+              backgroundColor: sidebarOpen ? "#1e3a5f" : "#1c2a3a",
+              border: `1px solid ${sidebarOpen ? "#3b82f6" : "#253347"}`,
+            }}>
+            <span className="text-sm leading-none select-none"
+                  style={{ color: sidebarOpen ? "#60a5fa" : "#8896a4" }}>
+              {sidebarOpen ? "✕" : "☰"}
+            </span>
+          </button>
+
+          {/* 타이틀 */}
+          <span className="text-sm font-bold text-white shrink-0">🏗 {t('title')}</span>
+          <span className="hidden sm:block text-xs font-semibold shrink-0" style={{ color: "#60a5fa" }}>
             {t('ganttPageTitle')}
           </span>
+
+          <div className="flex-1 min-w-0" />
+
+          {/* 센서 칩 — sm 이상에서만 표시 */}
+          <div className="hidden sm:block shrink-0">
+            <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
+          </div>
+
+          {/* 새 현장 */}
+          <button
+            onClick={() => { setEditingProject(null); setShowModal(true); }}
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0"
+            style={{ backgroundColor: "#1e1040", border: "1px solid #8b5cf6" }}>
+            <span className="hidden sm:inline">{t('addSite')}</span>
+            <span className="sm:hidden">＋ {t('addSiteBtn').replace(/^\+\s*/, '')}</span>
+          </button>
         </div>
 
-        {/* 구분선 */}
-        <div className="h-5 w-px shrink-0" style={{ backgroundColor: "#253347" }} />
-
-        {/* 통계 칩 (클릭 → 필터) */}
-        <div className="flex items-center gap-1.5 flex-wrap">
+        {/* 2행: 통계 칩 — 가로 스크롤 (스크롤바 숨김) */}
+        <div className="wbs-hscroll flex items-center gap-1.5 px-3 pb-2 overflow-x-auto">
           {[
-            { key: "",            label: t('allSites',      { n: stats.total }),      color: "#94a3b8", bg: "#1e293b"  },
-            { key: "IN_PROGRESS", label: t('activeCount',   { n: stats.inProgress }), color: "#60a5fa", bg: "#1e3a5f"  },
-            { key: "COMPLETED",   label: t('completedCount',{ n: stats.completed }),   color: "#4ade80", bg: "#14532d"  },
-            { key: "PLANNED",     label: t('plannedCount',  { n: stats.planned }),     color: "#94a3b8", bg: "#1e293b"  },
-            { key: "ON_HOLD",     label: t('onHoldCount',   { n: stats.onHold }),      color: "#f59e0b", bg: "#451a03"  },
+            { key: "",            label: t('allSites',       { n: stats.total }),      color: "#94a3b8", bg: "#1e293b" },
+            { key: "IN_PROGRESS", label: t('activeCount',    { n: stats.inProgress }), color: "#60a5fa", bg: "#1e3a5f" },
+            { key: "COMPLETED",   label: t('completedCount', { n: stats.completed }),  color: "#4ade80", bg: "#14532d" },
+            { key: "PLANNED",     label: t('plannedCount',   { n: stats.planned }),    color: "#94a3b8", bg: "#1e293b" },
+            { key: "ON_HOLD",     label: t('onHoldCount',    { n: stats.onHold }),     color: "#f59e0b", bg: "#451a03" },
           ].map(chip => (
             <button
               key={chip.key}
               onClick={() => setStatusFilter(p => p === chip.key ? "" : chip.key)}
-              className="px-2 py-0.5 rounded-full text-xs font-medium transition"
+              className="px-2 py-0.5 rounded-full text-xs font-medium transition shrink-0"
               style={{
                 backgroundColor: statusFilter === chip.key ? chip.bg : "transparent",
                 color: statusFilter === chip.key ? chip.color : "#64748b",
@@ -381,63 +475,66 @@ export default function WbsDashboard({ onNavigateToTab }) {
               {chip.label}
             </button>
           ))}
-          <span className="text-xs" style={{ color: "#475569" }}>
+          <span className="text-xs shrink-0" style={{ color: "#475569" }}>
             │ {t('taskCount', { n: allTasks.length })}
           </span>
+
+          {/* 센서 칩 — 모바일 전용 (2행 우측) */}
+          <div className="sm:hidden ml-auto shrink-0 pl-2">
+            <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
+          </div>
         </div>
-
-        <div className="flex-1" />
-
-        {/* 새 현장 */}
-        <button
-          onClick={() => { setEditingProject(null); setShowModal(true); }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0"
-          style={{ backgroundColor: "#1e1040", border: "1px solid #8b5cf6" }}>
-          {t('addSite')}
-        </button>
       </div>
 
-      {/* ── 본문 레이아웃: 사이드바 + 메인 ── */}
-      <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+      {/* ════════════════════════════════
+          본문: 사이드바 + 메인
+          ════════════════════════════════ */}
+      <div className="flex flex-1 min-h-0 relative overflow-hidden">
+
+        {/* 모바일 사이드바 오버레이 배경 */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-20 md:hidden"
+            style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
 
         {/* ── 사이드바 ── */}
         {sidebarOpen && (
           <div
             ref={sidebarRef}
-            className="shrink-0 flex flex-col overflow-y-auto"
+            className={[
+              "flex flex-col overflow-y-auto shrink-0",
+              // 모바일: 절대 위치 오버레이 / 데스크탑: 일반 흐름
+              "absolute inset-y-0 left-0 z-30",
+              "md:static md:z-auto",
+            ].join(" ")}
             style={{
-              width: 224,
+              width: 220,
               backgroundColor: TB.sidebar,
-              borderRight: `1px solid #1a2a3a`,
-            }}>
-
+              borderRight: "1px solid #1a2a3a",
+            }}
+          >
             {/* 검색 */}
             <div className="px-2 pt-3 pb-2">
               <div className="relative">
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs"
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
                       style={{ color: "#475569" }}>🔍</span>
                 <input
                   type="text" value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder={t('searchPlaceholder')}
                   className="w-full pl-6 pr-2 py-1.5 rounded-lg text-xs outline-none"
-                  style={{
-                    backgroundColor: "#0d1b2a",
-                    border: "1px solid #253347",
-                    color: "#e2e8f0",
-                  }}
+                  style={{ backgroundColor: "#0d1b2a", border: "1px solid #253347", color: "#e2e8f0" }}
                 />
               </div>
             </div>
 
-            {/* 프로젝트 목록 헤더 */}
+            {/* 목록 헤더 */}
             <div className="flex items-center justify-between px-3 pb-1">
-              <span className="text-xs font-semibold" style={{ color: "#475569" }}>
-                {t('sidebarTitle')}
-              </span>
-              <span className="text-xs" style={{ color: "#334155" }}>
-                {filteredProjects.length}/{projects.length}
-              </span>
+              <span className="text-xs font-semibold" style={{ color: "#475569" }}>{t('sidebarTitle')}</span>
+              <span className="text-xs" style={{ color: "#334155" }}>{filteredProjects.length}/{projects.length}</span>
             </div>
 
             {/* 프로젝트 리스트 */}
@@ -448,7 +545,7 @@ export default function WbsDashboard({ onNavigateToTab }) {
                     key={p.projectId}
                     project={p}
                     selected={selectedProject?.projectId === p.projectId}
-                    onSelect={selectProject}
+                    onSelect={handleSidebarSelect}
                     onEdit={proj => { setEditingProject(proj); setShowModal(true); }}
                     onDelete={handleDelete}
                   />
@@ -475,68 +572,63 @@ export default function WbsDashboard({ onNavigateToTab }) {
         {/* ── 메인 영역 ── */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
-          {/* 선택된 프로젝트 정보 바 + 서브탭 */}
+          {/* 선택 프로젝트 정보 바 */}
           {selectedProject ? (
-            <div className="shrink-0 flex items-center gap-2 px-4 py-2 flex-wrap"
-                 style={{
-                   backgroundColor: "#0a1521",
-                   borderBottom: `2px solid ${selMeta?.color}40`,
-                 }}>
-              {/* 닫기 */}
-              <button
-                onClick={() => { setSelected(null); setTasks([]); }}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition shrink-0"
-                style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: "#8896a4" }}>
-                {t('backToAll')}
-              </button>
+            <div className="shrink-0" style={{ backgroundColor: "#0a1521", borderBottom: `2px solid ${selMeta?.color}40` }}>
 
-              {/* 상태 아이콘 */}
-              <span className="text-base">{selMeta?.icon}</span>
-
-              {/* 현장명 */}
-              <span className="font-bold text-white text-sm truncate max-w-[200px]">
-                {selectedProject.projectName}
-              </span>
-
-              {/* 상태 뱃지 */}
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium shrink-0"
-                    style={{ backgroundColor: selMeta?.bg, color: selMeta?.color }}>
-                {selMeta ? t(selMeta.tKey) : ''}
-              </span>
-
-              {/* 주요 정보 */}
-              <div className="hidden sm:flex items-center gap-3 text-xs shrink-0"
-                   style={{ color: "#64748b" }}>
-                {selectedProject.location && <span>📍 {selectedProject.location}</span>}
-                {selectedProject.contractAmount && (
-                  <span>💰 ₩{Number(selectedProject.contractAmount).toLocaleString()}</span>
-                )}
-                {selectedProject.managerName && <span>👷 {selectedProject.managerName}</span>}
+              {/* 프로젝트 이름 · 상태 · 정보 */}
+              <div className="flex items-center gap-2 px-3 pt-2 pb-1 flex-wrap">
+                <button
+                  onClick={() => { setSelected(null); setTasks([]); }}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition shrink-0"
+                  style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: "#8896a4" }}>
+                  {t('backToAll')}
+                </button>
+                <span className="text-base shrink-0">{selMeta?.icon}</span>
+                <span className="font-bold text-white text-sm truncate" style={{ maxWidth: "min(180px, 40vw)" }}>
+                  {selectedProject.projectName}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium shrink-0"
+                      style={{ backgroundColor: selMeta?.bg, color: selMeta?.color }}>
+                  {selMeta ? t(selMeta.tKey) : ''}
+                </span>
+                <div className="hidden md:flex items-center gap-3 text-xs shrink-0" style={{ color: "#64748b" }}>
+                  {selectedProject.location      && <span>📍 {selectedProject.location}</span>}
+                  {selectedProject.contractAmount && <span>💰 ₩{Number(selectedProject.contractAmount).toLocaleString()}</span>}
+                  {selectedProject.managerName   && <span>👷 {selectedProject.managerName}</span>}
+                </div>
               </div>
 
-              <div className="flex-1" />
-
-              {/* 서브탭 */}
-              <div className="flex gap-1 shrink-0">
+              {/* 서브탭 — 가로 스크롤 */}
+              <div className="wbs-hscroll flex items-center gap-1 px-3 pb-2 overflow-x-auto">
                 {[
                   { key: "gantt", label: t('tabGantt') },
                   { key: "table", label: t('tabWbs')   },
                   { key: "link",  label: t('tabLink')  },
+                  { key: "log",   label: t('tabLog'),  badge: alertBadge },
                 ].map(tab => (
                   <button
                     key={tab.key}
-                    onClick={() => setDetailTab(tab.key)}
-                    className="px-3 py-1 rounded-lg text-xs font-semibold transition"
+                    onClick={() => { setDetailTab(tab.key); if (tab.key === "log") setAlertBadge(0); }}
+                    className="relative px-3 py-1.5 rounded-lg text-xs font-semibold transition shrink-0"
                     style={{
                       backgroundColor: detailTab === tab.key ? "#1e3a5f" : "#1c2a3a",
                       border: `1px solid ${detailTab === tab.key ? "#3b82f6" : "#253347"}`,
                       color: detailTab === tab.key ? "#60a5fa" : "#8896a4",
                     }}>
                     {tab.label}
+                    {tab.badge > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center
+                                       text-white font-bold rounded-full animate-pulse"
+                            style={{ backgroundColor: "#dc2626", fontSize: 9, minWidth: 16, height: 16, padding: "0 3px" }}>
+                        {tab.badge > 9 ? "9+" : tab.badge}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
             </div>
+
           ) : (
             /* 전체 보기 상태 표시 */
             <div className="shrink-0 flex items-center gap-2 px-4 py-1.5"
@@ -551,18 +643,16 @@ export default function WbsDashboard({ onNavigateToTab }) {
                 )}
                 {" "}&nbsp;·&nbsp; {t('taskCount', { n: ganttTasks.length })}
               </span>
-              {selectedProject === null && allTasks.length === 0 && projects.length > 0 && (
-                <span className="text-xs" style={{ color: "#475569" }}>
-                  — {t('selectSiteHint')}
-                </span>
+              {allTasks.length === 0 && projects.length > 0 && (
+                <span className="text-xs" style={{ color: "#475569" }}>— {t('selectSiteHint')}</span>
               )}
             </div>
           )}
 
-          {/* ── 메인 콘텐츠 ── */}
-          <div className="flex-1 overflow-auto px-4 py-4">
+          {/* ── 메인 콘텐츠 (스크롤 영역) ── */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4">
 
-            {/* 로딩 */}
+            {/* 태스크 로딩 */}
             {selectedProject && taskLoading ? (
               <div className="flex items-center justify-center h-48 text-gray-400">
                 <div className="text-center">
@@ -574,19 +664,18 @@ export default function WbsDashboard({ onNavigateToTab }) {
             /* 선택 프로젝트 뷰 */
             ) : selectedProject ? (
               <>
-                {/* 프로젝트 요약 카드 행 */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                {/* 요약 카드 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4">
                   {[
                     { label: t('contractAmount'), icon: "💰",
                       value: selectedProject.contractAmount
                         ? `₩ ${Number(selectedProject.contractAmount).toLocaleString()}`
                         : "-" },
-                    { label: t('client'),       icon: "🏢", value: selectedProject.clientName  || "-" },
-                    { label: t('siteManager'),  icon: "👷", value: selectedProject.managerName || "-" },
-                    { label: t('wbsTasks'),     icon: "📋", value: t('taskCount', { n: tasks.length }) },
+                    { label: t('client'),      icon: "🏢", value: selectedProject.clientName  || "-" },
+                    { label: t('siteManager'), icon: "👷", value: selectedProject.managerName || "-" },
+                    { label: t('wbsTasks'),    icon: "📋", value: t('taskCount', { n: tasks.length }) },
                   ].map(s => (
-                    <div key={s.label}
-                         className="rounded-xl p-3"
+                    <div key={s.label} className="rounded-xl p-2.5 sm:p-3"
                          style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
                       <p className="text-xs mb-0.5" style={{ color: TB.text2 }}>{s.icon} {s.label}</p>
                       <p className="text-sm font-bold text-white truncate">{s.value}</p>
@@ -596,22 +685,23 @@ export default function WbsDashboard({ onNavigateToTab }) {
 
                 {/* 설명 */}
                 {selectedProject.description && (
-                  <div className="rounded-xl p-3 mb-4 text-sm"
+                  <div className="rounded-xl p-3 mb-3 text-xs sm:text-sm leading-relaxed"
                        style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}`, color: TB.text2 }}>
                     {selectedProject.description}
                   </div>
                 )}
 
                 {/* 서브탭 콘텐츠 */}
-                <div className="rounded-xl p-4"
+                <div className="rounded-xl p-3 sm:p-4"
                      style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
+
                   {detailTab === "gantt" && (
                     <>
                       <h3 className="text-sm font-semibold text-gray-300 mb-3">
                         {t('ganttOf', { name: selectedProject.projectName })}
                       </h3>
                       {tasks.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-20 text-gray-500">
+                        <div className="flex flex-col items-center justify-center py-16 text-gray-500">
                           <div className="text-4xl mb-3">📊</div>
                           <p className="text-sm">{t('noTasksTitle')}</p>
                           <button onClick={() => setDetailTab("table")}
@@ -621,54 +711,41 @@ export default function WbsDashboard({ onNavigateToTab }) {
                           </button>
                         </div>
                       ) : (
-                        <GanttChart
-                          tasks={tasks}
-                          groupByProject={false}
-                          onTaskClick={() => setDetailTab("table")}
-                        />
+                        <GanttChart tasks={tasks} groupByProject={false} onTaskClick={() => setDetailTab("table")} />
                       )}
                     </>
                   )}
 
                   {detailTab === "table" && (
                     <>
-                      <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                         <h3 className="text-sm font-semibold text-gray-300">
                           {t('wbsListTitle', { n: tasks.length })}
                         </h3>
                         {tasks.some(tk => tk.source && tk.source !== "MANUAL") && (
-                          <div className="flex gap-2 text-xs text-gray-400">
-                            <span>{t('sourceInfo')}</span>
-                          </div>
+                          <span className="text-xs text-gray-400">{t('sourceInfo')}</span>
                         )}
                       </div>
-                      <WbsTaskTable
-                        tasks={tasks}
-                        onAdd={handleAddTask}
-                        onUpdate={handleUpdateTask}
-                        onDelete={handleDeleteTask}
-                      />
+                      <WbsTaskTable tasks={tasks} onAdd={handleAddTask} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} />
                     </>
                   )}
 
                   {detailTab === "link" && (
-                    <ProjectLinkPanel
-                      wbsProjectId={selectedProject.projectId}
-                      onNavigate={handleNavigate}
-                    />
+                    <ProjectLinkPanel wbsProjectId={selectedProject.projectId} onNavigate={handleNavigate} />
                   )}
+
+                  {detailTab === "log" && <WbsAlertLogPanel />}
                 </div>
               </>
 
-            /* 전체 간트 뷰 (기본) */
+            /* 전체 간트 (기본 뷰) */
             ) : ganttTasks.length === 0 ? (
-              /* 빈 상태 */
-              <div className="flex flex-col items-center justify-center py-32 text-center">
-                <div className="text-6xl mb-5">{projects.length === 0 ? "🏗" : "📊"}</div>
-                <p className="text-lg font-semibold text-gray-400 mb-2">
+              <div className="flex flex-col items-center justify-center py-24 sm:py-32 text-center px-4">
+                <div className="text-5xl sm:text-6xl mb-4">{projects.length === 0 ? "🏗" : "📊"}</div>
+                <p className="text-base sm:text-lg font-semibold text-gray-400 mb-2">
                   {projects.length === 0 ? t('noSitesTitle') : t('noTasksTitle')}
                 </p>
-                <p className="text-sm mb-4" style={{ color: TB.text2 }}>
+                <p className="text-xs sm:text-sm mb-4 max-w-xs" style={{ color: TB.text2 }}>
                   {projects.length === 0 ? t('noSitesHint') : t('selectSiteHint')}
                 </p>
                 {projects.length === 0 && (
@@ -681,14 +758,13 @@ export default function WbsDashboard({ onNavigateToTab }) {
                 )}
               </div>
             ) : (
-              /* 전체 통합 간트 */
-              <div className="rounded-xl p-4"
+              <div className="rounded-xl p-3 sm:p-4"
                    style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
                 <GanttChart
                   tasks={ganttTasks}
                   groupByProject
-                  onTaskClick={(t) => {
-                    const proj = projects.find(p => p.projectId === t.wbsProjectId);
+                  onTaskClick={(tk) => {
+                    const proj = projects.find(p => p.projectId === tk.wbsProjectId);
                     if (proj) selectProject(proj);
                   }}
                 />

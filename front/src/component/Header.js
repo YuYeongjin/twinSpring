@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useLanguage, useT } from "../i18n/LanguageContext";
 
 const NAV_IDS = [
-  { id: "",                    key: "home",       icon: "🏠" },
-  { id: "bim-projects",        key: "bim",        icon: "🏗" },
   { id: "wbs",                 key: "wbs",        icon: "📊" },
+  { id: "bim-projects",        key: "bim",        icon: "🏗" },
   { id: "simulation-projects", key: "simulation", icon: "🚜" },
   { id: "safe-projects",       key: "safe",       icon: "🦺" },
   { id: "test",                key: "test",       icon: "🧪" },
