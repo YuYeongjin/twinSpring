@@ -1,84 +1,254 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useT } from "../../i18n/LanguageContext";
 import WbsLinkWidget from "../wbs/component/WbsLinkWidget";
+import AxiosCustom from "../../axios/AxiosCustom";
 
 const TB = {
-  card:    "bg-[#1c2a3a] border border-[#253347] rounded-xl shadow-lg",
-  text1:   "#e2e8f0",
-  text2:   "#8896a4",
+  card:  "bg-[#1c2a3a] border border-[#253347] rounded-xl shadow-lg",
+  text1: "#e2e8f0",
+  text2: "#8896a4",
 };
 
-const STATUS_META = {
-  ACTIVE:   { ko: "운영중",  color: "#4ade80", bg: "#14532d", icon: "🟢" },
-  INACTIVE: { ko: "중단",    color: "#f59e0b", bg: "#451a03", icon: "🟡" },
-  ARCHIVED: { ko: "보관",    color: "#64748b", bg: "#1e293b", icon: "⚫" },
+// ── 모드 정의 (tKey는 safeProjectList 네임스페이스 키) ─────────────
+const MODE_META = {
+  SAFETY: { icon: "🛡", tKeyLabel: "modeSafetyLabel", tKeyDesc: "modeSafetyDesc", color: "#4ade80", bg: "#14532d", border: "#4ade80" },
+  CRACK:  { icon: "🔍", tKeyLabel: "modeCrackLabel",  tKeyDesc: "modeCrackDesc",  color: "#60a5fa", bg: "#1e3a5f", border: "#60a5fa" },
 };
+
+// ── 상태 정의 (tKey는 safeProjectList 네임스페이스 키) ─────────────
+const STATUS_META = {
+  ACTIVE:   { tKey: "statusActive",   color: "#4ade80", bg: "#14532d", icon: "🟢" },
+  INACTIVE: { tKey: "statusInactive", color: "#f59e0b", bg: "#451a03", icon: "🟡" },
+  ARCHIVED: { tKey: "statusArchived", color: "#64748b", bg: "#1e293b", icon: "⚫" },
+};
+
+// ── WBS 프로젝트 선택 드롭다운 패널 ──────────────────────────────
+function WbsProjectPicker({ selectedId, onChange, wbsProjects, loading, t }) {
+  const [open, setOpen] = useState(false);
+  const selected = wbsProjects.find(p => p.projectId === selectedId);
+
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(v => !v)}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition"
+              style={{
+                backgroundColor: open ? "#0d2040" : "#0d1b2a",
+                border: `1px solid ${selectedId ? "#3b82f6" : open ? "#3b82f6" : "#253347"}`,
+                color: selectedId ? "#93c5fd" : "#6b7280",
+              }}>
+        <span className="flex items-center gap-2">
+          <span>{selectedId ? "🔗" : "⭕"}</span>
+          <span>{loading ? t('wbsLoading') : selected ? selected.projectName : t('wbsNone')}</span>
+        </span>
+        <span style={{ color: "#374151" }}>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl overflow-hidden shadow-2xl"
+             style={{ backgroundColor: "#0a1521", border: "1px solid #1e3a5f", maxHeight: "220px" }}>
+          <div style={{ overflowY: "auto", maxHeight: "220px" }}>
+            <button type="button" onClick={() => { onChange(""); setOpen(false); }}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-[#0d1b2a] transition"
+                    style={{ borderBottom: "1px solid #1a2a3a", color: !selectedId ? "#60a5fa" : "#6b7280" }}>
+              <span>⭕</span>
+              <span>{t('wbsNone')}</span>
+              {!selectedId && <span className="ml-auto text-blue-400">✓</span>}
+            </button>
+            {wbsProjects.length === 0 && !loading && (
+              <div className="px-3 py-4 text-xs text-center" style={{ color: "#374151" }}>
+                {t('wbsEmpty')}
+              </div>
+            )}
+            {wbsProjects.map(p => (
+              <button key={p.projectId} type="button"
+                      onClick={() => { onChange(p.projectId); setOpen(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-[#0d1b2a] transition"
+                      style={{ borderBottom: "1px solid #1a2a3a", color: selectedId === p.projectId ? "#60a5fa" : "#d1d5db" }}>
+                <span>🏗</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{p.projectName}</div>
+                  {p.location && (
+                    <div className="text-xs truncate" style={{ color: "#4b5563" }}>📍 {p.location}</div>
+                  )}
+                </div>
+                {selectedId === p.projectId && <span className="shrink-0 text-blue-400">✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+    </div>
+  );
+}
 
 // ── 프로젝트 생성/편집 모달 ────────────────────────────────────
 function ProjectModal({ initial = null, onClose, onSave }) {
+  const t = useT('safeProjectList');
   const isEdit = !!initial;
   const [form, setForm] = useState(
-    initial ?? { projectName: "", location: "", description: "", cameraUrl: "", status: "ACTIVE" }
+    initial ?? { projectName: "", location: "", description: "", cameraUrl: "", status: "ACTIVE", mode: "SAFETY" }
   );
-  const [saving, setSaving] = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [wbsProjects, setWbsProjects] = useState([]);
+  const [wbsLoading,  setWbsLoading]  = useState(true);
+  const [selectedWbs, setSelectedWbs] = useState("");
 
   const set = (f) => (e) => setForm(prev => ({ ...prev, [f]: e.target.value }));
   const inputCls = "w-full bg-[#0d1b2a] border border-[#253347] rounded-lg px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500";
 
+  useEffect(() => {
+    setWbsLoading(true);
+    AxiosCustom.get("/api/wbs/projects")
+      .then(r => setWbsProjects(r.data || []))
+      .catch(() => setWbsProjects([]))
+      .finally(() => setWbsLoading(false));
+  }, []);
+
   async function handleSave() {
     if (!form.projectName?.trim()) return;
     setSaving(true);
-    try { await onSave(form); onClose(); }
-    finally { setSaving(false); }
+    try {
+      const result = await onSave(form);
+      if (!isEdit && selectedWbs && result?.projectId) {
+        try {
+          await AxiosCustom.post("/api/project-link", {
+            wbsProjectId:    selectedWbs,
+            linkedType:      "SAFE",
+            linkedProjectId: result.projectId,
+            note:            "",
+          });
+        } catch (e) {
+          console.warn("WBS link create failed (project was saved):", e);
+        }
+      }
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   }
+
+  const currentMode = form.mode || "SAFETY";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center"
          style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
          onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl"
-           style={{ backgroundColor: "#0f1e2d", border: "1px solid #253347" }}>
-        <div className="flex items-center justify-between mb-5">
+      <div className="w-full max-w-md rounded-2xl shadow-2xl flex flex-col"
+           style={{ backgroundColor: "#0f1e2d", border: "1px solid #253347", maxHeight: "90vh" }}>
+
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <h3 className="text-base font-bold text-white">
-            {isEdit ? "🛡 현장 수정" : "🛡 새 안전 현장"}
+            {isEdit ? t('modalEdit') : t('modalCreate')}
           </h3>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-200 text-xl">✕</button>
         </div>
-        <div className="flex flex-col gap-3">
+
+        {/* 스크롤 영역 */}
+        <div className="flex flex-col gap-4 px-6 pb-2 overflow-y-auto">
+
+          {/* 프로젝트 유형 */}
           <div>
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>현장명 *</label>
+            <label className="text-xs mb-2 block font-semibold" style={{ color: TB.text2 }}>
+              {t('fieldType')}
+              {isEdit && <span className="ml-1 font-normal opacity-50">{t('typeNoChange')}</span>}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(MODE_META).map(([key, meta]) => {
+                const selected = currentMode === key;
+                return (
+                  <button key={key} type="button"
+                    disabled={isEdit}
+                    onClick={() => !isEdit && setForm(prev => ({ ...prev, mode: key }))}
+                    className="rounded-xl p-3 text-left transition-all"
+                    style={{
+                      backgroundColor: selected ? meta.bg : "#0d1b2a",
+                      border: `2px solid ${selected ? meta.border : "#253347"}`,
+                      cursor: isEdit ? "not-allowed" : "pointer",
+                      opacity: isEdit && !selected ? 0.4 : 1,
+                    }}>
+                    <div className="text-lg mb-1">{meta.icon}</div>
+                    <div className="text-xs font-bold" style={{ color: selected ? meta.color : "#8896a4" }}>
+                      {t(meta.tKeyLabel)}
+                    </div>
+                    <div className="text-xs mt-0.5 leading-tight" style={{ color: "#4b5563" }}>
+                      {t(meta.tKeyDesc)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 프로젝트명 */}
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('fieldName')}</label>
             <input value={form.projectName} onChange={set("projectName")}
-                   placeholder="예: A동 3층 출입구" autoFocus className={inputCls} />
+                   placeholder={t('namePlaceholder')} autoFocus className={inputCls} />
           </div>
+
+          {/* 위치 */}
           <div>
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>위치</label>
+            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('fieldLocation')}</label>
             <input value={form.location} onChange={set("location")}
-                   placeholder="예: 서울 강남구 현장 2구역" className={inputCls} />
+                   placeholder={t('locationPlaceholder')} className={inputCls} />
           </div>
+
+          {/* 카메라 URL (안전 감시 모드만) */}
+          {currentMode === "SAFETY" && (
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('fieldCameraUrl')}</label>
+              <input value={form.cameraUrl} onChange={set("cameraUrl")}
+                     placeholder={t('cameraPlaceholder')} className={inputCls} />
+            </div>
+          )}
+
+          {/* 상태 */}
           <div>
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>카메라 URL (선택)</label>
-            <input value={form.cameraUrl} onChange={set("cameraUrl")}
-                   placeholder="rtsp://... 또는 http://..." className={inputCls} />
-          </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>상태</label>
+            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('fieldStatus')}</label>
             <select value={form.status} onChange={set("status")} className={inputCls}>
               {Object.entries(STATUS_META).map(([k, v]) => (
-                <option key={k} value={k}>{v.icon} {v.ko}</option>
+                <option key={k} value={k}>{v.icon} {t(v.tKey)}</option>
               ))}
             </select>
           </div>
+
+          {/* 설명 */}
           <div>
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>설명</label>
+            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('fieldDescription')}</label>
             <textarea value={form.description} onChange={set("description")}
-                      rows={2} placeholder="카메라 위치, 모니터링 범위 등"
+                      rows={2} placeholder={t('descPlaceholder')}
                       className={`${inputCls} resize-none`} />
           </div>
+
+          {/* WBS 연결 */}
+          <div>
+            <label className="text-xs mb-2 block font-semibold flex items-center gap-1.5"
+                   style={{ color: TB.text2 }}>
+              {t('fieldWbs')}
+              <span className="font-normal opacity-60">{t('wbsOptional')}</span>
+            </label>
+            {isEdit ? (
+              <WbsLinkWidget linkedType="SAFE" linkedProjectId={initial.projectId} />
+            ) : (
+              <WbsProjectPicker
+                selectedId={selectedWbs}
+                onChange={setSelectedWbs}
+                wbsProjects={wbsProjects}
+                loading={wbsLoading}
+                t={t}
+              />
+            )}
+          </div>
         </div>
-        <div className="flex gap-3 mt-5">
+
+        {/* 하단 버튼 */}
+        <div className="flex gap-3 px-6 py-5 shrink-0">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg text-sm"
                   style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}>
-            취소
+            {t('btnCancel')}
           </button>
           <button onClick={handleSave} disabled={!form.projectName?.trim() || saving}
                   className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white"
@@ -86,7 +256,7 @@ function ProjectModal({ initial = null, onClose, onSave }) {
                     background: form.projectName?.trim() ? "linear-gradient(135deg,#065f46,#047857)" : "#1c2a3a",
                     border: `1px solid ${form.projectName?.trim() ? "#4ade80" : "#253347"}`,
                   }}>
-            {saving ? "저장 중…" : (isEdit ? "💾 수정" : "🛡 현장 추가")}
+            {saving ? t('btnSaving') : isEdit ? t('btnSave') : t('btnCreate')}
           </button>
         </div>
       </div>
@@ -95,47 +265,53 @@ function ProjectModal({ initial = null, onClose, onSave }) {
 }
 
 // ── 프로젝트 카드 ─────────────────────────────────────────────
-function ProjectCard({ project, selected, onSelect, onEdit, onDelete }) {
-  const meta = STATUS_META[project.status] || STATUS_META.ACTIVE;
+function ProjectCard({ project, onSelect, onEdit, onDelete, t }) {
+  const statusMeta = STATUS_META[project.status] || STATUS_META.ACTIVE;
+  const modeMeta   = MODE_META[project.mode || "SAFETY"] || MODE_META.SAFETY;
   return (
-    <div
-      className="rounded-xl p-4 cursor-pointer transition-all duration-200"
-      style={{
-        backgroundColor: "#1c2a3a",
-        border: `1px solid ${selected ? "#4ade80" : "#253347"}`,
-        borderTop: `3px solid ${meta.color}`,
-        boxShadow: selected ? "0 0 0 2px #4ade8040" : undefined,
-      }}
-      onClick={() => onSelect(project)}
-    >
+    <div className="rounded-xl p-4 cursor-pointer transition-all duration-200"
+         style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", borderTop: `3px solid ${statusMeta.color}` }}
+         onClick={() => onSelect(project)}>
+
+      {/* 상단: 상태 + 모드 배지 */}
       <div className="flex items-start justify-between mb-2">
-        <span className="text-xl">{meta.icon}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xl">{statusMeta.icon}</span>
+          <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                style={{ backgroundColor: modeMeta.bg, color: modeMeta.color, border: `1px solid ${modeMeta.border}40` }}>
+            {modeMeta.icon} {t(modeMeta.tKeyLabel)}
+          </span>
+        </div>
         <span className="px-2 py-0.5 rounded-full text-xs font-medium"
-              style={{ backgroundColor: meta.bg, color: meta.color }}>
-          {meta.ko}
+              style={{ backgroundColor: statusMeta.bg, color: statusMeta.color }}>
+          {t(statusMeta.tKey)}
         </span>
       </div>
+
+      {/* 프로젝트명 */}
       <h3 className="font-bold text-white text-sm leading-tight mb-1 line-clamp-2">
         {project.projectName}
       </h3>
       <p className="text-xs truncate" style={{ color: TB.text2 }}>
-        📍 {project.location || "위치 미지정"}
+        📍 {project.location || t('locationUnset')}
       </p>
       {project.cameraUrl && (
         <p className="text-xs truncate mt-0.5" style={{ color: "#60a5fa" }}>
-          📷 카메라 연결됨
+          {t('cameraConnected')}
         </p>
       )}
+
+      {/* 액션 버튼 */}
       <div className="flex gap-1 mt-3" onClick={e => e.stopPropagation()}>
         <button onClick={() => onSelect(project)}
                 className="flex-1 py-1 rounded text-xs font-semibold text-white"
                 style={{ backgroundColor: "#065f46", border: "1px solid #4ade80" }}>
-          모니터링
+          {t('monitoring')}
         </button>
         <button onClick={() => onEdit(project)}
                 className="px-3 py-1 rounded text-xs text-gray-400 hover:text-white"
                 style={{ border: "1px solid #253347" }}>
-          편집
+          {t('edit')}
         </button>
         <button onClick={() => onDelete(project.projectId)}
                 className="px-2 py-1 rounded text-xs text-red-400 hover:text-red-300"
@@ -145,11 +321,7 @@ function ProjectCard({ project, selected, onSelect, onEdit, onDelete }) {
       </div>
 
       {/* WBS 연결 위젯 */}
-      <WbsLinkWidget
-        linkedType="SAFE"
-        linkedProjectId={project.projectId}
-        compact
-      />
+      <WbsLinkWidget linkedType="SAFE" linkedProjectId={project.projectId} compact />
     </div>
   );
 }
@@ -163,9 +335,10 @@ export default function SafeProjectList({
   onUpdateProject,
   onDeleteProject,
 }) {
-  const [showModal,       setShowModal]       = useState(false);
-  const [editingProject,  setEditingProject]  = useState(null);
-  const [search,          setSearch]          = useState("");
+  const t = useT('safeProjectList');
+  const [showModal,      setShowModal]      = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [search,         setSearch]         = useState("");
 
   const filtered = projectList.filter(p =>
     p.projectName?.toLowerCase().includes(search.toLowerCase()) ||
@@ -179,7 +352,7 @@ export default function SafeProjectList({
   };
 
   async function handleDelete(projectId) {
-    if (!window.confirm("현장을 삭제하시겠습니까?")) return;
+    if (!window.confirm(t('deleteConfirm'))) return;
     await onDeleteProject(projectId);
   }
 
@@ -190,10 +363,10 @@ export default function SafeProjectList({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            🛡 안전 <span className="text-green-400">모니터링 현장</span>
+            {t('title')}
           </h2>
           <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-            현장별 카메라 · 헬멧 · 출입금지구역 감지
+            {t('subtitle')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -202,14 +375,14 @@ export default function SafeProjectList({
                   style={{ color: TB.text2 }}>🔍</span>
             <input type="text" value={search}
                    onChange={e => setSearch(e.target.value)}
-                   placeholder="현장 검색"
-                   className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-40"
+                   placeholder={t('searchPlaceholder')}
+                   className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
                    style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text1 }} />
           </div>
           <button onClick={() => setShowModal(true)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
                   style={{ backgroundColor: "#065f46", border: "1px solid #4ade80" }}>
-            + 현장 추가
+            {t('addProject')}
           </button>
         </div>
       </div>
@@ -217,9 +390,9 @@ export default function SafeProjectList({
       {/* 통계 */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         {[
-          { label: "전체 현장",  value: stats.total,    color: "#60a5fa", icon: "🛡" },
-          { label: "운영중",     value: stats.active,   color: "#4ade80", icon: "🟢" },
-          { label: "중단",       value: stats.inactive, color: "#f59e0b", icon: "🟡" },
+          { label: t('total'),    value: stats.total,    color: "#60a5fa", icon: "🛡" },
+          { label: t('active'),   value: stats.active,   color: "#4ade80", icon: "🟢" },
+          { label: t('inactive'), value: stats.inactive, color: "#f59e0b", icon: "🟡" },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-3 text-center"
                style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
@@ -237,7 +410,7 @@ export default function SafeProjectList({
             <ProjectCard
               key={p.projectId}
               project={p}
-              selected={false}
+              t={t}
               onSelect={(proj) => { onProjectSelect(proj); setViceComponent("safe"); }}
               onEdit={(proj) => { setEditingProject(proj); setShowModal(true); }}
               onDelete={handleDelete}
@@ -248,10 +421,10 @@ export default function SafeProjectList({
         <div className="flex flex-col items-center justify-center py-32 text-center">
           <div className="text-7xl mb-5">{search ? "🔍" : "🛡"}</div>
           <div className="text-lg font-semibold text-gray-400 mb-2">
-            {search ? `"${search}" 검색 결과 없음` : "등록된 안전 현장이 없습니다"}
+            {search ? t('noResults', { search }) : t('noSites')}
           </div>
           <div className="text-sm" style={{ color: TB.text2 }}>
-            {search ? "다른 검색어를 입력하세요" : '"+ 현장 추가" 버튼으로 카메라 현장을 등록하세요'}
+            {search ? t('searchPlaceholder') : t('noSitesHint')}
           </div>
         </div>
       )}

@@ -13,9 +13,12 @@
             description  TEXT,
             camera_url   VARCHAR(1024),
             status       VARCHAR(32)  DEFAULT 'ACTIVE',
+            mode         VARCHAR(16)  DEFAULT 'SAFETY',
             created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
             updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
         );
+        -- 기존 테이블에 컬럼 추가 (이미 존재하면 오류 무시):
+        -- ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode VARCHAR(16) DEFAULT 'SAFETY';
     -->
 
     <select id="getAllSafeProjects" resultType="map">
@@ -26,6 +29,7 @@
             description  AS "description",
             camera_url   AS "cameraUrl",
             status       AS "status",
+            COALESCE(mode, 'SAFETY') AS "mode",
             TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
         FROM safe_project
         ORDER BY created_at ASC
@@ -39,14 +43,15 @@
             description  AS "description",
             camera_url   AS "cameraUrl",
             status       AS "status",
+            COALESCE(mode, 'SAFETY') AS "mode",
             TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
         FROM safe_project
         WHERE project_id = #{projectId}
     </select>
 
     <insert id="insertSafeProject" parameterType="map">
-        INSERT INTO safe_project (project_id, project_name, location, description, camera_url, status)
-        VALUES (#{projectId}, #{projectName}, #{location}, #{description}, #{cameraUrl}, #{status})
+        INSERT INTO safe_project (project_id, project_name, location, description, camera_url, status, mode)
+        VALUES (#{projectId}, #{projectName}, #{location}, #{description}, #{cameraUrl}, #{status}, #{mode})
     </insert>
 
     <update id="updateSafeProject" parameterType="map">
@@ -56,6 +61,7 @@
             description  = #{description},
             camera_url   = #{cameraUrl},
             status       = #{status},
+            mode         = #{mode},
             updated_at   = CURRENT_TIMESTAMP
         WHERE project_id = #{projectId}
     </update>
