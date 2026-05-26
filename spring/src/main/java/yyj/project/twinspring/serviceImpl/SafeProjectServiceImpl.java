@@ -40,6 +40,7 @@ public class SafeProjectServiceImpl implements SafeProjectService {
         p.put("description", dto.getDescription());
         p.put("cameraUrl",   dto.getCameraUrl());
         p.put("status",      dto.getStatus() != null ? dto.getStatus() : "ACTIVE");
+        p.put("mode",        dto.getMode()   != null ? dto.getMode()   : "SAFETY");
         safeDAO.insertSafeProject(p);
         dto.setProjectId(id);
         return dto;
@@ -54,6 +55,7 @@ public class SafeProjectServiceImpl implements SafeProjectService {
         p.put("description", dto.getDescription());
         p.put("cameraUrl",   dto.getCameraUrl());
         p.put("status",      dto.getStatus() != null ? dto.getStatus() : "ACTIVE");
+        p.put("mode",        dto.getMode()   != null ? dto.getMode()   : "SAFETY");
         safeDAO.updateSafeProject(p);
     }
 
@@ -70,6 +72,7 @@ public class SafeProjectServiceImpl implements SafeProjectService {
         dto.setDescription((String) r.get("description"));
         dto.setCameraUrl((String)   r.get("cameraUrl"));
         dto.setStatus((String)      r.get("status"));
+        dto.setMode((String)        r.get("mode"));
         dto.setCreatedAt((String)   r.get("createdAt"));
         return dto;
     }

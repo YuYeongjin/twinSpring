@@ -136,3 +136,22 @@ CREATE TABLE IF NOT EXISTS simulation_state
     height_map_data     TEXT             NULL,
     updated_at          TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ================================================================
+-- 안전 현장 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS safe_project
+(
+    project_id   VARCHAR(64)   NOT NULL PRIMARY KEY,
+    project_name VARCHAR(255)  NOT NULL,
+    location     VARCHAR(512)  NULL,
+    description  TEXT          NULL,
+    camera_url   VARCHAR(1024) NULL,
+    status       VARCHAR(32)   NOT NULL DEFAULT 'ACTIVE',
+    mode         VARCHAR(16)   NOT NULL DEFAULT 'SAFETY',
+    created_at   TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 기존 safe_project 테이블에 mode 컬럼 추가 (없는 경우)
+ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode VARCHAR(16) NOT NULL DEFAULT 'SAFETY';

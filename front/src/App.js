@@ -321,8 +321,9 @@ function App() {
   }, []);
 
   const createSafeProject = useCallback(async (formData) => {
-    await AxiosCustom.post('/api/safe/project', formData);
+    const res = await AxiosCustom.post('/api/safe/project', formData);
     await refreshSafeProjectList();
+    return res.data; // 생성된 프로젝트 반환 (projectId 포함)
   }, [refreshSafeProjectList]);
 
   const updateSafeProject = useCallback(async (projectId, formData) => {
