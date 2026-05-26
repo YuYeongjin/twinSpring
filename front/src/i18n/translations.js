@@ -662,7 +662,7 @@ export const translations = {
     wbs: {
       loading: 'WBS 불러오는 중…',
       title: 'WBS',
-      ganttPageTitle: '현장 간트차트',
+      ganttPageTitle: '',
       statusPlanned: '계획', statusInProgress: '진행중', statusCompleted: '완료', statusOnHold: '보류',
       taskNotStarted: '미착수', taskInProgress: '진행중', taskCompleted: '완료', taskDelayed: '지연',
       allSites: '전체 {n}', activeCount: '🔨 진행중 {n}', completedCount: '✅ 완료 {n}', plannedCount: '📋 계획 {n}', onHoldCount: '⏸ 보류 {n}', taskCount: '{n}개 작업',

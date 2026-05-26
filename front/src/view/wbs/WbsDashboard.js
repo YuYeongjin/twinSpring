@@ -433,14 +433,11 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
 
           {/* 타이틀 */}
           <span className="text-sm font-bold text-white shrink-0">🏗 {t('title')}</span>
-          <span className="hidden sm:block text-xs font-semibold shrink-0" style={{ color: "#60a5fa" }}>
-            {t('ganttPageTitle')}
-          </span>
-
+  
           <div className="flex-1 min-w-0" />
 
-          {/* 센서 칩 — sm 이상에서만 표시 */}
-          <div className="hidden sm:block shrink-0">
+          {/* 센서 칩 — 항상 표시 */}
+          <div className="shrink-0">
             <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
           </div>
 
@@ -479,10 +476,6 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
             │ {t('taskCount', { n: allTasks.length })}
           </span>
 
-          {/* 센서 칩 — 모바일 전용 (2행 우측) */}
-          <div className="sm:hidden ml-auto shrink-0 pl-2">
-            <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
-          </div>
         </div>
       </div>
 
@@ -557,8 +550,11 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
               )}
             </div>
 
-            {/* 새 현장 버튼 */}
-            <div className="px-2 py-2" style={{ borderTop: "1px solid #1a2a3a" }}>
+            {/* 사이드바 하단: 온습도 + 새 현장 */}
+            <div className="px-2 py-2 flex flex-col gap-1.5" style={{ borderTop: "1px solid #1a2a3a" }}>
+              {/* 온습도 칩 */}
+              <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
+              {/* 새 현장 버튼 */}
               <button
                 onClick={() => { setEditingProject(null); setShowModal(true); }}
                 className="w-full py-1.5 rounded-lg text-xs font-semibold text-blue-400 transition"
