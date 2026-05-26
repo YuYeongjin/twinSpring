@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
+import { useT } from "../../../i18n/LanguageContext";
 
 const STATUS_OPTIONS = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "DELAYED"];
 const STATUS_LABEL = {
-  NOT_STARTED: { ko: "미착수", color: "#64748b", bg: "#1e293b" },
-  IN_PROGRESS:  { ko: "진행중", color: "#60a5fa", bg: "#1e3a5f" },
-  COMPLETED:    { ko: "완료",   color: "#4ade80", bg: "#14532d" },
-  DELAYED:      { ko: "지연",   color: "#f87171", bg: "#450a0a" },
+  NOT_STARTED: { tKey: "taskNotStarted", color: "#64748b", bg: "#1e293b" },
+  IN_PROGRESS:  { tKey: "taskInProgress", color: "#60a5fa", bg: "#1e3a5f" },
+  COMPLETED:    { tKey: "taskCompleted",  color: "#4ade80", bg: "#14532d" },
+  DELAYED:      { tKey: "taskDelayed",    color: "#f87171", bg: "#450a0a" },
 };
 
 const SOURCE_BADGE = {
@@ -146,6 +147,7 @@ function EditCell({ value, onChange, type = "text", options, min, max }) {
  *   readOnly : boolean
  */
 export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, readOnly = false }) {
+  const t = useT('wbs');
 
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData]   = useState({});
@@ -185,7 +187,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
 
   // ── 삭제 ───────────────────────────────────────────────────────
   async function handleDelete(taskId) {
-    if (!window.confirm("태스크를 삭제하시겠습니까?")) return;
+    if (!window.confirm(t('deleteTaskConfirm'))) return;
     await onDelete(taskId);
   }
 
@@ -197,19 +199,19 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
 
   // ── 열 정의 ────────────────────────────────────────────────────
   const COL = [
-    { key: "wbsCode",        label: "WBS코드",  w: 70  },
-    { key: "taskName",       label: "작업명",   w: 160 },
-    { key: "startDate",      label: "시작일",   w: 96, type: "date" },
-    { key: "endDate",        label: "종료일",   w: 96, type: "date" },
-    { key: "duration",       label: "일수",     w: 50, type: "number" },
-    { key: "progress",       label: "진행%",    w: 60, type: "number", min: 0, max: 100 },
-    { key: "status",         label: "상태",     w: 90 },
-    { key: "responsible",    label: "담당자",   w: 80 },
-    { key: "predecessorIds", label: "선행작업", w: 90 },
-    { key: "notes",          label: "비고",     w: 120 },
+    { key: "wbsCode",        label: t('colCode'),         w: 70  },
+    { key: "taskName",       label: t('colName'),         w: 160 },
+    { key: "startDate",      label: t('colStart'),        w: 96, type: "date" },
+    { key: "endDate",        label: t('colEnd'),          w: 96, type: "date" },
+    { key: "duration",       label: t('colDays'),         w: 50, type: "number" },
+    { key: "progress",       label: t('colProgress'),     w: 60, type: "number", min: 0, max: 100 },
+    { key: "status",         label: t('colStatus'),       w: 90 },
+    { key: "responsible",    label: t('colResponsible'),  w: 80 },
+    { key: "predecessorIds", label: t('colPredecessors'), w: 90 },
+    { key: "notes",          label: t('colNotes'),        w: 120 },
   ];
 
-  const statusOptions = STATUS_OPTIONS.map(s => ({ value: s, label: STATUS_LABEL[s].ko }));
+  const statusOptions = STATUS_OPTIONS.map(s => ({ value: s, label: t(STATUS_LABEL[s].tKey) }));
 
   function renderCell(task, col, data, setter) {
     if (col.key === "status") {
@@ -229,7 +231,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
       const s = STATUS_LABEL[task.status] || STATUS_LABEL.NOT_STARTED;
       return (
         <span className="px-1.5 py-0.5 rounded text-xs font-medium"
-              style={{ backgroundColor: s.bg, color: s.color }}>{s.ko}</span>
+              style={{ backgroundColor: s.bg, color: s.color }}>{t(s.tKey)}</span>
       );
     }
     if (col.key === "progress") {
@@ -255,11 +257,11 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
             {criticalCount > 0 && (
               <span className="flex items-center gap-1 px-2 py-0.5 rounded-full font-medium"
                     style={{ backgroundColor: "#450a0a", color: "#ef4444", border: "1px solid #7f1d1d" }}>
-                🔴 주공정 {criticalCount}개
+                {t('cpmCriticalBadge')} ×{criticalCount}
               </span>
             )}
             <span style={{ color: "#94a3b8" }}>
-              CPM 공기 <strong style={{ color: "#60a5fa" }}>{projectDuration}일</strong>
+              {t('cpmAnalysis')} <strong style={{ color: "#60a5fa" }}>{t('cpmDays', { n: projectDuration })}</strong>
             </span>
           </div>
           <button
@@ -271,7 +273,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
               color: showCpm ? "#60a5fa" : "#8896a4",
             }}
           >
-            📊 {showCpm ? "CPM 숨기기" : "CPM 분석 보기"}
+            {showCpm ? t('cpmHideBtn') : t('cpmShowBtn')}
           </button>
         </div>
       )}
@@ -289,7 +291,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
                 </th>
               ))}
               <th className="px-2 py-2 text-gray-400 border-b border-[#1e3a5f]" style={{ minWidth: 40 }}>
-                소스
+                {t('colSource')}
               </th>
               {!readOnly && (
                 <th className="px-2 py-2 border-b border-[#1e3a5f]" style={{ minWidth: 80 }} />
@@ -351,7 +353,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
                           <button onClick={() => startEdit(task)}
                                   className="px-2 py-0.5 rounded text-xs text-gray-400 hover:text-white transition"
                                   style={{ border: "1px solid #253347" }}>
-                            편집
+                            ✏️
                           </button>
                           <button onClick={() => handleDelete(task.taskId)}
                                   className="px-2 py-0.5 rounded text-xs text-red-400 hover:text-red-300 transition"
@@ -381,12 +383,12 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
                             disabled={saving || !newTask.taskName?.trim()}
                             className="px-2 py-0.5 rounded text-xs font-medium text-white"
                             style={{ backgroundColor: "#1d4ed8" }}>
-                      {saving ? "…" : "+ 추가"}
+                      {saving ? "…" : t('addTask')}
                     </button>
                     <button onClick={() => { setAddMode(false); setNewTask({ ...EMPTY_TASK }); }}
                             className="px-2 py-0.5 rounded text-xs text-gray-400"
                             style={{ border: "1px solid #253347" }}>
-                      취소
+                      {t('cancel')}
                     </button>
                   </div>
                 </td>
@@ -402,16 +404,16 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
           onClick={() => setAddMode(true)}
           className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-400 hover:text-white transition"
           style={{ border: "1px dashed #1d4ed8" }}>
-          + 태스크 추가
+          {t('addTask')}
         </button>
       )}
 
       {tasks.length === 0 && !addMode && (
         <div className="py-12 text-center text-gray-500 text-sm">
           <div className="text-3xl mb-2">📋</div>
-          <p>등록된 WBS 태스크가 없습니다.</p>
+          <p>{t('noTasksMsg')}</p>
           {!readOnly && (
-            <p className="text-xs mt-1 text-gray-600">위 "+ 태스크 추가" 버튼으로 작업을 추가하세요.</p>
+            <p className="text-xs mt-1 text-gray-600">{t('noTasksAddHint')}</p>
           )}
         </div>
       )}
@@ -425,17 +427,17 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
           <div className="flex items-center justify-between px-4 py-2.5"
                style={{ backgroundColor: "#0d1b2a", borderBottom: "1px solid #1e3a5f" }}>
             <div className="flex items-center gap-3">
-              <span className="font-semibold text-sm text-blue-400">📊 CPM 네트워크 분석</span>
+              <span className="font-semibold text-sm text-blue-400">{t('cpmPanelTitle')}</span>
               <span className="text-xs" style={{ color: "#94a3b8" }}>
-                총 공기 <strong style={{ color: "#60a5fa" }}>{projectDuration}일</strong>
+                {t('criticalDays', { n: projectDuration })}
               </span>
               <span className="text-xs px-2 py-0.5 rounded-full font-medium"
                     style={{ backgroundColor: "#450a0a", color: "#ef4444", border: "1px solid #7f1d1d" }}>
-                🔴 주공정 {criticalCount}개
+                {t('criticalCount', { n: criticalCount })}
               </span>
             </div>
             <p className="text-xs" style={{ color: "#475569" }}>
-              ES=최조착수 · EF=최조완료 · LS=최지착수 · LF=최지완료 · TF=여유공기
+              {t('cpmForward')} · {t('cpmBackward')} · {t('cpmDef')}
             </p>
           </div>
 
@@ -444,15 +446,15 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
               <thead>
                 <tr style={{ backgroundColor: "#0d1b2a" }}>
                   {[
-                    { label: "WBS코드", w: 70 },
-                    { label: "작업명",  w: 160 },
-                    { label: "기간(일)", w: 60 },
-                    { label: "ES",      w: 50 },
-                    { label: "EF",      w: 50 },
-                    { label: "LS",      w: 50 },
-                    { label: "LF",      w: 50 },
-                    { label: "여유공기(TF)", w: 80 },
-                    { label: "구분",    w: 80 },
+                    { label: t('colCode'),        w: 70  },
+                    { label: t('colName'),        w: 160 },
+                    { label: t('cpmColDuration'), w: 60  },
+                    { label: t('cpmColEs'),       w: 50  },
+                    { label: t('cpmColEf'),       w: 50  },
+                    { label: t('cpmColLs'),       w: 50  },
+                    { label: t('cpmColLf'),       w: 50  },
+                    { label: t('cpmColFloat'),    w: 80  },
+                    { label: t('cpmColType'),     w: 80  },
                   ].map(c => (
                     <th key={c.label}
                         className="px-3 py-2 text-left font-semibold border-b border-[#1e3a5f] whitespace-nowrap"
@@ -511,19 +513,19 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
                       </td>
                       <td className="px-3 py-2 border-b border-[#1a2a3a] text-center">
                         <span className={`font-bold ${cpm.isCritical ? "text-red-400" : "text-green-400"}`}>
-                          {cpm.totalFloat}일
+                          {t('cpmDays', { n: cpm.totalFloat })}
                         </span>
                       </td>
                       <td className="px-3 py-2 border-b border-[#1a2a3a]">
                         {cpm.isCritical ? (
                           <span className="px-2 py-0.5 rounded-full text-xs font-bold"
                                 style={{ backgroundColor: "#450a0a", color: "#ef4444", border: "1px solid #7f1d1d" }}>
-                            🔴 주공정
+                            {t('cpmCriticalBadge')}
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-full text-xs"
                                 style={{ backgroundColor: "#14532d", color: "#4ade80", border: "1px solid #166534" }}>
-                            여유 {cpm.totalFloat}일
+                            {t('cpmFloatBadge', { n: cpm.totalFloat })}
                           </span>
                         )}
                       </td>
@@ -537,10 +539,10 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
           {/* 범례 */}
           <div className="px-4 py-2.5 flex items-center gap-4 text-xs flex-wrap"
                style={{ borderTop: "1px solid #1e3a5f", color: "#475569" }}>
-            <span>💡 선행작업(predecessorIds) 칼럼에 쉼표로 구분된 taskId를 입력하면 CPM이 자동 계산됩니다.</span>
-            <span style={{ color: "#60a5fa" }}>ES/EF = 순방향 패스</span>
-            <span style={{ color: "#a78bfa" }}>LS/LF = 역방향 패스</span>
-            <span style={{ color: "#ef4444" }}>TF=0 → 주공정(지연 불가)</span>
+            <span>💡 {t('cpmHint')}</span>
+            <span style={{ color: "#60a5fa" }}>{t('cpmForward')}</span>
+            <span style={{ color: "#a78bfa" }}>{t('cpmBackward')}</span>
+            <span style={{ color: "#ef4444" }}>{t('cpmDef')}</span>
           </div>
         </div>
       )}

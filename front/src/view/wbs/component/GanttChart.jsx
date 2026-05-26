@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
+import { useT } from "../../../i18n/LanguageContext";
 
 // ══════════════════════════════════════════════════════════════════
 //  설정 상수
@@ -17,10 +18,10 @@ const STATUS_COLOR = {
 };
 
 const SOURCE_BADGE = {
-  MANUAL:      { label: "✏️", title: "수동 입력" },
-  AGENT_CPM:   { label: "🔗", title: "Agent-CPM" },
-  AGENT_CRACK: { label: "🔍", title: "균열 감지" },
-  AGENT_AUTO:  { label: "🤖", title: "Agent 자동" },
+  MANUAL:      { label: "✏️", tKey: "sourceManual"   },
+  AGENT_CPM:   { label: "🔗", tKey: "sourceAgentCpm" },
+  AGENT_CRACK: { label: "🔍", tKey: "sourceCrack"    },
+  AGENT_AUTO:  { label: "🤖", tKey: "sourceAuto"     },
 };
 
 // ── 날짜 유틸 ────────────────────────────────────────────────────
@@ -143,6 +144,7 @@ function computeCPM(tasks) {
  *   onTaskClick    : (task) => void
  */
 export default function GanttChart({ tasks = [], groupByProject = false, onTaskClick }) {
+  const t = useT('wbs');
 
   const [tooltip, setTooltip] = useState(null); // { x, y, task, cpm }
   const svgRef = useRef(null);
@@ -366,34 +368,34 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
       {/* ── CPM 요약 바 ── */}
       {tasks.length > 0 && (
         <div className="flex items-center gap-3 mb-3 px-1 flex-wrap text-xs">
-          <span className="font-semibold" style={{ color: "#94a3b8" }}>📊 CPM 분석</span>
+          <span className="font-semibold" style={{ color: "#94a3b8" }}>{t('cpmAnalysis')}</span>
 
           <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg"
                 style={{ backgroundColor: "#450a0a", border: "1px solid #7f1d1d" }}>
             <span className="w-2 h-2 rounded-sm inline-block"
                   style={{ backgroundColor: "#ef4444" }} />
             <span style={{ color: "#fca5a5" }}>
-              주공정 <strong>{criticalCount}</strong>개 작업
+              {t('criticalCount', { n: criticalCount })}
             </span>
           </span>
 
           <span className="flex items-center gap-1" style={{ color: "#60a5fa" }}>
-            CPM 총 공기 <strong className="ml-1">{projectDuration}일</strong>
+            {t('cpmAnalysis')} <strong className="ml-1">{t('cpmDays', { n: projectDuration })}</strong>
           </span>
 
           {hasFloat && (
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-8 h-2 rounded"
                     style={{ backgroundColor: "#60a5fa", opacity: 0.3 }} />
-              <span style={{ color: "#60a5fa" }}>여유공기(Float)</span>
+              <span style={{ color: "#60a5fa" }}>{t('floatLabel')}</span>
             </span>
           )}
 
           <span className="flex items-center gap-1" style={{ color: "#94a3b8" }}>
-            <span style={{ color: "#f59e0b" }}>━╌╌ 비주공정</span>
+            <span style={{ color: "#f59e0b" }}>{t('nonCriticalArrow')}</span>
           </span>
           <span className="flex items-center gap-1" style={{ color: "#94a3b8" }}>
-            <span style={{ color: "#ef4444" }}>━━━ 주공정 연결</span>
+            <span style={{ color: "#ef4444" }}>{t('criticalArrow')}</span>
           </span>
         </div>
       )}
@@ -466,9 +468,9 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
           <rect x={0} y={0} width={LEFT_W} height={HDR_H} fill="#0d1b2a" />
           <line x1={LEFT_W} y1={0} x2={LEFT_W} y2={svgH}
                 stroke="#1e3a5f" strokeWidth={1} />
-          <text x={PAD} y={34} fontSize={11} fontWeight="700" fill="#60a5fa">WBS</text>
-          <text x={PAD + 50} y={34} fontSize={11} fontWeight="700" fill="#60a5fa">작업명</text>
-          <text x={LEFT_W - 60} y={34} fontSize={10} fill="#475569">여유</text>
+          <text x={PAD} y={34} fontSize={11} fontWeight="700" fill="#60a5fa">{t('ganttWbs')}</text>
+          <text x={PAD + 50} y={34} fontSize={11} fontWeight="700" fill="#60a5fa">{t('ganttTask')}</text>
+          <text x={LEFT_W - 60} y={34} fontSize={10} fill="#475569">{t('ganttFloat')}</text>
 
           {/* 행 렌더 */}
           {rows.map((r, i) => {
@@ -531,7 +533,7 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
           {todayOffset >= 0 && todayOffset <= totalDays && (
             <text x={LEFT_W + todayOffset * DAY_W + 2} y={22}
                   fontSize={9} fill="#f59e0b" fontWeight="700">
-              TODAY
+              {t('today')}
             </text>
           )}
         </svg>
@@ -559,7 +561,7 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
               {tooltip.cpm?.isCritical && (
                 <span className="shrink-0 px-1.5 py-0.5 rounded text-xs font-bold"
                       style={{ backgroundColor: "#450a0a", color: "#ef4444", border: "1px solid #7f1d1d" }}>
-                  🔴 주공정
+                  {t('criticalTag')}
                 </span>
               )}
             </div>
@@ -570,15 +572,15 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
 
             {/* 기본 정보 */}
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs mb-2">
-              <span className="text-gray-500">시작일</span>
+              <span className="text-gray-500">{t('ttStart')}</span>
               <span>{tooltip.task.startDate}</span>
-              <span className="text-gray-500">종료일</span>
+              <span className="text-gray-500">{t('ttEnd')}</span>
               <span>{tooltip.task.endDate}</span>
-              <span className="text-gray-500">진행률</span>
+              <span className="text-gray-500">{t('ttProgress')}</span>
               <span>{tooltip.task.progress ?? 0}%</span>
               {tooltip.task.responsible && (
                 <>
-                  <span className="text-gray-500">담당자</span>
+                  <span className="text-gray-500">{t('ttResponsible')}</span>
                   <span>{tooltip.task.responsible}</span>
                 </>
               )}
@@ -588,20 +590,20 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
             {tooltip.cpm && (
               <>
                 <div className="border-t border-gray-700 my-2" />
-                <p className="text-xs font-semibold text-gray-400 mb-1.5">📊 CPM 네트워크 분석</p>
+                <p className="text-xs font-semibold text-gray-400 mb-1.5">{t('ttCpmTitle')}</p>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-                  <span className="text-gray-500">최조착수(ES)</span>
-                  <span className="text-blue-300">{tooltip.cpm.ES}일차</span>
-                  <span className="text-gray-500">최조완료(EF)</span>
-                  <span className="text-blue-300">{tooltip.cpm.EF}일차</span>
-                  <span className="text-gray-500">최지착수(LS)</span>
-                  <span className="text-purple-300">{tooltip.cpm.LS}일차</span>
-                  <span className="text-gray-500">최지완료(LF)</span>
-                  <span className="text-purple-300">{tooltip.cpm.LF}일차</span>
-                  <span className="text-gray-500 font-semibold">여유공기(TF)</span>
+                  <span className="text-gray-500">{t('ttES')}</span>
+                  <span className="text-blue-300">{tooltip.cpm.ES}</span>
+                  <span className="text-gray-500">{t('ttEF')}</span>
+                  <span className="text-blue-300">{tooltip.cpm.EF}</span>
+                  <span className="text-gray-500">{t('ttLS')}</span>
+                  <span className="text-purple-300">{tooltip.cpm.LS}</span>
+                  <span className="text-gray-500">{t('ttLF')}</span>
+                  <span className="text-purple-300">{tooltip.cpm.LF}</span>
+                  <span className="text-gray-500 font-semibold">{t('ttFloat')}</span>
                   <span className={`font-bold ${tooltip.cpm.isCritical ? "text-red-400" : "text-green-400"}`}>
-                    {tooltip.cpm.totalFloat}일
-                    {tooltip.cpm.isCritical ? " ⚠️ 주공정" : " (여유 있음)"}
+                    {t('cpmDays', { n: tooltip.cpm.totalFloat })}
+                    {tooltip.cpm.isCritical ? ` ${t('ttCriticalTag')}` : ` ${t('ttHasFloat')}`}
                   </span>
                 </div>
               </>

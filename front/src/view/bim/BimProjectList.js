@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { parseIfcFile } from "../../utils/ifcImporter";
 import DroneAnalysisModal from "./component/DroneAnalysisModal";
 import { useT } from "../../i18n/LanguageContext";
+import WbsLinkWidget from "../wbs/component/WbsLinkWidget";
 
 // ================================================================
 // 디자인 토큰
@@ -248,6 +249,15 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
         >
           {t('noNameBadge')}
         </div>
+      )}
+
+      {/* WBS 연결 위젯 */}
+      {!invalid && item.projectId && (
+        <WbsLinkWidget
+          linkedType="BIM"
+          linkedProjectId={item.projectId}
+          compact
+        />
       )}
     </div>
   );
