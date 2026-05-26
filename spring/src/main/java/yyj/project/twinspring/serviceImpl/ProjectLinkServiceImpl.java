@@ -60,9 +60,10 @@ public class ProjectLinkServiceImpl implements ProjectLinkService {
         ProjectLinkDTO dto = new ProjectLinkDTO();
         dto.setLinkId((String)             r.get("linkId"));
         dto.setWbsProjectId((String)       r.get("wbsProjectId"));
+        dto.setWbsProjectName((String)     r.get("wbsProjectName"));   // 역방향 조회시 채워짐
         dto.setLinkedType((String)         r.get("linkedType"));
         dto.setLinkedProjectId((String)    r.get("linkedProjectId"));
-        dto.setLinkedProjectName((String)  r.get("linkedProjectName"));
+        dto.setLinkedProjectName((String)  r.get("linkedProjectName")); // 순방향 조회시 채워짐
         dto.setLinkedLocation((String)     r.get("linkedLocation"));
         dto.setLinkedStatus((String)       r.get("linkedStatus"));
         dto.setNote((String)               r.get("note"));

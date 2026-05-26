@@ -6,9 +6,10 @@ package yyj.project.twinspring.dto;
 public class ProjectLinkDTO {
     private String linkId;
     private String wbsProjectId;
+    private String wbsProjectName;    // 역방향 조회용 (JOIN)
     private String linkedType;        // BIM | SAFE | SIMULATION
     private String linkedProjectId;
-    private String linkedProjectName; // 조회용 (JOIN)
+    private String linkedProjectName; // 순방향 조회용 (JOIN)
     private String linkedLocation;    // 조회용 (JOIN)
     private String linkedStatus;      // 조회용 (JOIN)
     private String createdAt;
@@ -21,6 +22,9 @@ public class ProjectLinkDTO {
 
     public String getWbsProjectId()       { return wbsProjectId; }
     public void   setWbsProjectId(String v) { this.wbsProjectId = v; }
+
+    public String getWbsProjectName()    { return wbsProjectName; }
+    public void   setWbsProjectName(String v) { this.wbsProjectName = v; }
 
     public String getLinkedType()         { return linkedType; }
     public void   setLinkedType(String v) { this.linkedType = v; }

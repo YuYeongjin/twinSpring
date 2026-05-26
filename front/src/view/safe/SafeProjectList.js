@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useT } from "../../i18n/LanguageContext";
+import WbsLinkWidget from "../wbs/component/WbsLinkWidget";
 
 const TB = {
   card:    "bg-[#1c2a3a] border border-[#253347] rounded-xl shadow-lg",
@@ -142,6 +143,13 @@ function ProjectCard({ project, selected, onSelect, onEdit, onDelete }) {
           🗑
         </button>
       </div>
+
+      {/* WBS 연결 위젯 */}
+      <WbsLinkWidget
+        linkedType="SAFE"
+        linkedProjectId={project.projectId}
+        compact
+      />
     </div>
   );
 }
