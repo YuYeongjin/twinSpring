@@ -24,7 +24,7 @@ function App() {
     document.documentElement.classList.add("dark");
   }, []);
 
-  const [viewComponent, setViceComponent] = useState('');
+  const [viewComponent, setViceComponent] = useState('wbs');
 
   const [elements, setElements] = useState(null);
   const [selectedElement, setSelectedElement] = useState(null);
@@ -413,7 +413,13 @@ function App() {
           setViceComponent('simulation');
         }
       };
-      return <WbsDashboard onNavigateToTab={handleWbsNavigate} />;
+      return (
+        <WbsDashboard
+          onNavigateToTab={handleWbsNavigate}
+          sensorLatest={sensorLatest}
+          sensorWsStatus={sensorWsStatus}
+        />
+      );
     }
     if (viewComponent === 'safe-projects') {
       return (
@@ -501,18 +507,22 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-space-900 text-gray-200">
+    <div className={
+      viewComponent === 'wbs'
+        ? "h-screen flex flex-col bg-space-900 text-gray-200 overflow-hidden"
+        : "min-h-screen bg-space-900 text-gray-200"
+    }>
       <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} />
 
       <main className={
         viewComponent === 'wbs'
-          ? "w-full overflow-x-hidden"
+          ? "flex-1 min-h-0 flex flex-col overflow-hidden"
           : "w-full px-2 sm:px-4 py-4 sm:py-6 pb-24 sm:pb-6 overflow-x-hidden"
       }>
         {renderView()}
       </main>
 
-      <Footer />
+      {viewComponent !== 'wbs' && <Footer />}
 
       {viewComponent !== 'agent' && (
         <ChatView

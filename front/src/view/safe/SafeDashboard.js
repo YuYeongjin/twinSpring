@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useT } from '../../i18n/LanguageContext';
+import { pushAlert } from '../../utils/alertStore';
 
 const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
 
@@ -523,6 +524,18 @@ function CrackMonitorPanel({ selectedProject }) {
         detail: data.detail ?? '',
         source,
       }, ...prev.slice(0, 99)]);
+      // ── WBS 로그에 알림 전송 ──────────────────────────────────
+      if (data.hasCrack) {
+        const conf = Math.round((data.confidence ?? 0) * 100);
+        pushAlert({
+          source:      'CRACK',
+          severity:    conf >= 70 ? 'HIGH' : 'MEDIUM',
+          title:       `균열 감지 — ${selectedProject?.projectName ?? ''}`,
+          detail:      `신뢰도 ${conf}% (${data.method ?? 'unknown'}) · ${data.detail ?? ''}`.trim().replace(/·\s*$/, ''),
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: selectedProject?.projectName ?? '',
+        });
+      }
     } catch (e) {
       setCrackLog(prev => [{
         time: new Date(),

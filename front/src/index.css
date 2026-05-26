@@ -36,3 +36,17 @@ html, body {
 *::-webkit-scrollbar { width: 6px; height: 6px; }
 *::-webkit-scrollbar-thumb { background: #374151; border-radius: 8px; }
 *::-webkit-scrollbar-track { background: #111827; }
+
+/* 가로 스크롤바 숨김 유틸 (.no-scrollbar 대신 inline style 사용 시에도 webkit 대응) */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+
+/* 모바일 뷰포트 높이 보정 (iOS Safari 주소창 고려) */
+.h-screen-safe {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* WBS 칩/탭 가로 스크롤 영역 — 스크롤바 노출 안 함 */
+.wbs-hscroll::-webkit-scrollbar { display: none; }
+.wbs-hscroll { scrollbar-width: none; -ms-overflow-style: none; }
