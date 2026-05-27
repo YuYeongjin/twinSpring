@@ -551,7 +551,12 @@ function LogPanel({ detectionHistory }) {
 
 // ── 메인 대시보드 ─────────────────────────────────────────────────
 
-export default function SafeDashboard() {
+/**
+ * props:
+ *   selectedProject : SafeProjectDTO | null  — 현재 선택된 안전 현장
+ *   onBack          : () => void             — 목록으로 돌아가기
+ */
+export default function SafeDashboard({ selectedProject = null, onBack }) {
   const t = useT('safe');
   const [safeEvent, setSafeEvent] = useState(null);
   const [lastResult, setLastResult] = useState(null);
@@ -658,6 +663,30 @@ export default function SafeDashboard() {
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* 현장 정보 헤더 바 */}
+      {selectedProject && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+             style={{ backgroundColor: "#0a1521", border: "1px solid #1e3a5f" }}>
+          {onBack && (
+            <button onClick={onBack}
+                    className="text-sm px-3 py-1 rounded-lg transition"
+                    style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: "#8896a4" }}>
+              ← 목록
+            </button>
+          )}
+          <span className="text-base font-bold text-white">🛡 {selectedProject.projectName}</span>
+          {selectedProject.location && (
+            <span className="text-xs text-gray-400">📍 {selectedProject.location}</span>
+          )}
+          {selectedProject.cameraUrl && (
+            <span className="text-xs px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: "#0c2233", border: "1px solid #0ea5e9", color: "#7dd3fc" }}>
+              📷 카메라 연결됨
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 위험 배너 */}
       {dangerous && (

@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.WbsDAO">
+
+    <!--
+        PostgreSQL: alias 는 큰따옴표로 camelCase 보존
+        DDL (초기 실행):
+        CREATE TABLE IF NOT EXISTS wbs_project (
+            project_id      VARCHAR(64)  PRIMARY KEY,
+            project_name    VARCHAR(255) NOT NULL,
+            location        VARCHAR(512),
+            contract_amount BIGINT,
+            status          VARCHAR(32)  DEFAULT 'PLANNED',
+            description     TEXT,
+            start_date      DATE,
+            end_date        DATE,
+            client_name     VARCHAR(255),
+            manager_name    VARCHAR(255),
+            created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS wbs_task (
+            task_id         VARCHAR(64)  PRIMARY KEY,
+            wbs_project_id  VARCHAR(64)  NOT NULL REFERENCES wbs_project(project_id) ON DELETE CASCADE,
+            wbs_code        VARCHAR(64),
+            task_name       VARCHAR(512) NOT NULL,
+            start_date      DATE,
+            end_date        DATE,
+            duration        INTEGER,
+            progress        INTEGER      DEFAULT 0,
+            predecessor_ids TEXT,
+            status          VARCHAR(32)  DEFAULT 'NOT_STARTED',
+            responsible     VARCHAR(255),
+            notes           TEXT,
+            source          VARCHAR(32)  DEFAULT 'MANUAL',
+            sort_order      INTEGER      DEFAULT 0,
+            created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        );
+    -->
+
+    <!-- ═══════════════════════════════ WBS PROJECT ═════════════════════════════ -->
+
+    <select id="getAllWbsProjects" resultType="map">
+        SELECT
+            p.project_id      AS "projectId",
+            p.project_name    AS "projectName",
+            p.location        AS "location",
+            p.contract_amount AS "contractAmount",
+            p.status          AS "status",
+            p.description     AS "description",
+            TO_CHAR(p.start_date, 'YYYY-MM-DD')  AS "startDate",
+            TO_CHAR(p.end_date,   'YYYY-MM-DD')  AS "endDate",
+            p.client_name     AS "clientName",
+            p.manager_name    AS "managerName",
+            COUNT(t.task_id)  AS "taskCount",
+            TO_CHAR(p.created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM wbs_project p
+        LEFT JOIN wbs_task t ON t.wbs_project_id = p.project_id
+        GROUP BY p.project_id, p.project_name, p.location, p.contract_amount,
+                 p.status, p.description, p.start_date, p.end_date,
+                 p.client_name, p.manager_name, p.created_at
+        ORDER BY p.created_at ASC
+    </select>
+
+    <select id="getWbsProjectById" parameterType="string" resultType="map">
+        SELECT
+            project_id      AS "projectId",
+            project_name    AS "projectName",
+            location        AS "location",
+            contract_amount AS "contractAmount",
+            status          AS "status",
+            description     AS "description",
+            TO_CHAR(start_date, 'YYYY-MM-DD')  AS "startDate",
+            TO_CHAR(end_date,   'YYYY-MM-DD')  AS "endDate",
+            client_name     AS "clientName",
+            manager_name    AS "managerName",
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM wbs_project
+        WHERE project_id = #{projectId}
+    </select>
+
+    <insert id="insertWbsProject" parameterType="map">
+        INSERT INTO wbs_project (
+            project_id, project_name, location, contract_amount,
+            status, description, start_date, end_date,
+            client_name, manager_name
+        ) VALUES (
+            #{projectId}, #{projectName}, #{location}, #{contractAmount},
+            #{status}, #{description},
+            #{startDate}::DATE, #{endDate}::DATE,
+            #{clientName}, #{managerName}
+        )
+    </insert>
+
+    <update id="updateWbsProject" parameterType="map">
+        UPDATE wbs_project SET
+            project_name    = #{projectName},
+            location        = #{location},
+            contract_amount = #{contractAmount},
+            status          = #{status},
+            description     = #{description},
+            start_date      = #{startDate}::DATE,
+            end_date        = #{endDate}::DATE,
+            client_name     = #{clientName},
+            manager_name    = #{managerName},
+            updated_at      = CURRENT_TIMESTAMP
+        WHERE project_id = #{projectId}
+    </update>
+
+    <delete id="deleteWbsProject" parameterType="string">
+        DELETE FROM wbs_project WHERE project_id = #{projectId}
+    </delete>
+
+    <!-- ═══════════════════════════════ WBS TASK ════════════════════════════════ -->
+
+    <select id="getTasksByProject" parameterType="string" resultType="map">
+        SELECT
+            task_id          AS "taskId",
+            wbs_project_id   AS "wbsProjectId",
+            wbs_code         AS "wbsCode",
+            task_name        AS "taskName",
+            TO_CHAR(start_date, 'YYYY-MM-DD') AS "startDate",
+            TO_CHAR(end_date,   'YYYY-MM-DD') AS "endDate",
+            duration         AS "duration",
+            progress         AS "progress",
+            predecessor_ids  AS "predecessorIds",
+            status           AS "status",
+            responsible      AS "responsible",
+            notes            AS "notes",
+            source           AS "source",
+            sort_order       AS "sortOrder",
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM wbs_task
+        WHERE wbs_project_id = #{projectId}
+        ORDER BY sort_order ASC, created_at ASC
+    </select>
+
+    <select id="getAllTasks" resultType="map">
+        SELECT
+            t.task_id          AS "taskId",
+            t.wbs_project_id   AS "wbsProjectId",
+            p.project_name     AS "projectName",
+            t.wbs_code         AS "wbsCode",
+            t.task_name        AS "taskName",
+            TO_CHAR(t.start_date, 'YYYY-MM-DD') AS "startDate",
+            TO_CHAR(t.end_date,   'YYYY-MM-DD') AS "endDate",
+            t.duration         AS "duration",
+            t.progress         AS "progress",
+            t.predecessor_ids  AS "predecessorIds",
+            t.status           AS "status",
+            t.responsible      AS "responsible",
+            t.notes            AS "notes",
+            t.source           AS "source",
+            t.sort_order       AS "sortOrder"
+        FROM wbs_task t
+        JOIN wbs_project p ON p.project_id = t.wbs_project_id
+        ORDER BY p.project_id ASC, t.sort_order ASC, t.created_at ASC
+    </select>
+
+    <select id="getTaskById" parameterType="string" resultType="map">
+        SELECT
+            task_id          AS "taskId",
+            wbs_project_id   AS "wbsProjectId",
+            wbs_code         AS "wbsCode",
+            task_name        AS "taskName",
+            TO_CHAR(start_date, 'YYYY-MM-DD') AS "startDate",
+            TO_CHAR(end_date,   'YYYY-MM-DD') AS "endDate",
+            duration         AS "duration",
+            progress         AS "progress",
+            predecessor_ids  AS "predecessorIds",
+            status           AS "status",
+            responsible      AS "responsible",
+            notes            AS "notes",
+            source           AS "source",
+            sort_order       AS "sortOrder"
+        FROM wbs_task
+        WHERE task_id = #{taskId}
+    </select>
+
+    <insert id="insertTask" parameterType="map">
+        INSERT INTO wbs_task (
+            task_id, wbs_project_id, wbs_code, task_name,
+            start_date, end_date, duration, progress,
+            predecessor_ids, status, responsible, notes,
+            source, sort_order
+        ) VALUES (
+            #{taskId}, #{wbsProjectId}, #{wbsCode}, #{taskName},
+            #{startDate}::DATE, #{endDate}::DATE,
+            #{duration}, #{progress},
+            #{predecessorIds}, #{status}, #{responsible}, #{notes},
+            #{source}, #{sortOrder}
+        )
+    </insert>
+
+    <update id="updateTask" parameterType="map">
+        UPDATE wbs_task SET
+            wbs_code        = #{wbsCode},
+            task_name       = #{taskName},
+            start_date      = #{startDate}::DATE,
+            end_date        = #{endDate}::DATE,
+            duration        = #{duration},
+            progress        = #{progress},
+            predecessor_ids = #{predecessorIds},
+            status          = #{status},
+            responsible     = #{responsible},
+            notes           = #{notes},
+            sort_order      = #{sortOrder},
+            updated_at      = CURRENT_TIMESTAMP
+        WHERE task_id = #{taskId}
+    </update>
+
+    <delete id="deleteTask" parameterType="string">
+        DELETE FROM wbs_task WHERE task_id = #{taskId}
+    </delete>
+
+    <delete id="deleteTasksByProject" parameterType="string">
+        DELETE FROM wbs_task WHERE wbs_project_id = #{projectId}
+    </delete>
+
+    <insert id="insertTaskBatch" parameterType="list">
+        INSERT INTO wbs_task (
+            task_id, wbs_project_id, wbs_code, task_name,
+            start_date, end_date, duration, progress,
+            predecessor_ids, status, responsible, notes,
+            source, sort_order
+        )
+        <foreach collection="list" item="t" separator=" UNION ALL ">
+            SELECT
+                #{t.taskId}, #{t.wbsProjectId}, #{t.wbsCode}, #{t.taskName},
+                #{t.startDate}::DATE, #{t.endDate}::DATE,
+                #{t.duration}, #{t.progress},
+                #{t.predecessorIds}, #{t.status}, #{t.responsible}, #{t.notes},
+                #{t.source}, #{t.sortOrder}
+        </foreach>
+    </insert>
+
+</mapper>
