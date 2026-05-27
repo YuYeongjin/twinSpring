@@ -155,3 +155,46 @@ CREATE TABLE IF NOT EXISTS safe_project
 
 -- 기존 safe_project 테이블에 mode 컬럼 추가 (없는 경우)
 ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode VARCHAR(16) NOT NULL DEFAULT 'SAFETY';
+
+-- ================================================================
+-- WBS 프로젝트 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS wbs_project
+(
+    project_id      VARCHAR(64)  NOT NULL PRIMARY KEY,
+    project_name    VARCHAR(255) NOT NULL,
+    location        VARCHAR(512) NULL,
+    contract_amount BIGINT       NULL,
+    status          VARCHAR(32)  NOT NULL DEFAULT 'PLANNED',
+    description     TEXT         NULL,
+    start_date      DATE         NULL,
+    end_date        DATE         NULL,
+    client_name     VARCHAR(255) NULL,
+    manager_name    VARCHAR(255) NULL,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ================================================================
+-- WBS 태스크 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS wbs_task
+(
+    task_id         VARCHAR(64)  NOT NULL PRIMARY KEY,
+    wbs_project_id  VARCHAR(64)  NOT NULL REFERENCES wbs_project (project_id) ON DELETE CASCADE,
+    wbs_code        VARCHAR(64)  NULL,
+    task_name       VARCHAR(512) NOT NULL,
+    start_date      DATE         NULL,
+    end_date        DATE         NULL,
+    duration        INTEGER      NULL,
+    progress        INTEGER      NOT NULL DEFAULT 0,
+    predecessor_ids TEXT         NULL,
+    status          VARCHAR(32)  NOT NULL DEFAULT 'NOT_STARTED',
+    responsible     VARCHAR(255) NULL,
+    notes           TEXT         NULL,
+    source          VARCHAR(32)  NOT NULL DEFAULT 'MANUAL',
+    sort_order      INTEGER      NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_wbs_task_project ON wbs_task (wbs_project_id);
