@@ -3,24 +3,6 @@
 
 <mapper namespace="yyj.project.twinspring.dao.SafeDAO">
 
-    <!--
-        DDL (초기 1회 실행):
-
-        CREATE TABLE IF NOT EXISTS safe_project (
-            project_id   VARCHAR(64)  PRIMARY KEY,
-            project_name VARCHAR(255) NOT NULL,
-            location     VARCHAR(512),
-            description  TEXT,
-            camera_url   VARCHAR(1024),
-            status       VARCHAR(32)  DEFAULT 'ACTIVE',
-            mode         VARCHAR(16)  DEFAULT 'SAFETY',
-            created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-            updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-        );
-        기존 테이블에 컬럼 추가 (이미 존재하면 오류 무시):
-        ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode VARCHAR(16) DEFAULT 'SAFETY';
-    -->
-
     <select id="getAllSafeProjects" resultType="map">
         SELECT
             project_id   AS "projectId",
