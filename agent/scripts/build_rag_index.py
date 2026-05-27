@@ -33,7 +33,7 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from config import CHROMA_PERSIST_DIR, EMBEDDING_MODEL
+from config.settings import CHROMA_PERSIST_DIR, EMBEDDING_MODEL
 
 # ── 설정 ─────────────────────────────────────────────────────────────────────
 RAG_DIR          = os.path.join(os.path.dirname(os.path.dirname(__file__)), "rag")

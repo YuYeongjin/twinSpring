@@ -10,9 +10,9 @@ Test Agent — 충돌 테스트 탭 전문 에이전트
 from langchain_core.messages import SystemMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 
-from llm_config import llm_chat
+from config.llm_config import llm_chat
 from tools.test_tools import TEST_TOOLS
-from lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction
 
 
 # ── 시스템 프롬프트 ────────────────────────────────────────────────────────────

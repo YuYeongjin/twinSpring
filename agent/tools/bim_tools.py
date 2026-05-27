@@ -25,7 +25,7 @@ from tools.db_tool import (
     query_bim_element_stats,
     query_bim_total_count,
 )
-from config import SPRING_BASE_URL
+from config.settings import SPRING_BASE_URL
 
 # ── 기본 부재 크기 ─────────────────────────────────────────────────────────────
 _DEFAULT_SIZES = {

@@ -19,7 +19,7 @@ Supervisor Node — Multi-Agent 라우터
 
 import re
 
-from state import AgentState
+from config.state import AgentState
 
 
 # ── 키워드 패턴 ────────────────────────────────────────────────────────────────

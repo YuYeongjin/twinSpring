@@ -8,7 +8,7 @@ Spring Boot /api/detection, /api/sensor 엔드포인트와 통신합니다.
 import json
 import httpx
 from langchain_core.tools import tool
-from config import SPRING_BASE_URL
+from config.settings import SPRING_BASE_URL
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────

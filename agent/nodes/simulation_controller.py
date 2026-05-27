@@ -15,10 +15,10 @@ import re
 import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from state import AgentState
-from llm_config import llm_precise
-from config import SPRING_BASE_URL
-from lang_util import detect_lang, translate_reply
+from config.state import AgentState
+from config.llm_config import llm_precise
+from config.settings import SPRING_BASE_URL
+from config.lang_util import detect_lang, translate_reply
 
 EXCAVATOR_ID = "EX-001"
 
