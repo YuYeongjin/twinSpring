@@ -4,9 +4,11 @@ import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
 import yyj.project.twinspring.dto.MultimodalRequestDTO;
+import yyj.project.twinspring.dto.WbsRagRequestDTO;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * AI 채팅 서비스 인터페이스
@@ -33,4 +35,17 @@ public interface ChatService {
 
     /** Agent /chat-stream 을 프록시하는 SSE 스트림 */
     Flux<String> streamMessage(ChatRequestDTO request);
+
+    /**
+     * WBS 이벤트 발생 시 관련 건설 시방서(KCS/KDS) 증거를 RAG 검색하여 반환.
+     * AgentWbsPopup 에서 사용자 승인 전 근거 자료 표시에 사용.
+     */
+    Map<String, Object> wbsRagSuggest(WbsRagRequestDTO request);
+
+    /**
+     * WBS 프로젝트 생성 에이전트 채팅.
+     * 사용자 메시지에서 현장 프로젝트 정보를 수집하고, 충분한 정보가 모이면 ready=true 반환.
+     * WbsDashboard 의 에이전트 채팅 패널에서 사용.
+     */
+    Map<String, Object> wbsProjectChat(Map<String, Object> request);
 }

@@ -17,9 +17,9 @@ Flow:
 import re
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from state import AgentState
-from llm_config import llm_chat
-from lang_util import detect_lang, lang_instruction, translate_reply
+from config.state import AgentState
+from config.llm_config import llm_chat
+from config.lang_util import detect_lang, lang_instruction, translate_reply
 
 # ──────────────────────────────────────────────
 # Reference data for each tab

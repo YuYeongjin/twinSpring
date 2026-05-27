@@ -9,14 +9,15 @@ Sensor Agent — 온습도 데이터 조회 전문 에이전트
 LangGraph create_react_agent 패턴으로 구현.
 필요한 도구를 자율적으로 선택·호출하고 최종 답변을 생성합니다.
 """
+from __future__ import annotations
 
 import json
 from langchain_core.messages import SystemMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 
-from llm_config import llm_chat
+from config.llm_config import llm_chat
 from tools.sensor_tools import SENSOR_TOOLS
-from lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction
 
 
 # ── 시스템 프롬프트 ────────────────────────────────────────────────────────────

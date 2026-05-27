@@ -18,7 +18,7 @@ LangGraph Multi-Agent 그래프 정의 (AtoA 구조)
 
 from langgraph.graph import StateGraph, START, END
 
-from state import AgentState
+from config.state import AgentState
 from nodes.supervisor import supervisor_node, route_by_next_agent
 
 # ── 전문 에이전트 ──────────────────────────────────────────────────────────────

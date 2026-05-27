@@ -249,6 +249,23 @@ public class BimController {
                 .map(updated -> ResponseEntity.ok(updated));
     }
 
+    /**
+     * 구조 분석 API — C# structural 엔드포인트 프록시
+     * 프로젝트 부재를 타입/재료별로 집계한 통계 반환
+     * GET /api/bim/structural/{projectId}
+     */
+    @GetMapping("/structural/{projectId}")
+    public Mono<ResponseEntity<Map<String, Object>>> getStructuralAnalysis(@PathVariable String projectId) {
+        return bimService.getStructuralAnalysis(projectId)
+                .map(result -> ResponseEntity.ok(result))
+                .onErrorResume(e -> {
+                    System.err.println("구조 분석 오류: " + e.getMessage());
+                    return reactor.core.publisher.Mono.just(
+                            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                    .<Map<String, Object>>build());
+                });
+    }
+
     @PostMapping("/project")
     public Mono<ResponseEntity<BimProjectDTO>> newProject(@RequestBody Map<String,String> project){
         System.out.println("PROJECT CREATE : " + project);

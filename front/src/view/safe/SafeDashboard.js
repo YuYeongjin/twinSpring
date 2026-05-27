@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Box, Plane, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useT } from '../../i18n/LanguageContext';
-import { pushAlert } from '../../utils/alertStore';
+import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 
 const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
 
@@ -55,6 +55,166 @@ function buildSceneObjects(detections, imgW = 640, imgH = 480) {
       size: [sw, sh, Math.max(sw * 0.55, 0.25)],
     };
   });
+}
+
+// ── 안전구역 상수 / 유틸 ──────────────────────────────────────────────
+const ZONE_HEIGHT = 3.0; // 안전구역 기본 높이 (m)
+
+/** AABB XZ 평면 충돌 검사 */
+function personInZone(position, size, zone) {
+  const [px, , pz] = position;
+  const [sw, , sz] = size;
+  return (
+    Math.abs(px - zone.cx) < (sw / 2 + zone.w / 2) &&
+    Math.abs(pz - zone.cz) < (sz / 2 + zone.d / 2)
+  );
+}
+
+// ── 안전구역 Box (빨간 반투명 + 와이어프레임) ────────────────────────
+function SafeZoneBox({ zone, violated, onDelete, editMode }) {
+  const meshRef = useRef();
+  const edgesGeo = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(zone.w, ZONE_HEIGHT, zone.d)),
+    [zone.w, zone.d]
+  );
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return;
+    meshRef.current.material.opacity = violated
+      ? 0.48 + 0.18 * Math.sin(clock.elapsedTime * 6)
+      : 0.22;
+    meshRef.current.material.color.setStyle(violated ? '#ff1111' : '#ef4444');
+  });
+
+  return (
+    <group>
+      {/* 반투명 채움 */}
+      <mesh ref={meshRef} position={[zone.cx, ZONE_HEIGHT / 2, zone.cz]}>
+        <boxGeometry args={[zone.w, ZONE_HEIGHT, zone.d]} />
+        <meshStandardMaterial
+          color="#ef4444" transparent opacity={0.22}
+          side={THREE.DoubleSide} depthWrite={false}
+        />
+      </mesh>
+      {/* 와이어프레임 엣지 */}
+      <lineSegments position={[zone.cx, ZONE_HEIGHT / 2, zone.cz]} geometry={edgesGeo}>
+        <lineBasicMaterial color={violated ? '#ff4444' : '#ff8888'} />
+      </lineSegments>
+      {/* 라벨 + 삭제 버튼 */}
+      <Html position={[zone.cx, ZONE_HEIGHT + 0.5, zone.cz]} center>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '4px',
+          fontSize: '10px', whiteSpace: 'nowrap', pointerEvents: 'auto',
+          background: violated ? 'rgba(180,0,0,0.92)' : 'rgba(60,0,0,0.85)',
+          border: `1px solid ${violated ? '#ff4444' : '#ef4444'}`,
+          padding: '2px 7px', borderRadius: '4px', color: '#fff',
+          userSelect: 'none',
+        }}>
+          <span>{violated ? '🚨 침범!' : '🚧 안전구역'}</span>
+          {editMode && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(zone.id); }}
+              style={{
+                background: 'none', border: 'none', color: '#fca5a5',
+                cursor: 'pointer', fontSize: '12px', padding: '0 2px', marginLeft: '2px',
+              }}>✕</button>
+          )}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+// ── 구역 드래그 그리기 레이어 ─────────────────────────────────────────
+function ZoneDrawingLayer({ enabled, onZoneCreated }) {
+  const { camera, gl, raycaster } = useThree();
+  const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const startPt     = useRef(null);
+  const previewRef  = useRef(null);
+  const [preview, setPreview] = useState(null);
+
+  const getGroundPt = useCallback((e) => {
+    const rect = gl.domElement.getBoundingClientRect();
+    const nx = ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+    const ny = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+    raycaster.setFromCamera({ x: nx, y: ny }, camera);
+    const target = new THREE.Vector3();
+    return raycaster.ray.intersectPlane(groundPlane, target) ? target : null;
+  }, [camera, gl, raycaster, groundPlane]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setPreview(null); previewRef.current = null; startPt.current = null; return;
+    }
+    const canvas = gl.domElement;
+
+    const onDown = (e) => {
+      const pt = getGroundPt(e); if (!pt) return;
+      startPt.current = { x: pt.x, z: pt.z };
+      previewRef.current = null; setPreview(null);
+    };
+    const onMove = (e) => {
+      if (!startPt.current) return;
+      const pt = getGroundPt(e); if (!pt) return;
+      const { x: sx, z: sz } = startPt.current;
+      const next = {
+        cx: (sx + pt.x) / 2, cz: (sz + pt.z) / 2,
+        w: Math.max(Math.abs(pt.x - sx), 0.3),
+        d: Math.max(Math.abs(pt.z - sz), 0.3),
+      };
+      previewRef.current = next; setPreview({ ...next });
+    };
+    const onUp = () => {
+      const p = previewRef.current;
+      if (p && p.w > 0.5 && p.d > 0.5)
+        onZoneCreated({ id: `zone-${Date.now()}`, ...p });
+      startPt.current = null; previewRef.current = null; setPreview(null);
+    };
+    const onRightClick = (e) => { e.preventDefault(); startPt.current = null; setPreview(null); };
+
+    canvas.addEventListener('mousedown',   onDown);
+    canvas.addEventListener('mousemove',   onMove);
+    canvas.addEventListener('mouseup',     onUp);
+    canvas.addEventListener('contextmenu', onRightClick);
+    return () => {
+      canvas.removeEventListener('mousedown',   onDown);
+      canvas.removeEventListener('mousemove',   onMove);
+      canvas.removeEventListener('mouseup',     onUp);
+      canvas.removeEventListener('contextmenu', onRightClick);
+    };
+  }, [enabled, getGroundPt, onZoneCreated]);
+
+  if (!preview) return null;
+  return (
+    <group>
+      <mesh position={[preview.cx, ZONE_HEIGHT / 2, preview.cz]}>
+        <boxGeometry args={[preview.w, ZONE_HEIGHT, preview.d]} />
+        <meshStandardMaterial color="#ef4444" transparent opacity={0.35}
+          side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <lineSegments position={[preview.cx, ZONE_HEIGHT / 2, preview.cz]}>
+        <edgesGeometry args={[new THREE.BoxGeometry(preview.w, ZONE_HEIGHT, preview.d)]} />
+        <lineBasicMaterial color="#ff6666" />
+      </lineSegments>
+    </group>
+  );
+}
+
+// ── 구역 침범 검사 (매 프레임, 변경 시에만 콜백) ─────────────────────
+function ZoneChecker({ persons, zones, onViolationChange }) {
+  const lastSet = useRef(new Set());
+  useFrame(() => {
+    const current = new Set();
+    for (const p of persons)
+      for (const z of zones)
+        if (personInZone(p.position, p.size ?? [0.4, 1.6, 0.4], z))
+          current.add(z.id);
+
+    const same = current.size === lastSet.current.size &&
+      [...current].every(id => lastSet.current.has(id));
+    if (!same) { lastSet.current = new Set(current); onViolationChange(current); }
+  });
+  return null;
 }
 
 // ── 웹캠 패널 (컨테이너 없음 — 부모가 관리) ─────────────────────────
@@ -285,8 +445,26 @@ function Worker({ position, dangerous }) {
   );
 }
 
-function DefaultScene({ dangerous }) {
-  const WORKERS = [[-2, 0.4, 0], [0, 0.4, 2], [3, 0.4, -1], [-1, 0.4, -3], [2, 0.4, 3]];
+const DEFAULT_WORKERS = [
+  { pos: [-2, 0.4, 0],  size: [0.4, 0.8, 0.4] },
+  { pos: [0,  0.4, 2],  size: [0.4, 0.8, 0.4] },
+  { pos: [3,  0.4, -1], size: [0.4, 0.8, 0.4] },
+  { pos: [-1, 0.4, -3], size: [0.4, 0.8, 0.4] },
+  { pos: [2,  0.4, 3],  size: [0.4, 0.8, 0.4] },
+];
+
+function DefaultScene({ dangerous, zones = [], violatedZones = new Set(),
+  editMode, onZoneCreate, onZoneDelete, controlsRef, onViolationChange }) {
+
+  // OrbitControls: editMode 시 비활성화
+  useEffect(() => {
+    if (controlsRef?.current) controlsRef.current.enabled = !editMode;
+  }, [editMode, controlsRef]);
+
+  const persons = useMemo(() =>
+    DEFAULT_WORKERS.map((w, i) => ({ id: `def-${i}`, position: w.pos, size: w.size })),
+  []);
+
   return (
     <>
       <ambientLight intensity={0.6} />
@@ -297,8 +475,26 @@ function DefaultScene({ dangerous }) {
       <Building position={[-4, 1.5, -4]} size={[3, 3, 3]} />
       <Building position={[0, 2.5, -5]} size={[4, 5, 3]} />
       <Building position={[5, 1, -3]} size={[2.5, 2, 2.5]} />
-      {WORKERS.map((pos, i) => <Worker key={i} position={pos} dangerous={dangerous} />)}
-      <OrbitControls enablePan enableZoom enableRotate />
+
+      {DEFAULT_WORKERS.map((w, i) => {
+        const inZone = zones.some(z => personInZone(w.pos, w.size, z));
+        return <Worker key={i} position={w.pos} dangerous={dangerous || inZone} />;
+      })}
+
+      {/* 안전구역 박스 */}
+      {zones.map(zone => (
+        <SafeZoneBox key={zone.id} zone={zone}
+          violated={violatedZones.has(zone.id)}
+          onDelete={onZoneDelete} editMode={editMode} />
+      ))}
+
+      {/* 구역 그리기 레이어 (editMode) */}
+      <ZoneDrawingLayer enabled={editMode} onZoneCreated={onZoneCreate} />
+
+      {/* 침범 체크 */}
+      <ZoneChecker persons={persons} zones={zones} onViolationChange={onViolationChange} />
+
+      <OrbitControls ref={controlsRef} enablePan enableZoom enableRotate />
     </>
   );
 }
@@ -365,7 +561,19 @@ function NoObjectsDetectedText() {
   );
 }
 
-function MadeScene({ objects }) {
+function MadeScene({ objects, zones = [], violatedZones = new Set(),
+  editMode, onZoneCreate, onZoneDelete, controlsRef, onViolationChange }) {
+
+  useEffect(() => {
+    if (controlsRef?.current) controlsRef.current.enabled = !editMode;
+  }, [editMode, controlsRef]);
+
+  const persons = useMemo(() =>
+    objects.filter(o => o.isPerson).map(o => ({
+      id: o.id, position: o.position, size: o.size,
+    })),
+  [objects]);
+
   return (
     <>
       <ambientLight intensity={0.55} />
@@ -375,26 +583,47 @@ function MadeScene({ objects }) {
         <meshStandardMaterial color="#080f1a" roughness={1} />
       </Plane>
       <primitive object={new THREE.GridHelper(24, 24, 0x1a3a5a, 0x0d1f2d)} />
+
       {objects.length === 0
-        ? <Html center position={[0, 2, 0]}>
-          <NoObjectsDetectedText />
-        </Html>
-        : objects.map(obj => obj.isPerson
-          ? <PersonFigure key={obj.id} {...obj} />
-          : <ObjectBox key={obj.id} {...obj} />)
+        ? <Html center position={[0, 2, 0]}><NoObjectsDetectedText /></Html>
+        : objects.map(obj => {
+          const inZone = obj.isPerson && zones.some(z => personInZone(obj.position, obj.size, z));
+          return obj.isPerson
+            ? <PersonFigure key={obj.id} {...obj} isDanger={obj.isDanger || inZone} />
+            : <ObjectBox key={obj.id} {...obj} />;
+        })
       }
-      <OrbitControls enablePan enableZoom enableRotate />
+
+      {/* 안전구역 박스 */}
+      {zones.map(zone => (
+        <SafeZoneBox key={zone.id} zone={zone}
+          violated={violatedZones.has(zone.id)}
+          onDelete={onZoneDelete} editMode={editMode} />
+      ))}
+
+      {/* 구역 그리기 레이어 (editMode) */}
+      <ZoneDrawingLayer enabled={editMode} onZoneCreated={onZoneCreate} />
+
+      {/* 침범 체크 */}
+      <ZoneChecker persons={persons} zones={zones} onViolationChange={onViolationChange} />
+
+      <OrbitControls ref={controlsRef} enablePan enableZoom enableRotate />
     </>
   );
 }
 
 // ── 3D 씬 패널 (우측 상단) ────────────────────────────────────────
 
-function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasDetections, camStreaming, isFallback, madeFallback }) {
+function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasDetections,
+  camStreaming, isFallback, madeFallback,
+  zones, violatedZones, onZoneCreate, onZoneDelete, onViolationChange }) {
+
   const t = useT('safe');
   const hasMade = madeObjects !== null;
+  const controlsRef = useRef();
+  const [zoneEditMode, setZoneEditMode] = useState(false);
 
-  const makeDisabled = !camStreaming || !hasDetections || making || makeCooldown;
+  const makeDisabled = !camStreaming || !hasDetections || making || makeCooldown || zoneEditMode;
   const makeLabel = making ? t('creating')
     : makeCooldown ? t('waitCooldown')
       : !hasDetections ? t('makeDetectionRequired')
@@ -404,6 +633,10 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
     : !hasDetections ? t('detectTip')
       : t('makeTip');
 
+  const toggleZoneEdit = useCallback(() => setZoneEditMode(v => !v), []);
+
+  const zoneViolating = violatedZones.size > 0;
+
   return (
     <>
       {/* 헤더 */}
@@ -411,6 +644,7 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
         style={{ borderColor: '#253347' }}>
         <span className="text-sm font-semibold text-gray-300">{t('safeViewer')}</span>
 
+        {/* 감지 위험 배지 */}
         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${dangerous ? 'animate-pulse' : ''}`}
           style={{
             background: dangerous ? '#3a0f0f' : '#0d2a1a',
@@ -419,6 +653,14 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
           }}>
           {dangerous ? `⚠ ${t('danger')}` : `✓ ${t('safe')}`}
         </span>
+
+        {/* 구역 침범 경고 배지 */}
+        {zoneViolating && (
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full animate-pulse"
+            style={{ background: '#3a0000', border: '1px solid #ff4444', color: '#ff8888' }}>
+            🚨 구역 침범!
+          </span>
+        )}
 
         <button onClick={onMake} disabled={makeDisabled} title={makeTip}
           className="text-xs px-3 py-1 rounded-lg transition"
@@ -442,13 +684,56 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
             {t('defaultBadge')}
           </span>
         )}
+
+        {/* ── 안전구역 컨트롤 ── */}
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={toggleZoneEdit}
+            className="text-xs px-3 py-1 rounded-lg transition font-semibold"
+            style={{
+              background: zoneEditMode ? '#2a0000' : '#1a0a0a',
+              border: `1px solid ${zoneEditMode ? '#ff4444' : '#7f1d1d'}`,
+              color: zoneEditMode ? '#ff8888' : '#f87171',
+            }}>
+            {zoneEditMode ? '✓ 완료' : '🚧 구역 추가'}
+          </button>
+          {zones.length > 0 && !zoneEditMode && (
+            <span className="text-xs px-2 py-0.5 rounded-full"
+              style={{ background: '#1a0808', border: '1px solid #7f1d1d', color: '#f87171' }}>
+              {zones.length}개 구역
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Canvas */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative', cursor: zoneEditMode ? 'crosshair' : 'default' }}>
+        {/* 구역 그리기 모드 안내 */}
+        {zoneEditMode && (
+          <div style={{
+            position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 10, pointerEvents: 'none',
+            background: 'rgba(60,0,0,0.92)', border: '1px solid #ef4444',
+            borderRadius: '8px', padding: '5px 12px',
+            fontSize: '11px', color: '#fca5a5', whiteSpace: 'nowrap',
+          }}>
+            🖱 드래그로 안전구역을 그리세요 &nbsp;·&nbsp; 우클릭으로 취소 &nbsp;·&nbsp; 구역 ✕로 삭제
+          </div>
+        )}
+
         <Canvas shadows camera={{ position: [8, 8, 10], fov: 50 }}
           style={{ width: '100%', height: '100%', background: '#060e18' }}>
-          {hasMade ? <MadeScene objects={madeObjects} /> : <DefaultScene dangerous={dangerous} />}
+          {hasMade
+            ? <MadeScene objects={madeObjects}
+                zones={zones} violatedZones={violatedZones}
+                editMode={zoneEditMode}
+                onZoneCreate={onZoneCreate} onZoneDelete={onZoneDelete}
+                controlsRef={controlsRef} onViolationChange={onViolationChange} />
+            : <DefaultScene dangerous={dangerous}
+                zones={zones} violatedZones={violatedZones}
+                editMode={zoneEditMode}
+                onZoneCreate={onZoneCreate} onZoneDelete={onZoneDelete}
+                controlsRef={controlsRef} onViolationChange={onViolationChange} />
+          }
         </Canvas>
       </div>
     </>
@@ -532,6 +817,15 @@ function CrackMonitorPanel({ selectedProject }) {
           severity:    conf >= 70 ? 'HIGH' : 'MEDIUM',
           title:       `균열 감지 — ${selectedProject?.projectName ?? ''}`,
           detail:      `신뢰도 ${conf}% (${data.method ?? 'unknown'}) · ${data.detail ?? ''}`.trim().replace(/·\s*$/, ''),
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: selectedProject?.projectName ?? '',
+        });
+        // Agent WBS 수정 제안 (1분 쿨타임)
+        pushWbsSuggest({
+          eventType:   'CRACK',
+          source:      'BIM_CRACK',
+          title:       `균열 감지 — 신뢰도 ${conf}%`,
+          detail:      `${selectedProject?.projectName ?? '현장'}에서 구조 균열이 감지되었습니다. 보수 공사 일정 추가가 필요합니다.`,
           projectId:   selectedProject?.projectId   ?? '',
           projectName: selectedProject?.projectName ?? '',
         });
@@ -919,6 +1213,47 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   const [devNoticeDismissed, setDevNoticeDismissed]         = useState(false);
   const [offlineNoticeDismissed, setOfflineNoticeDismissed] = useState(false);
 
+  // ── 안전구역 상태 ──────────────────────────────────────────────────
+  const [zones, setZones]               = useState([]);          // {id, cx, cz, w, d}[]
+  const [violatedZones, setViolatedZones] = useState(new Set()); // 침범 중인 zone id Set
+  const prevViolated = useRef(new Set());
+
+  const handleZoneCreate = useCallback((zone) => {
+    setZones(prev => [...prev, zone]);
+  }, []);
+
+  const handleZoneDelete = useCallback((id) => {
+    setZones(prev => prev.filter(z => z.id !== id));
+    setViolatedZones(prev => { const next = new Set(prev); next.delete(id); return next; });
+  }, []);
+
+  const handleViolationChange = useCallback((newSet) => {
+    setViolatedZones(new Set(newSet));
+    // 새로 침범한 구역에 대해서만 알림 발생 (중복 방지)
+    for (const id of newSet) {
+      if (!prevViolated.current.has(id)) {
+        pushAlert({
+          source:      'SAFE_ZONE',
+          severity:    'HIGH',
+          title:       `안전구역 침범 — ${selectedProject?.projectName ?? '현장'}`,
+          detail:      `지정 안전구역에 작업자가 진입했습니다.`,
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: selectedProject?.projectName ?? '',
+        });
+        // Agent WBS 수정 제안 (1분 쿨타임)
+        pushWbsSuggest({
+          eventType:   'SAFE_ZONE',
+          source:      'SAFE_ZONE_VIOLATION',
+          title:       `안전구역 침범 감지`,
+          detail:      `${selectedProject?.projectName ?? '현장'}에서 작업자가 지정 안전구역에 진입했습니다. 안전 점검 일정 추가를 권장합니다.`,
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: selectedProject?.projectName ?? '',
+        });
+      }
+    }
+    prevViolated.current = new Set(newSet);
+  }, [selectedProject]);
+
   // 패널 높이 (드래그 리사이즈) — 데스크톱 전용
   const [panelH, setPanelH] = useState(480);
   const isDragging = useRef(false);
@@ -1052,7 +1387,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
         <CrackMonitorPanel selectedProject={selectedProject} />
       ) : (
         <>
-          {/* 위험 배너 */}
+          {/* 위험 배너 (감지 서버) */}
           {dangerous && (
             <div className="flex items-start gap-3 px-4 py-3 rounded-xl border animate-pulse"
               style={{ backgroundColor: '#3a0f0f', borderColor: '#ef4444' }}>
@@ -1067,6 +1402,20 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                 </p>
               </div>
               <button onClick={() => setSafeEvent(null)} className="text-gray-500 hover:text-gray-300 text-lg">✕</button>
+            </div>
+          )}
+
+          {/* 안전구역 침범 배너 */}
+          {violatedZones.size > 0 && (
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl border animate-pulse"
+              style={{ backgroundColor: '#3a0000', borderColor: '#ff4444' }}>
+              <span className="text-xl">🚨</span>
+              <div className="flex-1">
+                <p className="text-red-300 font-bold text-sm">안전구역 침범 감지!</p>
+                <p className="text-red-400 text-xs mt-0.5">
+                  {violatedZones.size}개 구역에 작업자가 진입했습니다. 즉시 확인하세요.
+                </p>
+              </div>
             </div>
           )}
 
@@ -1137,6 +1486,11 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                 camStreaming={camStreaming}
                 isFallback={!!lastResult?.fallback}
                 madeFallback={madeFallback}
+                zones={zones}
+                violatedZones={violatedZones}
+                onZoneCreate={handleZoneCreate}
+                onZoneDelete={handleZoneDelete}
+                onViolationChange={handleViolationChange}
               />
             </div>
           </div>

@@ -70,4 +70,8 @@ public interface BimService {
     List<BimProjectDTO> getBimProjectsFromDb();
     List<Map<String, Object>> getBimElementStats(String projectId);
     String exportBimElementsCsv(String projectId);
+
+    // ── 구조 분석 (C# 서버 프록시) ────────────────────────────────
+    /** 프로젝트 부재 타입/재료별 구조 분석 통계 (C# structural 엔드포인트 호출) */
+    Mono<Map<String, Object>> getStructuralAnalysis(String projectId);
 }

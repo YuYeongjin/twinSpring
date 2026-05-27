@@ -23,6 +23,7 @@ import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
 import yyj.project.twinspring.dto.MultimodalRequestDTO;
+import yyj.project.twinspring.dto.WbsRagRequestDTO;
 import yyj.project.twinspring.service.ChatService;
 
 import java.util.ArrayList;
@@ -318,6 +319,55 @@ public class ChatServiceImpl implements ChatService {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    @Override
+    public Map<String, Object> wbsProjectChat(Map<String, Object> request) {
+        try {
+            String raw = agentClient.post()
+                    .uri("/wbs-project-chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(60))
+                    .block();
+
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[WbsProjectChat] 에이전트 호출 실패: {}", e.getMessage());
+            return Map.of(
+                "response", "죄송합니다, 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+                "collected", Map.of(),
+                "ready", false
+            );
+        }
+    }
+
+    @Override
+    public Map<String, Object> wbsRagSuggest(WbsRagRequestDTO request) {
+        try {
+            ObjectNode body = objectMapper.createObjectNode();
+            body.put("eventType", request.getEventType() != null ? request.getEventType() : "");
+            body.put("title",     request.getTitle()     != null ? request.getTitle()     : "");
+            body.put("detail",    request.getDetail()    != null ? request.getDetail()    : "");
+
+            String raw = agentClient.post()
+                    .uri("/wbs-rag-suggest")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(15))
+                    .block();
+
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[WbsRagSuggest] RAG 검색 실패: {}", e.getMessage());
+            return Map.of("query", "", "evidence", List.of(), "hasData", false);
         }
     }
 }
