@@ -9,7 +9,7 @@
         CREATE TABLE IF NOT EXISTS project_link (
             link_id            VARCHAR(64) PRIMARY KEY,
             wbs_project_id     VARCHAR(64) NOT NULL REFERENCES wbs_project(project_id) ON DELETE CASCADE,
-            linked_type        VARCHAR(32) NOT NULL,   -- BIM | SAFE | SIMULATION
+            linked_type        VARCHAR(32) NOT NULL,   /* BIM | SAFE | SIMULATION */
             linked_project_id  VARCHAR(64) NOT NULL,
             note               TEXT,
             created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
