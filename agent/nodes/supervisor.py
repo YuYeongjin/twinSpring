@@ -12,12 +12,12 @@ Supervisor Node — Multi-Agent 라우터
   simulation_agent — 굴착기 시뮬레이션 제어
   safe_agent       — 안전 모니터링 (헬멧·침입 감지, YOLO 서버)
   test_agent       — 충돌 테스트 탭 (키보드 조작법, 충돌 로그)
+  rag_agent        — 건설 공정서·시방서 (KCS·KDS) 검색
   tab_guide        — 대시보드 탭 일반 안내
   chat             — 일반 대화
 """
 
 import re
-from langchain_core.messages import HumanMessage, SystemMessage
 
 from state import AgentState
 
@@ -145,6 +145,58 @@ _TEST_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# RAG 에이전트: 건설 공정서·시방서 (KCS·KDS) 검색
+_RAG_KEYWORDS = re.compile(
+    # 규격 코드 직접 언급
+    r"kcs|kds"
+    # 한국어 — 문서 종류
+    r"|시방서|공정서|설계기준|표준시방"
+    r"|건설\s*(기준|규정|표준|규격)"
+    r"|규격\s*(코드|기준|번호)"
+    # 한국어 — 공종·재료명
+    r"|콘크리트\s*(설계|기준|시공|강도|배합|타설|양생|압축|균열)"
+    r"|철근\s*(배근|간격|피복|이음|겹침|정착)"
+    r"|강구조\s*(설계|기준|피로|내진|성능)"
+    r"|말뚝\s*(기초|설계|시공|지지력|항타)"
+    r"|얕은\s*(기초|기초\s*설계)"
+    r"|깊은\s*(기초|기초\s*설계)"
+    r"|앵커\s*(설계|시공|긴장|정착)"
+    r"|비탈면\s*(보호|보강|배수|낙석|설계|시공)"
+    r"|옹벽\s*(설계|시공|콘크리트|보강토|돌망태)"
+    r"|지반\s*(조사|설계|계측|개량|연약)"
+    r"|연약\s*지반\s*(설계|개량|압밀)"
+    r"|토공\s*(시공|자동화|다짐|쌓기|깎기)"
+    r"|측량\s*(설계|시공|건설|수심|해상)"
+    r"|교량\s*(설계|시공|난간|방수|경간|기초)"
+    r"|프리스트레싱|PSC|포스트텐션|프리텐션"
+    r"|프리캐스트\s*(콘크리트|PC|설계|시공)"
+    r"|슬래브\s*(설계|기초판|시공)"
+    r"|벽체\s*(설계|시공|콘크리트)"
+    r"|피로\s*(설계|파단|내구성)"
+    r"|내진\s*(설계|기준|성능)"
+    r"|교면\s*(방수|포장)"
+    r"|케이블\s*(공사|교량)"
+    r"|충격\s*분산\s*장치"
+    r"|머신\s*(가이던스|컨트롤)"
+    r"|OSC\s*건설|모듈러|공장제작"
+    r"|계측\s*(공사|장비|관리)"
+    # 한국어 — 조건/기준 질문 패턴
+    r"|시공\s*(기준|규정|요건|방법|절차)"
+    r"|품질\s*(관리|기준|시험|검사)"
+    r"|허용\s*(응력|변형|처짐|균열)"
+    r"|설계\s*(하중|강도|기준값|계수)"
+    # 영어
+    r"|specification|standard\s*spec"
+    r"|construction\s*(standard|code|spec)"
+    r"|design\s*(criteria|standard|code)"
+    r"|concrete\s*(mix|strength|placement|curing)"
+    r"|reinforcement\s*(spacing|cover|lap|splice)"
+    r"|pile\s*(foundation|design|capacity)"
+    r"|slope\s*(protection|stabilization)"
+    r"|retaining\s*wall|earthwork|survey\s*(standard|design)",
+    re.IGNORECASE,
+)
+
 # Tab 안내: 일반 탭 사용법 (한/영/일)
 _TAB_GUIDE_KEYWORDS = re.compile(
     # 한국어
@@ -202,11 +254,15 @@ def supervisor_node(state: AgentState) -> dict:
     if _SENSOR_KEYWORDS.search(user_text):
         return {"intent": "sensor_agent", "next_agent": "sensor_agent"}
 
-    # 6. 일반 탭 안내
+    # 6. RAG 에이전트 (건설 공정서·시방서 KCS·KDS)
+    if _RAG_KEYWORDS.search(user_text):
+        return {"intent": "rag_agent", "next_agent": "rag_agent"}
+
+    # 7. 일반 탭 안내
     if _TAB_GUIDE_KEYWORDS.search(user_text):
         return {"intent": "tab_guide", "next_agent": "tab_guide"}
 
-    # ── 7. 기본값: 일반 대화 (LLM 호출 없이 즉시 반환) ──────────────────────
+    # ── 8. 기본값: 일반 대화 (LLM 호출 없이 즉시 반환) ──────────────────────
     # 키워드에 해당하지 않는 모든 메시지는 chat으로 라우팅
     # 기존 LLM 폴백 제거 → supervisor가 항상 ~1ms 이내 완료됨
     return {"intent": "chat", "next_agent": "chat"}
