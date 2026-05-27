@@ -17,6 +17,7 @@ AgentName = Literal[
     "simulation_agent",
     "safe_agent",
     "test_agent",
+    "rag_agent",
     "tab_guide",
     "chat",
 ]

@@ -40,6 +40,7 @@ class HistoryMessage(BaseModel):
 class ChatContext(BaseModel):
     projectId: str | None = None               # BIM project ID
     simulationProjectId: str | None = None     # Simulation project ID
+    wbsProjectId: str | None = None            # WBS project ID (CPM/균열 감지 자동 태스크 추가용)
 
 class ChatRequest(BaseModel):
     message: str
@@ -88,6 +89,7 @@ def chat(req: ChatRequest):
         "context":               None,
         "bim_project_id":        req.context.projectId,
         "simulation_project_id": req.context.simulationProjectId,
+        "wbs_project_id":        req.context.wbsProjectId,
         "bim_data":              None,
         "sensor_data":           None,
         "pending_action":        pending_action,
@@ -95,7 +97,7 @@ def chat(req: ChatRequest):
 
     try:
         result = graph.invoke(initial_state)
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         return ChatResponse(
             response="An error occurred while processing your request. Please try again.",

@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useT } from '../../i18n/LanguageContext';
+import { pushAlert } from '../../utils/alertStore';
 
 const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
 
@@ -454,6 +455,352 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
   );
 }
 
+// ── 균열 감지 패널 ────────────────────────────────────────────────
+
+// CRACK_INTERVALS labels are translated at render time via t('intervalManual') / '{n}분'
+const CRACK_INTERVAL_VALUES = [0, 60, 300, 600];
+
+function CrackMonitorPanel({ selectedProject }) {
+  const t = useT('safe');
+  const [bimProjects, setBimProjects] = useState([]);
+  const [bimProjectId, setBimProjectId] = useState('');
+  const [interval, setInterval_] = useState(0);          // seconds; 0 = manual
+  const [crackLog, setCrackLog] = useState([]);
+  const [capturing, setCapturing] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [camError, setCamError] = useState('');
+  const videoRef = useRef(null);
+  const [streaming, setStreaming] = useState(false);
+  const autoTimerRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // BIM 프로젝트 목록 로드
+  useEffect(() => {
+    fetch('/api/bim/db-projects')
+      .then(r => r.ok ? r.json() : [])
+      .then(list => setBimProjects(list || []))
+      .catch(() => setBimProjects([]));
+  }, []);
+
+  // 웹캠 시작
+  const startCamera = useCallback(async () => {
+    setCamError('');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCamError(t('cameraHttpsRequired'));
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
+    } catch (e) {
+      setCamError(t('cameraError') + e.message);
+    }
+  }, [t]);
+
+  const stopCamera = useCallback(() => {
+    if (videoRef.current?.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      videoRef.current.srcObject = null;
+    }
+    setStreaming(false);
+  }, []);
+
+  useEffect(() => { startCamera(); return () => stopCamera(); }, [startCamera, stopCamera]);
+
+  // 이미지 → crack API 호출
+  const sendCrackDetect = useCallback(async (blob, source) => {
+    setCapturing(true);
+    const form = new FormData();
+    form.append('file', blob, 'capture.jpg');
+    try {
+      const res = await fetch(`${DETECT_SERVER_URL}/api/detection/crack`, { method: 'POST', body: form });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCrackLog(prev => [{
+        time: new Date(),
+        hasCrack: !!data.hasCrack,
+        confidence: data.confidence ?? 0,
+        method: data.method ?? 'unknown',
+        detail: data.detail ?? '',
+        source,
+      }, ...prev.slice(0, 99)]);
+      // ── WBS 로그에 알림 전송 ──────────────────────────────────
+      if (data.hasCrack) {
+        const conf = Math.round((data.confidence ?? 0) * 100);
+        pushAlert({
+          source:      'CRACK',
+          severity:    conf >= 70 ? 'HIGH' : 'MEDIUM',
+          title:       `균열 감지 — ${selectedProject?.projectName ?? ''}`,
+          detail:      `신뢰도 ${conf}% (${data.method ?? 'unknown'}) · ${data.detail ?? ''}`.trim().replace(/·\s*$/, ''),
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: selectedProject?.projectName ?? '',
+        });
+      }
+    } catch (e) {
+      setCrackLog(prev => [{
+        time: new Date(),
+        hasCrack: false,
+        confidence: 0,
+        method: 'error',
+        detail: e.message,
+        source,
+        error: true,
+      }, ...prev.slice(0, 99)]);
+    } finally {
+      setCapturing(false);
+    }
+  }, []);
+
+  // 웹캠 캡처 → 전송
+  const captureFromCamera = useCallback(async () => {
+    if (!videoRef.current || videoRef.current.videoWidth === 0) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+    await sendCrackDetect(blob, 'camera');
+  }, [sendCrackDetect]);
+
+  // 파일 업로드 → 전송
+  const handleFileUpload = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await sendCrackDetect(file, 'file');
+    e.target.value = '';
+  }, [sendCrackDetect]);
+
+  // 자동 인터벌 관리
+  useEffect(() => {
+    if (autoTimerRef.current) clearInterval(autoTimerRef.current);
+    if (autoRunning && interval > 0) {
+      autoTimerRef.current = setInterval(captureFromCamera, interval * 1000);
+    }
+    return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
+  }, [autoRunning, interval, captureFromCamera]);
+
+  const hasCrackNow = crackLog.length > 0 && crackLog[0].hasCrack;
+  const crackCount  = crackLog.filter(e => e.hasCrack).length;
+  const totalCount  = crackLog.length;
+
+  function fmtTime(d) { return d.toLocaleTimeString([], { hour12: false }); }
+
+  // 간격 버튼 레이블 (번역)
+  function intervalLabel(v) {
+    if (v === 0) return t('intervalManual');
+    return `${v / 60}${t('intervalManual') === '수동' ? '분' : v / 60 === 1 ? 'min' : 'min'}`;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* 균열 경고 배너 */}
+      {hasCrackNow && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border animate-pulse"
+             style={{ backgroundColor: '#3a1a00', borderColor: '#f97316' }}>
+          <span className="text-2xl">🚧</span>
+          <div className="flex-1">
+            <p className="text-orange-300 font-bold text-base">{t('crackWarningTitle')}</p>
+            <p className="text-orange-400 text-sm mt-0.5">
+              {t('crackFound', { n: Math.round((crackLog[0].confidence ?? 0) * 100) })} — {crackLog[0].detail}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 컨트롤 패널 */}
+      <div className="rounded-xl border p-4 flex flex-col gap-4"
+           style={{ backgroundColor: "#0a1525", borderColor: "#253347" }}>
+
+        {/* BIM 프로젝트 선택 */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <label className="text-xs font-semibold shrink-0" style={{ color: "#8896a4" }}>
+            {t('bimProjectLabel')}
+          </label>
+          <select value={bimProjectId} onChange={e => setBimProjectId(e.target.value)}
+                  className="flex-1 bg-[#0d1b2a] border border-[#253347] rounded-lg px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-blue-500">
+            <option value="">{t('bimProjectNone')}</option>
+            {bimProjects.map(p => (
+              <option key={p.projectId || p.id} value={p.projectId || p.id}>
+                {p.projectName || p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 촬영 간격 */}
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-semibold shrink-0" style={{ color: "#8896a4" }}>
+            {t('intervalLabel')}
+          </label>
+          <div className="flex gap-1.5 flex-wrap">
+            {CRACK_INTERVAL_VALUES.map(v => (
+              <button key={v} onClick={() => setInterval_(v)}
+                      className="px-3 py-1 rounded-full text-xs transition"
+                      style={{
+                        backgroundColor: interval === v ? "#1e3a5f" : "#0d1b2a",
+                        border: `1px solid ${interval === v ? "#60a5fa" : "#253347"}`,
+                        color: interval === v ? "#93c5fd" : "#8896a4",
+                      }}>
+                {intervalLabel(v)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 실행 버튼 */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <button onClick={captureFromCamera} disabled={capturing || !streaming}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold transition"
+                  style={{
+                    backgroundColor: streaming && !capturing ? "#0d2040" : "#0d1b2a",
+                    border: `1px solid ${streaming && !capturing ? "#3b82f6" : "#253347"}`,
+                    color: streaming && !capturing ? "#93c5fd" : "#4b5563",
+                    cursor: streaming && !capturing ? "pointer" : "not-allowed",
+                  }}>
+            {capturing ? t('capturing') : t('captureNow')}
+          </button>
+
+          <button onClick={() => fileInputRef.current?.click()} disabled={capturing}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{
+                    backgroundColor: "#0d1b2a",
+                    border: "1px solid #253347",
+                    color: capturing ? "#4b5563" : "#8896a4",
+                    cursor: capturing ? "not-allowed" : "pointer",
+                  }}>
+            {t('uploadImage')}
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+                 onChange={handleFileUpload} />
+
+          {interval > 0 && (
+            <button onClick={() => setAutoRunning(r => !r)}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold"
+                    style={{
+                      backgroundColor: autoRunning ? "#3a1a00" : "#0d2a1a",
+                      border: `1px solid ${autoRunning ? "#f97316" : "#22c55e"}`,
+                      color: autoRunning ? "#fb923c" : "#4ade80",
+                    }}>
+              {autoRunning ? t('autoStop') : t('autoStart')}
+            </button>
+          )}
+
+          {autoRunning && (
+            <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
+                  style={{ background: "#3a1a00", border: "1px solid #f97316", color: "#fb923c" }}>
+              {t('autoLabel')}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 웹캠 + 로그 행 */}
+      <div className="flex flex-col md:flex-row gap-4">
+
+        {/* 웹캠 미리보기 */}
+        <div className="w-full md:w-[45%] rounded-xl border overflow-hidden flex flex-col"
+             style={{ borderColor: "#253347", backgroundColor: "#0a1525", height: "320px" }}>
+          <div className="px-4 py-2 border-b flex items-center gap-2 shrink-0"
+               style={{ borderColor: "#253347" }}>
+            <span className="text-sm font-semibold text-gray-300">{t('cameraPreview')}</span>
+            <span className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: streaming ? "#22c55e" : "#6b7280" }} />
+            <span className="text-xs" style={{ color: streaming ? "#22c55e" : "#6b7280" }}>
+              {streaming ? t('on') : t('off')}
+            </span>
+            <div className="ml-auto flex gap-2">
+              {!streaming
+                ? <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg"
+                          style={{ background: "#0d2a1a", border: "1px solid #22c55e", color: "#22c55e" }}>
+                    {t('startCamera')}
+                  </button>
+                : <button onClick={stopCamera} className="text-xs px-3 py-1 rounded-lg"
+                          style={{ background: "#2a1010", border: "1px solid #ef4444", color: "#ef4444" }}>
+                    {t('stopCamera')}
+                  </button>
+              }
+            </div>
+          </div>
+          <div className="flex-1 relative bg-black flex items-center justify-center">
+            <video ref={videoRef} autoPlay playsInline muted
+                   style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {!streaming && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <span className="text-4xl opacity-30">📷</span>
+                {camError
+                  ? <p className="text-xs text-red-400 px-4 text-center">{camError}</p>
+                  : <p className="text-sm text-gray-600">{t('cameraOff2')}</p>
+                }
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 균열 감지 로그 */}
+        <div className="flex-1 rounded-xl border overflow-hidden flex flex-col"
+             style={{ borderColor: "#253347", backgroundColor: "#0a1525" }}>
+          <div className="px-4 py-2 border-b flex items-center gap-3 shrink-0"
+               style={{ borderColor: "#253347" }}>
+            <span className="text-sm font-semibold text-gray-300">{t('crackLogTitle')}</span>
+            <span className="text-xs px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: "#1e3a5f", color: "#93c5fd" }}>
+              {t('crackLogChecks', { n: totalCount })}
+            </span>
+            {crackCount > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: "#3a1a00", color: "#fb923c" }}>
+                {t('crackLogCracks', { n: crackCount })}
+              </span>
+            )}
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+            {crackLog.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-8">
+                <span className="text-4xl opacity-20 mb-3">🔍</span>
+                <p className="text-sm text-gray-600">{t('crackLogEmpty')}</p>
+              </div>
+            ) : (
+              crackLog.map((entry, i) => (
+                <div key={i}
+                     className="flex items-start gap-2 px-4 py-2 border-b text-xs"
+                     style={{
+                       borderColor: "#1a2a3a",
+                       backgroundColor: entry.hasCrack ? (i === 0 ? "#1a0d00" : "transparent") : "transparent",
+                     }}>
+                  <span style={{ color: "#4b5563", whiteSpace: "nowrap", minWidth: "58px", paddingTop: "1px" }}>
+                    {fmtTime(entry.time)}
+                  </span>
+                  <span className="text-base shrink-0" style={{ lineHeight: 1 }}>
+                    {entry.error ? "❌" : entry.hasCrack ? "🚧" : "✅"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div style={{ color: entry.hasCrack ? "#fb923c" : entry.error ? "#f87171" : "#4ade80", fontWeight: entry.hasCrack ? "bold" : "normal" }}>
+                      {entry.error
+                        ? t('crackError', { msg: entry.detail })
+                        : entry.hasCrack
+                          ? t('crackFound', { n: Math.round((entry.confidence ?? 0) * 100) })
+                          : t('crackNone',  { n: Math.round((1 - (entry.confidence ?? 0)) * 100) })}
+                    </div>
+                    {!entry.error && entry.detail && (
+                      <div className="truncate mt-0.5" style={{ color: "#4b5563" }}>{entry.detail}</div>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-xs px-1 rounded"
+                        style={{ backgroundColor: "#0d1b2a", border: "1px solid #253347", color: "#4b5563" }}>
+                    {entry.source === "camera" ? "📷" : "📁"}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 로그 패널 (하단) ──────────────────────────────────────────────
 
 function LogPanel({ detectionHistory }) {
@@ -551,8 +898,14 @@ function LogPanel({ detectionHistory }) {
 
 // ── 메인 대시보드 ─────────────────────────────────────────────────
 
-export default function SafeDashboard() {
-  const t = useT('safe');
+/**
+ * props:
+ *   selectedProject : SafeProjectDTO | null  — 현재 선택된 안전 현장
+ *   onBack          : () => void             — 목록으로 돌아가기
+ */
+export default function SafeDashboard({ selectedProject = null, onBack }) {
+  const t  = useT('safe');
+  const tP = useT('safeProjectList'); // 헤더 배지 등 프로젝트 리스트 번역
   const [safeEvent, setSafeEvent] = useState(null);
   const [lastResult, setLastResult] = useState(null);
   const [detectError, setDetectError] = useState('');
@@ -655,111 +1008,153 @@ export default function SafeDashboard() {
   }, [making, makeCooldown, lastResult]);
 
   const dangerous = safeEvent?.dangerous ?? false;
+  const isCrackMode = (selectedProject?.mode || 'SAFETY') === 'CRACK';
 
   return (
     <div className="flex flex-col gap-4">
 
-      {/* 위험 배너 */}
-      {dangerous && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border animate-pulse"
-          style={{ backgroundColor: '#3a0f0f', borderColor: '#ef4444' }}>
-          <span className="text-xl">🚨</span>
-          <div className="flex-1">
-            <p className="text-red-300 font-semibold">{t('dangerDetected')}</p>
-            <p className="text-red-400 text-sm mt-0.5">
-              {safeEvent?.noHelmet && safeEvent?.restricted ? t('msgBoth')
-                : safeEvent?.noHelmet   ? t('msgNoHelmet')
-                : safeEvent?.restricted ? t('msgRestricted')
-                : ''}
-            </p>
+      {/* 현장 정보 헤더 바 */}
+      {selectedProject && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+             style={{ backgroundColor: "#0a1521", border: "1px solid #1e3a5f" }}>
+          {onBack && (
+            <button onClick={onBack}
+                    className="text-sm px-3 py-1 rounded-lg transition"
+                    style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: "#8896a4" }}>
+              {tP('backToList')}
+            </button>
+          )}
+          <span className="text-base font-bold text-white">
+            {isCrackMode ? "🔍" : "🛡"} {selectedProject.projectName}
+          </span>
+          {selectedProject.location && (
+            <span className="text-xs text-gray-400">📍 {selectedProject.location}</span>
+          )}
+          <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                style={{
+                  backgroundColor: isCrackMode ? "#1e3a5f" : "#14532d",
+                  border: `1px solid ${isCrackMode ? "#60a5fa" : "#4ade80"}`,
+                  color: isCrackMode ? "#93c5fd" : "#4ade80",
+                }}>
+            {isCrackMode ? tP('modeCrackBadge') : tP('modeSafetyBadge')}
+          </span>
+          {!isCrackMode && selectedProject.cameraUrl && (
+            <span className="text-xs px-2 py-0.5 rounded-full"
+                  style={{ backgroundColor: "#0c2233", border: "1px solid #0ea5e9", color: "#7dd3fc" }}>
+              {tP('cameraConnected')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── 균열 감지 모드 ── */}
+      {isCrackMode ? (
+        <CrackMonitorPanel selectedProject={selectedProject} />
+      ) : (
+        <>
+          {/* 위험 배너 */}
+          {dangerous && (
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl border animate-pulse"
+              style={{ backgroundColor: '#3a0f0f', borderColor: '#ef4444' }}>
+              <span className="text-xl">🚨</span>
+              <div className="flex-1">
+                <p className="text-red-300 font-semibold">{t('dangerDetected')}</p>
+                <p className="text-red-400 text-sm mt-0.5">
+                  {safeEvent?.noHelmet && safeEvent?.restricted ? t('msgBoth')
+                    : safeEvent?.noHelmet   ? t('msgNoHelmet')
+                    : safeEvent?.restricted ? t('msgRestricted')
+                    : ''}
+                </p>
+              </div>
+              <button onClick={() => setSafeEvent(null)} className="text-gray-500 hover:text-gray-300 text-lg">✕</button>
+            </div>
+          )}
+
+          {/* 오류 토스트 */}
+          {detectError && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs"
+              style={{ background: '#2a1010', border: '1px solid #7f1d1d', color: '#f87171' }}>
+              <span>⚠ {detectError}</span>
+              <button onClick={() => setDetectError('')} className="ml-auto text-gray-600 hover:text-gray-400">✕</button>
+            </div>
+          )}
+
+          {/* 개발 중 안내 배너 */}
+          {!devNoticeDismissed && (
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl border"
+              style={{ backgroundColor: '#1e1000', borderColor: '#d97706' }}>
+              <span className="text-xl mt-0.5 shrink-0">⚠</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-amber-300 font-semibold text-sm">{t('developingPage')}</p>
+                <p className="text-amber-700 text-xs mt-0.5">{t('testing')}</p>
+              </div>
+              <button onClick={() => setDevNoticeDismissed(true)}
+                className="text-gray-500 hover:text-gray-300 text-lg shrink-0 leading-none">✕</button>
+            </div>
+          )}
+
+          {/* Detect 서버 오프라인 경고 배너 */}
+          {!offlineNoticeDismissed && (detectAvailable === false || lastResult?.fallback) && (
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl border"
+              style={{ backgroundColor: '#1e1000', borderColor: '#d97706' }}>
+              <span className="text-xl mt-0.5 shrink-0">⚠</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-amber-300 font-semibold text-sm">{t('detectServerOffline')}</p>
+                <p className="text-amber-700 text-xs mt-0.5">{t('detectServerOfflineDesc')}</p>
+              </div>
+              <button onClick={() => setOfflineNoticeDismissed(true)}
+                className="text-gray-500 hover:text-gray-300 text-lg shrink-0 leading-none">✕</button>
+            </div>
+          )}
+
+          {/* ── 상단 행: 웹캠(좌) + 3D 씬(우) ── */}
+          <div className="flex flex-col md:flex-row gap-4 justify-around">
+
+            {/* 웹캠 — 데스크톱 최대 45% */}
+            <div className="w-full md:w-[45%] md:shrink-0 rounded-xl border overflow-hidden flex flex-col"
+              style={{ borderColor: '#253347', background: '#0a1525', height: panelH }}>
+              <WebcamPanel
+                detectAvailable={detectAvailable}
+                checkDetectServer={checkDetectServer}
+                onDetectResult={setLastResult}
+                onError={setDetectError}
+                makeCaptureRef={makeCaptureRef}
+                stopDetectRef={stopDetectRef}
+                onStreamingChange={setCamStreaming}
+              />
+            </div>
+
+            {/* 3D 씬 — 나머지 너비 */}
+            <div className="w-full md:w-[45%] rounded-xl border overflow-hidden flex flex-col"
+              style={{ borderColor: '#253347', background: '#0a1525', height: panelH }}>
+              <ScenePanel
+                dangerous={dangerous}
+                madeObjects={madeObjects}
+                onMake={handleMake}
+                making={making}
+                makeCooldown={makeCooldown}
+                hasDetections={!!lastResult}
+                camStreaming={camStreaming}
+                isFallback={!!lastResult?.fallback}
+                madeFallback={madeFallback}
+              />
+            </div>
           </div>
-          <button onClick={() => setSafeEvent(null)} className="text-gray-500 hover:text-gray-300 text-lg">✕</button>
-        </div>
-      )}
 
-      {/* 오류 토스트 */}
-      {detectError && (
-        <div className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs"
-          style={{ background: '#2a1010', border: '1px solid #7f1d1d', color: '#f87171' }}>
-          <span>⚠ {detectError}</span>
-          <button onClick={() => setDetectError('')} className="ml-auto text-gray-600 hover:text-gray-400">✕</button>
-        </div>
-      )}
-
-      {/* 개발 중 안내 배너 */}
-      {!devNoticeDismissed && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border"
-          style={{ backgroundColor: '#1e1000', borderColor: '#d97706' }}>
-          <span className="text-xl mt-0.5 shrink-0">⚠</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-amber-300 font-semibold text-sm">{t('developingPage')}</p>
-            <p className="text-amber-700 text-xs mt-0.5">{t('testing')}</p>
+          {/* 드래그 핸들 — 데스크톱(md+)만 표시 */}
+          <div
+            className="hidden md:flex items-center justify-center select-none -mt-2"
+            onMouseDown={(e) => { e.preventDefault(); onDragStart(e.clientY); }}
+            style={{ height: '16px', cursor: 'ns-resize' }}
+            title={`높이 조절 (${CAM_MIN_H}–${CAM_MAX_H}px)`}
+          >
+            <div style={{ width: '56px', height: '4px', borderRadius: '2px', background: '#374151' }} />
           </div>
-          <button onClick={() => setDevNoticeDismissed(true)}
-            className="text-gray-500 hover:text-gray-300 text-lg shrink-0 leading-none">✕</button>
-        </div>
+
+          {/* ── 하단: 탐지 로그 ── */}
+          <LogPanel detectionHistory={detectionHistory} />
+        </>
       )}
-
-      {/* Detect 서버 오프라인 경고 배너 */}
-      {!offlineNoticeDismissed && (detectAvailable === false || lastResult?.fallback) && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-xl border"
-          style={{ backgroundColor: '#1e1000', borderColor: '#d97706' }}>
-          <span className="text-xl mt-0.5 shrink-0">⚠</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-amber-300 font-semibold text-sm">{t('detectServerOffline')}</p>
-            <p className="text-amber-700 text-xs mt-0.5">{t('detectServerOfflineDesc')}</p>
-          </div>
-          <button onClick={() => setOfflineNoticeDismissed(true)}
-            className="text-gray-500 hover:text-gray-300 text-lg shrink-0 leading-none">✕</button>
-        </div>
-      )}
-
-      {/* ── 상단 행: 웹캠(좌) + 3D 씬(우) ── */}
-      <div className="flex flex-col md:flex-row gap-4 justify-around">
-
-        {/* 웹캠 — 데스크톱 최대 45% */}
-        <div className="w-full md:w-[45%] md:shrink-0 rounded-xl border overflow-hidden flex flex-col"
-          style={{ borderColor: '#253347', background: '#0a1525', height: panelH }}>
-          <WebcamPanel
-            detectAvailable={detectAvailable}
-            checkDetectServer={checkDetectServer}
-            onDetectResult={setLastResult}
-            onError={setDetectError}
-            makeCaptureRef={makeCaptureRef}
-            stopDetectRef={stopDetectRef}
-            onStreamingChange={setCamStreaming}
-          />
-        </div>
-
-        {/* 3D 씬 — 나머지 너비 */}
-        <div className="w-full md:w-[45%] rounded-xl border overflow-hidden flex flex-col"
-          style={{ borderColor: '#253347', background: '#0a1525', height: panelH }}>
-          <ScenePanel
-            dangerous={dangerous}
-            madeObjects={madeObjects}
-            onMake={handleMake}
-            making={making}
-            makeCooldown={makeCooldown}
-            hasDetections={!!lastResult}
-            camStreaming={camStreaming}
-            isFallback={!!lastResult?.fallback}
-            madeFallback={madeFallback}
-          />
-        </div>
-      </div>
-
-      {/* 드래그 핸들 — 데스크톱(md+)만 표시 */}
-      <div
-        className="hidden md:flex items-center justify-center select-none -mt-2"
-        onMouseDown={(e) => { e.preventDefault(); onDragStart(e.clientY); }}
-        style={{ height: '16px', cursor: 'ns-resize' }}
-        title={`높이 조절 (${CAM_MIN_H}–${CAM_MAX_H}px)`}
-      >
-        <div style={{ width: '56px', height: '4px', borderRadius: '2px', background: '#374151' }} />
-      </div>
-
-      {/* ── 하단: 탐지 로그 ── */}
-      <LogPanel detectionHistory={detectionHistory} />
 
     </div>
   );
