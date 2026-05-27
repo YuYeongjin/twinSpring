@@ -12,15 +12,15 @@ import { unreadCount, ALERT_EVENT } from "../../utils/alertStore";
 const TB = {
   text2: "#8896a4",
   sidebar: "#0a1521",
-  card:    "#1c2a3a",
-  border:  "#253347",
+  card: "#1c2a3a",
+  border: "#253347",
 };
 
 const STATUS_META = {
-  PLANNED:     { tKey: "statusPlanned",    color: "#94a3b8", bg: "#1e293b", icon: "📋" },
+  PLANNED: { tKey: "statusPlanned", color: "#94a3b8", bg: "#1e293b", icon: "📋" },
   IN_PROGRESS: { tKey: "statusInProgress", color: "#60a5fa", bg: "#1e3a5f", icon: "🔨" },
-  COMPLETED:   { tKey: "statusCompleted",  color: "#4ade80", bg: "#14532d", icon: "✅" },
-  ON_HOLD:     { tKey: "statusOnHold",     color: "#f59e0b", bg: "#451a03", icon: "⏸"  },
+  COMPLETED: { tKey: "statusCompleted", color: "#4ade80", bg: "#14532d", icon: "✅" },
+  ON_HOLD: { tKey: "statusOnHold", color: "#f59e0b", bg: "#451a03", icon: "⏸" },
 };
 
 // ══════════════════════════════════════════════════════════════════
@@ -51,10 +51,10 @@ function ProjectModal({ initial = null, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center"
-         style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
-         onClick={e => e.target === e.currentTarget && onClose()}>
+      style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="w-full max-w-lg rounded-2xl p-6 shadow-2xl"
-           style={{ backgroundColor: "#0f1e2d", border: "1px solid #253347" }}>
+        style={{ backgroundColor: "#0f1e2d", border: "1px solid #253347" }}>
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-base font-bold text-white">
             {isEdit ? t('modalEdit') : t('modalCreate')}
@@ -65,7 +65,7 @@ function ProjectModal({ initial = null, onClose, onSave }) {
           <div className="col-span-2">
             <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('fieldProjectName')}</label>
             <input value={form.projectName} onChange={set("projectName")}
-                   placeholder={t('fieldProjectNamePh')} autoFocus className={I} />
+              placeholder={t('fieldProjectNamePh')} autoFocus className={I} />
           </div>
           <div>
             <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('fieldLocation')}</label>
@@ -102,21 +102,21 @@ function ProjectModal({ initial = null, onClose, onSave }) {
           <div className="col-span-2">
             <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('fieldDescription')}</label>
             <textarea value={form.description} onChange={set("description")}
-                      rows={2} placeholder={t('fieldDescriptionPh')}
-                      className={`${I} resize-none`} />
+              rows={2} placeholder={t('fieldDescriptionPh')}
+              className={`${I} resize-none`} />
           </div>
         </div>
         <div className="flex gap-3 mt-5">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg text-sm"
-                  style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}`, color: TB.text2 }}>
+            style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}`, color: TB.text2 }}>
             {t('cancel')}
           </button>
           <button onClick={handleSave} disabled={!form.projectName?.trim() || saving}
-                  className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white"
-                  style={{
-                    background: form.projectName?.trim() ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : TB.card,
-                    border: `1px solid ${form.projectName?.trim() ? "#3b82f6" : TB.border}`,
-                  }}>
+            className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white"
+            style={{
+              background: form.projectName?.trim() ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : TB.card,
+              border: `1px solid ${form.projectName?.trim() ? "#3b82f6" : TB.border}`,
+            }}>
             {saving ? t('saving') : (isEdit ? t('saveEdit') : t('createSite'))}
           </button>
         </div>
@@ -143,7 +143,7 @@ function SidebarItem({ project, selected, onSelect, onEdit, onDelete }) {
       <span className="text-sm shrink-0 mt-0.5">{meta.icon}</span>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold leading-snug truncate"
-           style={{ color: selected ? "#60a5fa" : "#e2e8f0" }}>
+          style={{ color: selected ? "#60a5fa" : "#e2e8f0" }}>
           {project.projectName}
         </p>
         {project.location && (
@@ -153,7 +153,7 @@ function SidebarItem({ project, selected, onSelect, onEdit, onDelete }) {
         )}
         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
           <span className="text-xs px-1.5 py-0.5 rounded-full"
-                style={{ backgroundColor: meta.bg, color: meta.color }}>
+            style={{ backgroundColor: meta.bg, color: meta.color }}>
             {t(meta.tKey)}
           </span>
           <span className="text-xs" style={{ color: "#475569" }}>
@@ -163,13 +163,13 @@ function SidebarItem({ project, selected, onSelect, onEdit, onDelete }) {
       </div>
       {/* 호버 액션 */}
       <div className="shrink-0 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-           onClick={e => e.stopPropagation()}>
+        onClick={e => e.stopPropagation()}>
         <button onClick={() => onEdit(project)}
-                className="p-0.5 rounded text-xs hover:text-blue-400 transition"
-                style={{ color: "#475569" }}>✏️</button>
+          className="p-0.5 rounded text-xs hover:text-blue-400 transition"
+          style={{ color: "#475569" }}>✏️</button>
         <button onClick={() => onDelete(project.projectId)}
-                className="p-0.5 rounded text-xs hover:text-red-400 transition"
-                style={{ color: "#475569" }}>🗑</button>
+          className="p-0.5 rounded text-xs hover:text-red-400 transition"
+          style={{ color: "#475569" }}>🗑</button>
       </div>
     </div>
   );
@@ -184,7 +184,7 @@ function SensorChip({ sensorLatest, sensorWsStatus }) {
     // 아직 데이터 없음 — 연결 중 표시
     return (
       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg shrink-0"
-           style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
+        style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
         <span className="text-xs animate-pulse" style={{ color: "#475569" }}>
           {sensorWsStatus === 'connected' ? '🌡 —°C  💧 —%' : '📡 …'}
         </span>
@@ -193,23 +193,23 @@ function SensorChip({ sensorLatest, sensorWsStatus }) {
   }
 
   const temp = sensorLatest.temperature != null ? Number(sensorLatest.temperature).toFixed(1) : null;
-  const hum  = sensorLatest.humidity    != null ? Math.round(Number(sensorLatest.humidity))    : null;
+  const hum = sensorLatest.humidity != null ? Math.round(Number(sensorLatest.humidity)) : null;
 
   // 색상: 온도 범위에 따라
   const tempColor = temp == null ? "#64748b"
-    : temp > 35   ? "#f87171"   // 위험
-    : temp > 28   ? "#fb923c"   // 주의
-    : temp > 10   ? "#4ade80"   // 정상
-    :               "#60a5fa";  // 저온
+    : temp > 35 ? "#f87171"   // 위험
+      : temp > 28 ? "#fb923c"   // 주의
+        : temp > 10 ? "#4ade80"   // 정상
+          : "#60a5fa";  // 저온
 
   const humColor = hum == null ? "#64748b"
     : hum > 80 ? "#60a5fa"
-    : hum < 30 ? "#fb923c"
-    :             "#94a3b8";
+      : hum < 30 ? "#fb923c"
+        : "#94a3b8";
 
   return (
     <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg shrink-0"
-         style={{ backgroundColor: "#0d1b2a", border: "1px solid #1a2a3a" }}>
+      style={{ backgroundColor: "#0d1b2a", border: "1px solid #1a2a3a" }}>
       {/* 온도 */}
       <span className="flex items-center gap-1 text-xs font-mono">
         <span>🌡</span>
@@ -242,38 +242,38 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
   const t = useT('wbs');
 
   // ── 데이터 상태 ──────────────────────────────────────────────
-  const [projects,   setProjects]   = useState([]);
-  const [allTasks,   setAllTasks]   = useState([]);
-  const [tasks,      setTasks]      = useState([]);   // 선택 프로젝트 태스크
-  const [loading,    setLoading]    = useState(true);
+  const [projects, setProjects] = useState([]);
+  const [allTasks, setAllTasks] = useState([]);
+  const [tasks, setTasks] = useState([]);   // 선택 프로젝트 태스크
+  const [loading, setLoading] = useState(true);
   const [taskLoading, setTaskLoading] = useState(false);
 
   // ── UI 상태 ──────────────────────────────────────────────────
-  const [sidebarOpen,     setSidebarOpen]     = useState(true);
-  const [selectedProject, setSelected]        = useState(null);
-  const [detailTab,       setDetailTab]       = useState("gantt"); // gantt|table|link|log
-  const [showModal,       setShowModal]       = useState(false);
-  const [editingProject,  setEditingProject]  = useState(null);
-  const [search,          setSearch]          = useState("");
-  const [statusFilter,    setStatusFilter]    = useState(""); // "" | "IN_PROGRESS" | ...
-  const [alertBadge,      setAlertBadge]      = useState(() => unreadCount());
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [selectedProject, setSelected] = useState(null);
+  const [detailTab, setDetailTab] = useState("gantt"); // gantt|table|link|log
+  const [showModal, setShowModal] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState(""); // "" | "IN_PROGRESS" | ...
+  const [alertBadge, setAlertBadge] = useState(() => unreadCount());
 
   const sidebarRef = useRef(null);
 
-  
+
   const handleNavigate = useCallback((link) => {
     if (onNavigateToTab) onNavigateToTab(link);
   }, [onNavigateToTab]);
 
   // ── 로드 ─────────────────────────────────────────────────────
   const loadProjects = useCallback(() =>
-    AxiosCustom.get("/api/wbs/projects").then(r => setProjects(r.data)).catch(() => {}),
-  []);
-  
+    AxiosCustom.get("/api/wbs/projects").then(r => setProjects(r.data)).catch(() => { }),
+    []);
+
   const loadAllTasks = useCallback(() =>
-    AxiosCustom.get("/api/wbs/tasks").then(r => setAllTasks(r.data)).catch(() => {}),
-  []);
-  
+    AxiosCustom.get("/api/wbs/tasks").then(r => setAllTasks(r.data)).catch(() => { }),
+    []);
+
   useEffect(() => {
     Promise.all([loadProjects(), loadAllTasks()]).finally(() => setLoading(false));
   }, [loadProjects, loadAllTasks]);
@@ -294,10 +294,10 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
 
     // 이벤트 유형별 삽입할 태스크 정의
     const TASK_MAP = {
-      COLLISION: { taskName: '⚠️ 부재 충돌 보정 작업',        duration: 2, source: 'AGENT_AUTO'  },
-      CRACK:     { taskName: '🔍 균열 보수 공사',              duration: 3, source: 'AGENT_CRACK' },
-      SAFE_ZONE: { taskName: '🚨 안전구역 재설정 및 안전점검', duration: 1, source: 'AGENT_AUTO'  },
-      SAFETY:    { taskName: '⛑️ 안전교육 실시',              duration: 1, source: 'AGENT_AUTO'  },
+      COLLISION: { taskName: '⚠️ 부재 충돌 보정 작업', duration: 2, source: 'AGENT_AUTO' },
+      CRACK: { taskName: '🔍 균열 보수 공사', duration: 3, source: 'AGENT_CRACK' },
+      SAFE_ZONE: { taskName: '🚨 안전구역 재설정 및 안전점검', duration: 1, source: 'AGENT_AUTO' },
+      SAFETY: { taskName: '⛑️ 안전교육 실시', duration: 1, source: 'AGENT_AUTO' },
     };
     const taskDef = TASK_MAP[autoEditRequest.eventType] ?? {
       taskName: '📋 자동 추가 작업', duration: 1, source: 'AGENT_AUTO',
@@ -335,27 +335,27 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
           .sort();
         const lastEnd = endDates[endDates.length - 1] || today;
         const newStart = addDays(lastEnd, 1);
-        const newEnd   = addDays(newStart, taskDef.duration - 1);
+        const newEnd = addDays(newStart, taskDef.duration - 1);
 
         // 4. 새 에이전트 태스크 추가
         // RAG 근거가 있으면 노트에 시방서 출처 포함
         const ragEvidence = autoEditRequest.ragEvidence || [];
         const ragNote = ragEvidence.length > 0
           ? '\n\n[시방서 근거]\n' + ragEvidence
-              .map((ev, i) => `${i + 1}. ${ev.source}${ev.series ? ` (${ev.series})` : ''}`)
-              .join('\n')
+            .map((ev, i) => `${i + 1}. ${ev.source}${ev.series ? ` (${ev.series})` : ''}`)
+            .join('\n')
           : '';
         const notes = `[Agent 자동 생성] ${autoEditRequest.title || ''} — ${autoEditRequest.detail || ''}${ragNote}`.trim();
 
         await AxiosCustom.post(`/api/wbs/project/${target.projectId}/agent-tasks`, {
           source: taskDef.source,
           tasks: [{
-            taskName:    taskDef.taskName,
-            startDate:   newStart,
-            endDate:     newEnd,
-            duration:    taskDef.duration,
-            progress:    0,
-            status:      'NOT_STARTED',
+            taskName: taskDef.taskName,
+            startDate: newStart,
+            endDate: newEnd,
+            duration: taskDef.duration,
+            progress: 0,
+            status: 'NOT_STARTED',
             notes,
           }],
         });
@@ -389,8 +389,8 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
         if (onAutoEditDone) onAutoEditDone();
       }
     })();
-  // autoEditRequest.approvedAt으로 동일 이벤트 중복 실행 방지
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // autoEditRequest.approvedAt으로 동일 이벤트 중복 실행 방지
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoEditRequest?.approvedAt]);
 
   // ── 프로젝트 선택 (토글) ─────────────────────────────────────
@@ -413,13 +413,13 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
     selectProject(proj);
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, [selectProject]);
-  
+
   // ── CRUD ─────────────────────────────────────────────────────
   const handleCreate = useCallback(async (formData) => {
     await AxiosCustom.post("/api/wbs/project", formData);
     await loadProjects(); await loadAllTasks();
   }, [loadProjects, loadAllTasks]);
-  
+
   const handleUpdate = useCallback(async (formData) => {
     await AxiosCustom.put(`/api/wbs/project/${editingProject.projectId}`, formData);
     await loadProjects(); setEditingProject(null);
@@ -475,18 +475,18 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
   const ganttTasks = selectedProject
     ? tasks
     : (statusFilter
-        ? allTasks.filter(t =>
-            projects.find(p => p.projectId === t.wbsProjectId)?.status === statusFilter
-          )
-        : allTasks);
+      ? allTasks.filter(t =>
+        projects.find(p => p.projectId === t.wbsProjectId)?.status === statusFilter
+      )
+      : allTasks);
 
   // 통계
   const stats = {
-    total:      projects.length,
+    total: projects.length,
     inProgress: projects.filter(p => p.status === "IN_PROGRESS").length,
-    completed:  projects.filter(p => p.status === "COMPLETED").length,
-    planned:    projects.filter(p => p.status === "PLANNED").length,
-    onHold:     projects.filter(p => p.status === "ON_HOLD").length,
+    completed: projects.filter(p => p.status === "COMPLETED").length,
+    planned: projects.filter(p => p.status === "PLANNED").length,
+    onHold: projects.filter(p => p.status === "ON_HOLD").length,
   };
 
   // 선택 프로젝트 meta
@@ -542,11 +542,11 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
           }),
         }}>
           {autoEditStatus === 'running' && <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>}
-          {autoEditStatus === 'done'    && '✅'}
-          {autoEditStatus === 'error'   && '❌'}
+          {autoEditStatus === 'done' && '✅'}
+          {autoEditStatus === 'error' && '❌'}
           {autoEditStatus === 'running' && ' WBS 자동 수정 중 — CPM 재계산 진행 중…'}
-          {autoEditStatus === 'done'    && ' WBS 자동 수정 완료 — 일정이 업데이트되었습니다.'}
-          {autoEditStatus === 'error'   && ' WBS 자동 수정 실패 — 수동으로 확인해 주세요.'}
+          {autoEditStatus === 'done' && ' WBS 자동 수정 완료 — 일정이 업데이트되었습니다.'}
+          {autoEditStatus === 'error' && ' WBS 자동 수정 실패 — 수동으로 확인해 주세요.'}
         </div>
       )}
 
@@ -567,14 +567,14 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
               border: `1px solid ${sidebarOpen ? "#3b82f6" : "#253347"}`,
             }}>
             <span className="text-sm leading-none select-none"
-                  style={{ color: sidebarOpen ? "#60a5fa" : "#8896a4" }}>
+              style={{ color: sidebarOpen ? "#60a5fa" : "#8896a4" }}>
               {sidebarOpen ? "✕" : "☰"}
             </span>
           </button>
 
           {/* 타이틀 */}
           <span className="text-sm font-bold text-white shrink-0">🏗 {t('title')}</span>
-  
+
           <div className="flex-1 min-w-0" />
 
           {/* 센서 칩 — 항상 표시 */}
@@ -595,11 +595,11 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
         {/* 2행: 통계 칩 — 가로 스크롤 (스크롤바 숨김) */}
         <div className="wbs-hscroll flex items-center gap-1.5 px-3 pb-2 overflow-x-auto">
           {[
-            { key: "",            label: t('allSites',       { n: stats.total }),      color: "#94a3b8", bg: "#1e293b" },
-            { key: "IN_PROGRESS", label: t('activeCount',    { n: stats.inProgress }), color: "#60a5fa", bg: "#1e3a5f" },
-            { key: "COMPLETED",   label: t('completedCount', { n: stats.completed }),  color: "#4ade80", bg: "#14532d" },
-            { key: "PLANNED",     label: t('plannedCount',   { n: stats.planned }),    color: "#94a3b8", bg: "#1e293b" },
-            { key: "ON_HOLD",     label: t('onHoldCount',    { n: stats.onHold }),     color: "#f59e0b", bg: "#451a03" },
+            { key: "", label: t('allSites', { n: stats.total }), color: "#94a3b8", bg: "#1e293b" },
+            { key: "IN_PROGRESS", label: t('activeCount', { n: stats.inProgress }), color: "#60a5fa", bg: "#1e3a5f" },
+            { key: "COMPLETED", label: t('completedCount', { n: stats.completed }), color: "#4ade80", bg: "#14532d" },
+            { key: "PLANNED", label: t('plannedCount', { n: stats.planned }), color: "#94a3b8", bg: "#1e293b" },
+            { key: "ON_HOLD", label: t('onHoldCount', { n: stats.onHold }), color: "#f59e0b", bg: "#451a03" },
           ].map(chip => (
             <button
               key={chip.key}
@@ -654,7 +654,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
             <div className="px-2 pt-3 pb-2">
               <div className="relative">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs pointer-events-none"
-                      style={{ color: "#475569" }}>🔍</span>
+                  style={{ color: "#475569" }}>🔍</span>
                 <input
                   type="text" value={search}
                   onChange={e => setSearch(e.target.value)}
@@ -726,13 +726,13 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
                   {selectedProject.projectName}
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-medium shrink-0"
-                      style={{ backgroundColor: selMeta?.bg, color: selMeta?.color }}>
+                  style={{ backgroundColor: selMeta?.bg, color: selMeta?.color }}>
                   {selMeta ? t(selMeta.tKey) : ''}
                 </span>
                 <div className="hidden md:flex items-center gap-3 text-xs shrink-0" style={{ color: "#64748b" }}>
-                  {selectedProject.location      && <span>📍 {selectedProject.location}</span>}
+                  {selectedProject.location && <span>📍 {selectedProject.location}</span>}
                   {selectedProject.contractAmount && <span>💰 ₩{Number(selectedProject.contractAmount).toLocaleString()}</span>}
-                  {selectedProject.managerName   && <span>👷 {selectedProject.managerName}</span>}
+                  {selectedProject.managerName && <span>👷 {selectedProject.managerName}</span>}
                 </div>
               </div>
 
@@ -740,9 +740,9 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
               <div className="wbs-hscroll flex items-center gap-1 px-3 pb-2 overflow-x-auto">
                 {[
                   { key: "gantt", label: t('tabGantt') },
-                  { key: "table", label: t('tabWbs')   },
-                  { key: "link",  label: t('tabLink')  },
-                  { key: "log",   label: t('tabLog'),  badge: alertBadge },
+                  { key: "table", label: t('tabWbs') },
+                  { key: "link", label: t('tabLink') },
+                  { key: "log", label: t('tabLog'), badge: alertBadge },
                 ].map(tab => (
                   <button
                     key={tab.key}
@@ -757,7 +757,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
                     {tab.badge > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center
                                        text-white font-bold rounded-full animate-pulse"
-                            style={{ backgroundColor: "#dc2626", fontSize: 9, minWidth: 16, height: 16, padding: "0 3px" }}>
+                        style={{ backgroundColor: "#dc2626", fontSize: 9, minWidth: 16, height: 16, padding: "0 3px" }}>
                         {tab.badge > 9 ? "9+" : tab.badge}
                       </span>
                     )}
@@ -769,12 +769,12 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
           ) : (
             /* 전체 보기 상태 표시 */
             <div className="shrink-0 flex items-center gap-2 px-4 py-1.5"
-                 style={{ backgroundColor: "#06111c", borderBottom: "1px solid #1a2a3a" }}>
+              style={{ backgroundColor: "#06111c", borderBottom: "1px solid #1a2a3a" }}>
               <span className="text-xs" style={{ color: "#334155" }}>
                 {t('allGanttLabel')}
                 {statusFilter && (
                   <span className="ml-2 px-1.5 rounded"
-                        style={{ backgroundColor: STATUS_META[statusFilter]?.bg, color: STATUS_META[statusFilter]?.color }}>
+                    style={{ backgroundColor: STATUS_META[statusFilter]?.bg, color: STATUS_META[statusFilter]?.color }}>
                     {t('filterApplied', { status: t(STATUS_META[statusFilter]?.tKey) })}
                   </span>
                 )}
@@ -798,22 +798,24 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
                 </div>
               </div>
 
-            /* 선택 프로젝트 뷰 */
+              /* 선택 프로젝트 뷰 */
             ) : selectedProject ? (
               <>
                 {/* 요약 카드 */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4">
                   {[
-                    { label: t('contractAmount'), icon: "💰",
+                    {
+                      label: t('contractAmount'), icon: "💰",
                       value: selectedProject.contractAmount
                         ? `₩ ${Number(selectedProject.contractAmount).toLocaleString()}`
-                        : "-" },
-                    { label: t('client'),      icon: "🏢", value: selectedProject.clientName  || "-" },
+                        : "-"
+                    },
+                    { label: t('client'), icon: "🏢", value: selectedProject.clientName || "-" },
                     { label: t('siteManager'), icon: "👷", value: selectedProject.managerName || "-" },
-                    { label: t('wbsTasks'),    icon: "📋", value: t('taskCount', { n: tasks.length }) },
+                    { label: t('wbsTasks'), icon: "📋", value: t('taskCount', { n: tasks.length }) },
                   ].map(s => (
                     <div key={s.label} className="rounded-xl p-2.5 sm:p-3"
-                         style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
+                      style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
                       <p className="text-xs mb-0.5" style={{ color: TB.text2 }}>{s.icon} {s.label}</p>
                       <p className="text-sm font-bold text-white truncate">{s.value}</p>
                     </div>
@@ -823,14 +825,14 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
                 {/* 설명 */}
                 {selectedProject.description && (
                   <div className="rounded-xl p-3 mb-3 text-xs sm:text-sm leading-relaxed"
-                       style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}`, color: TB.text2 }}>
+                    style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}`, color: TB.text2 }}>
                     {selectedProject.description}
                   </div>
                 )}
 
                 {/* 서브탭 콘텐츠 */}
                 <div className="rounded-xl p-3 sm:p-4"
-                     style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
+                  style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
 
                   {detailTab === "gantt" && (
                     <>
@@ -842,8 +844,8 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
                           <div className="text-4xl mb-3">📊</div>
                           <p className="text-sm">{t('noTasksTitle')}</p>
                           <button onClick={() => setDetailTab("table")}
-                                  className="mt-3 px-4 py-1.5 rounded-lg text-xs font-semibold text-blue-400"
-                                  style={{ border: "1px dashed #1d4ed8" }}>
+                            className="mt-3 px-4 py-1.5 rounded-lg text-xs font-semibold text-blue-400"
+                            style={{ border: "1px dashed #1d4ed8" }}>
                             {t('noTasksGanttHint')}
                           </button>
                         </div>
@@ -875,7 +877,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
                 </div>
               </>
 
-            /* 전체 간트 (기본 뷰) */
+              /* 전체 간트 (기본 뷰) */
             ) : ganttTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 sm:py-32 text-center px-4">
                 <div className="text-5xl sm:text-6xl mb-4">{projects.length === 0 ? "🏗" : "📊"}</div>
@@ -896,7 +898,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
               </div>
             ) : (
               <div className="rounded-xl p-3 sm:p-4"
-                   style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
+                style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
                 <GanttChart
                   tasks={ganttTasks}
                   groupByProject

@@ -3,7 +3,7 @@ import os
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
-from config import CHROMA_PERSIST_DIR, CHROMA_COLLECTION, EMBEDDING_MODEL
+from config.settings import CHROMA_PERSIST_DIR, CHROMA_COLLECTION, EMBEDDING_MODEL
 
 
 def get_embeddings():

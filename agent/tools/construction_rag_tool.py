@@ -12,7 +12,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from langchain_core.tools import tool
 
-from config import CHROMA_PERSIST_DIR, EMBEDDING_MODEL
+from config.settings import CHROMA_PERSIST_DIR, EMBEDDING_MODEL
 
 COLLECTION_NAME = "construction_specs"
 

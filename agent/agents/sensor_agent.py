@@ -15,9 +15,9 @@ import json
 from langchain_core.messages import SystemMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 
-from llm_config import llm_chat
+from config.llm_config import llm_chat
 from tools.sensor_tools import SENSOR_TOOLS
-from lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction
 
 
 # ── 시스템 프롬프트 ────────────────────────────────────────────────────────────

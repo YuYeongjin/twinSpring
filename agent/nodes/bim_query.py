@@ -8,14 +8,14 @@ Dedicated node for querying BIM project lists, element statistics, and element c
 
 import re
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from state import AgentState
-from llm_config import llm_chat
+from config.state import AgentState
+from config.llm_config import llm_chat
 from tools.db_tool import (
     query_bim_projects,
     query_bim_element_stats,
     query_bim_total_count,
 )
-from lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction
 
 # Base system prompt — language instruction is appended dynamically per request
 _SYSTEM_BASE = (

@@ -14,10 +14,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from graph import graph
-from llm_config import llm_chat, llm_precise
+from config.llm_config import llm_chat, llm_precise
 from nodes.chat import chat_node, _SYSTEM_BASE
 from nodes.supervisor import supervisor_node
-from lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction
 
 app = FastAPI(title="Digital Twin AI Agent", version="3.0.0")
 

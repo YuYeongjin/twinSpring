@@ -3,9 +3,9 @@ Node: General chat node (Ollama - gemma3:12b)
 """
 
 from langchain_core.messages import SystemMessage, AIMessage
-from state import AgentState
-from llm_config import llm_chat
-from lang_util import detect_lang, lang_instruction
+from config.state import AgentState
+from config.llm_config import llm_chat
+from config.lang_util import detect_lang, lang_instruction
 
 # Base system prompt — language instruction is appended dynamically per request
 _SYSTEM_BASE = (

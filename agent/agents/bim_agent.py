@@ -19,9 +19,9 @@ import json
 from langchain_core.messages import SystemMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 
-from llm_config import llm_chat
+from config.llm_config import llm_chat
 from tools.bim_tools import BIM_TOOLS
-from lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction
 
 # 기존 bim_builder 노드 (multi-step 대화 처리)
 from nodes.bim_builder import bim_builder_node

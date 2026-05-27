@@ -2,7 +2,7 @@
 Language detection and translation utilities for multi-language agent responses.
 
 Usage:
-    from lang_util import detect_lang, lang_instruction, translate_reply
+    from config.lang_util import detect_lang, lang_instruction, translate_reply
 
     lang = detect_lang(user_text)          # 'ko' | 'ja' | 'en'
     note = lang_instruction(lang)          # instruction string for system prompt
@@ -71,7 +71,7 @@ def translate_reply(text: str, lang: str) -> str:
 
     lang_name = {'ko': '한국어', 'ja': '日本語'}.get(lang, 'English')
     try:
-        from llm_config import llm_chat   # deferred import to avoid circular deps
+        from config.llm_config import llm_chat   # deferred import to avoid circular deps
         resp = llm_chat.invoke([
             SystemMessage(content=(
                 f"Translate the following text into {lang_name}. "

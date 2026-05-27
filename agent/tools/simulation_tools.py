@@ -10,7 +10,7 @@ from typing import Optional
 import json
 import httpx
 from langchain_core.tools import tool
-from config import SPRING_BASE_URL
+from config.settings import SPRING_BASE_URL
 
 EXCAVATOR_ID = "EX-001"
 
