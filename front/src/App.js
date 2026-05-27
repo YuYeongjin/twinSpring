@@ -140,7 +140,8 @@ function App() {
       const pid = project.projectId;
       const newId = () => 'ELEM-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
-      // 1) 절토/성토 슬래브 배치 + 레이어 분리 생성
+      // 1) 절토/성토 배치 — 드론 프로젝트(DRONE)는 선(Line)으로 대체되므로 terrainEls는 빈 배열
+      //    일반 프로젝트에서 IfcSlab 요소가 있을 경우에만 저장
       let terrainIds = [];
       if (terrainEls.length > 0) {
         // _color 필드는 내부 마킹용이므로 API 전송 전 제거

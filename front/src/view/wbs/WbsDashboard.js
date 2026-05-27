@@ -4,6 +4,7 @@ import GanttChart from "./component/GanttChart";
 import WbsTaskTable from "./component/WbsTaskTable";
 import ProjectLinkPanel from "./component/ProjectLinkPanel";
 import WbsAlertLogPanel from "./component/WbsAlertLogPanel";
+import WbsAgentChat from "../../component/WbsAgentChat";
 import { useT } from "../../i18n/LanguageContext";
 import { unreadCount, ALERT_EVENT } from "../../utils/alertStore";
 
@@ -918,6 +919,14 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
           onSave={editingProject ? handleUpdate : handleCreate}
         />
       )}
+
+      {/* ── AI 현장 등록 도우미 (플로팅 채팅) ── */}
+      <WbsAgentChat
+        onProjectCreated={() => {
+          loadProjects();
+          loadAllTasks();
+        }}
+      />
     </div>
   );
 }

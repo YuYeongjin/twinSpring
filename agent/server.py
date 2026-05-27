@@ -3,16 +3,18 @@ FastAPI server - exposes LangGraph Multi-Agent as REST API
 
 Run: uvicorn server:app --host 0.0.0.0 --port 7070 --reload
 """
+from __future__ import annotations   # Python 3.9 호환: X | Y union 타입 허용
 
 import json
 import traceback
+from typing import Dict, List, Optional
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from graph import graph
-from llm_config import llm_chat
+from llm_config import llm_chat, llm_precise
 from nodes.chat import chat_node, _SYSTEM_BASE
 from nodes.supervisor import supervisor_node
 from lang_util import detect_lang, lang_instruction
@@ -27,8 +29,7 @@ app.add_middleware(
 )
 
 # Per-session state store (pending_action and other Python Agent internal state)
-# key: session_id, value: {"pending_action": dict | None}
-_session_store: dict[str, dict] = {}
+_session_store: Dict[str, dict] = {}
 
 
 # ── Request/Response schemas ──────────────────────────────────────────────
@@ -38,26 +39,26 @@ class HistoryMessage(BaseModel):
     content: str
 
 class ChatContext(BaseModel):
-    projectId: str | None = None               # BIM project ID
-    simulationProjectId: str | None = None     # Simulation project ID
-    wbsProjectId: str | None = None            # WBS project ID (CPM/균열 감지 자동 태스크 추가용)
+    projectId: Optional[str] = None               # BIM project ID
+    simulationProjectId: Optional[str] = None     # Simulation project ID
+    wbsProjectId: Optional[str] = None            # WBS project ID
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str = "default"   # Session ID passed from Spring Boot
-    history: list[HistoryMessage] = []
+    session_id: str = "default"
+    history: List[HistoryMessage] = []
     context: ChatContext = ChatContext()
 
 class ChatResponse(BaseModel):
     response: str
-    intent: str | None = None
-    nextAgent: str | None = None      # Which specialized agent handled the request
-    bimData: dict | None = None       # Structured data returned from bim_agent
-    sensorData: dict | None = None    # Sensor/energy data returned from sensor_agent
+    intent: Optional[str] = None
+    nextAgent: Optional[str] = None
+    bimData: Optional[dict] = None
+    sensorData: Optional[dict] = None
 
 class MultimodalRequest(BaseModel):
     message: str = "Please analyze this image."
-    image_base64: str        # data URL or raw base64
+    image_base64: str
     session_id: str = "default"
 
 
@@ -294,6 +295,123 @@ def chat_multimodal(req: MultimodalRequest):
             response="An error occurred while analyzing the image. Please verify the model supports vision.",
             intent="vision",
         )
+
+
+# ── WBS Project Chat ─────────────────────────────────────────────────────────
+
+class WbsProjectChatRequest(BaseModel):
+    message: str
+    history: List[Dict] = []       # [{"role": "user"|"assistant", "content": "..."}]
+    collected: Dict = {}           # 지금까지 수집된 프로젝트 필드
+
+class WbsProjectChatResponse(BaseModel):
+    response: str
+    collected: Dict
+    ready: bool                    # True = projectName 확보, 프로젝트 생성 가능
+
+
+# ── Step-1: 필드 추출 프롬프트 (영어·짧고 명확하게 → 소형 모델도 JSON 출력 안정)
+_WBS_EXTRACT_SYSTEM = """You extract construction project fields from Korean user messages.
+Return ONLY a JSON object with the fields you found. Omit fields not mentioned.
+Available fields: projectName, location, startDate (YYYY-MM-DD), endDate (YYYY-MM-DD),
+contractAmount (digits only), clientName, managerName, description.
+Example: {"projectName": "한강대교 보강공사", "location": "한강"}
+If nothing relevant found, return: {}"""
+
+# ── Step-2: 대화 응답 프롬프트 (한국어·자연스럽게)
+_WBS_CONV_SYSTEM = """당신은 건설 현장 WBS 프로젝트 생성 도우미입니다. 친절하게 한국어로 답변하세요.
+
+현재까지 수집된 정보: {collected}
+아직 필요한 정보: {missing}
+
+규칙:
+- 방금 받은 정보를 간략히 확인해 주세요
+- 필요한 정보 중 하나만 자연스럽게 질문하세요
+- projectName(현장명)만 있으면 프로젝트를 생성할 수 있다고 알려주세요
+- 이미 수집된 정보는 다시 묻지 마세요"""
+
+_ALL_FIELDS = ["location", "startDate", "endDate", "contractAmount", "clientName", "managerName"]
+
+
+def _extract_fields(user_msg: str) -> Dict:
+    """LLM으로 사용자 메시지에서 프로젝트 필드 추출 (JSON)"""
+    msgs = [
+        SystemMessage(content=_WBS_EXTRACT_SYSTEM),
+        HumanMessage(content=user_msg),
+    ]
+    try:
+        result = llm_precise.invoke(msgs)
+        raw = result.content.strip()
+        # 코드블록 제거
+        if "```" in raw:
+            for part in raw.split("```"):
+                part = part.strip().lstrip("json").strip()
+                if part.startswith("{"):
+                    raw = part
+                    break
+        # JSON 파싱 시도
+        parsed = json.loads(raw)
+        return {k: str(v).strip() for k, v in parsed.items()
+                if v and str(v).strip() and str(v).strip().lower() != "null"}
+    except Exception:
+        return {}
+
+
+def _generate_conv_response(user_msg: str, collected: Dict, history: List[Dict]) -> str:
+    """수집 상태를 바탕으로 자연스러운 한국어 대화 응답 생성"""
+    missing = [f for f in ["projectName"] + _ALL_FIELDS if f not in collected]
+    collected_str = ", ".join(f"{k}={v}" for k, v in collected.items()) or "없음"
+    missing_str = ", ".join(missing[:3]) or "없음"  # 최대 3개만 표시
+
+    system_content = _WBS_CONV_SYSTEM.format(collected=collected_str, missing=missing_str)
+    msgs: List = [SystemMessage(content=system_content)]
+    for m in history[-6:]:
+        role = m.get("role", "user")
+        if role == "user":
+            msgs.append(HumanMessage(content=m.get("content", "")))
+        else:
+            msgs.append(AIMessage(content=m.get("content", "")))
+    msgs.append(HumanMessage(content=user_msg))
+
+    try:
+        result = llm_chat.invoke(msgs)
+        return result.content.strip() or "알겠습니다. 계속 진행하겠습니다."
+    except Exception:
+        return "알겠습니다. 계속 진행하겠습니다."
+
+
+@app.post("/wbs-project-chat", response_model=WbsProjectChatResponse)
+def wbs_project_chat(req: WbsProjectChatRequest):
+    """
+    대화형 WBS 프로젝트 생성 어시스턴트.
+    Step-1: 사용자 메시지에서 프로젝트 필드 추출 (영어 프롬프트, JSON)
+    Step-2: 대화 응답 생성 (한국어, 자연스럽게)
+    """
+    collected = dict(req.collected or {})
+
+    try:
+        # 1) 필드 추출
+        extracted = _extract_fields(req.message)
+        for k, v in extracted.items():
+            if v:
+                collected[k] = v
+
+        # 2) 준비 여부 판단
+        ready = bool(collected.get("projectName"))
+
+        # 3) 대화 응답 생성
+        response_text = _generate_conv_response(req.message, collected, req.history)
+
+    except Exception:
+        traceback.print_exc()
+        response_text = "죄송합니다, 처리 중 오류가 발생했습니다. 다시 시도해 주세요."
+        ready = bool(collected.get("projectName"))
+
+    return WbsProjectChatResponse(
+        response=response_text,
+        collected=collected,
+        ready=ready,
+    )
 
 
 # ── WBS RAG Suggest ──────────────────────────────────────────────────────────

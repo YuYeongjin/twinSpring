@@ -3,6 +3,7 @@ Sensor Agent 도구 모음 — 온습도 데이터 조회 / RAG 검색
 
 SensorAgent 가 create_react_agent 를 통해 호출하는 @tool 함수들.
 """
+from __future__ import annotations
 
 import json
 from datetime import datetime

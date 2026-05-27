@@ -41,4 +41,11 @@ public interface ChatService {
      * AgentWbsPopup 에서 사용자 승인 전 근거 자료 표시에 사용.
      */
     Map<String, Object> wbsRagSuggest(WbsRagRequestDTO request);
+
+    /**
+     * WBS 프로젝트 생성 에이전트 채팅.
+     * 사용자 메시지에서 현장 프로젝트 정보를 수집하고, 충분한 정보가 모이면 ready=true 반환.
+     * WbsDashboard 의 에이전트 채팅 패널에서 사용.
+     */
+    Map<String, Object> wbsProjectChat(Map<String, Object> request);
 }

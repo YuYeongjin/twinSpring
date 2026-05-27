@@ -139,4 +139,27 @@ public class ChatController {
         Map<String, Object> result = chatService.wbsRagSuggest(request);
         return ResponseEntity.ok(result);
     }
+
+    /**
+     * WBS 프로젝트 생성 에이전트 채팅
+     *
+     * Body 예시:
+     * {
+     *   "message": "한강대교 보강공사 현장 등록해줘",
+     *   "history": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}],
+     *   "collected": {"projectName": "한강대교 보강공사"}
+     * }
+     *
+     * Response:
+     * {
+     *   "response": "알겠습니다. 현장 위치를 알려주세요.",
+     *   "collected": {"projectName": "한강대교 보강공사"},
+     *   "ready": false
+     * }
+     */
+    @PostMapping("/wbs-project-chat")
+    public ResponseEntity<Map<String, Object>> wbsProjectChat(@RequestBody Map<String, Object> request) {
+        Map<String, Object> result = chatService.wbsProjectChat(request);
+        return ResponseEntity.ok(result);
+    }
 }

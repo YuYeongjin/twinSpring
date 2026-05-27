@@ -13,6 +13,8 @@ Note:
   create_bim_element 는 좌표가 없을 때 "NEED_COORDS" 신호를 반환합니다.
   bim_agent.py 의 ReAct 루프가 이 신호를 받아 사용자에게 추가 질문합니다.
 """
+from __future__ import annotations
+from typing import Optional
 
 import json
 import uuid
@@ -71,9 +73,9 @@ def create_bim_element(
     position_x: float,
     position_y: float,
     position_z: float,
-    size_x: float | None = None,
-    size_y: float | None = None,
-    size_z: float | None = None,
+    size_x: Optional[float] = None,
+    size_y: Optional[float] = None,
+    size_z: Optional[float] = None,
 ) -> str:
     """
     BIM 프로젝트에 단일 부재를 생성합니다.

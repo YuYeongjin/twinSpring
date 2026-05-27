@@ -169,14 +169,14 @@ function padBorder(grid,pad=4){
 }
 
 // ── 내부 BIM 선 추가 헬퍼 ─────────────────────────────────────────────────────
-function _appendLine(lines,pts,sx,sy,scaleW,scaleH){
+function _appendLine(lines,pts,sx,sy,scaleW,scaleH,color='#93c5fd',lineWidth=1){
   if(pts.length<2)return;
   const wpts=pts.map(([cx,cy])=>[
     +((cx*sx-scaleW/2).toFixed(3)),0,+((cy*sy-scaleH/2).toFixed(3))]);
   const first=wpts[0],last=wpts[wpts.length-1];
   lines.push({startX:first[0],startY:0,startZ:first[2],
     endX:last[0],endY:0,endZ:last[2],
-    color:'#93c5fd',lineWidth:1,
+    color,lineWidth,
     pointsJson:JSON.stringify(wpts),closed:false,shapeHeight:0});
 }
 
@@ -211,6 +211,48 @@ function buildZoneBoundaryLines(smooth,cols,rows,scaleW,scaleH,nZones=6,rdpEps=1
       flush();
     }
   }
+  return lines;
+}
+
+// ── 절토/성토 색상 등고선 생성 ───────────────────────────────────────────────
+// refT(기준 고도, 0~1) 위 = 절토(빨강), 아래 = 성토(초록), 기준선 = 노란색
+// Slab 블록 대신 선으로 절토/성토 구역을 표현
+function buildCutFillLines(smooth,cols,rows,scaleW,scaleH,refT,nZones=4,rdpEps=1.2){
+  const sx=scaleW/cols,sy=scaleH/rows,PAD=4;
+  const padded=padBorder(smooth,PAD);
+  const lines=[];
+
+  const addThreshold=(t,color,lw)=>{
+    const chains=chainSegments(marchingSquares(padded,t));
+    for(const chain of chains){
+      let sub=[];
+      const flush=()=>{
+        if(sub.length>=5){const s=rdpSimplify(sub,rdpEps);_appendLine(lines,s,sx,sy,scaleW,scaleH,color,lw);}
+        sub=[];
+      };
+      for(const[x,y]of chain){
+        if(x>PAD&&x<cols-PAD&&y>PAD&&y<rows-PAD)sub.push([x,y]);
+        else flush();
+      }
+      flush();
+    }
+  };
+
+  // 기준선 (절토/성토 경계) — 노란색 굵은 선
+  addThreshold(refT,'#facc15',3);
+
+  // 절토 구역 (refT 이상) 등고선 — 빨강
+  for(let i=1;i<=nZones;i++){
+    const t=refT+(1-refT)*i/(nZones+1);
+    if(t<0.99)addThreshold(t,'#ef4444',1.5);
+  }
+
+  // 성토 구역 (refT 미만) 등고선 — 초록
+  for(let i=1;i<=nZones;i++){
+    const t=refT*(1-i/(nZones+1));
+    if(t>0.01)addThreshold(t,'#22c55e',1.5);
+  }
+
   return lines;
 }
 
@@ -413,45 +455,17 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
 
   const convertBIM=useCallback(()=>{
     if(!result||!onConvertToBIM||!cvName.trim())return;
-    const{raw,smooth,cols,rows,refT}=result;
+    const{smooth,cols,rows,refT}=result;
     setCvBusy(true);setCvDone(null);
 
     // 고도 구역 경계선 추출 (smooth 그리드 → cvZones 구역 분할 → 폴리라인)
     const drawingLines=buildZoneBoundaryLines(smooth,cols,rows,scaleW,scaleH,cvZones);
 
-    // ── 절토/성토 Slab 생성 ─────────────────────────────────────────
-    // 블록별 평균 밝기(고도)를 계산한 뒤 전체 블록을 밝기 순으로 정렬
-    // → 상위 50%를 절토(빨강), 하위 50%를 성토(초록)로 분류
-    // 이미지 전체 밝기와 무관하게 항상 양쪽 색상이 나오도록 순위 기반 분류
-    const GROUP=Math.max(4,Math.ceil(Math.min(cols,rows)/25));
-    const slabSX=+((scaleW/cols*GROUP).toFixed(3));
-    const slabSZ=+((scaleH/rows*GROUP).toFixed(3));
+    // 절토/성토 색상 등고선 (Slab 대신 선으로 구분: 빨강=절토, 초록=성토, 노랑=기준선)
+    const cutFillLines=buildCutFillLines(smooth,cols,rows,scaleW,scaleH,refT);
 
-    const rawBlocks=[];
-    for(let r=0;r<rows-GROUP;r+=GROUP){
-      for(let c=0;c<cols-GROUP;c+=GROUP){
-        let s=0,n=0;
-        for(let dr=0;dr<GROUP&&r+dr<rows;dr++)
-          for(let dc=0;dc<GROUP&&c+dc<cols;dc++){s+=smooth[r+dr][c+dc];n++;}
-        const avg=s/n;
-        const wx=+((c/cols*scaleW-scaleW/2+slabSX/2).toFixed(3));
-        const wz=+((r/rows*scaleH-scaleH/2+slabSZ/2).toFixed(3));
-        rawBlocks.push({avg,wx,wz});
-      }
-    }
-
-    // refT 기준 비교: 블록 평균 밝기(고도)가 기준점보다 높으면 절토(빨강), 낮으면 성토(초록)
-    // refT = 사용자 지정 기준 고도를 [0,1] 정규화한 값 (drawingCanvas 기준선과 동일)
-    rawBlocks.forEach(b=>{b._color=b.avg>refT?'#ef4444':'#22c55e';});
-
-    const terrainEls=rawBlocks.map(b=>({
-      elementType:'IfcSlab',material:'Earthwork',
-      positionX:b.wx,positionY:-0.05,positionZ:b.wz,
-      sizeX:slabSX,sizeY:0.1,sizeZ:slabSZ,
-      _color:b._color, // 절토=빨강, 성토=초록
-    }));
-
-    onConvertToBIM('Building',cvName.trim(),terrainEls,[],drawingLines,proj=>{
+    // DRONE 타입으로 생성 → BIM 뷰어에서 2D 전용으로 처리됨
+    onConvertToBIM('DRONE',cvName.trim(),[],[],[...drawingLines,...cutFillLines],proj=>{
       setCvBusy(false);
       if(proj){setCvDone('ok');setTimeout(()=>{if(onProjectSelect)onProjectSelect(proj);},1200);}
       else setCvDone('err');
