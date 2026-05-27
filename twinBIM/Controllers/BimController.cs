@@ -117,4 +117,15 @@ public class BimController : ControllerBase
 
         return elements;
     }
+
+    /// <summary>
+    /// 구조 분석 — 프로젝트 부재를 타입/재료별로 집계하여 통계 반환
+    /// GET /api/bim/structural/{projectId}
+    /// </summary>
+    [HttpGet("structural/{projectId}")]
+    public async Task<ActionResult<object>> GetStructuralAnalysis(string projectId)
+    {
+        var result = await _bimService.GetStructuralAnalysisAsync(projectId);
+        return Ok(result);
+    }
 }

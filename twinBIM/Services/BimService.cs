@@ -21,32 +21,39 @@ namespace BimProcessorApi.Services
         // ---------------------------------------------------------------------
         public async Task SaveModelAsync(Project project, List<Element> elements)
         {
-            // 프로젝트 저장/업데이트
+            // ── 프로젝트 저장/업데이트 ────────────────────────────────
             var existingProject = await _context.Projects.FindAsync(project.ProjectId);
             if (existingProject == null)
             {
                 _context.Projects.Add(project);
+                await _context.SaveChangesAsync(); // 부재 FK 제약 전에 프로젝트를 먼저 커밋
             }
             else
             {
-                existingProject.ProjectId = project.ProjectId;
-                existingProject.ProjectName = project.ProjectName;
+                existingProject.ProjectName   = project.ProjectName;
                 existingProject.StructureType = project.StructureType;
-                existingProject.SpanCount = project.SpanCount;
+                existingProject.SpanCount     = project.SpanCount;
+                await _context.SaveChangesAsync();
             }
 
-            // 기존 부재 삭제 (간단한 전체 덮어쓰기 로직)
-            _context.Elements.RemoveRange(_context.Elements.Where(e => e.ProjectId == project.ProjectId));
+            // ── 기존 부재 일괄 삭제 (ExecuteDeleteAsync → 단일 DELETE SQL) ─
+            // EF Core 7+ : 엔티티를 메모리에 로드하지 않고 직접 DELETE 실행
+            await _context.Elements
+                .Where(e => e.ProjectId == project.ProjectId)
+                .ExecuteDeleteAsync();
 
-            foreach (var element in elements)
+            // ── 새 부재 일괄 삽입 ────────────────────────────────────
+            if (elements.Count > 0)
             {
-                element.ProjectId = project.ProjectId;
+                foreach (var element in elements)
+                {
+                    element.ProjectId = project.ProjectId;
+                    if (string.IsNullOrEmpty(element.ElementId))
+                        element.ElementId = $"EL-{Guid.NewGuid().ToString()[..8].ToUpper()}";
+                }
+                _context.Elements.AddRange(elements);
+                await _context.SaveChangesAsync();
             }
-
-            // 새 부재 저장
-            _context.Elements.AddRange(elements);
-
-            await _context.SaveChangesAsync();
         }
 
         // ---------------------------------------------------------------------
@@ -149,6 +156,60 @@ namespace BimProcessorApi.Services
         public List<Element> GenerateInitialElements(Project project)
         {
             return new List<Element>();
+        }
+
+        // ---------------------------------------------------------------------
+        // 구조 분석 — 프로젝트 부재를 타입별로 집계하여 통계 반환
+        // ---------------------------------------------------------------------
+        public async Task<object> GetStructuralAnalysisAsync(string projectId)
+        {
+            var elements = await _context.Elements
+                .AsNoTracking()
+                .Where(e => e.ProjectId == projectId)
+                .ToListAsync();
+
+            if (elements.Count == 0)
+                return new { projectId, totalCount = 0, groups = Array.Empty<object>() };
+
+            var groups = elements
+                .GroupBy(e => e.ElementType ?? "Unknown")
+                .Select(g =>
+                {
+                    var xs = g.Where(e => e.PositionX.HasValue).Select(e => e.PositionX!.Value).ToList();
+                    var ys = g.Where(e => e.PositionY.HasValue).Select(e => e.PositionY!.Value).ToList();
+                    var zs = g.Where(e => e.PositionZ.HasValue).Select(e => e.PositionZ!.Value).ToList();
+
+                    return new
+                    {
+                        elementType  = g.Key,
+                        count        = g.Count(),
+                        materials    = g.GroupBy(e => e.Material ?? "Unknown")
+                                        .Select(m => new { material = m.Key, count = m.Count() })
+                                        .ToList(),
+                        positionRange = new
+                        {
+                            xMin = xs.Count > 0 ? xs.Min() : 0.0,
+                            xMax = xs.Count > 0 ? xs.Max() : 0.0,
+                            yMin = ys.Count > 0 ? ys.Min() : 0.0,
+                            yMax = ys.Count > 0 ? ys.Max() : 0.0,
+                            zMin = zs.Count > 0 ? zs.Min() : 0.0,
+                            zMax = zs.Count > 0 ? zs.Max() : 0.0,
+                        },
+                        avgSizeY = g.Where(e => e.SizeY.HasValue)
+                                    .Select(e => e.SizeY!.Value)
+                                    .DefaultIfEmpty(0)
+                                    .Average(),
+                    };
+                })
+                .OrderByDescending(g => g.count)
+                .ToList();
+
+            return new
+            {
+                projectId,
+                totalCount = elements.Count,
+                groups,
+            };
         }
 
     }
