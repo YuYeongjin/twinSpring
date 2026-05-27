@@ -6,6 +6,7 @@ import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import AxiosCustom from '../../axios/AxiosCustom';
 import MobileGpsSender from './MobileGpsSender';
+import { pushWbsSuggest } from '../../utils/alertStore';
 
 const D2R = Math.PI / 180;
 
@@ -558,9 +559,18 @@ export default function TestDashboard() {
     if (isColliding && !wasCollidingRef.current) {
       const ts = new Date().toLocaleTimeString('ko-KR');
       setCollisionLog(prev => [{ ts, ids }, ...prev].slice(0, 8));
+
+      // Agent WBS 수정 제안 — 새 충돌 발생 시 한 번만 발행 (1분 쿨타임)
+      pushWbsSuggest({
+        eventType:   'COLLISION',
+        source:      'TEST_COLLISION',
+        title:       `부재 충돌 감지 — ${ids.length}개 부재`,
+        detail:      `굴착기 암/붐/버킷이 ${ids.length}개 구조 부재와 충돌하였습니다. (${ts})`,
+        projectName: selectedProject?.projectName ?? '',
+      });
     }
     wasCollidingRef.current = isColliding;
-  }, []);
+  }, [selectedProject]);
 
   // Load BIM projects
   useEffect(() => {

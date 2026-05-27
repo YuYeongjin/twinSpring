@@ -15,6 +15,7 @@ import SafeDashboard from './view/safe/SafeDashboard';
 import SafeProjectList from './view/safe/SafeProjectList';
 import TestDashboard from './view/test/TestDashboard';
 import WbsDashboard from './view/wbs/WbsDashboard';
+import AgentWbsPopup from './component/AgentWbsPopup';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 function App() {
@@ -44,6 +45,17 @@ function App() {
   // ── Safe projects ─────────────────────────────────────────────
   const [safeProjectList, setSafeProjectList] = useState([]);
   const [selectedSafeProject, setSelectedSafeProject] = useState(null);
+
+  // ── Agent WBS 자동 수정 요청 ──────────────────────────────────
+  // { eventType, title, detail, ts } — WbsDashboard로 전달되어 자동 수정을 실행한다.
+  const [autoEditRequest, setAutoEditRequest] = useState(null);
+
+  // Agent WBS 팝업 승인 핸들러
+  // 승인 클릭 → WBS 탭 전환 → autoEditRequest 설정 → WbsDashboard에서 자동 수정 실행
+  const handleWbsApprove = useCallback((eventItem) => {
+    setAutoEditRequest({ ...eventItem, approvedAt: Date.now() });
+    setViceComponent('wbs');
+  }, []);
 
   // ── Agent health check ────────────────────────────────────────
   const [agentAvailable, setAgentAvailable] = useState(null);
@@ -418,6 +430,8 @@ function App() {
           onNavigateToTab={handleWbsNavigate}
           sensorLatest={sensorLatest}
           sensorWsStatus={sensorWsStatus}
+          autoEditRequest={autoEditRequest}
+          onAutoEditDone={() => setAutoEditRequest(null)}
         />
       );
     }
@@ -531,6 +545,9 @@ function App() {
           selectedSimulationProject={selectedSimulationProject}
         />
       )}
+
+      {/* Agent WBS 수정 제안 팝업 — 전 탭에서 항상 표시 (ChatView 위) */}
+      <AgentWbsPopup onApprove={handleWbsApprove} />
     </div>
   );
 }
