@@ -431,8 +431,11 @@ export default function TestDashboard() {
           const cos = Math.cos(s.bodyRotation * D2R), sin = Math.sin(s.bodyRotation * D2R);
           if (keys.has('w') || keys.has('W')) { s.positionX += sin*MOVE; s.positionZ += cos*MOVE; }
           if (keys.has('s') || keys.has('S')) { s.positionX -= sin*MOVE; s.positionZ -= cos*MOVE; }
-          if (keys.has('a') || keys.has('A')) s.bodyRotation -= ROT;
-          if (keys.has('d') || keys.has('D')) s.bodyRotation += ROT;
+          // 후진 시 좌우 방향 반전 (실제 차량과 동일한 조작감)
+          const isReverse = keys.has('s') || keys.has('S');
+          const turnDir = isReverse ? -1 : 1;
+          if (keys.has('a') || keys.has('A')) s.bodyRotation += ROT * turnDir;
+          if (keys.has('d') || keys.has('D')) s.bodyRotation -= ROT * turnDir;
           if (keys.has('q') || keys.has('Q')) s.swingAngle -= JOINT * 1.8;
           if (keys.has('e') || keys.has('E')) s.swingAngle += JOINT * 1.8;
           if (keys.has('r') || keys.has('R')) s.boomAngle   = clamp(s.boomAngle   + JOINT, JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
