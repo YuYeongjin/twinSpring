@@ -296,6 +296,79 @@ def chat_multimodal(req: MultimodalRequest):
         )
 
 
+# ── WBS RAG Suggest ──────────────────────────────────────────────────────────
+
+class WbsRagRequest(BaseModel):
+    eventType: str          # COLLISION | CRACK | SAFE_ZONE | SAFETY
+    title: str = ""
+    detail: str = ""
+
+
+class WbsRagEvidence(BaseModel):
+    source: str
+    series: str
+    content: str
+
+
+class WbsRagResponse(BaseModel):
+    query: str
+    evidence: list[WbsRagEvidence]
+    hasData: bool
+
+
+# 이벤트 유형 → 건설 시방서 검색 쿼리 매핑
+_EVENT_RAG_QUERIES: dict[str, str] = {
+    "COLLISION": "부재 충돌 보정 공정 구조안전 확인 절차 간섭 오차",
+    "CRACK":     "구조물 균열 균열보수 보수공사 콘크리트 균열폭 시공기준",
+    "SAFE_ZONE": "안전구역 위험구역 안전점검 안전관리 출입금지 구역설정",
+    "SAFETY":    "안전보호구 안전복장 안전모 착용기준 안전교육 작업자",
+}
+
+
+@app.post("/wbs-rag-suggest", response_model=WbsRagResponse)
+def wbs_rag_suggest(req: WbsRagRequest):
+    """
+    WBS 개입 시 관련 건설 시방서(KCS/KDS) 근거 검색.
+
+    이벤트 유형에 맞는 쿼리로 ChromaDB를 검색하고,
+    증거 문서 목록을 반환하여 사용자 승인 판단을 돕는다.
+    """
+    from tools.construction_rag_tool import search_construction_docs
+
+    # 기본 쿼리 + 이벤트 상세 정보 보강
+    base_query = _EVENT_RAG_QUERIES.get(req.eventType, "안전관리 시공기준")
+    extra = " ".join(filter(None, [req.title, req.detail]))
+    query = f"{base_query} {extra}".strip()[:250]
+
+    try:
+        docs = search_construction_docs(query, k=4)
+    except Exception as e:
+        print(f"[wbs_rag_suggest] RAG 검색 오류: {e}")
+        docs = []
+
+    evidence: list[WbsRagEvidence] = []
+    seen: set[str] = set()
+    for doc in docs:
+        text = doc.page_content.strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        meta = doc.metadata
+        source = f"{meta.get('code', '')} {meta.get('title', '')}".strip() or meta.get("source", "알 수 없음")
+        series = meta.get("series", "") or meta.get("category", "")
+        evidence.append(WbsRagEvidence(
+            source=source,
+            series=series,
+            content=text[:500],   # UI 표시용 최대 500자
+        ))
+
+    return WbsRagResponse(
+        query=query,
+        evidence=evidence,
+        hasData=len(evidence) > 0,
+    )
+
+
 @app.delete("/session/{session_id}")
 def clear_session(session_id: str):
     """Clear session state (pending_action, etc.)."""

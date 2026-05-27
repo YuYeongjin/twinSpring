@@ -10,6 +10,7 @@ import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
 import yyj.project.twinspring.dto.MultimodalRequestDTO;
+import yyj.project.twinspring.dto.WbsRagRequestDTO;
 import yyj.project.twinspring.service.ChatService;
 
 import java.util.List;
@@ -114,5 +115,28 @@ public class ChatController {
         return available
                 ? ResponseEntity.ok(Map.of("status", "online"))
                 : ResponseEntity.status(503).body(Map.of("status", "offline"));
+    }
+
+    /**
+     * WBS 이벤트 발생 시 관련 건설 시방서(KCS/KDS) 증거 RAG 검색
+     *
+     * Body 예시:
+     * {
+     *   "eventType": "CRACK",
+     *   "title": "3층 기둥 균열 감지",
+     *   "detail": "균열폭 0.3mm 이상"
+     * }
+     *
+     * Response:
+     * {
+     *   "query": "구조물 균열 ...",
+     *   "evidence": [{ "source": "KCS 41 30 01", "series": "...", "content": "..." }],
+     *   "hasData": true
+     * }
+     */
+    @PostMapping("/wbs-rag-suggest")
+    public ResponseEntity<Map<String, Object>> wbsRagSuggest(@RequestBody WbsRagRequestDTO request) {
+        Map<String, Object> result = chatService.wbsRagSuggest(request);
+        return ResponseEntity.ok(result);
     }
 }

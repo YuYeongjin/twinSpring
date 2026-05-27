@@ -6,6 +6,11 @@
  * BIM 균열 감지 / Test 충돌 / Safe 안전구역·복장 위반 이벤트가 발생하면
  * AGENT_WBS_EVENT를 수신하여 자동으로 팝업을 표시한다.
  *
+ * [RAG 기능 추가]
+ *  이벤트 수신 시 /api/chat/wbs-rag-suggest 를 호출하여
+ *  관련 건설 시방서(KCS/KDS) 근거를 가져와 표시한다.
+ *  사용자는 시방서 근거를 확인한 후 승인 여부를 결정할 수 있다.
+ *
  * 사용자가 [승인]을 누르면 onApprove(eventItem) 콜백을 호출한다.
  * App.js에서 해당 콜백으로 WBS 탭 전환 + 자동 수정 트리거를 수행한다.
  *
@@ -13,6 +18,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import AxiosCustom from '../axios/AxiosCustom';
 import { AGENT_WBS_EVENT } from '../utils/alertStore';
 
 // ── 이벤트 유형별 메타데이터 ────────────────────────────────────────────────
@@ -56,6 +62,129 @@ const DEFAULT_META = {
   label: '이벤트 감지', wbsMsg: 'WBS 일정을 자동으로 수정하겠습니까?',
 };
 
+// ── RAG 증거 패널 ──────────────────────────────────────────────────────────
+function RagEvidencePanel({ ragState, borderColor }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (ragState === 'loading') {
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.03)',
+        border: `1px solid ${borderColor}22`,
+        borderRadius: '8px',
+        padding: '8px 12px',
+        marginBottom: '10px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+      }}>
+        <span style={{ fontSize: '11px', animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
+        <span style={{ fontSize: '11px', color: '#64748b' }}>관련 시방서 검색 중…</span>
+      </div>
+    );
+  }
+
+  if (ragState === 'no-data' || ragState === 'error') {
+    return null; // 데이터 없으면 패널 숨김
+  }
+
+  if (!ragState || !ragState.evidence || ragState.evidence.length === 0) {
+    return null;
+  }
+
+  const evidenceList = ragState.evidence;
+
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.03)',
+      border: `1px solid ${borderColor}33`,
+      borderRadius: '8px',
+      marginBottom: '10px',
+      overflow: 'hidden',
+    }}>
+      {/* 헤더 (토글) */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        style={{
+          width: '100%',
+          background: 'none',
+          border: 'none',
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+          gap: '6px',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '12px' }}>📋</span>
+          <span style={{ fontSize: '11px', color: borderColor, fontWeight: 700 }}>
+            관련 시방서 근거 {evidenceList.length}건
+          </span>
+        </span>
+        <span style={{ fontSize: '10px', color: '#475569' }}>
+          {expanded ? '▲ 접기' : '▼ 펼치기'}
+        </span>
+      </button>
+
+      {/* 증거 목록 */}
+      {expanded && (
+        <div style={{ borderTop: `1px solid ${borderColor}22`, maxHeight: '180px', overflowY: 'auto' }}>
+          {evidenceList.map((ev, i) => (
+            <div
+              key={i}
+              style={{
+                padding: '8px 12px',
+                borderBottom: i < evidenceList.length - 1 ? `1px solid rgba(255,255,255,0.05)` : 'none',
+              }}
+            >
+              {/* 출처 배지 */}
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '4px',
+                marginBottom: '4px',
+                alignItems: 'center',
+              }}>
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: borderColor,
+                  background: `${borderColor}18`,
+                  border: `1px solid ${borderColor}44`,
+                  borderRadius: '4px',
+                  padding: '1px 6px',
+                }}>
+                  {ev.source}
+                </span>
+                {ev.series && (
+                  <span style={{ fontSize: '10px', color: '#475569' }}>
+                    {ev.series}
+                  </span>
+                )}
+              </div>
+              {/* 본문 */}
+              <p style={{
+                fontSize: '10px',
+                color: '#94a3b8',
+                lineHeight: 1.5,
+                margin: 0,
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}>
+                {ev.content}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── AgentWbsPopup ─────────────────────────────────────────────────────────
 export default function AgentWbsPopup({ onApprove }) {
   const [visible,  setVisible]  = useState(false);
@@ -63,9 +192,46 @@ export default function AgentWbsPopup({ onApprove }) {
   const [entering, setEntering] = useState(false);  // 슬라이드 인 애니메이션
   const [exiting,  setExiting]  = useState(false);  // 슬라이드 아웃 애니메이션
 
+  // RAG 상태: null | 'loading' | 'no-data' | 'error' | { evidence: [...] }
+  const [ragState, setRagState] = useState(null);
+
   const queueRef   = useRef([]);   // 대기 큐
   const busyRef    = useRef(false); // 팝업 표시 중 여부
   const autoHideId = useRef(null); // 자동 닫기 타이머
+  const ragAbortRef = useRef(null); // RAG 요청 취소용
+
+  // ── RAG 검색 ──────────────────────────────────────────────────────────
+  const fetchRagEvidence = useCallback((item) => {
+    setRagState('loading');
+
+    // 이전 요청 취소
+    if (ragAbortRef.current) {
+      ragAbortRef.current = true;
+    }
+    const abortFlag = { cancelled: false };
+    ragAbortRef.current = abortFlag;
+
+    AxiosCustom.post('/api/chat/wbs-rag-suggest', {
+      eventType: item.eventType,
+      title:     item.title  || '',
+      detail:    item.detail || '',
+    }, { timeout: 15000 })
+      .then(res => {
+        if (abortFlag.cancelled) return;
+        const data = res.data;
+        if (data && data.hasData && data.evidence && data.evidence.length > 0) {
+          setRagState(data);
+        } else {
+          setRagState('no-data');
+        }
+      })
+      .catch(() => {
+        if (abortFlag.cancelled) return;
+        setRagState('error');
+      });
+
+    return abortFlag;
+  }, []);
 
   // ── 큐에서 다음 항목 표시 ─────────────────────────────────────────
   const showNext = useCallback(() => {
@@ -76,16 +242,20 @@ export default function AgentWbsPopup({ onApprove }) {
     setExiting(false);
     setEntering(true);
     setVisible(true);
+    setRagState(null);
 
-    // 진입 애니메이션 후 entering 해제
-    setTimeout(() => setEntering(false), 350);
+    // 진입 애니메이션 후 entering 해제 + RAG 검색 시작
+    setTimeout(() => {
+      setEntering(false);
+      fetchRagEvidence(item);
+    }, 350);
 
     // 20초 자동 닫기 (거절 처리)
     clearTimeout(autoHideId.current);
     autoHideId.current = setTimeout(() => handleDismiss(), 20000);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchRagEvidence]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 이벤트 수신 ───────────────────────────────────────────────────
+  // ── 이벤트 수신 ───────────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
       queueRef.current.push(e.detail);
@@ -95,13 +265,16 @@ export default function AgentWbsPopup({ onApprove }) {
     return () => window.removeEventListener(AGENT_WBS_EVENT, handler);
   }, [showNext]);
 
-  // ── 닫기 (거절 / 자동 만료) ────────────────────────────────────────
+  // ── 닫기 (거절 / 자동 만료) ────────────────────────────────────────────────
   const handleDismiss = useCallback(() => {
     clearTimeout(autoHideId.current);
+    // 진행 중인 RAG 요청 취소
+    if (ragAbortRef.current) ragAbortRef.current.cancelled = true;
     setExiting(true);
     setTimeout(() => {
       setVisible(false);
       setCurrent(null);
+      setRagState(null);
       setExiting(false);
       busyRef.current = false;
       // 큐에 다음 항목이 있으면 300ms 후 표시
@@ -111,25 +284,31 @@ export default function AgentWbsPopup({ onApprove }) {
     }, 300);
   }, [showNext]);
 
-  // ── 승인 ───────────────────────────────────────────────────────────
+  // ── 승인 ───────────────────────────────────────────────────────────────────
   const handleApprove = useCallback(() => {
     clearTimeout(autoHideId.current);
-    if (onApprove && current) onApprove(current);
+    if (ragAbortRef.current) ragAbortRef.current.cancelled = true;
+
+    // ragEvidence 포함하여 콜백 호출
+    const ragEvidence = (ragState && ragState.evidence) ? ragState.evidence : [];
+    if (onApprove && current) onApprove({ ...current, ragEvidence });
+
     setExiting(true);
     setTimeout(() => {
       setVisible(false);
       setCurrent(null);
+      setRagState(null);
       setExiting(false);
       busyRef.current = false;
       if (queueRef.current.length > 0) setTimeout(showNext, 300);
     }, 300);
-  }, [current, onApprove, showNext]);
+  }, [current, onApprove, ragState, showNext]);
 
   if (!visible || !current) return null;
 
   const meta = EVENT_META[current.eventType] ?? DEFAULT_META;
 
-  // ── 슬라이드 애니메이션 ──────────────────────────────────────────
+  // ── 슬라이드 애니메이션 ──────────────────────────────────────────────────
   const transform = entering
     ? 'translateY(20px)'
     : exiting
@@ -143,7 +322,7 @@ export default function AgentWbsPopup({ onApprove }) {
       right:        '20px',
       bottom:       '82px',     // ChatView 버튼 위
       zIndex:       9999,
-      width:        'clamp(280px, 28vw, 360px)',
+      width:        'clamp(300px, 30vw, 400px)',
       transform,
       opacity,
       transition:   'transform 0.32s cubic-bezier(0.34,1.56,0.64,1), opacity 0.28s',
@@ -219,7 +398,7 @@ export default function AgentWbsPopup({ onApprove }) {
             border:     `1px solid ${meta.border}30`,
             borderRadius: '10px',
             padding:    '10px 12px',
-            marginBottom: '12px',
+            marginBottom: '10px',
             fontSize:   '12px',
             color:      '#cbd5e1',
             lineHeight: 1.6,
@@ -230,6 +409,9 @@ export default function AgentWbsPopup({ onApprove }) {
               승인 시 WBS 탭으로 이동하여 CPM 일정을 자동으로 조정합니다.
             </div>
           </div>
+
+          {/* ── RAG 증거 패널 (KCS/KDS 시방서 근거) ── */}
+          <RagEvidencePanel ragState={ragState} borderColor={meta.border} />
 
           {/* 승인 / 거절 버튼 */}
           <div style={{ display: 'flex', gap: '8px' }}>

@@ -337,6 +337,15 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
         const newEnd   = addDays(newStart, taskDef.duration - 1);
 
         // 4. 새 에이전트 태스크 추가
+        // RAG 근거가 있으면 노트에 시방서 출처 포함
+        const ragEvidence = autoEditRequest.ragEvidence || [];
+        const ragNote = ragEvidence.length > 0
+          ? '\n\n[시방서 근거]\n' + ragEvidence
+              .map((ev, i) => `${i + 1}. ${ev.source}${ev.series ? ` (${ev.series})` : ''}`)
+              .join('\n')
+          : '';
+        const notes = `[Agent 자동 생성] ${autoEditRequest.title || ''} — ${autoEditRequest.detail || ''}${ragNote}`.trim();
+
         await AxiosCustom.post(`/api/wbs/project/${target.projectId}/agent-tasks`, {
           source: taskDef.source,
           tasks: [{
@@ -346,7 +355,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
             duration:    taskDef.duration,
             progress:    0,
             status:      'NOT_STARTED',
-            notes:       `[Agent 자동 생성] ${autoEditRequest.title || ''} — ${autoEditRequest.detail || ''}`.trim(),
+            notes,
           }],
         });
 
