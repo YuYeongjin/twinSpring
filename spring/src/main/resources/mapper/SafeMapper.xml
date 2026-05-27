@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.SafeDAO">
+
+    <!--
+        DDL (초기 1회 실행):
+
+        CREATE TABLE IF NOT EXISTS safe_project (
+            project_id   VARCHAR(64)  PRIMARY KEY,
+            project_name VARCHAR(255) NOT NULL,
+            location     VARCHAR(512),
+            description  TEXT,
+            camera_url   VARCHAR(1024),
+            status       VARCHAR(32)  DEFAULT 'ACTIVE',
+            created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        );
+    -->
+
+    <select id="getAllSafeProjects" resultType="map">
+        SELECT
+            project_id   AS "projectId",
+            project_name AS "projectName",
+            location     AS "location",
+            description  AS "description",
+            camera_url   AS "cameraUrl",
+            status       AS "status",
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM safe_project
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="getSafeProjectById" parameterType="string" resultType="map">
+        SELECT
+            project_id   AS "projectId",
+            project_name AS "projectName",
+            location     AS "location",
+            description  AS "description",
+            camera_url   AS "cameraUrl",
+            status       AS "status",
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM safe_project
+        WHERE project_id = #{projectId}
+    </select>
+
+    <insert id="insertSafeProject" parameterType="map">
+        INSERT INTO safe_project (project_id, project_name, location, description, camera_url, status)
+        VALUES (#{projectId}, #{projectName}, #{location}, #{description}, #{cameraUrl}, #{status})
+    </insert>
+
+    <update id="updateSafeProject" parameterType="map">
+        UPDATE safe_project SET
+            project_name = #{projectName},
+            location     = #{location},
+            description  = #{description},
+            camera_url   = #{cameraUrl},
+            status       = #{status},
+            updated_at   = CURRENT_TIMESTAMP
+        WHERE project_id = #{projectId}
+    </update>
+
+    <delete id="deleteSafeProject" parameterType="string">
+        DELETE FROM safe_project WHERE project_id = #{projectId}
+    </delete>
+
+</mapper>

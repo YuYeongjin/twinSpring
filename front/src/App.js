@@ -12,7 +12,9 @@ import AgentDashboard from './view/agent/AgentDashboard';
 import SimulationDashboard from './view/simulation/SimulationDashboard';
 import SimulationProjectList from './view/simulation/SimulationProjectList';
 import SafeDashboard from './view/safe/SafeDashboard';
+import SafeProjectList from './view/safe/SafeProjectList';
 import TestDashboard from './view/test/TestDashboard';
+import WbsDashboard from './view/wbs/WbsDashboard';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 function App() {
@@ -38,6 +40,10 @@ function App() {
   // ── Simulation projects ───────────────────────────────────────
   const [simulationProjectList, setSimulationProjectList] = useState([]);
   const [selectedSimulationProject, setSelectedSimulationProject] = useState(null);
+
+  // ── Safe projects ─────────────────────────────────────────────
+  const [safeProjectList, setSafeProjectList] = useState([]);
+  const [selectedSafeProject, setSelectedSafeProject] = useState(null);
 
   // ── Agent health check ────────────────────────────────────────
   const [agentAvailable, setAgentAvailable] = useState(null);
@@ -305,13 +311,44 @@ function App() {
       });
   }, [selectedSimulationProject]);
 
+  // ---------------------------------------------------------------
+  // Safe project list management
+  // ---------------------------------------------------------------
+  const refreshSafeProjectList = useCallback(() => {
+    return AxiosCustom.get('/api/safe/projects')
+      .then(r => setSafeProjectList(r.data))
+      .catch(error => console.error('Failed to load safe project list:', error));
+  }, []);
+
+  const createSafeProject = useCallback(async (formData) => {
+    await AxiosCustom.post('/api/safe/project', formData);
+    await refreshSafeProjectList();
+  }, [refreshSafeProjectList]);
+
+  const updateSafeProject = useCallback(async (projectId, formData) => {
+    await AxiosCustom.put(`/api/safe/project/${projectId}`, formData);
+    setSafeProjectList(prev =>
+      prev.map(p => p.projectId === projectId ? { ...p, ...formData } : p)
+    );
+    if (selectedSafeProject?.projectId === projectId) {
+      setSelectedSafeProject(prev => ({ ...prev, ...formData }));
+    }
+  }, [selectedSafeProject]);
+
+  const deleteSafeProject = useCallback(async (projectId) => {
+    await AxiosCustom.delete(`/api/safe/project/${projectId}`);
+    setSafeProjectList(prev => prev.filter(p => p.projectId !== projectId));
+    if (selectedSafeProject?.projectId === projectId) setSelectedSafeProject(null);
+  }, [selectedSafeProject]);
+
   // Initial load
   useEffect(() => {
     Promise.all([
       refreshProjectList(),
       refreshSimulationProjectList(),
+      refreshSafeProjectList(),
     ]).finally(() => setLoading(false));
-  }, [refreshProjectList, refreshSimulationProjectList]);
+  }, [refreshProjectList, refreshSimulationProjectList, refreshSafeProjectList]);
 
   useEffect(() => {
     AxiosCustom.get('/api/chat/status')
@@ -357,8 +394,45 @@ function App() {
         />
       );
     }
+    if (viewComponent === 'wbs') {
+      // WBS 연결 패널에서 "이동" 클릭 시 해당 탭으로 전환
+      const handleWbsNavigate = (link) => {
+        if (link.linkedType === 'BIM') {
+          // BIM 프로젝트로 이동: 목록에서 해당 프로젝트 찾아서 선택
+          const found = projectList.find(p => p.projectId === link.linkedProjectId);
+          if (found) handleProjectSelect(found);
+          setViceComponent('bim');
+        } else if (link.linkedType === 'SAFE') {
+          const found = safeProjectList.find(p => p.projectId === link.linkedProjectId);
+          if (found) setSelectedSafeProject(found);
+          setViceComponent('safe');
+        } else if (link.linkedType === 'SIMULATION') {
+          const found = simulationProjectList.find(p => p.projectId === link.linkedProjectId);
+          if (found) setSelectedSimulationProject(found);
+          setViceComponent('simulation');
+        }
+      };
+      return <WbsDashboard onNavigateToTab={handleWbsNavigate} />;
+    }
+    if (viewComponent === 'safe-projects') {
+      return (
+        <SafeProjectList
+          setViceComponent={setViceComponent}
+          projectList={safeProjectList}
+          onProjectSelect={(p) => { setSelectedSafeProject(p); setViceComponent('safe'); }}
+          onCreateProject={createSafeProject}
+          onUpdateProject={updateSafeProject}
+          onDeleteProject={deleteSafeProject}
+        />
+      );
+    }
     if (viewComponent === 'safe') {
-      return <SafeDashboard />;
+      return (
+        <SafeDashboard
+          selectedProject={selectedSafeProject}
+          onBack={() => setViceComponent('safe-projects')}
+        />
+      );
     }
     if (viewComponent === 'test') {
       return <TestDashboard />;
