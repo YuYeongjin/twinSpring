@@ -3,23 +3,7 @@
 
 <mapper namespace="yyj.project.twinspring.dao.ProjectLinkDAO">
 
-    <!--
-        DDL (초기 1회 실행):
 
-        CREATE TABLE IF NOT EXISTS project_link (
-            link_id            VARCHAR(64) PRIMARY KEY,
-            wbs_project_id     VARCHAR(64) NOT NULL REFERENCES wbs_project(project_id) ON DELETE CASCADE,
-            linked_type        VARCHAR(32) NOT NULL,   /* BIM | SAFE | SIMULATION */
-            linked_project_id  VARCHAR(64) NOT NULL,
-            note               TEXT,
-            created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE (wbs_project_id, linked_type, linked_project_id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_project_link_wbs  ON project_link(wbs_project_id);
-        CREATE INDEX IF NOT EXISTS idx_project_link_linked ON project_link(linked_type, linked_project_id);
-    -->
-
-    <!-- WBS 프로젝트에 연결된 모든 링크 (각 타입별 JOIN으로 이름/위치 채움) -->
     <select id="getLinksByWbsProject" parameterType="string" resultType="map">
         SELECT
             pl.link_id            AS "linkId",
@@ -70,7 +54,6 @@
         ORDER BY pl.created_at ASC
     </select>
 
-    <!-- 역방향: 하위 프로젝트가 어떤 WBS에 연결됐는지 -->
     <select id="getWbsByLinkedProject" resultType="map">
         SELECT
             pl.link_id            AS "linkId",
