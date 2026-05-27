@@ -12,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import yyj.project.twinspring.service.CrackDetectionService;
 import yyj.project.twinspring.service.FallbackDetectionService;
 
 import org.slf4j.Logger;
@@ -38,15 +39,18 @@ public class DetectionController {
     private final SimpMessagingTemplate ws;
     private final WebClient detectWebClient;
     private final FallbackDetectionService fallbackService;
+    private final CrackDetectionService crackService;
     private final ObjectMapper objectMapper;
 
     public DetectionController(SimpMessagingTemplate ws,
                                @Qualifier("detectWebClient") WebClient detectWebClient,
                                FallbackDetectionService fallbackService,
+                               CrackDetectionService crackService,
                                ObjectMapper objectMapper) {
         this.ws = ws;
         this.detectWebClient = detectWebClient;
         this.fallbackService = fallbackService;
+        this.crackService = crackService;
         this.objectMapper = objectMapper;
     }
 
@@ -109,6 +113,54 @@ public class DetectionController {
         } catch (Exception ex) {
             log.error("폴백 탐지 실패: {}", ex.getMessage());
             return ResponseEntity.ok("{\"count\":0,\"detections\":[],\"serverOffline\":true,\"fallback\":true}");
+        }
+    }
+
+    // ── 균열 탐지 ─────────────────────────────────────────────────
+
+    @PostMapping("/crack")
+    public ResponseEntity<String> detectCrack(@RequestParam("file") MultipartFile file) {
+        byte[] fileBytes;
+        try {
+            fileBytes = file.getBytes();
+        } catch (IOException e) {
+            return ResponseEntity.badRequest().body("{\"error\":\"파일 읽기 실패\"}");
+        }
+
+        // ── Python 서버 시도 (8초 타임아웃) ──────────────────────────
+        try {
+            MultipartBodyBuilder builder = new MultipartBodyBuilder();
+            String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+            builder.part("file", new ByteArrayResource(fileBytes) {
+                @Override public String getFilename() { return file.getOriginalFilename(); }
+            }).contentType(MediaType.parseMediaType(contentType));
+
+            byte[] respBytes = detectWebClient.post()
+                    .uri("/crack")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(BodyInserters.fromMultipartData(builder.build()))
+                    .retrieve()
+                    .bodyToMono(byte[].class)
+                    .block(Duration.ofSeconds(8));
+
+            if (respBytes != null) {
+                String json = new String(respBytes, StandardCharsets.UTF_8);
+                log.info("Python 균열 탐지 결과: {}", json);
+                return ResponseEntity.ok(json);
+            }
+        } catch (Exception e) {
+            log.warn("Python 균열 탐지 서버 오프라인 — Spring 폴백 실행: {}", e.getMessage());
+        }
+
+        // ── Spring 폴백 균열 탐지 ─────────────────────────────────────
+        try {
+            Map<String, Object> result = crackService.analyze(fileBytes);
+            log.info("Spring 폴백 균열 탐지 결과: hasCrack={}, confidence={}",
+                    result.get("hasCrack"), result.get("confidence"));
+            return ResponseEntity.ok(objectMapper.writeValueAsString(result));
+        } catch (Exception ex) {
+            log.error("균열 탐지 폴백 실패: {}", ex.getMessage());
+            return ResponseEntity.ok("{\"hasCrack\":false,\"confidence\":0.0,\"method\":\"error\",\"detail\":\"" + ex.getMessage() + "\"}");
         }
     }
 

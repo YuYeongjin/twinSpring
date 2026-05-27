@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useLanguage, useT } from "../i18n/LanguageContext";
 
 const NAV_IDS = [
-  { id: "",                    key: "home",       icon: "🏠" },
+  { id: "wbs",                 key: "wbs",        icon: "📊" },
   { id: "bim-projects",        key: "bim",        icon: "🏗" },
   { id: "simulation-projects", key: "simulation", icon: "🚜" },
-  { id: "safe",                key: "safe",       icon: "🦺" },
+  { id: "safe-projects",       key: "safe",       icon: "🦺" },
   { id: "test",                key: "test",       icon: "🧪" },
   { id: "agent",               key: "agent",      icon: "🤖" },
 ];
@@ -51,6 +51,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
   const activeTab = viewComponent === "bim"        ? "bim-projects"
     : viewComponent === "simulation"               ? "simulation-projects"
+    : viewComponent === "safe"                     ? "safe-projects"
     : viewComponent;
 
   const isTabDisabled = (id) => id === 'agent' && agentAvailable === false;
