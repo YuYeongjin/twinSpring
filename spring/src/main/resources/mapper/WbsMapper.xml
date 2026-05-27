@@ -3,46 +3,6 @@
 
 <mapper namespace="yyj.project.twinspring.dao.WbsDAO">
 
-    <!--
-        PostgreSQL: alias 는 큰따옴표로 camelCase 보존
-        DDL (초기 실행):
-        CREATE TABLE IF NOT EXISTS wbs_project (
-            project_id      VARCHAR(64)  PRIMARY KEY,
-            project_name    VARCHAR(255) NOT NULL,
-            location        VARCHAR(512),
-            contract_amount BIGINT,
-            status          VARCHAR(32)  DEFAULT 'PLANNED',
-            description     TEXT,
-            start_date      DATE,
-            end_date        DATE,
-            client_name     VARCHAR(255),
-            manager_name    VARCHAR(255),
-            created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-            updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS wbs_task (
-            task_id         VARCHAR(64)  PRIMARY KEY,
-            wbs_project_id  VARCHAR(64)  NOT NULL REFERENCES wbs_project(project_id) ON DELETE CASCADE,
-            wbs_code        VARCHAR(64),
-            task_name       VARCHAR(512) NOT NULL,
-            start_date      DATE,
-            end_date        DATE,
-            duration        INTEGER,
-            progress        INTEGER      DEFAULT 0,
-            predecessor_ids TEXT,
-            status          VARCHAR(32)  DEFAULT 'NOT_STARTED',
-            responsible     VARCHAR(255),
-            notes           TEXT,
-            source          VARCHAR(32)  DEFAULT 'MANUAL',
-            sort_order      INTEGER      DEFAULT 0,
-            created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-            updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-        );
-    -->
-
-    <!-- ═══════════════════════════════ WBS PROJECT ═════════════════════════════ -->
-
     <select id="getAllWbsProjects" resultType="map">
         SELECT
             p.project_id      AS "projectId",
@@ -113,8 +73,6 @@
     <delete id="deleteWbsProject" parameterType="string">
         DELETE FROM wbs_project WHERE project_id = #{projectId}
     </delete>
-
-    <!-- ═══════════════════════════════ WBS TASK ════════════════════════════════ -->
 
     <select id="getTasksByProject" parameterType="string" resultType="map">
         SELECT
