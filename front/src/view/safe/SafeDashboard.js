@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useT } from '../../i18n/LanguageContext';
-import { pushAlert } from '../../utils/alertStore';
+import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 
 const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
 
@@ -820,6 +820,15 @@ function CrackMonitorPanel({ selectedProject }) {
           projectId:   selectedProject?.projectId   ?? '',
           projectName: selectedProject?.projectName ?? '',
         });
+        // Agent WBS 수정 제안 (1분 쿨타임)
+        pushWbsSuggest({
+          eventType:   'CRACK',
+          source:      'BIM_CRACK',
+          title:       `균열 감지 — 신뢰도 ${conf}%`,
+          detail:      `${selectedProject?.projectName ?? '현장'}에서 구조 균열이 감지되었습니다. 보수 공사 일정 추가가 필요합니다.`,
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: selectedProject?.projectName ?? '',
+        });
       }
     } catch (e) {
       setCrackLog(prev => [{
@@ -1228,6 +1237,15 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
           severity:    'HIGH',
           title:       `안전구역 침범 — ${selectedProject?.projectName ?? '현장'}`,
           detail:      `지정 안전구역에 작업자가 진입했습니다.`,
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: selectedProject?.projectName ?? '',
+        });
+        // Agent WBS 수정 제안 (1분 쿨타임)
+        pushWbsSuggest({
+          eventType:   'SAFE_ZONE',
+          source:      'SAFE_ZONE_VIOLATION',
+          title:       `안전구역 침범 감지`,
+          detail:      `${selectedProject?.projectName ?? '현장'}에서 작업자가 지정 안전구역에 진입했습니다. 안전 점검 일정 추가를 권장합니다.`,
           projectId:   selectedProject?.projectId   ?? '',
           projectName: selectedProject?.projectName ?? '',
         });

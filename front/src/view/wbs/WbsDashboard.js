@@ -237,7 +237,7 @@ function SensorChip({ sensorLatest, sensorWsStatus }) {
   );
 }
 
-export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsStatus }) {
+export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsStatus, autoEditRequest, onAutoEditDone }) {
   const t = useT('wbs');
 
   // ── 데이터 상태 ──────────────────────────────────────────────
@@ -283,7 +283,106 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
     window.addEventListener(ALERT_EVENT, onAlert);
     return () => window.removeEventListener(ALERT_EVENT, onAlert);
   }, []);
-  
+
+  // ── Agent WBS 자동 수정 ────────────────────────────────────────
+  // App.js에서 승인 시 autoEditRequest가 설정되면 아래 로직이 자동 실행된다.
+  const [autoEditStatus, setAutoEditStatus] = useState(null); // null|'running'|'done'|'error'
+
+  useEffect(() => {
+    if (!autoEditRequest) return;
+
+    // 이벤트 유형별 삽입할 태스크 정의
+    const TASK_MAP = {
+      COLLISION: { taskName: '⚠️ 부재 충돌 보정 작업',        duration: 2, source: 'AGENT_AUTO'  },
+      CRACK:     { taskName: '🔍 균열 보수 공사',              duration: 3, source: 'AGENT_CRACK' },
+      SAFE_ZONE: { taskName: '🚨 안전구역 재설정 및 안전점검', duration: 1, source: 'AGENT_AUTO'  },
+      SAFETY:    { taskName: '⛑️ 안전교육 실시',              duration: 1, source: 'AGENT_AUTO'  },
+    };
+    const taskDef = TASK_MAP[autoEditRequest.eventType] ?? {
+      taskName: '📋 자동 추가 작업', duration: 1, source: 'AGENT_AUTO',
+    };
+
+    // 날짜 유틸
+    const toStr = (d) => d.toISOString().slice(0, 10);
+    const addDays = (dateStr, n) => {
+      const d = new Date(dateStr || new Date());
+      d.setDate(d.getDate() + n);
+      return toStr(d);
+    };
+    const today = toStr(new Date());
+
+    (async () => {
+      setAutoEditStatus('running');
+      try {
+        // 1. IN_PROGRESS 프로젝트 우선, 없으면 첫 번째 프로젝트 사용
+        const projectsRes = await AxiosCustom.get('/api/wbs/projects');
+        const allProjs = projectsRes.data || [];
+        const target =
+          allProjs.find(p => p.status === 'IN_PROGRESS') ||
+          allProjs.find(p => p.status === 'PLANNED') ||
+          allProjs[0];
+        if (!target) { setAutoEditStatus('error'); return; }
+
+        // 2. 대상 프로젝트 태스크 조회
+        const tasksRes = await AxiosCustom.get(`/api/wbs/project/${target.projectId}/tasks`);
+        const existTasks = tasksRes.data || [];
+
+        // 3. CPM: 마지막 endDate 다음 날을 새 태스크 시작일로 설정
+        const endDates = existTasks
+          .map(t => t.endDate)
+          .filter(Boolean)
+          .sort();
+        const lastEnd = endDates[endDates.length - 1] || today;
+        const newStart = addDays(lastEnd, 1);
+        const newEnd   = addDays(newStart, taskDef.duration - 1);
+
+        // 4. 새 에이전트 태스크 추가
+        await AxiosCustom.post(`/api/wbs/project/${target.projectId}/agent-tasks`, {
+          source: taskDef.source,
+          tasks: [{
+            taskName:    taskDef.taskName,
+            startDate:   newStart,
+            endDate:     newEnd,
+            duration:    taskDef.duration,
+            progress:    0,
+            status:      'NOT_STARTED',
+            notes:       `[Agent 자동 생성] ${autoEditRequest.title || ''} — ${autoEditRequest.detail || ''}`.trim(),
+          }],
+        });
+
+        // 5. 현재 날짜 이후 endDate를 가진 IN_PROGRESS/NOT_STARTED 태스크 → DELAYED 처리
+        const toDelay = existTasks.filter(t =>
+          (t.status === 'IN_PROGRESS' || t.status === 'NOT_STARTED') &&
+          t.endDate && t.endDate >= today
+        );
+        await Promise.allSettled(
+          toDelay.map(t =>
+            AxiosCustom.put(`/api/wbs/task/${t.taskId}`, { ...t, status: 'DELAYED' })
+          )
+        );
+
+        // 6. WBS 대상 프로젝트 선택 + 태스크 새로고침
+        const refreshed = await AxiosCustom.get(`/api/wbs/project/${target.projectId}/tasks`);
+        setSelected(target);
+        setTasks(refreshed.data);
+        setDetailTab('gantt');
+        await loadProjects();
+        await loadAllTasks();
+
+        setAutoEditStatus('done');
+        setTimeout(() => setAutoEditStatus(null), 4000);
+        if (onAutoEditDone) onAutoEditDone();
+      } catch (err) {
+        console.error('[AgentWbs] 자동 수정 실패:', err);
+        setAutoEditStatus('error');
+        setTimeout(() => setAutoEditStatus(null), 4000);
+        if (onAutoEditDone) onAutoEditDone();
+      }
+    })();
+  // autoEditRequest.approvedAt으로 동일 이벤트 중복 실행 방지
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoEditRequest?.approvedAt]);
+
   // ── 프로젝트 선택 (토글) ─────────────────────────────────────
   const selectProject = useCallback(async (project) => {
     if (selectedProject?.projectId === project.projectId) {
@@ -408,6 +507,38 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-[#06111c]">
+
+      {/* ── Agent 자동 수정 토스트 ──────────────────────────────── */}
+      {autoEditStatus && (
+        <div style={{
+          position: 'fixed', top: '18px', left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9998, pointerEvents: 'none',
+          display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '10px 20px', borderRadius: '12px',
+          fontSize: '13px', fontWeight: 600,
+          boxShadow: '0 4px 24px #00000060',
+          ...(autoEditStatus === 'running' && {
+            background: 'rgba(13,27,42,0.97)', border: '1px solid #3b82f6',
+            color: '#60a5fa',
+          }),
+          ...(autoEditStatus === 'done' && {
+            background: 'rgba(4,47,30,0.97)', border: '1px solid #4ade80',
+            color: '#4ade80',
+          }),
+          ...(autoEditStatus === 'error' && {
+            background: 'rgba(69,10,10,0.97)', border: '1px solid #ef4444',
+            color: '#f87171',
+          }),
+        }}>
+          {autoEditStatus === 'running' && <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>}
+          {autoEditStatus === 'done'    && '✅'}
+          {autoEditStatus === 'error'   && '❌'}
+          {autoEditStatus === 'running' && ' WBS 자동 수정 중 — CPM 재계산 진행 중…'}
+          {autoEditStatus === 'done'    && ' WBS 자동 수정 완료 — 일정이 업데이트되었습니다.'}
+          {autoEditStatus === 'error'   && ' WBS 자동 수정 실패 — 수동으로 확인해 주세요.'}
+        </div>
+      )}
 
       {/* ════════════════════════════════
           상단 컨트롤 바
