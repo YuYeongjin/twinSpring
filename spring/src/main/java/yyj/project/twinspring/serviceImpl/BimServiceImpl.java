@@ -474,6 +474,21 @@ public class BimServiceImpl implements BimService {
         return bimDAO.getElementStatsByProject(projectId);
     }
 
+    // ── 구조 분석 (C# 서버 프록시) ────────────────────────────────
+
+    @Override
+    public Mono<Map<String, Object>> getStructuralAnalysis(String projectId) {
+        log.debug("C# 구조 분석 요청: projectId={}", projectId);
+        return webClient.get()
+                .uri("/api/bim/structural/{projectId}", projectId)
+                .retrieve()
+                .onStatus(status -> status.isError(), response -> {
+                    log.error("C# 구조 분석 요청 실패: projectId={}, status={}", projectId, response.statusCode());
+                    return Mono.error(new RuntimeException("C# structural analysis failed: " + response.statusCode()));
+                })
+                .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
+
     @Override
     public String exportBimElementsCsv(String projectId) {
         List<Map<String, Object>> rows = bimDAO.getElementsByProject(projectId);
