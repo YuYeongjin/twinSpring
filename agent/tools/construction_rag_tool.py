@@ -1,0 +1,164 @@
+"""
+건설 공정서/시방서 RAG 검색 도구
+
+ChromaDB의 construction_specs 컬렉션에서 유사 문서를 검색하고
+출처(규격코드·시리즈·제목)를 포함한 결과를 반환합니다.
+"""
+
+from __future__ import annotations
+
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.documents import Document
+from langchain_core.tools import tool
+
+from config import CHROMA_PERSIST_DIR, EMBEDDING_MODEL
+
+COLLECTION_NAME = "construction_specs"
+
+# ── 벡터스토어 지연 초기화 ────────────────────────────────────────────────────
+_vectorstore: Chroma | None = None
+
+
+def _get_vectorstore() -> Chroma:
+    global _vectorstore
+    if _vectorstore is None:
+        embeddings = HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+        _vectorstore = Chroma(
+            collection_name=COLLECTION_NAME,
+            embedding_function=embeddings,
+            persist_directory=CHROMA_PERSIST_DIR,
+        )
+    return _vectorstore
+
+
+# ── 핵심 검색 함수 ────────────────────────────────────────────────────────────
+
+def search_construction_docs(query: str, k: int = 5) -> list[Document]:
+    """
+    공정서/시방서에서 query와 유사한 문서 청크를 k개 반환.
+    컬렉션이 비어 있으면 빈 리스트 반환.
+    """
+    try:
+        vs = _get_vectorstore()
+        results = vs.similarity_search(query, k=k)
+        return results
+    except Exception as e:
+        print(f"[construction_rag] 검색 오류: {e}")
+        return []
+
+
+def format_rag_results(docs: list[Document]) -> str:
+    """
+    검색 결과를 '출처 + 본문' 형식의 문자열로 포맷.
+
+    예시:
+    ────────────────────────────────
+    [출처] KCS 10 10 05 공사일반
+    [시리즈] KCS 10 00 00 / 카테고리: KCS
+    콘크리트 타설 시 ...
+
+    ────────────────────────────────
+    [출처] KDS 14 20 26 콘크리트구조 피로 설계기준
+    ...
+    """
+    if not docs:
+        return "관련 공정서/시방서 문서를 찾지 못했습니다."
+
+    parts = []
+    seen_chunks: set[str] = set()   # 중복 청크 제거
+
+    for doc in docs:
+        content = doc.page_content.strip()
+        if not content or content in seen_chunks:
+            continue
+        seen_chunks.add(content)
+
+        meta   = doc.metadata
+        code   = meta.get("code",     "")
+        title  = meta.get("title",    "")
+        series = meta.get("series",   "")
+        cat    = meta.get("category", "")
+
+        # 출처 헤더 구성
+        source_label = f"{code} {title}".strip() if (code or title) else meta.get("source", "알 수 없음")
+        series_label = f"{series} / 카테고리: {cat}" if series else cat
+
+        parts.append(
+            f"{'─' * 50}\n"
+            f"[출처] {source_label}\n"
+            f"[시리즈] {series_label}\n\n"
+            f"{content}"
+        )
+
+    return "\n\n".join(parts) if parts else "관련 문서를 찾지 못했습니다."
+
+
+def search_as_text(query: str, k: int = 5) -> str:
+    """검색 결과를 포맷된 문자열로 반환 (에이전트 컨텍스트용)."""
+    docs = search_construction_docs(query, k=k)
+    return format_rag_results(docs)
+
+
+def get_source_list() -> str:
+    """현재 인덱싱된 문서의 출처 목록 반환."""
+    try:
+        vs = _get_vectorstore()
+        col = vs._collection
+        result = col.get(include=["metadatas"])
+        metadatas = result.get("metadatas", [])
+
+        seen: dict[str, str] = {}
+        for m in metadatas:
+            code  = m.get("code", "")
+            title = m.get("title", "")
+            series = m.get("series", "")
+            if code and code not in seen:
+                seen[code] = f"{code} {title} ({series})"
+
+        if not seen:
+            return "인덱싱된 공정서/시방서 문서가 없습니다. build_rag_index.py를 먼저 실행하세요."
+
+        lines = ["현재 검색 가능한 공정서/시방서 목록:\n"]
+        for key in sorted(seen):
+            lines.append(f"  • {seen[key]}")
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"문서 목록 조회 실패: {e}"
+
+
+# ── LangChain Tool 정의 ───────────────────────────────────────────────────────
+
+@tool
+def search_spec_tool(query: str) -> str:
+    """
+    한국 건설 공정서 및 시방서(KCS·KDS)에서 관련 내용을 검색합니다.
+
+    입력: 검색할 공종·규격·조건 관련 질문 또는 키워드
+    출력: 관련 규정 본문 + 출처(규격코드, 시리즈, 제목)
+
+    사용 예:
+      - "콘크리트 타설 온도 기준"
+      - "말뚝 기초 설계 하중"
+      - "비탈면 보호공법 적용 조건"
+      - "KCS 10 10 05 품질 관리 기준"
+    """
+    return search_as_text(query, k=5)
+
+
+@tool
+def list_spec_sources() -> str:
+    """
+    현재 RAG 시스템에 인덱싱된 공정서·시방서 목록을 반환합니다.
+    어떤 문서가 검색 가능한지 확인할 때 사용합니다.
+    """
+    return get_source_list()
+
+
+# 외부에서 import할 도구 목록
+CONSTRUCTION_RAG_TOOLS = [search_spec_tool, list_spec_sources]
