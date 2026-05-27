@@ -1405,8 +1405,11 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           const sin = Math.sin(s.bodyRotation * D2R);
           if (keys.has('w') || keys.has('W') || keys.has('ArrowUp'))    { s.positionX += sin * MOVE_SPEED; s.positionZ += cos * MOVE_SPEED; }
           if (keys.has('s') || keys.has('S') || keys.has('ArrowDown'))  { s.positionX -= sin * MOVE_SPEED; s.positionZ -= cos * MOVE_SPEED; }
-          if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft'))  s.bodyRotation += ROT_SPEED;
-          if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) s.bodyRotation -= ROT_SPEED;
+          // 후진 시 좌우 방향 반전 (실제 차량과 동일한 조작감)
+          const isReverse = keys.has('s') || keys.has('S') || keys.has('ArrowDown');
+          const turnDir = isReverse ? -1 : 1;
+          if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft'))  s.bodyRotation += ROT_SPEED * turnDir;
+          if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) s.bodyRotation -= ROT_SPEED * turnDir;
           if (keys.has('q') || keys.has('Q')) s.swingAngle += JOINT_SPEED * 1.8;
           if (keys.has('e') || keys.has('E')) s.swingAngle -= JOINT_SPEED * 1.8;
           if (keys.has('r') || keys.has('R')) s.boomAngle = clamp(s.boomAngle + JOINT_SPEED, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
