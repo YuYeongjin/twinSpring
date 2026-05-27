@@ -6,6 +6,7 @@ Run interactively from the terminal, or import graph from external code.
 Usage:
     python main.py
 """
+from __future__ import annotations
 
 from langchain_core.messages import HumanMessage
 from graph import graph

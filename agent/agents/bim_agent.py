@@ -13,6 +13,7 @@ BIM Agent — BIM 모델 관리 전문 에이전트
   - 부재 생성/복합 구조물 등 상태 변경 → 기존 bim_builder_node 로직 유지 (multi-step 지원)
   - 판단 기준: pending_action 이 있으면 bim_builder 로직, 없으면 ReAct
 """
+from __future__ import annotations
 
 import json
 from langchain_core.messages import SystemMessage, AIMessage

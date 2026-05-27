@@ -21,6 +21,7 @@ pending_action internal structure:
   "_missing": ["positionX", "positionY", "positionZ"]
 }
 """
+from __future__ import annotations
 
 import json
 import math

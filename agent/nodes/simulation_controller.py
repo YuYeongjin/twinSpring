@@ -8,6 +8,7 @@ Excavator simulation control:
 - Position movement (setPosition)
 - Full reset (reset)
 """
+from __future__ import annotations
 
 import json
 import re
