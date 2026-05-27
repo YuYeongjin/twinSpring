@@ -2,7 +2,10 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sky, GizmoHelper, GizmoViewport, Box, Edges } from '@react-three/drei';
 import * as THREE from 'three';
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
 import AxiosCustom from '../../axios/AxiosCustom';
+import MobileGpsSender from './MobileGpsSender';
 
 const D2R = Math.PI / 180;
 
@@ -37,6 +40,19 @@ const AUTO_PHASES = [
   { boomAngle: 35, armAngle: 60,  bucketAngle: -25, swingAngle: 0  },
 ];
 const PHASE_DURATION = 2200;
+
+/** Spring Boot WebSocket 엔드포인트 URL 생성 */
+function buildWsUrl() {
+  const base = (process.env.REACT_APP_API_URL || 'http://localhost:8080').replace(/\/$/, '');
+  return `${base}/ws/sensor`;
+}
+
+/** 위도/경도 → Three.js XZ 미터 변환 (원점 기준 상대 좌표) */
+function latLngToXZ(lat, lng, originLat, originLng) {
+  const dx = (lat - originLat) * 111111;
+  const dz = (lng - originLng) * 111111 * Math.cos(originLat * D2R);
+  return { x: dx, z: dz };
+}
 
 // Compute world-space positions of key arm joint points (boom pivot, boom mid, arm pivot, arm mid, bucket pivot, bucket tip)
 function computeArmPoints(st, machine) {
@@ -346,6 +362,175 @@ export default function TestDashboard() {
   const keysRef = useRef(new Set());
   const animRef = useRef(null);
 
+  // ── GPS / WebSocket 상태 ──────────────────────────────────────────────────
+  const [gpsConnected, setGpsConnected] = useState(false);
+  const [lastGpsPacket, setLastGpsPacket] = useState(null);   // 마지막 수신 패킷 표시용
+  const [gpsPacketCount, setGpsPacketCount] = useState(0);
+  const [gpsHz, setGpsHz] = useState(0);                      // 수신 빈도 (Hz)
+  const [gpsError, setGpsError] = useState('');
+
+  const gpsStompRef   = useRef(null);   // STOMP Client
+  const gpsActiveRef  = useRef(false);  // 실시간 GPS 활성 여부 (키보드 잠금용)
+  const gpsOriginRef  = useRef(null);   // 원점 GPS (첫 패킷의 lat/lng)
+  const gpsHzCountRef = useRef(0);      // Hz 계산용 카운터
+  const gpsHzTimerRef = useRef(null);   // Hz 계산용 타이머
+
+  // ── GPS 데이터 → 굴착기 상태 변환 ───────────────────────────────────────
+  const handleGpsData = useCallback((packet) => {
+    // ① 원점 설정 (첫 패킷)
+    if (gpsOriginRef.current === null && packet.lat != null && packet.lng != null) {
+      gpsOriginRef.current = { lat: packet.lat, lng: packet.lng };
+    }
+
+    // ② lat/lng → XZ 좌표 (미터 단위 Three.js 공간)
+    let posX = stateRef.current.positionX;
+    let posZ = stateRef.current.positionZ;
+    if (packet.lat != null && packet.lng != null && gpsOriginRef.current) {
+      const { x, z } = latLngToXZ(packet.lat, packet.lng, gpsOriginRef.current.lat, gpsOriginRef.current.lng);
+      posX = x;
+      posZ = z;
+    }
+
+    // ③ 방향각 (heading → bodyRotation)
+    //    heading: 0~360 (진북 기준 시계방향)
+    //    Three.js bodyRotation: 도 단위, Y축 회전
+    let bodyRot = stateRef.current.bodyRotation;
+    if (packet.heading != null) {
+      bodyRot = packet.heading;
+    } else if (packet.alpha != null) {
+      // DeviceOrientation alpha = 방위각 (0~360, 시계방향)
+      bodyRot = packet.alpha;
+    }
+
+    // ④ 관절 각도 매핑
+    //    우선순위: 직접 제공된 각도 > IMU에서 계산
+    let boom   = stateRef.current.boomAngle;
+    let arm    = stateRef.current.armAngle;
+    let bucket = stateRef.current.bucketAngle;
+    let swing  = stateRef.current.swingAngle;
+
+    if (packet.boomAngle != null) {
+      boom = clamp(packet.boomAngle, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
+    } else if (packet.beta != null) {
+      // beta: -180~180 (pitch, 앞으로 기울면 양수)
+      // 0° = 수평, +45° = 앞으로 45° 기울어짐 → 붐 올라감
+      boom = clamp(packet.beta * 0.6 + 35, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
+    }
+
+    if (packet.armAngle != null) {
+      arm = clamp(packet.armAngle, JOINT_LIMITS.armAngle.min, JOINT_LIMITS.armAngle.max);
+    }
+
+    if (packet.bucketAngle != null) {
+      bucket = clamp(packet.bucketAngle, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+    }
+
+    if (packet.swingAngle != null) {
+      swing = packet.swingAngle;
+    } else if (packet.gamma != null) {
+      // gamma: -90~90 (roll, 오른쪽으로 기울면 양수)
+      // 선회 각도를 roll에 매핑 (±90° 범위를 ±120°로 스케일)
+      swing = clamp(packet.gamma * 1.33, -120, 120);
+    }
+
+    // ⑤ stateRef 직접 업데이트 (useFrame과 동기화, React state 우회)
+    stateRef.current = {
+      positionX: posX,
+      positionY: stateRef.current.positionY,
+      positionZ: posZ,
+      bodyRotation: bodyRot,
+      swingAngle: swing,
+      boomAngle: boom,
+      armAngle: arm,
+      bucketAngle: bucket,
+    };
+
+    // ⑥ UI 표시를 위해 React state 업데이트 (throttle: 100ms)
+    setState({ ...stateRef.current });
+    setLastGpsPacket(packet);
+    setGpsPacketCount(c => c + 1);
+
+    // Hz 카운터
+    gpsHzCountRef.current++;
+  }, []);
+
+  // ── GPS 연결 ─────────────────────────────────────────────────────────────
+  const connectGps = useCallback(() => {
+    if (gpsStompRef.current) return;
+
+    setGpsError('');
+    // 오토 플레이 중이면 중지
+    setAutoPlay(false);
+    autoPlayRef.current = false;
+
+    const client = new Client({
+      webSocketFactory: () => new SockJS(buildWsUrl()),
+      reconnectDelay: 3000,
+      onConnect: () => {
+        client.subscribe('/topic/excavator', (msg) => {
+          try {
+            const packet = JSON.parse(msg.body);
+            handleGpsData(packet);
+          } catch (e) {
+            console.warn('[GPS] parse error', e);
+          }
+        });
+        setGpsConnected(true);
+        gpsActiveRef.current = true;
+
+        // Hz 측정 타이머 (1초마다 갱신)
+        gpsHzTimerRef.current = setInterval(() => {
+          setGpsHz(gpsHzCountRef.current);
+          gpsHzCountRef.current = 0;
+        }, 1000);
+      },
+      onDisconnect: () => {
+        setGpsConnected(false);
+        gpsActiveRef.current = false;
+        clearInterval(gpsHzTimerRef.current);
+        setGpsHz(0);
+      },
+      onStompError: (frame) => {
+        setGpsError('STOMP 오류: ' + (frame.headers?.message || '연결 실패'));
+        setGpsConnected(false);
+        gpsActiveRef.current = false;
+      },
+    });
+
+    client.activate();
+    gpsStompRef.current = client;
+  }, [handleGpsData]);
+
+  // ── GPS 해제 ─────────────────────────────────────────────────────────────
+  const disconnectGps = useCallback(() => {
+    if (gpsStompRef.current) {
+      gpsStompRef.current.deactivate();
+      gpsStompRef.current = null;
+    }
+    clearInterval(gpsHzTimerRef.current);
+    setGpsConnected(false);
+    gpsActiveRef.current = false;
+    gpsOriginRef.current = null;
+    setLastGpsPacket(null);
+    setGpsPacketCount(0);
+    setGpsHz(0);
+  }, []);
+
+  // ── GPS 원점 초기화 ───────────────────────────────────────────────────────
+  const resetGpsOrigin = useCallback(() => {
+    gpsOriginRef.current = null;
+    setState(prev => ({ ...prev, positionX: 0, positionZ: 0 }));
+    stateRef.current = { ...stateRef.current, positionX: 0, positionZ: 0 };
+  }, []);
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (gpsStompRef.current) gpsStompRef.current.deactivate();
+      clearInterval(gpsHzTimerRef.current);
+    };
+  }, []);
+
   // Compute BIM offset so building is centered at (0, 0, BUILDING_OFFSET_Z)
   const bimOffset = useMemo(() => {
     if (bimElements.length === 0) return { x: 0, z: 0 };
@@ -411,6 +596,8 @@ export default function TestDashboard() {
   useEffect(() => {
     const CTRL = new Set(['w','a','s','d','q','e','r','f','t','g','y','h','W','A','S','D','Q','E','R','F','T','G','Y','H']);
     const onDown = e => {
+      // GPS 실시간 제어 중에는 키보드 무시
+      if (gpsActiveRef.current) return;
       if (CTRL.has(e.key)) { e.preventDefault(); autoPlayRef.current = false; setAutoPlay(false); }
       keysRef.current.add(e.key);
     };
@@ -424,25 +611,30 @@ export default function TestDashboard() {
   useEffect(() => {
     const MOVE = 0.07, ROT = 1.0, JOINT = 0.6;
     const tick = () => {
-      const keys = keysRef.current;
-      if (keys.size > 0) {
-        setState(prev => {
-          const s = { ...prev };
-          const cos = Math.cos(s.bodyRotation * D2R), sin = Math.sin(s.bodyRotation * D2R);
-          if (keys.has('w') || keys.has('W')) { s.positionX += sin*MOVE; s.positionZ += cos*MOVE; }
-          if (keys.has('s') || keys.has('S')) { s.positionX -= sin*MOVE; s.positionZ -= cos*MOVE; }
-          if (keys.has('a') || keys.has('A')) s.bodyRotation -= ROT;
-          if (keys.has('d') || keys.has('D')) s.bodyRotation += ROT;
-          if (keys.has('q') || keys.has('Q')) s.swingAngle -= JOINT * 1.8;
-          if (keys.has('e') || keys.has('E')) s.swingAngle += JOINT * 1.8;
-          if (keys.has('r') || keys.has('R')) s.boomAngle   = clamp(s.boomAngle   + JOINT, JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
-          if (keys.has('f') || keys.has('F')) s.boomAngle   = clamp(s.boomAngle   - JOINT, JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
-          if (keys.has('t') || keys.has('T')) s.armAngle    = clamp(s.armAngle    + JOINT, JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
-          if (keys.has('g') || keys.has('G')) s.armAngle    = clamp(s.armAngle    - JOINT, JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
-          if (keys.has('y') || keys.has('Y')) s.bucketAngle = clamp(s.bucketAngle + JOINT, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
-          if (keys.has('h') || keys.has('H')) s.bucketAngle = clamp(s.bucketAngle - JOINT, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
-          return s;
-        });
+      // GPS 활성 중에는 키보드 제어 스킵
+      if (!gpsActiveRef.current) {
+        const keys = keysRef.current;
+        if (keys.size > 0) {
+          setState(prev => {
+            const s = { ...prev };
+            const cos = Math.cos(s.bodyRotation * D2R), sin = Math.sin(s.bodyRotation * D2R);
+            if (keys.has('w') || keys.has('W')) { s.positionX += sin*MOVE; s.positionZ += cos*MOVE; }
+            if (keys.has('s') || keys.has('S')) { s.positionX -= sin*MOVE; s.positionZ -= cos*MOVE; }
+            // 후진(S) 중에는 A/D 방향 반전 — 이동 방향 기준으로 항상 동일한 조향감
+            const _rev = (keys.has('s') || keys.has('S')) ? -1 : 1;
+            if (keys.has('a') || keys.has('A')) s.bodyRotation -= ROT * _rev;
+            if (keys.has('d') || keys.has('D')) s.bodyRotation += ROT * _rev;
+            if (keys.has('q') || keys.has('Q')) s.swingAngle -= JOINT * 1.8;
+            if (keys.has('e') || keys.has('E')) s.swingAngle += JOINT * 1.8;
+            if (keys.has('r') || keys.has('R')) s.boomAngle   = clamp(s.boomAngle   + JOINT, JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
+            if (keys.has('f') || keys.has('F')) s.boomAngle   = clamp(s.boomAngle   - JOINT, JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
+            if (keys.has('t') || keys.has('T')) s.armAngle    = clamp(s.armAngle    + JOINT, JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
+            if (keys.has('g') || keys.has('G')) s.armAngle    = clamp(s.armAngle    - JOINT, JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
+            if (keys.has('y') || keys.has('Y')) s.bucketAngle = clamp(s.bucketAngle + JOINT, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+            if (keys.has('h') || keys.has('H')) s.bucketAngle = clamp(s.bucketAngle - JOINT, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+            return s;
+          });
+        }
       }
       animRef.current = requestAnimationFrame(tick);
     };
@@ -457,14 +649,17 @@ export default function TestDashboard() {
     let rafId = null;
 
     const phaseTick = () => {
-      const target = AUTO_PHASES[autoPhaseRef.current];
-      setState(prev => ({
-        ...prev,
-        boomAngle:   prev.boomAngle   + (target.boomAngle   - prev.boomAngle)   * 0.025,
-        armAngle:    prev.armAngle    + (target.armAngle    - prev.armAngle)    * 0.025,
-        bucketAngle: prev.bucketAngle + (target.bucketAngle - prev.bucketAngle) * 0.025,
-        swingAngle:  prev.swingAngle  + (target.swingAngle  - prev.swingAngle)  * 0.025,
-      }));
+      // GPS 활성 중에는 오토플레이 스킵
+      if (!gpsActiveRef.current) {
+        const target = AUTO_PHASES[autoPhaseRef.current];
+        setState(prev => ({
+          ...prev,
+          boomAngle:   prev.boomAngle   + (target.boomAngle   - prev.boomAngle)   * 0.025,
+          armAngle:    prev.armAngle    + (target.armAngle    - prev.armAngle)    * 0.025,
+          bucketAngle: prev.bucketAngle + (target.bucketAngle - prev.bucketAngle) * 0.025,
+          swingAngle:  prev.swingAngle  + (target.swingAngle  - prev.swingAngle)  * 0.025,
+        }));
+      }
       rafId = requestAnimationFrame(phaseTick);
     };
     rafId = requestAnimationFrame(phaseTick);
@@ -478,6 +673,7 @@ export default function TestDashboard() {
 
   const handleReset = () => {
     setState({ ...DEFAULT_STATE });
+    stateRef.current = { ...DEFAULT_STATE };
     setAutoPlay(false);
     autoPlayRef.current = false;
   };
@@ -487,6 +683,11 @@ export default function TestDashboard() {
   const panelBorder = '1px solid #253347';
   const secColor    = '#8896a4';
   const accentBlue  = '#60a5fa';
+  const accentGreen = '#4ade80';
+  const accentRed   = '#f87171';
+
+  // ── GPS 연결 상태 색상 ─────────────────────────────────────────────────────
+  const gpsColor = gpsConnected ? accentGreen : (gpsError ? accentRed : secColor);
 
   // ── Shared: 3D Canvas content ──────────────────────────────────────────────
   const canvasContent = (
@@ -541,6 +742,18 @@ export default function TestDashboard() {
           fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
           background: '#1a2a0a', color: '#f5a623', border: '1px solid #f5a62340',
         }}>Beta</span>
+
+        {/* GPS 연결 배지 */}
+        {gpsConnected && (
+          <span style={{
+            background: 'rgba(4,47,46,0.9)', border: '1px solid #4ade80',
+            color: accentGreen, borderRadius: '8px', padding: '3px 12px',
+            fontSize: '12px', fontWeight: 700,
+          }}>
+            📡 GPS 실시간 제어 중 — {gpsHz}Hz
+          </span>
+        )}
+
         {colliding && (
           <span style={{
             background: alertPulse ? 'rgba(127,29,29,0.95)' : 'rgba(90,10,10,0.9)',
@@ -559,7 +772,7 @@ export default function TestDashboard() {
       {!isMobile && (
         <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px' }}>
 
-          {/* Left panel: BIM project selector */}
+          {/* Left panel: BIM project selector + GPS 제어 */}
           <div style={{
             width: '215px', flexShrink: 0, background: panelBg, border: panelBorder,
             borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
@@ -606,18 +819,108 @@ export default function TestDashboard() {
               </div>
             )}
 
+            {/* ── GPS 실시간 제어 섹션 ─────────────────────────────────── */}
+            <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
+              <div style={{ color: '#a78bfa', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>
+                📡 GPS 실시간 제어
+              </div>
+
+              {/* 연결 상태 표시 */}
+              <div style={{
+                background: gpsConnected ? '#042f2e' : '#111e2e',
+                border: `1px solid ${gpsConnected ? '#4ade8040' : '#253347'}`,
+                borderRadius: '8px', padding: '8px', marginBottom: '6px',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: secColor, fontSize: '10px' }}>상태</span>
+                  <span style={{ color: gpsColor, fontWeight: 700, fontSize: '11px' }}>
+                    {gpsConnected ? '● 연결됨' : '○ 대기 중'}
+                  </span>
+                </div>
+                {gpsConnected && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                      <span style={{ color: secColor, fontSize: '10px' }}>수신 주파수</span>
+                      <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                      <span style={{ color: secColor, fontSize: '10px' }}>총 패킷</span>
+                      <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
+                    </div>
+                  </>
+                )}
+                {gpsError && (
+                  <div style={{ color: accentRed, fontSize: '10px', marginTop: '4px' }}>{gpsError}</div>
+                )}
+              </div>
+
+              {/* 연결 / 해제 버튼 */}
+              {!gpsConnected ? (
+                <button
+                  onClick={connectGps}
+                  style={{
+                    width: '100%', background: '#1a1040',
+                    border: '1px solid #7c3aed', borderRadius: '8px', padding: '8px',
+                    color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                  }}
+                >
+                  📡 GPS 연결
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <button
+                    onClick={resetGpsOrigin}
+                    style={{
+                      width: '100%', background: '#0f2a18',
+                      border: '1px solid #22c55e', borderRadius: '8px', padding: '6px',
+                      color: accentGreen, fontWeight: 700, fontSize: '11px', cursor: 'pointer',
+                    }}
+                  >
+                    ⌖ 원점 초기화
+                  </button>
+                  <button
+                    onClick={disconnectGps}
+                    style={{
+                      width: '100%', background: '#1a0808',
+                      border: '1px solid #ef4444', borderRadius: '8px', padding: '6px',
+                      color: accentRed, fontWeight: 700, fontSize: '11px', cursor: 'pointer',
+                    }}
+                  >
+                    ✕ 연결 해제
+                  </button>
+                </div>
+              )}
+
+              {/* GPS 사용 중일 때 안내 메시지 */}
+              {gpsConnected && (
+                <div style={{
+                  background: '#1a1040', border: '1px solid #7c3aed33',
+                  borderRadius: '6px', padding: '7px', marginTop: '6px', fontSize: '10px',
+                  color: '#a78bfa', lineHeight: 1.5,
+                }}>
+                  ⚠ GPS 연결 중에는 키보드 제어가 비활성화됩니다.
+                </div>
+              )}
+            </div>
+
+            {/* ── 시뮬레이션 ── */}
             <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
               <div style={{ color: accentBlue, fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>⚙ Simulation</div>
 
               <button
-                onClick={() => { const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next; }}
+                onClick={() => {
+                  if (gpsConnected) return; // GPS 중에는 오토플레이 불가
+                  const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next;
+                }}
                 style={{
                   width: '100%',
                   background: autoPlay ? '#0f2a18' : '#111e2e',
-                  border: `1px solid ${autoPlay ? '#22c55e' : '#253347'}`,
+                  border: `1px solid ${autoPlay ? '#22c55e' : (gpsConnected ? '#253347' : '#253347')}`,
                   borderRadius: '8px', padding: '8px',
-                  color: autoPlay ? '#4ade80' : secColor,
-                  fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                  color: gpsConnected ? '#2a3a4a' : (autoPlay ? '#4ade80' : secColor),
+                  fontWeight: 700, fontSize: '12px',
+                  cursor: gpsConnected ? 'not-allowed' : 'pointer',
+                  opacity: gpsConnected ? 0.45 : 1,
                 }}
               >
                 {autoPlay ? '⏹ Stop Auto Mode' : '▶ Start Auto Mode'}
@@ -654,9 +957,9 @@ export default function TestDashboard() {
           {/* Center: 3D Canvas */}
           <div style={{
             flex: 1, height: '100%', borderRadius: '12px', overflow: 'hidden',
-            border: colliding ? '2px solid #ef4444' : panelBorder,
+            border: colliding ? '2px solid #ef4444' : (gpsConnected ? '2px solid #4ade8060' : panelBorder),
             position: 'relative',
-            boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 40px #ef444455' : 'none',
+            boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 40px #ef444455' : (gpsConnected ? '0 0 0 1px #4ade8030' : 'none'),
             transition: 'box-shadow 0.3s, border-color 0.3s',
           }}>
             {colliding && (
@@ -690,20 +993,34 @@ export default function TestDashboard() {
                 <div style={{ fontSize: '14px' }}>Select a BIM project from the left panel</div>
               </div>
             )}
+
+            {/* 키보드 단축키 안내 (GPS 연결 시 비활성 안내로 전환) */}
             <div style={{
               position: 'absolute', bottom: '12px', left: '12px', zIndex: 10, pointerEvents: 'none',
-              background: 'rgba(13,27,42,0.88)', border: '1px solid #253347',
+              background: 'rgba(13,27,42,0.88)', border: `1px solid ${gpsConnected ? '#4ade8030' : '#253347'}`,
               borderRadius: '10px', padding: '10px 14px', fontSize: '11px',
-              color: secColor, lineHeight: 1.75,
+              color: gpsConnected ? '#2a4a3a' : secColor, lineHeight: 1.75,
             }}>
-              <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px' }}>⌨ Keyboard Controls</div>
-              {[['W / S','Forward / Backward'],['A / D','Body Rotation'],['Q / E','Swing ±'],['R / F','Boom Up/Down'],['T / G','Arm Bend'],['Y / H','Bucket Rotate']].map(([k,v]) => (
-                <div key={k} style={{ display: 'flex', gap: '8px' }}>
-                  <span style={{ color: '#e2e8f0', minWidth: '52px', fontFamily: 'monospace' }}>{k}</span>
-                  <span>{v}</span>
-                </div>
-              ))}
+              {gpsConnected ? (
+                <>
+                  <div style={{ color: accentGreen, fontWeight: 700, marginBottom: '4px' }}>📡 GPS 제어 모드</div>
+                  <div style={{ color: '#2a4a3a' }}>키보드 제어 비활성화됨</div>
+                  <div style={{ color: '#2a4a3a' }}>센서 데이터로 굴착기 제어 중</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px' }}>⌨ Keyboard Controls</div>
+                  {[['W / S','Forward / Backward'],['A / D','Body Rotation'],['Q / E','Swing ±'],['R / F','Boom Up/Down'],['T / G','Arm Bend'],['Y / H','Bucket Rotate']].map(([k,v]) => (
+                    <div key={k} style={{ display: 'flex', gap: '8px' }}>
+                      <span style={{ color: '#e2e8f0', minWidth: '52px', fontFamily: 'monospace' }}>{k}</span>
+                      <span>{v}</span>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
+
+            {/* Top-right 상태 뱃지 */}
             <div style={{
               position: 'absolute', top: '12px', right: '12px', zIndex: 10, pointerEvents: 'none',
               background: 'rgba(13,27,42,0.90)', border: '1px solid #253347',
@@ -711,13 +1028,47 @@ export default function TestDashboard() {
             }}>
               <div style={{ color: '#f5a623', fontWeight: 700 }}>🚜 0.6W Medium Excavator</div>
               {selectedProject && <div style={{ color: secColor }}>🏗 {selectedProject.projectName}</div>}
-              <div style={{ color: autoPlay ? '#4ade80' : secColor, fontSize: '11px' }}>
-                {autoPlay ? '▶ Auto Mode Active' : '■ Manual Control'}
+              <div style={{ color: gpsConnected ? accentGreen : (autoPlay ? '#4ade80' : secColor), fontSize: '11px' }}>
+                {gpsConnected ? `📡 GPS ${gpsHz}Hz` : (autoPlay ? '▶ Auto Mode Active' : '■ Manual Control')}
               </div>
               <div style={{ color: colliding ? '#ef4444' : '#4ade80', fontWeight: 700, marginTop: '4px' }}>
                 {colliding ? '● Collision' : '● Safe'}
               </div>
             </div>
+
+            {/* GPS 실시간 데이터 오버레이 */}
+            {gpsConnected && lastGpsPacket && (
+              <div style={{
+                position: 'absolute', top: '12px', left: '12px', zIndex: 10, pointerEvents: 'none',
+                background: 'rgba(4,47,46,0.92)', border: '1px solid #4ade8040',
+                borderRadius: '10px', padding: '8px 12px', fontSize: '10px', lineHeight: 1.7,
+                color: secColor, minWidth: '150px',
+              }}>
+                <div style={{ color: accentGreen, fontWeight: 700, marginBottom: '3px' }}>📡 GPS Live</div>
+                {lastGpsPacket.lat != null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span>Lat / Lng</span>
+                    <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
+                      {lastGpsPacket.lat.toFixed(5)}, {lastGpsPacket.lng?.toFixed(5)}
+                    </span>
+                  </div>
+                )}
+                {lastGpsPacket.heading != null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span>Heading</span>
+                    <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{lastGpsPacket.heading?.toFixed(1)}°</span>
+                  </div>
+                )}
+                {lastGpsPacket.alpha != null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <span>α/β/γ</span>
+                    <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
+                      {lastGpsPacket.alpha?.toFixed(0)}°/{lastGpsPacket.beta?.toFixed(0)}°/{lastGpsPacket.gamma?.toFixed(0)}°
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
               {canvasContent}
@@ -772,6 +1123,53 @@ export default function TestDashboard() {
               ))}
             </div>
 
+            {/* GPS 실시간 데이터 패널 */}
+            {gpsConnected && (
+              <div style={{
+                background: '#042f2e',
+                border: '1px solid #4ade8030',
+                borderRadius: '8px', padding: '9px',
+              }}>
+                <div style={{ color: accentGreen, fontSize: '10px', fontWeight: 700, marginBottom: '6px' }}>
+                  📡 GPS 실시간 데이터
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                  <span style={{ color: secColor, fontSize: '10px' }}>수신 빈도</span>
+                  <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                  <span style={{ color: secColor, fontSize: '10px' }}>총 패킷</span>
+                  <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
+                </div>
+                {lastGpsPacket?.lat != null && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                      <span style={{ color: secColor, fontSize: '10px' }}>Lat</span>
+                      <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{lastGpsPacket.lat.toFixed(6)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                      <span style={{ color: secColor, fontSize: '10px' }}>Lng</span>
+                      <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{lastGpsPacket.lng?.toFixed(6)}</span>
+                    </div>
+                  </>
+                )}
+                {lastGpsPacket?.alpha != null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                    <span style={{ color: secColor, fontSize: '10px' }}>IMU (α/β/γ)</span>
+                    <span style={{ color: '#a78bfa', fontFamily: 'monospace', fontSize: '10px' }}>
+                      {Math.round(lastGpsPacket.alpha)}/{Math.round(lastGpsPacket.beta)}/{Math.round(lastGpsPacket.gamma)}
+                    </span>
+                  </div>
+                )}
+                <div style={{
+                  marginTop: '6px', fontSize: '10px', color: '#2a5a4a',
+                  borderTop: '1px solid #1a4a3a', paddingTop: '4px'
+                }}>
+                  키보드 제어 잠금됨
+                </div>
+              </div>
+            )}
+
             <div style={{
               background: autoPlay ? '#0f2a18' : '#111e2e',
               border: `1px solid ${autoPlay ? '#22c55e44' : 'transparent'}`,
@@ -824,6 +1222,9 @@ export default function TestDashboard() {
       {isMobile && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
+          {/* ── 모바일 GPS 제어 (RTK-GPS 모사) ── */}
+          <MobileGpsSender />
+
           {/* BIM project selector row */}
           <div style={{
             background: panelBg, border: panelBorder,
@@ -866,17 +1267,72 @@ export default function TestDashboard() {
             )}
           </div>
 
+          {/* GPS 제어 (모바일) */}
+          <div style={{
+            background: gpsConnected ? '#042f2e' : panelBg,
+            border: `1px solid ${gpsConnected ? '#4ade8040' : '#253347'}`,
+            borderRadius: '10px', padding: '10px 12px',
+          }}>
+            <div style={{ color: '#a78bfa', fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>
+              📡 GPS 실시간 제어
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {!gpsConnected ? (
+                <button
+                  onClick={connectGps}
+                  style={{
+                    flex: 1, background: '#1a1040', border: '1px solid #7c3aed',
+                    borderRadius: '8px', padding: '9px 8px',
+                    color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                  }}
+                >
+                  📡 GPS 연결
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={resetGpsOrigin}
+                    style={{
+                      flex: 1, background: '#0f2a18', border: '1px solid #22c55e',
+                      borderRadius: '8px', padding: '9px 8px',
+                      color: accentGreen, fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                    }}
+                  >
+                    ⌖ 원점 초기화
+                  </button>
+                  <button
+                    onClick={disconnectGps}
+                    style={{
+                      background: '#1a0808', border: '1px solid #ef4444',
+                      borderRadius: '8px', padding: '9px 14px',
+                      color: accentRed, fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                    }}
+                  >
+                    ✕ 해제
+                  </button>
+                </>
+              )}
+              <div style={{ fontSize: '11px', color: gpsColor }}>
+                {gpsConnected ? `● 연결됨 ${gpsHz}Hz · ${gpsPacketCount}개` : '○ 대기 중'}
+              </div>
+            </div>
+          </div>
+
           {/* Auto / Reset controls */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
-              onClick={() => { const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next; }}
+              onClick={() => {
+                if (gpsConnected) return;
+                const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next;
+              }}
               style={{
                 flex: 1,
                 background: autoPlay ? '#0f2a18' : '#111e2e',
                 border: `1px solid ${autoPlay ? '#22c55e' : '#253347'}`,
                 borderRadius: '10px', padding: '11px 8px',
-                color: autoPlay ? '#4ade80' : secColor,
-                fontWeight: 700, fontSize: '13px', cursor: 'pointer',
+                color: gpsConnected ? '#2a3a4a' : (autoPlay ? '#4ade80' : secColor),
+                fontWeight: 700, fontSize: '13px', cursor: gpsConnected ? 'not-allowed' : 'pointer',
+                opacity: gpsConnected ? 0.5 : 1,
               }}
             >
               {autoPlay ? '⏹ Stop Auto' : '▶ Auto Mode'}
@@ -898,7 +1354,7 @@ export default function TestDashboard() {
             width: '100%',
             height: 'clamp(320px, 45vh, 500px)',
             borderRadius: '12px', overflow: 'hidden',
-            border: colliding ? '2px solid #ef4444' : panelBorder,
+            border: colliding ? '2px solid #ef4444' : (gpsConnected ? '2px solid #4ade8060' : panelBorder),
             position: 'relative',
             boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 30px #ef444455' : 'none',
             transition: 'box-shadow 0.3s, border-color 0.3s',
@@ -940,8 +1396,8 @@ export default function TestDashboard() {
               background: 'rgba(13,27,42,0.90)', border: '1px solid #253347',
               borderRadius: '8px', padding: '5px 10px', fontSize: '11px', lineHeight: 1.6,
             }}>
-              <div style={{ color: autoPlay ? '#4ade80' : secColor }}>
-                {autoPlay ? '▶ Auto' : '■ Manual'}
+              <div style={{ color: gpsConnected ? accentGreen : (autoPlay ? '#4ade80' : secColor) }}>
+                {gpsConnected ? `📡 GPS` : (autoPlay ? '▶ Auto' : '■ Manual')}
               </div>
               <div style={{ color: colliding ? '#ef4444' : '#4ade80', fontWeight: 700 }}>
                 {colliding ? '● Collision' : '● Safe'}
@@ -968,9 +1424,9 @@ export default function TestDashboard() {
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ color: secColor, fontSize: '10px' }}>Auto Mode</div>
-              <div style={{ color: autoPlay ? '#4ade80' : '#3a4a5a', fontWeight: 700, fontSize: '13px' }}>
-                {autoPlay ? `Phase ${autoPhaseRef.current + 1}/${AUTO_PHASES.length}` : 'Off'}
+              <div style={{ color: secColor, fontSize: '10px' }}>Control Mode</div>
+              <div style={{ color: gpsConnected ? accentGreen : (autoPlay ? '#4ade80' : '#3a4a5a'), fontWeight: 700, fontSize: '13px' }}>
+                {gpsConnected ? `GPS ${gpsHz}Hz` : (autoPlay ? `Phase ${autoPhaseRef.current + 1}/${AUTO_PHASES.length}` : 'Off')}
               </div>
             </div>
           </div>
