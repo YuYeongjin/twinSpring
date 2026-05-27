@@ -8,7 +8,7 @@ TestAgent 가 create_react_agent 를 통해 호출하는 @tool 함수들.
 import json
 import httpx
 from langchain_core.tools import tool
-from config import SPRING_BASE_URL
+from config.settings import SPRING_BASE_URL
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────

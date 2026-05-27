@@ -4,11 +4,13 @@ Simulation Agent 도구 모음 — 굴착기 시뮬레이션 제어
 SimulationAgent 가 create_react_agent 를 통해 호출하는 @tool 함수들.
 Spring Boot /api/simulation/excavator 엔드포인트와 통신합니다.
 """
+from __future__ import annotations
+from typing import Optional
 
 import json
 import httpx
 from langchain_core.tools import tool
-from config import SPRING_BASE_URL
+from config.settings import SPRING_BASE_URL
 
 EXCAVATOR_ID = "EX-001"
 
@@ -110,11 +112,11 @@ def set_excavator_preset(preset: str) -> str:
 
 @tool
 def set_excavator_angles(
-    boom_angle: float | None = None,
-    arm_angle: float | None = None,
-    bucket_angle: float | None = None,
-    swing_angle: float | None = None,
-    body_rotation: float | None = None,
+    boom_angle: Optional[float] = None,
+    arm_angle: Optional[float] = None,
+    bucket_angle: Optional[float] = None,
+    swing_angle: Optional[float] = None,
+    body_rotation: Optional[float] = None,
 ) -> str:
     """
     굴착기 관절 각도를 개별 설정합니다 (단위: 도°).

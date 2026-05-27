@@ -137,43 +137,122 @@ function drawChain(ctx,chain,sx,sy){
   ctx.stroke();
 }
 
-// ── Sobel edge detection ──────────────────────────────────────────────────────
-function sobelEdge(grid){
-  const R=grid.length,C=grid[0].length;
-  const out=Array.from({length:R},()=>new Float32Array(C));
-  for(let y=1;y<R-1;y++)for(let x=1;x<C-1;x++){
-    const gx=(-grid[y-1][x-1]+grid[y-1][x+1]
-              -2*grid[y][x-1]+2*grid[y][x+1]
-              -grid[y+1][x-1]+grid[y+1][x+1]);
-    const gy=(-grid[y-1][x-1]-2*grid[y-1][x]-grid[y-1][x+1]
-              +grid[y+1][x-1]+2*grid[y+1][x]+grid[y+1][x+1]);
-    out[y][x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)*3.5);
+// ── Ramer-Douglas-Peucker 선 단순화 ─────────────────────────────────────────
+// 폴리라인 포인트 수를 줄이면서 형태는 유지 (epsilon 단위: 그리드 셀)
+function rdpSimplify(pts,eps){
+  if(pts.length<=2)return pts;
+  const[x1,y1]=pts[0],[x2,y2]=pts[pts.length-1];
+  const dx=x2-x1,dy=y2-y1,d2=dx*dx+dy*dy;
+  let maxD=0,maxI=0;
+  for(let i=1;i<pts.length-1;i++){
+    const[px,py]=pts[i];
+    const dist=d2<1e-12?(px-x1)*(px-x1)+(py-y1)*(py-y1)
+      :(dy*px-dx*py+x2*y1-y2*x1)**2/d2;
+    if(dist>maxD){maxD=dist;maxI=i;}
   }
-  return out;
+  if(maxD<=eps*eps)return[pts[0],pts[pts.length-1]];
+  return[...rdpSimplify(pts.slice(0,maxI+1),eps).slice(0,-1),
+         ...rdpSimplify(pts.slice(maxI),eps)];
 }
 
-// ── 도면 선 변환 (엣지 맵 → 평면 BIM 폴리라인) ────────────────────────────
-function buildDrawingLines(edgeGrid,cols,rows,scaleW,scaleH,threshold){
-  const sx=scaleW/cols,sy=scaleH/rows,lines=[];
-  const segs=marchingSquares(edgeGrid,threshold);
-  const chains=chainSegments(segs);
-  for(const chain of chains){
-    if(chain.length<2)continue;
-    const pts=chain.map(([cx,cy])=>[
-      +((cx*sx-scaleW/2).toFixed(3)),
-      0,
-      +((cy*sy-scaleH/2).toFixed(3)),
-    ]);
-    const first=pts[0],last=pts[pts.length-1];
-    lines.push({
-      startX:first[0],startY:0,startZ:first[2],
-      endX:last[0],endY:0,endZ:last[2],
-      color:'#93c5fd',
-      lineWidth:1,
-      pointsJson:JSON.stringify(pts),
-      closed:false,shapeHeight:0,
-    });
+// ── 외곽 테두리 평탄화 ────────────────────────────────────────────────────────
+// 테두리 pad 셀을 인접 내부 행/열 값으로 복제
+// → Marching Squares가 테두리에서 경계선을 생성하지 않도록 억제
+function padBorder(grid,pad=4){
+  const R=grid.length,C=grid[0].length;
+  const g=grid.map(r=>new Float32Array(r));
+  for(let p=0;p<pad;p++){
+    for(let c=0;c<C;c++){g[p][c]=g[pad][c];g[R-1-p][c]=g[R-1-pad][c];}
+    for(let r=0;r<R;r++){g[r][p]=g[r][pad];g[r][C-1-p]=g[r][C-1-pad];}
   }
+  return g;
+}
+
+// ── 내부 BIM 선 추가 헬퍼 ─────────────────────────────────────────────────────
+function _appendLine(lines,pts,sx,sy,scaleW,scaleH,color='#93c5fd',lineWidth=1){
+  if(pts.length<2)return;
+  const wpts=pts.map(([cx,cy])=>[
+    +((cx*sx-scaleW/2).toFixed(3)),0,+((cy*sy-scaleH/2).toFixed(3))]);
+  const first=wpts[0],last=wpts[wpts.length-1];
+  lines.push({startX:first[0],startY:0,startZ:first[2],
+    endX:last[0],endY:0,endZ:last[2],
+    color,lineWidth,
+    pointsJson:JSON.stringify(wpts),closed:false,shapeHeight:0});
+}
+
+// ── 구역 경계선 추출 ──────────────────────────────────────────────────────────
+// smooth 고도 그리드를 nZones 구역으로 나눠 구역 경계를 폴리라인으로 변환
+//
+// [동작]
+//  1) padBorder: 테두리 PAD 셀을 내부값으로 복제 → 외곽 윤곽선(테두리 선) 억제
+//  2) 각 zone 경계 threshold 에서 Marching Squares 실행
+//  3) 체인에서 테두리 영역(PAD 이내) 포인트 제거 → 내부 서브체인 분리
+//  4) RDP 단순화로 포인트 수 축약 후 BIM 선 포맷으로 변환
+function buildZoneBoundaryLines(smooth,cols,rows,scaleW,scaleH,nZones=6,rdpEps=1.2){
+  const sx=scaleW/cols,sy=scaleH/rows,PAD=4;
+  const padded=padBorder(smooth,PAD);
+  const lines=[];
+  for(let i=1;i<nZones;i++){
+    const chains=chainSegments(marchingSquares(padded,i/nZones));
+    for(const chain of chains){
+      let sub=[];
+      const flush=()=>{
+        if(sub.length>=5){
+          const s=rdpSimplify(sub,rdpEps);
+          _appendLine(lines,s,sx,sy,scaleW,scaleH);
+        }
+        sub=[];
+      };
+      for(const[x,y]of chain){
+        // 테두리 PAD 이내 포인트는 서브체인에서 제외 (외곽 테두리 선 방지)
+        if(x>PAD&&x<cols-PAD&&y>PAD&&y<rows-PAD) sub.push([x,y]);
+        else flush();
+      }
+      flush();
+    }
+  }
+  return lines;
+}
+
+// ── 절토/성토 색상 등고선 생성 ───────────────────────────────────────────────
+// refT(기준 고도, 0~1) 위 = 절토(빨강), 아래 = 성토(초록), 기준선 = 노란색
+// Slab 블록 대신 선으로 절토/성토 구역을 표현
+function buildCutFillLines(smooth,cols,rows,scaleW,scaleH,refT,nZones=4,rdpEps=1.2){
+  const sx=scaleW/cols,sy=scaleH/rows,PAD=4;
+  const padded=padBorder(smooth,PAD);
+  const lines=[];
+
+  const addThreshold=(t,color,lw)=>{
+    const chains=chainSegments(marchingSquares(padded,t));
+    for(const chain of chains){
+      let sub=[];
+      const flush=()=>{
+        if(sub.length>=5){const s=rdpSimplify(sub,rdpEps);_appendLine(lines,s,sx,sy,scaleW,scaleH,color,lw);}
+        sub=[];
+      };
+      for(const[x,y]of chain){
+        if(x>PAD&&x<cols-PAD&&y>PAD&&y<rows-PAD)sub.push([x,y]);
+        else flush();
+      }
+      flush();
+    }
+  };
+
+  // 기준선 (절토/성토 경계) — 노란색 굵은 선
+  addThreshold(refT,'#facc15',3);
+
+  // 절토 구역 (refT 이상) 등고선 — 빨강
+  for(let i=1;i<=nZones;i++){
+    const t=refT+(1-refT)*i/(nZones+1);
+    if(t<0.99)addThreshold(t,'#ef4444',1.5);
+  }
+
+  // 성토 구역 (refT 미만) 등고선 — 초록
+  for(let i=1;i<=nZones;i++){
+    const t=refT*(1-i/(nZones+1));
+    if(t>0.01)addThreshold(t,'#22c55e',1.5);
+  }
+
   return lines;
 }
 
@@ -201,7 +280,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
   const[tab,setTab]=useState('upload');
 
   const[cvName,setCvName]=useState('');
-  const[cvThreshold,setCvThreshold]=useState(0.15); // Sobel 엣지 감도 (낮을수록 더 많은 선)
+  const[cvZones,setCvZones]=useState(6); // 구역 수 (4~12: smooth 고도 그리드를 몇 개 구역으로 나눌지)
   const[cvBusy,setCvBusy]=useState(false);
   const[cvDone,setCvDone]=useState(null);
 
@@ -376,65 +455,47 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
 
   const convertBIM=useCallback(()=>{
     if(!result||!onConvertToBIM||!cvName.trim())return;
-    const{raw,smooth,cols,rows,refT}=result;
+    const{smooth,cols,rows,refT}=result;
     setCvBusy(true);setCvDone(null);
 
-    // Sobel 엣지 감지 → 도면 폴리라인 (선 형태)
-    const src=raw?gaussianBlur(raw,0.8):smooth;
-    const edges=sobelEdge(src);
-    const drawingLines=buildDrawingLines(edges,cols,rows,scaleW,scaleH,cvThreshold);
+    // 고도 구역 경계선 추출 (smooth 그리드 → cvZones 구역 분할 → 폴리라인)
+    const drawingLines=buildZoneBoundaryLines(smooth,cols,rows,scaleW,scaleH,cvZones);
 
-    // ── 절토/성토 Slab 생성 ─────────────────────────────────────────
-    // 블록별 평균 밝기(고도)를 계산한 뒤 전체 블록을 밝기 순으로 정렬
-    // → 상위 50%를 절토(빨강), 하위 50%를 성토(초록)로 분류
-    // 이미지 전체 밝기와 무관하게 항상 양쪽 색상이 나오도록 순위 기반 분류
-    const GROUP=Math.max(4,Math.ceil(Math.min(cols,rows)/25));
-    const slabSX=+((scaleW/cols*GROUP).toFixed(3));
-    const slabSZ=+((scaleH/rows*GROUP).toFixed(3));
+    // 절토/성토 색상 등고선 (Slab 대신 선으로 구분: 빨강=절토, 초록=성토, 노랑=기준선)
+    const cutFillLines=buildCutFillLines(smooth,cols,rows,scaleW,scaleH,refT);
 
-    const rawBlocks=[];
-    for(let r=0;r<rows-GROUP;r+=GROUP){
-      for(let c=0;c<cols-GROUP;c+=GROUP){
-        let s=0,n=0;
-        for(let dr=0;dr<GROUP&&r+dr<rows;dr++)
-          for(let dc=0;dc<GROUP&&c+dc<cols;dc++){s+=smooth[r+dr][c+dc];n++;}
-        const avg=s/n;
-        const wx=+((c/cols*scaleW-scaleW/2+slabSX/2).toFixed(3));
-        const wz=+((r/rows*scaleH-scaleH/2+slabSZ/2).toFixed(3));
-        rawBlocks.push({avg,wx,wz});
-      }
-    }
-
-    // 순위 기반: 밝기 내림차순 정렬 → 상위 절반=절토(빨강), 하위 절반=성토(초록)
-    const sorted=[...rawBlocks].sort((a,b)=>b.avg-a.avg);
-    const half=Math.ceil(sorted.length/2);
-    sorted.forEach((b,i)=>{b._color=i<half?'#ef4444':'#22c55e';});
-
-    const terrainEls=rawBlocks.map(b=>({
-      elementType:'IfcSlab',material:'Earthwork',
-      positionX:b.wx,positionY:-0.05,positionZ:b.wz,
-      sizeX:slabSX,sizeY:0.1,sizeZ:slabSZ,
-      _color:b._color, // 절토=빨강, 성토=초록
-    }));
-
-    onConvertToBIM('Building',cvName.trim(),terrainEls,[],drawingLines,proj=>{
+    // DRONE 타입으로 생성 → BIM 뷰어에서 2D 전용으로 처리됨
+    onConvertToBIM('DRONE',cvName.trim(),[],[],[...drawingLines,...cutFillLines],proj=>{
       setCvBusy(false);
       if(proj){setCvDone('ok');setTimeout(()=>{if(onProjectSelect)onProjectSelect(proj);},1200);}
       else setCvDone('err');
     });
-  },[result,onConvertToBIM,onProjectSelect,cvName,cvThreshold,scaleW,scaleH]);
+  },[result,onConvertToBIM,onProjectSelect,cvName,cvZones,scaleW,scaleH]);
 
-  // 현재 threshold에서 예상 폴리라인 수 (Sobel 맵 미리 실행, 제한 없음)
+  // 현재 구역 수에서 예상 경계선 수 (테두리 제외, 사전 계산)
   const lineCount=useMemo(()=>{
     if(!result)return 0;
-    const src=result.raw?gaussianBlur(result.raw,0.8):result.smooth;
-    const edges=sobelEdge(src);
-    const segs=marchingSquares(edges,cvThreshold);
-    return chainSegments(segs).length;
-  },[result,cvThreshold]);
+    const{smooth,cols,rows}=result;
+    const PAD=4;
+    const padded=padBorder(smooth,PAD);
+    let count=0;
+    for(let i=1;i<cvZones;i++){
+      const chains=chainSegments(marchingSquares(padded,i/cvZones));
+      for(const chain of chains){
+        // 내부 서브체인 수 카운트
+        let sub=0;
+        for(const[x,y]of chain){
+          if(x>PAD&&x<cols-PAD&&y>PAD&&y<rows-PAD)sub++;
+          else{if(sub>=5)count++;sub=0;}
+        }
+        if(sub>=5)count++;
+      }
+    }
+    return count;
+  },[result,cvZones]);
 
-  // 경고 표시 조건: 슬라이더 최대치이거나 선이 300개 초과
-  const showLineWarning = lineCount > 300 || cvThreshold >= 0.40;
+  // 경고 표시 조건: 선이 400개 초과
+  const showLineWarning = lineCount > 400;
 
   const T2='#8896a4';
 
@@ -719,7 +780,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                                className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none"
                                style={{backgroundColor:'#060f18',border:'1px solid #4c1d95'}}/>
 
-                        {/* 엣지 감도 슬라이더 */}
+                        {/* 구역 수 슬라이더 */}
                         <div>
                           <div className="flex justify-between text-xs mb-1.5">
                             <span style={{color:T2}}>{t('edgeSensitivity')}</span>
@@ -730,15 +791,14 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                                 : t('polylineCount', {count: lineCount})}
                             </span>
                           </div>
-                          <input type="range" min={0.0} max={0.45} step={0.05}
-                                 value={cvThreshold}
-                                 onChange={e=>setCvThreshold(+e.target.value)}
+                          <input type="range" min={4} max={12} step={1}
+                                 value={cvZones}
+                                 onChange={e=>setCvZones(+e.target.value)}
                                  className="w-full accent-blue-500"/>
                           <div className="flex justify-between text-xs mt-1" style={{color:'#475569'}}>
                             <span>{t('noLinesLabel')}</span>
                             <span>{t('moreLines')}</span>
                           </div>
-                          {/* 경고: 선이 많으면 시간 소요 안내 */}
                           {showLineWarning && lineCount > 0 && (
                             <div className="flex items-start gap-1.5 mt-2 rounded-lg px-2.5 py-2 text-xs"
                                  style={{backgroundColor:'#2a1a08',border:'1px solid #92400e',color:'#fbbf24'}}>

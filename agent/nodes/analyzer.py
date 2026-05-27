@@ -9,8 +9,8 @@ Strategy:
 
 import re
 from langchain_core.messages import HumanMessage, SystemMessage
-from state import AgentState
-from llm_config import llm_precise
+from config.state import AgentState
+from config.llm_config import llm_precise
 
 
 

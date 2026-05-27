@@ -98,3 +98,38 @@ export function unreadCount() {
 
 /** CustomEvent 이름 (구독 시 사용) */
 export const ALERT_EVENT = EVENT_NAME;
+
+// ── Agent WBS 수정 제안 이벤트 ───────────────────────────────────────────────
+
+/**
+ * Agent가 WBS 수정을 제안할 때 발행하는 CustomEvent 이름.
+ * AgentWbsPopup 컴포넌트가 이 이벤트를 구독하여 말풍선을 표시한다.
+ */
+export const AGENT_WBS_EVENT = 'dt-agent-wbs-suggest';
+
+/**
+ * WBS 수정 제안 이벤트를 발행한다.
+ * 중복 방지: 1분 안에 동일한 eventType의 제안이 이미 있으면 무시한다.
+ *
+ * @param {{ eventType: 'COLLISION'|'CRACK'|'SAFE_ZONE'|'SAFETY', source: string,
+ *           title: string, detail: string, projectId?: string, projectName?: string }} opts
+ */
+export function pushWbsSuggest({ eventType, source, title, detail = '', projectId = '', projectName = '' }) {
+  // 1분 이내 동일 eventType 중복 방지
+  const coolKey = `wbs_cool_${eventType}`;
+  const lastTs  = parseInt(sessionStorage.getItem(coolKey) || '0', 10);
+  if (Date.now() - lastTs < 60_000) return;
+  sessionStorage.setItem(coolKey, String(Date.now()));
+
+  const item = {
+    id:          Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    ts:          new Date().toISOString(),
+    eventType,   // COLLISION | CRACK | SAFE_ZONE | SAFETY
+    source,
+    title,
+    detail,
+    projectId,
+    projectName,
+  };
+  window.dispatchEvent(new CustomEvent(AGENT_WBS_EVENT, { detail: item }));
+}

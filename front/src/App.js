@@ -15,6 +15,7 @@ import SafeDashboard from './view/safe/SafeDashboard';
 import SafeProjectList from './view/safe/SafeProjectList';
 import TestDashboard from './view/test/TestDashboard';
 import WbsDashboard from './view/wbs/WbsDashboard';
+import AgentWbsPopup from './component/AgentWbsPopup';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 function App() {
@@ -44,6 +45,17 @@ function App() {
   // ── Safe projects ─────────────────────────────────────────────
   const [safeProjectList, setSafeProjectList] = useState([]);
   const [selectedSafeProject, setSelectedSafeProject] = useState(null);
+
+  // ── Agent WBS 자동 수정 요청 ──────────────────────────────────
+  // { eventType, title, detail, ts } — WbsDashboard로 전달되어 자동 수정을 실행한다.
+  const [autoEditRequest, setAutoEditRequest] = useState(null);
+
+  // Agent WBS 팝업 승인 핸들러
+  // 승인 클릭 → WBS 탭 전환 → autoEditRequest 설정 → WbsDashboard에서 자동 수정 실행
+  const handleWbsApprove = useCallback((eventItem) => {
+    setAutoEditRequest({ ...eventItem, approvedAt: Date.now() });
+    setViceComponent('wbs');
+  }, []);
 
   // ── Agent health check ────────────────────────────────────────
   const [agentAvailable, setAgentAvailable] = useState(null);
@@ -128,7 +140,8 @@ function App() {
       const pid = project.projectId;
       const newId = () => 'ELEM-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
-      // 1) 절토/성토 슬래브 배치 + 레이어 분리 생성
+      // 1) 절토/성토 배치 — 드론 프로젝트(DRONE)는 선(Line)으로 대체되므로 terrainEls는 빈 배열
+      //    일반 프로젝트에서 IfcSlab 요소가 있을 경우에만 저장
       let terrainIds = [];
       if (terrainEls.length > 0) {
         // _color 필드는 내부 마킹용이므로 API 전송 전 제거
@@ -418,6 +431,8 @@ function App() {
           onNavigateToTab={handleWbsNavigate}
           sensorLatest={sensorLatest}
           sensorWsStatus={sensorWsStatus}
+          autoEditRequest={autoEditRequest}
+          onAutoEditDone={() => setAutoEditRequest(null)}
         />
       );
     }
@@ -531,6 +546,9 @@ function App() {
           selectedSimulationProject={selectedSimulationProject}
         />
       )}
+
+      {/* Agent WBS 수정 제안 팝업 — 전 탭에서 항상 표시 (ChatView 위) */}
+      <AgentWbsPopup onApprove={handleWbsApprove} />
     </div>
   );
 }

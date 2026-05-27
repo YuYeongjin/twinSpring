@@ -1,8 +1,9 @@
+from __future__ import annotations
 import logging
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
-from config import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
+from config.settings import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
 
 logger = logging.getLogger(__name__)
 

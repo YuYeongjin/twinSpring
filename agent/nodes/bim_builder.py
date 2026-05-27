@@ -21,6 +21,7 @@ pending_action internal structure:
   "_missing": ["positionX", "positionY", "positionZ"]
 }
 """
+from __future__ import annotations
 
 import json
 import math
@@ -28,10 +29,10 @@ import re
 import uuid
 import httpx
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from state import AgentState
-from llm_config import llm_precise
-from config import SPRING_BASE_URL
-from lang_util import detect_lang, translate_reply
+from config.state import AgentState
+from config.llm_config import llm_precise
+from config.settings import SPRING_BASE_URL
+from config.lang_util import detect_lang, translate_reply
 
 # Default element sizes by type: (sizeX, sizeY, sizeZ) unit: m
 _DEFAULT_SIZES = {

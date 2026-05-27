@@ -511,6 +511,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const [bimSubView, setBimSubView] = useState('editor'); // 'editor' | 'structural'
     const [showDroneModal, setShowDroneModal] = useState(false);
 
+    // 드론 프로젝트는 2D 전용 (무거운 지형 모델 → 3D 불필요)
+    const isDroneProject = selectedProject?.structureType === 'DRONE';
+    useEffect(() => {
+        if (isDroneProject) setViewMode('2d');
+    }, [isDroneProject]);
+
     // ── 패널 드래그 리사이즈 ───────────────────────────────────────
     const [leftPanelPct, setLeftPanelPct]   = useState(13); // 5~20%
     const [rightPanelPct, setRightPanelPct] = useState(18); // 5~20%
@@ -1009,20 +1015,29 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
                 <div className="ml-auto flex items-center gap-1.5 md:gap-2 flex-wrap justify-end">
                     {bimSubView === 'editor' && (<>
-                        {/* 2D / 3D 뷰 토글 */}
-                        <button
-                            onClick={() => setViewMode(v => v === '3d' ? '2d' : '3d')}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${viewMode === '2d'
-                                    ? 'bg-emerald-700/60 text-emerald-300 border border-emerald-600/60'
-                                    : 'bg-space-700/70 text-gray-400 border border-space-600'
-                                }`}
-                            title={viewMode === '2d' ? t('switchTo3D') : t('switchTo2D')}
-                        >
-                            {viewMode === '2d' ? t('switch2D') : t('switch3D')}
-                        </button>
+                        {/* 2D / 3D 뷰 토글 — 드론 프로젝트는 2D 전용 */}
+                        {isDroneProject ? (
+                            <span
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-700/60 text-emerald-300 border border-emerald-600/60"
+                                title="드론 사진 기반 프로젝트는 2D 전용입니다"
+                            >
+                                🛸 2D 전용
+                            </span>
+                        ) : (
+                            <button
+                                onClick={() => setViewMode(v => v === '3d' ? '2d' : '3d')}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${viewMode === '2d'
+                                        ? 'bg-emerald-700/60 text-emerald-300 border border-emerald-600/60'
+                                        : 'bg-space-700/70 text-gray-400 border border-space-600'
+                                    }`}
+                                title={viewMode === '2d' ? t('switchTo3D') : t('switchTo2D')}
+                            >
+                                {viewMode === '2d' ? t('switch2D') : t('switch3D')}
+                            </button>
+                        )}
 
                         {/* 환경 선택 */}
-                        {viewMode === '3d' && <EnvSelector currentId={envId} onChange={setEnvId} />}
+                        {viewMode === '3d' && !isDroneProject && <EnvSelector currentId={envId} onChange={setEnvId} />}
 
                         {/* 좌측 패널 토글 */}
                         <button
