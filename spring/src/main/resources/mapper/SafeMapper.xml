@@ -17,8 +17,8 @@
             created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
             updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
         );
-        -- 기존 테이블에 컬럼 추가 (이미 존재하면 오류 무시):
-        -- ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode VARCHAR(16) DEFAULT 'SAFETY';
+        기존 테이블에 컬럼 추가 (이미 존재하면 오류 무시):
+        ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode VARCHAR(16) DEFAULT 'SAFETY';
     -->
 
     <select id="getAllSafeProjects" resultType="map">

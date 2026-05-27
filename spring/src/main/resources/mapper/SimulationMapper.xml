@@ -3,13 +3,6 @@
 
 <mapper namespace="yyj.project.twinspring.dao.SimulationDAO">
 
-    <!--
-        ※ PostgreSQL은 따옴표 없는 SQL 식별자(alias)를 소문자로 반환합니다.
-          resultType="map" 에서 camelCase 키를 보존하려면 별칭을 큰따옴표로 감싸야 합니다.
-          예) AS projectId  → JDBC에서 "projectid" 반환 (소문자) → row.get("projectId") = null  ✗
-              AS "projectId"→ JDBC에서 "projectId" 반환 (원본)  → row.get("projectId") = 값   ✓
-    -->
-
     <select id="getAllSimulationProjects" resultType="map">
         SELECT project_id   AS "projectId",
                project_name AS "projectName"
