@@ -568,7 +568,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
         const names = dangerElems.map(r => r.elementName).join(', ');
         const minSF = Math.min(...dangerElems.map(r => r.safetyFactor)).toFixed(2);
 
-        pushAlert({
+        const alert = pushAlert({
           source:      'BIM',
           severity:    'HIGH',
           title:       `구조 위험 부재 감지 — ${proj?.projectName ?? '현재 모델'}`,
@@ -583,6 +583,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           detail:      `${proj?.projectName ?? '현재 모델'} — 최소 안전율 ${minSF}, 영향 부재: ${names.slice(0, 80)}`,
           projectId:   proj?.projectId ?? '',
           projectName: proj?.projectName ?? '',
+          alertId:     alert.id,
         });
       }
     }, 500);

@@ -122,7 +122,7 @@ export function CrackMonitorProvider({ children }) {
       if (data.hasCrack) {
         const conf = Math.round((data.confidence ?? 0) * 100);
         const proj = selectedProjectRef.current;
-        pushAlert({
+        const crackAlert = pushAlert({
           source:      'CRACK',
           severity:    conf >= 70 ? 'HIGH' : 'MEDIUM',
           title:       `균열 감지 — ${proj?.projectName ?? ''}`,
@@ -137,6 +137,7 @@ export function CrackMonitorProvider({ children }) {
           detail:      `${proj?.projectName ?? '현장'}에서 구조 균열이 감지되었습니다. 보수 공사 일정 추가가 필요합니다.`,
           projectId:   proj?.projectId   ?? '',
           projectName: proj?.projectName ?? '',
+          alertId:     crackAlert.id,
         });
       }
     } catch (e) {
