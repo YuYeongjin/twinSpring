@@ -8,7 +8,10 @@ import { useT } from '../../i18n/LanguageContext';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import { useCrackMonitor } from '../../context/CrackMonitorContext';
 
-const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
+const DETECT_SERVER_URL = process.env.REACT_APP_API_URL
+  || (process.env.NODE_ENV === 'development'
+      ? `http://${window.location.hostname}:8080`
+      : '');
 
 /**
  * SockJS 연결 URL을 항상 절대 경로로 반환한다.
