@@ -605,6 +605,7 @@ function App() {
           viewComponent={viewComponent}
           selectedProject={selectedProject}
           selectedSimulationProject={selectedSimulationProject}
+          selectedSafeProject={selectedSafeProject}
         />
       )}
 
