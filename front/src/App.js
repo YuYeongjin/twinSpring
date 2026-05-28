@@ -16,6 +16,7 @@ import SafeProjectList from './view/safe/SafeProjectList';
 import TestDashboard from './view/test/TestDashboard';
 import WbsDashboard from './view/wbs/WbsDashboard';
 import AgentWbsPopup from './component/AgentWbsPopup';
+import WbsProjectSelectModal from './component/WbsProjectSelectModal';
 import { CrackMonitorProvider } from './context/CrackMonitorContext';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -28,9 +29,9 @@ function App() {
 
   // 모바일 세로 방향 고정 (Android Chrome PWA 설치 환경에서 API 레벨 잠금)
   useEffect(() => {
-    const lock = screen.orientation?.lock;
+    const lock = window.screen.orientation?.lock;
     if (typeof lock === 'function') {
-      screen.orientation.lock('portrait').catch(() => {});
+      window.screen.orientation.lock('portrait').catch(() => {});
     }
   }, []);
 
@@ -56,15 +57,65 @@ function App() {
   const [selectedSafeProject, setSelectedSafeProject] = useState(null);
 
   // ── Agent WBS 자동 수정 요청 ──────────────────────────────────
-  // { eventType, title, detail, ts } — WbsDashboard로 전달되어 자동 수정을 실행한다.
+  // { eventType, title, detail, ts, targetProjectId? } — WbsDashboard로 전달되어 자동 수정을 실행한다.
   const [autoEditRequest, setAutoEditRequest] = useState(null);
 
-  // Agent WBS 팝업 승인 핸들러
-  // 승인 클릭 → WBS 탭 전환 → autoEditRequest 설정 → WbsDashboard에서 자동 수정 실행
-  const handleWbsApprove = useCallback((eventItem) => {
-    setAutoEditRequest({ ...eventItem, approvedAt: Date.now() });
+  // 프로젝트 선택 모달 상태
+  const [showWbsProjectSelect, setShowWbsProjectSelect] = useState(false);
+  const [pendingWbsEvent, setPendingWbsEvent] = useState(null);
+
+  // 최종 WBS 수정 적용 (targetProjectId 확정 후 호출)
+  const applyWbsApprove = useCallback((eventItem, targetProjectId) => {
+    setAutoEditRequest({ ...eventItem, targetProjectId, approvedAt: Date.now() });
     setViceComponent('wbs');
   }, []);
+
+  // Agent WBS 팝업 승인 핸들러
+  // 1) 이벤트에 projectId가 있으면 연결된 WBS 프로젝트를 역방향 조회
+  // 2) 연결된 WBS 프로젝트가 있으면 → 직접 적용
+  // 3) 없으면 → 프로젝트 선택 모달 표시
+  const handleWbsApprove = useCallback(async (eventItem) => {
+    const sourceProjectId = eventItem.projectId;
+
+    if (sourceProjectId) {
+      try {
+        // 모든 WBS 프로젝트 조회 후 역방향 링크 탐색
+        const projRes = await AxiosCustom.get('/api/wbs/projects');
+        const wbsProjects = projRes.data || [];
+
+        // 각 WBS 프로젝트의 링크를 병렬 조회
+        const linkResults = await Promise.allSettled(
+          wbsProjects.map(p =>
+            AxiosCustom.get(`/api/project-link/wbs/${p.projectId}`)
+              .then(r => ({ project: p, links: r.data || [] }))
+          )
+        );
+
+        // 소스 프로젝트 ID와 일치하는 링크를 가진 WBS 프로젝트 탐색
+        let linkedWbsProject = null;
+        for (const result of linkResults) {
+          if (result.status !== 'fulfilled') continue;
+          const { project, links } = result.value;
+          if (links.some(l => l.linkedProjectId === sourceProjectId)) {
+            linkedWbsProject = project;
+            break;
+          }
+        }
+
+        if (linkedWbsProject) {
+          // 연결된 WBS 프로젝트 발견 → 바로 적용
+          applyWbsApprove(eventItem, linkedWbsProject.projectId);
+          return;
+        }
+      } catch {
+        // 링크 조회 실패 시 선택 모달로 폴백
+      }
+    }
+
+    // 연결된 WBS 프로젝트 없음 → 선택 모달 표시
+    setPendingWbsEvent(eventItem);
+    setShowWbsProjectSelect(true);
+  }, [applyWbsApprove]);
 
   // ── Agent health check ────────────────────────────────────────
   const [agentAvailable, setAgentAvailable] = useState(null);
@@ -559,6 +610,22 @@ function App() {
 
       {/* Agent WBS 수정 제안 팝업 — 전 탭에서 항상 표시 (ChatView 위) */}
       <AgentWbsPopup onApprove={handleWbsApprove} />
+
+      {/* WBS 현장 선택 모달 — 연결된 WBS 프로젝트가 없을 때 */}
+      {showWbsProjectSelect && pendingWbsEvent && (
+        <WbsProjectSelectModal
+          eventItem={pendingWbsEvent}
+          onSelect={(project) => {
+            setShowWbsProjectSelect(false);
+            applyWbsApprove(pendingWbsEvent, project.projectId);
+            setPendingWbsEvent(null);
+          }}
+          onClose={() => {
+            setShowWbsProjectSelect(false);
+            setPendingWbsEvent(null);
+          }}
+        />
+      )}
     </div>
     </CrackMonitorProvider>
   );

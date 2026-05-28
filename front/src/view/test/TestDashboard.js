@@ -574,6 +574,7 @@ export default function TestDashboard() {
         source:      'TEST_COLLISION',
         title:       `부재 충돌 감지 — ${ids.length}개 부재`,
         detail:      `굴착기 암/붐/버킷이 ${ids.length}개 구조 부재와 충돌하였습니다. (${ts})`,
+        projectId:   selectedProject?.projectId   ?? '',
         projectName: selectedProject?.projectName ?? '',
       });
     }
