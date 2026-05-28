@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import * as XLSX from 'xlsx';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Sky, GizmoHelper, GizmoViewport } from '@react-three/drei';
@@ -1292,6 +1293,38 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   // BEPUphysics2 물리 평가 훅 (C# 서버 폴링)
   const physicsResult = usePhysicsEvaluation(
     stateRef, machineRef, kinematicsRef, heightMapRef, wobbleRef);
+
+  // 굴착기 전도 위험 감지 — DANGER 상태 진입 시 1회 알림
+  const simDangerAlertedRef = useRef(false);
+  useEffect(() => {
+    if (!physicsResult) return;
+    if (physicsResult.dangerLevel === 'DANGER' && !simDangerAlertedRef.current) {
+      simDangerAlertedRef.current = true;
+      const proj = selectedProject;
+      const margin = physicsResult.stabilityMargin != null
+        ? `${(physicsResult.stabilityMargin * 100).toFixed(0)}%`
+        : '';
+      pushAlert({
+        source:      'SIMULATION',
+        severity:    'HIGH',
+        title:       `굴착기 전도 위험 — ${proj?.projectName ?? '시뮬레이션'}`,
+        detail:      `안정성 마진 ${margin} — Tip-Over 위험. 즉시 작업 중단 필요.`,
+        projectId:   proj?.projectId ?? '',
+        projectName: proj?.projectName ?? '',
+      });
+      pushWbsSuggest({
+        eventType:   'SIM_DANGER',
+        source:      'SIMULATION_DANGER',
+        title:       `굴착기 전도 위험 감지 (안정성 ${margin})`,
+        detail:      `${proj?.projectName ?? '시뮬레이션'} — Tip-Over Risk 발생. KCS 건설기계 안전기준에 따른 작업 중단 및 점검 필요.`,
+        projectId:   proj?.projectId ?? '',
+        projectName: proj?.projectName ?? '',
+      });
+    } else if (physicsResult.dangerLevel !== 'DANGER') {
+      // 위험 해제 시 플래그 리셋 → 다음 위험 진입 시 다시 알림 가능
+      simDangerAlertedRef.current = false;
+    }
+  }, [physicsResult?.dangerLevel, selectedProject]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 임계값 ref 동기화 + localStorage 저장
   useEffect(() => {
