@@ -163,6 +163,7 @@ public class WbsServiceImpl implements WbsService {
         WbsTaskDTO dto = new WbsTaskDTO();
         dto.setTaskId((String) r.get("taskId"));
         dto.setWbsProjectId((String) r.get("wbsProjectId"));
+        dto.setProjectName((String) r.get("projectName"));
         dto.setWbsCode((String) r.get("wbsCode"));
         dto.setTaskName((String) r.get("taskName"));
         dto.setStartDate((String) r.get("startDate"));

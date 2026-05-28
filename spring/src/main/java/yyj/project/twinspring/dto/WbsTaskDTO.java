@@ -3,6 +3,7 @@ package yyj.project.twinspring.dto;
 public class WbsTaskDTO {
     private String  taskId;
     private String  wbsProjectId;
+    private String  projectName;      // 프로젝트명 (getAllTasks JOIN 결과)
     private String  wbsCode;          // WBS 코드 (예: 1.1.2)
     private String  taskName;         // 작업명
     private String  startDate;        // yyyy-MM-dd
@@ -26,6 +27,9 @@ public class WbsTaskDTO {
 
     public String  getWbsProjectId()   { return wbsProjectId; }
     public void    setWbsProjectId(String v) { this.wbsProjectId = v; }
+
+    public String  getProjectName()    { return projectName; }
+    public void    setProjectName(String v) { this.projectName = v; }
 
     public String  getWbsCode()        { return wbsCode; }
     public void    setWbsCode(String v) { this.wbsCode = v; }
