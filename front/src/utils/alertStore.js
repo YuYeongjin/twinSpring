@@ -118,7 +118,12 @@ export function pushWbsSuggest({ eventType, source, title, detail = '', projectI
   // 1분 이내 동일 eventType 중복 방지
   const coolKey = `wbs_cool_${eventType}`;
   const lastTs  = parseInt(sessionStorage.getItem(coolKey) || '0', 10);
-  if (Date.now() - lastTs < 60_000) return;
+  const remaining = 60_000 - (Date.now() - lastTs);
+  if (remaining > 0) {
+    console.log(`[AgentWBS] 쿨다운 중 — ${eventType} (${Math.ceil(remaining / 1000)}초 후 재발행 가능)`);
+    return;
+  }
+  console.log(`[AgentWBS] 이벤트 발행 — ${eventType}`, { source, title });
   sessionStorage.setItem(coolKey, String(Date.now()));
 
   const item = {

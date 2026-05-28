@@ -7,7 +7,7 @@ import BimDashboard from './view/bim/BimDashboard';
 import BimProjectList from './view/bim/BimProjectList';
 import SatelliteDashboard from './view/SatelliteDashboard';
 import ElementEditPanel from './view/bim/component/ElementEditPanel';
-import ChatView from './view/chat/ChatView';
+import FloatingAgent from './component/FloatingAgent';
 import AgentDashboard from './view/agent/AgentDashboard';
 import SimulationDashboard from './view/simulation/SimulationDashboard';
 import SimulationProjectList from './view/simulation/SimulationProjectList';
@@ -16,6 +16,7 @@ import SafeProjectList from './view/safe/SafeProjectList';
 import TestDashboard from './view/test/TestDashboard';
 import WbsDashboard from './view/wbs/WbsDashboard';
 import AgentWbsPopup from './component/AgentWbsPopup';
+import { CrackMonitorProvider } from './context/CrackMonitorContext';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 function App() {
@@ -522,6 +523,7 @@ function App() {
   };
 
   return (
+    <CrackMonitorProvider>
     <div className={
       viewComponent === 'wbs'
         ? "h-screen flex flex-col bg-space-900 text-gray-200 overflow-hidden"
@@ -539,10 +541,10 @@ function App() {
 
       {viewComponent !== 'wbs' && <Footer />}
 
-      {viewComponent !== 'agent' && (
-        <ChatView
+      {viewComponent !== 'agent' && viewComponent !== 'wbs' && (
+        <FloatingAgent
+          viewComponent={viewComponent}
           selectedProject={selectedProject}
-          onBimUpdate={refreshModelData}
           selectedSimulationProject={selectedSimulationProject}
         />
       )}
@@ -550,6 +552,7 @@ function App() {
       {/* Agent WBS 수정 제안 팝업 — 전 탭에서 항상 표시 (ChatView 위) */}
       <AgentWbsPopup onApprove={handleWbsApprove} />
     </div>
+    </CrackMonitorProvider>
   );
 }
 
