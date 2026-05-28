@@ -19,9 +19,9 @@ const SOURCE_BADGE = {
 const EMPTY_TASK = {
   wbsCode: "",
   taskName: "",
-  startDate: "",
-  endDate: "",
-  duration: "",
+  startDate: null,
+  endDate: null,
+  duration: 0,
   progress: 0,
   predecessorIds: "",
   status: "NOT_STARTED",

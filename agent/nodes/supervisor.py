@@ -12,6 +12,7 @@ Supervisor Node — Multi-Agent 라우터
   simulation_agent — 굴착기 시뮬레이션 제어
   safe_agent       — 안전 모니터링 (헬멧·침입 감지, YOLO 서버)
   test_agent       — 충돌 테스트 탭 (키보드 조작법, 충돌 로그)
+  wbs_agent        — WBS 현장 프로젝트·공정 CRUD, 탭 연결 관리
   rag_agent        — 건설 공정서·시방서 (KCS·KDS) 검색
   tab_guide        — 대시보드 탭 일반 안내
   chat             — 일반 대화
@@ -197,6 +198,26 @@ _RAG_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# WBS 에이전트: 현장 프로젝트·태스크 관리 (한/영)
+_WBS_KEYWORDS = re.compile(
+    # 한국어 — WBS 키워드
+    r"wbs"
+    r"|공정표|공정\s*(관리|계획|일정|추가|삭제|수정|현황|차트)"
+    r"|태스크\s*(추가|삭제|수정|조회|목록|현황|완료|진행)"
+    r"|현장\s*(프로젝트|등록|생성|추가|목록|현황|관리|삭제)"
+    r"|착공|준공|공사\s*(기간|일정|현황|기간)"
+    r"|발주처|현장소장|계약금액"
+    r"|진행률\s*(업데이트|수정|변경|입력)"
+    r"|공종|작업\s*(추가|삭제|수정|일정|목록)"
+    r"|프로젝트\s*(연결|링크|연동|해제)"
+    r"|간트|gantt"
+    # 영어
+    r"|work\s*breakdown|wbs\s*(project|task|schedule|chart)"
+    r"|construction\s*(project|schedule|task|site)"
+    r"|site\s*(project|management|task)",
+    re.IGNORECASE,
+)
+
 # Tab 안내: 일반 탭 사용법 (한/영/일)
 _TAB_GUIDE_KEYWORDS = re.compile(
     # 한국어
@@ -226,7 +247,12 @@ def supervisor_node(state: AgentState) -> dict:
     Supervisor 노드: 사용자 메시지를 분석하여 처리할 에이전트를 결정합니다.
     `next_agent` 와 `intent` 를 설정하고 반환합니다.
     """
-    # ── 경로 0: multi-step BIM 대화 진행 중 ─────────────────────────────────
+    # ── 경로 0a: 탭 전용 직접 라우팅 (키워드 매칭 스킵) ────────────────────
+    direct = state.get("direct_agent")
+    if direct:
+        return {"intent": direct, "next_agent": direct}
+
+    # ── 경로 0b: multi-step BIM 대화 진행 중 ────────────────────────────────
     if state.get("pending_action"):
         return {"intent": "bim_agent", "next_agent": "bim_agent"}
 
@@ -254,15 +280,19 @@ def supervisor_node(state: AgentState) -> dict:
     if _SENSOR_KEYWORDS.search(user_text):
         return {"intent": "sensor_agent", "next_agent": "sensor_agent"}
 
-    # 6. RAG 에이전트 (건설 공정서·시방서 KCS·KDS)
+    # 6. WBS 에이전트 (현장 프로젝트·공정 관리)
+    if _WBS_KEYWORDS.search(user_text):
+        return {"intent": "wbs_agent", "next_agent": "wbs_agent"}
+
+    # 7. RAG 에이전트 (건설 공정서·시방서 KCS·KDS)
     if _RAG_KEYWORDS.search(user_text):
         return {"intent": "rag_agent", "next_agent": "rag_agent"}
 
-    # 7. 일반 탭 안내
+    # 8. 일반 탭 안내
     if _TAB_GUIDE_KEYWORDS.search(user_text):
         return {"intent": "tab_guide", "next_agent": "tab_guide"}
 
-    # ── 8. 기본값: 일반 대화 (LLM 호출 없이 즉시 반환) ──────────────────────
+    # ── 9. 기본값: 일반 대화 (LLM 호출 없이 즉시 반환) ──────────────────────
     # 키워드에 해당하지 않는 모든 메시지는 chat으로 라우팅
     # 기존 LLM 폴백 제거 → supervisor가 항상 ~1ms 이내 완료됨
     return {"intent": "chat", "next_agent": "chat"}

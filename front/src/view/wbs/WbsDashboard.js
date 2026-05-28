@@ -922,9 +922,10 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
         />
       )}
 
-      {/* ── AI 현장 등록 도우미 (플로팅 채팅) ── */}
+      {/* ── WBS Agent 채팅 (플로팅) ── */}
       <WbsAgentChat
-        onProjectCreated={() => {
+        selectedProject={selectedProject}
+        onDataChanged={() => {
           loadProjects();
           loadAllTasks();
         }}
