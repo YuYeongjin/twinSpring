@@ -21,11 +21,16 @@ import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 
 // ── WebSocket 엔드포인트 URL ────────────────────────────────────────────────
+// 운영(DNS+HTTPS+nginx): window.location.origin/ws/sensor → nginx 프록시
+// 개발: hostname:8080/ws/sensor (localhost·IP 접속 모두 대응)
 function buildWsUrl() {
-  const base = process.env.REACT_APP_API_URL
-    ? process.env.REACT_APP_API_URL.replace(/\/$/, '')
-    : `${window.location.protocol}//${window.location.hostname}:8080`;
-  return `${base}/ws/sensor`;
+  if (process.env.REACT_APP_API_URL) {
+    return `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/ws/sensor`;
+  }
+  if (process.env.NODE_ENV === 'development') {
+    return `${window.location.protocol}//${window.location.hostname}:8080/ws/sensor`;
+  }
+  return `${window.location.origin}/ws/sensor`;
 }
 
 // ── 상태 라벨 / 색상 맵 ────────────────────────────────────────────────────
