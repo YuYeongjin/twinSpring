@@ -254,10 +254,7 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
       <g key={task.taskId}
          style={{ cursor: "pointer" }}
          onClick={() => onTaskClick && onTaskClick(task)}
-         onMouseEnter={ev => {
-           const rect = svgRef.current?.getBoundingClientRect();
-           if (rect) setTooltip({ x: ev.clientX - rect.left, y: ev.clientY - rect.top, task, cpm });
-         }}
+         onMouseEnter={() => setTooltip({ task, cpm })}
          onMouseLeave={() => setTooltip(null)}
       >
         {/* 여유공기 바 (Float) */}
@@ -401,7 +398,7 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
       )}
 
       {/* ── SVG 간트 차트 ── */}
-      <div className="relative overflow-auto" style={{ maxHeight: "70vh" }}>
+      <div className="relative overflow-x-auto">
         <svg
           ref={svgRef}
           width={svgW}
@@ -541,10 +538,13 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
         {/* ── 툴팁 ── */}
         {tooltip && (
           <div
-            className="absolute pointer-events-none z-50 rounded-xl shadow-2xl p-3"
+            className="pointer-events-none rounded-xl shadow-2xl p-3"
             style={{
-              left: tooltip.x + 14,
-              top:  Math.max(0, tooltip.y - 20),
+              position: 'fixed',
+              top: 60,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 9990,
               backgroundColor: "#0d1b2a",
               border: `1px solid ${tooltip.cpm?.isCritical ? "#ef4444" : "#253347"}`,
               minWidth: 230,

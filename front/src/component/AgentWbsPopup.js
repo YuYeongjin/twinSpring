@@ -258,6 +258,7 @@ export default function AgentWbsPopup({ onApprove }) {
   // ── 이벤트 수신 ───────────────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
+      console.log('[AgentWBS] 이벤트 수신 — 팝업 큐 추가', e.detail);
       queueRef.current.push(e.detail);
       if (!busyRef.current) showNext();
     };
