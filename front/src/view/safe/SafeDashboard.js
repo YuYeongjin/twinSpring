@@ -6,6 +6,7 @@ import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useT } from '../../i18n/LanguageContext';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
+import { useCrackMonitor } from '../../context/CrackMonitorContext';
 
 const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
 
@@ -747,17 +748,37 @@ const CRACK_INTERVAL_VALUES = [0, 60, 300, 600];
 
 function CrackMonitorPanel({ selectedProject }) {
   const t = useT('safe');
+
+  // ── Context에서 영속 상태·함수 가져오기 ────────────────────────
+  const {
+    streaming, camError,
+    capturing,
+    autoRunning, setAutoRunning,
+    intervalSec, setIntervalSec,
+    crackLog,
+    streamRef,
+    selectedProjectRef,
+    startCamera, stopCamera,
+    captureFromCamera, detectFromBlob,
+  } = useCrackMonitor();
+
   const [bimProjects, setBimProjects] = useState([]);
   const [bimProjectId, setBimProjectId] = useState('');
-  const [interval, setInterval_] = useState(0);          // seconds; 0 = manual
-  const [crackLog, setCrackLog] = useState([]);
-  const [capturing, setCapturing] = useState(false);
-  const [autoRunning, setAutoRunning] = useState(false);
-  const [camError, setCamError] = useState('');
-  const videoRef = useRef(null);
-  const [streaming, setStreaming] = useState(false);
-  const autoTimerRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const fileInputRef    = useRef(null);
+  const visibleVideoRef = useRef(null);  // 표시 전용 (캡처는 Context 숨김 비디오)
+
+  // 현재 Safe 프로젝트를 Context ref에 주입 — 탭 이탈 후에도 알림 전송 시 사용
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject ?? null;
+  }, [selectedProject, selectedProjectRef]);
+
+  // 표시용 <video>에 Context 스트림 연결 (탭 복귀 시 자동 복원)
+  useEffect(() => {
+    const video = visibleVideoRef.current;
+    if (!video) return;
+    video.srcObject = streaming ? (streamRef.current ?? null) : null;
+    if (streaming && streamRef.current) video.play().catch(() => {});
+  }, [streaming, streamRef]);
 
   // BIM 프로젝트 목록 로드
   useEffect(() => {
@@ -767,111 +788,13 @@ function CrackMonitorPanel({ selectedProject }) {
       .catch(() => setBimProjects([]));
   }, []);
 
-  // 웹캠 시작
-  const startCamera = useCallback(async () => {
-    setCamError('');
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCamError(t('cameraHttpsRequired'));
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
-    } catch (e) {
-      setCamError(t('cameraError') + e.message);
-    }
-  }, [t]);
-
-  const stopCamera = useCallback(() => {
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-      videoRef.current.srcObject = null;
-    }
-    setStreaming(false);
-  }, []);
-
-  useEffect(() => { startCamera(); return () => stopCamera(); }, [startCamera, stopCamera]);
-
-  // 이미지 → crack API 호출
-  const sendCrackDetect = useCallback(async (blob, source) => {
-    setCapturing(true);
-    const form = new FormData();
-    form.append('file', blob, 'capture.jpg');
-    try {
-      const res = await fetch(`${DETECT_SERVER_URL}/api/detection/crack`, { method: 'POST', body: form });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setCrackLog(prev => [{
-        time: new Date(),
-        hasCrack: !!data.hasCrack,
-        confidence: data.confidence ?? 0,
-        method: data.method ?? 'unknown',
-        detail: data.detail ?? '',
-        source,
-      }, ...prev.slice(0, 99)]);
-      // ── WBS 로그에 알림 전송 ──────────────────────────────────
-      if (data.hasCrack) {
-        const conf = Math.round((data.confidence ?? 0) * 100);
-        pushAlert({
-          source:      'CRACK',
-          severity:    conf >= 70 ? 'HIGH' : 'MEDIUM',
-          title:       `균열 감지 — ${selectedProject?.projectName ?? ''}`,
-          detail:      `신뢰도 ${conf}% (${data.method ?? 'unknown'}) · ${data.detail ?? ''}`.trim().replace(/·\s*$/, ''),
-          projectId:   selectedProject?.projectId   ?? '',
-          projectName: selectedProject?.projectName ?? '',
-        });
-        // Agent WBS 수정 제안 (1분 쿨타임)
-        pushWbsSuggest({
-          eventType:   'CRACK',
-          source:      'BIM_CRACK',
-          title:       `균열 감지 — 신뢰도 ${conf}%`,
-          detail:      `${selectedProject?.projectName ?? '현장'}에서 구조 균열이 감지되었습니다. 보수 공사 일정 추가가 필요합니다.`,
-          projectId:   selectedProject?.projectId   ?? '',
-          projectName: selectedProject?.projectName ?? '',
-        });
-      }
-    } catch (e) {
-      setCrackLog(prev => [{
-        time: new Date(),
-        hasCrack: false,
-        confidence: 0,
-        method: 'error',
-        detail: e.message,
-        source,
-        error: true,
-      }, ...prev.slice(0, 99)]);
-    } finally {
-      setCapturing(false);
-    }
-  }, []);
-
-  // 웹캠 캡처 → 전송
-  const captureFromCamera = useCallback(async () => {
-    if (!videoRef.current || videoRef.current.videoWidth === 0) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
-    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
-    await sendCrackDetect(blob, 'camera');
-  }, [sendCrackDetect]);
-
-  // 파일 업로드 → 전송
+  // 파일 업로드 → 감지 (Context의 detectFromBlob 사용)
   const handleFileUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await sendCrackDetect(file, 'file');
+    await detectFromBlob(file, 'file');
     e.target.value = '';
-  }, [sendCrackDetect]);
-
-  // 자동 인터벌 관리
-  useEffect(() => {
-    if (autoTimerRef.current) clearInterval(autoTimerRef.current);
-    if (autoRunning && interval > 0) {
-      autoTimerRef.current = setInterval(captureFromCamera, interval * 1000);
-    }
-    return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
-  }, [autoRunning, interval, captureFromCamera]);
+  }, [detectFromBlob]);
 
   const hasCrackNow = crackLog.length > 0 && crackLog[0].hasCrack;
   const crackCount  = crackLog.filter(e => e.hasCrack).length;
@@ -879,7 +802,6 @@ function CrackMonitorPanel({ selectedProject }) {
 
   function fmtTime(d) { return d.toLocaleTimeString([], { hour12: false }); }
 
-  // 간격 버튼 레이블 (번역)
   function intervalLabel(v) {
     if (v === 0) return t('intervalManual');
     return `${v / 60}${t('intervalManual') === '수동' ? '분' : v / 60 === 1 ? 'min' : 'min'}`;
@@ -929,12 +851,12 @@ function CrackMonitorPanel({ selectedProject }) {
           </label>
           <div className="flex gap-1.5 flex-wrap">
             {CRACK_INTERVAL_VALUES.map(v => (
-              <button key={v} onClick={() => setInterval_(v)}
+              <button key={v} onClick={() => setIntervalSec(v)}
                       className="px-3 py-1 rounded-full text-xs transition"
                       style={{
-                        backgroundColor: interval === v ? "#1e3a5f" : "#0d1b2a",
-                        border: `1px solid ${interval === v ? "#60a5fa" : "#253347"}`,
-                        color: interval === v ? "#93c5fd" : "#8896a4",
+                        backgroundColor: intervalSec === v ? "#1e3a5f" : "#0d1b2a",
+                        border: `1px solid ${intervalSec === v ? "#60a5fa" : "#253347"}`,
+                        color: intervalSec === v ? "#93c5fd" : "#8896a4",
                       }}>
                 {intervalLabel(v)}
               </button>
@@ -968,7 +890,7 @@ function CrackMonitorPanel({ selectedProject }) {
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
                  onChange={handleFileUpload} />
 
-          {interval > 0 && (
+          {intervalSec > 0 && (
             <button onClick={() => setAutoRunning(r => !r)}
                     className="px-4 py-2 rounded-lg text-sm font-semibold"
                     style={{
@@ -983,7 +905,7 @@ function CrackMonitorPanel({ selectedProject }) {
           {autoRunning && (
             <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
                   style={{ background: "#3a1a00", border: "1px solid #f97316", color: "#fb923c" }}>
-              {t('autoLabel')}
+              {t('autoLabel')} — 탭 이탈 후에도 계속 촬영됩니다
             </span>
           )}
         </div>
@@ -1017,7 +939,7 @@ function CrackMonitorPanel({ selectedProject }) {
             </div>
           </div>
           <div className="flex-1 relative bg-black flex items-center justify-center">
-            <video ref={videoRef} autoPlay playsInline muted
+            <video ref={visibleVideoRef} autoPlay playsInline muted
                    style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             {!streaming && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
