@@ -84,8 +84,40 @@ function RagEvidencePanel({ ragState, borderColor }) {
     );
   }
 
-  if (ragState === 'no-data' || ragState === 'error') {
-    return null; // 데이터 없으면 패널 숨김
+  if (ragState === 'no-data') {
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: `1px solid rgba(255,255,255,0.06)`,
+        borderRadius: '8px',
+        padding: '6px 12px',
+        marginBottom: '10px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+      }}>
+        <span style={{ fontSize: '11px' }}>📋</span>
+        <span style={{ fontSize: '10px', color: '#475569' }}>관련 시방서 없음 — 작업 내용 기반으로 일정 추가</span>
+      </div>
+    );
+  }
+
+  if (ragState === 'error') {
+    return (
+      <div style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: `1px solid rgba(255,255,255,0.06)`,
+        borderRadius: '8px',
+        padding: '6px 12px',
+        marginBottom: '10px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+      }}>
+        <span style={{ fontSize: '11px' }}>⚠️</span>
+        <span style={{ fontSize: '10px', color: '#475569' }}>시방서 검색 실패 (Agent 서버 확인 필요)</span>
+      </div>
+    );
   }
 
   if (!ragState || !ragState.evidence || ragState.evidence.length === 0) {
