@@ -12,81 +12,81 @@ const API_BASE = `/api/chat`;
 // ── 탭별 설정 ─────────────────────────────────────────────────────
 const TAB_CONFIGS = {
   bim: {
-    title: "BIM 분석 도우미",
-    subtitle: "IFC 모델 · 부재 분석",
+    title: "BIM Agent",
+    subtitle: "부재 생성·조회·삭제 · IFC 분석",
     icon: "🏗",
     btnGradient: "linear-gradient(135deg,#1d4ed8,#7c3aed)",
     btnBorder: "#4f46e5",
     welcome:
-      "안녕하세요! 🏗\nBIM 모델에 대해 질문해주세요.\n부재 정보, 충돌 검사 결과, IFC 데이터 분석을 도와드립니다.",
-    quickPrompts: ["충돌 검사 결과 분석해줘", "주요 부재 목록 알려줘", "프로젝트 현황은?"],
-    contextKey: "BIM",
+      "안녕하세요! 🏗 BIM Agent입니다.\n부재 생성/삭제/조회, IFC 분석, 드론 사진 변환, 구조 해석을 도와드립니다.\n현재 프로젝트 기준으로 작업합니다.",
+    quickPrompts: ["프로젝트 목록 보여줘", "기둥 추가해줘", "부재 통계 알려줘"],
+    agentName: "bim_agent",
   },
   "bim-projects": {
-    title: "BIM 도우미",
-    subtitle: "프로젝트 관리 · IFC",
+    title: "BIM Agent",
+    subtitle: "BIM 프로젝트 관리 · IFC 업로드",
     icon: "📁",
     btnGradient: "linear-gradient(135deg,#1d4ed8,#7c3aed)",
     btnBorder: "#4f46e5",
     welcome:
-      "안녕하세요! 📁\nBIM 프로젝트 관리를 도와드릴게요.\n프로젝트 생성, IFC 파일 업로드, 드론 데이터 변환 방법을 안내해드립니다.",
-    quickPrompts: ["새 프로젝트 생성 방법", "IFC 파일 업로드 방법", "드론 데이터 변환"],
-    contextKey: "BIM",
+      "안녕하세요! 📁 BIM Agent입니다.\n프로젝트 생성, IFC 파일 업로드, 드론 데이터 변환을 도와드립니다.",
+    quickPrompts: ["BIM 프로젝트 목록", "새 프로젝트 만들어줘", "IFC 파일 업로드 방법"],
+    agentName: "bim_agent",
   },
   simulation: {
-    title: "시뮬레이션 도우미",
-    subtitle: "IoT 센서 · 환경 모니터링",
+    title: "센서 Agent",
+    subtitle: "온습도 IoT 센서 · 환경 모니터링",
     icon: "📡",
     btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
     btnBorder: "#10b981",
     welcome:
-      "안녕하세요! 📡\n시뮬레이션 및 IoT 데이터를 분석해드릴게요.\n온습도 센서, 환경 이상 감지를 도와드립니다.",
-    quickPrompts: ["현재 온습도 상태는?", "센서 이상 여부 확인", "환경 위험 분석"],
-    contextKey: "SIMULATION",
+      "안녕하세요! 📡 센서 Agent입니다.\n온습도 실시간 데이터, 이상 감지, 임계값 알림을 도와드립니다.",
+    quickPrompts: ["현재 온습도는?", "임계값 초과 알림 확인", "최근 센서 데이터 보여줘"],
+    agentName: "sensor_agent",
   },
   "simulation-projects": {
-    title: "시뮬레이션 도우미",
-    subtitle: "프로젝트 · 센서 관리",
-    icon: "📡",
+    title: "시뮬레이션 Agent",
+    subtitle: "굴착기 시뮬레이션 제어",
+    icon: "🦾",
     btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
     btnBorder: "#10b981",
     welcome:
-      "안녕하세요! 📡\n시뮬레이션 프로젝트를 도와드릴게요.\n새 프로젝트 생성, 센서 연동, 데이터 관리를 안내해드립니다.",
-    quickPrompts: ["시뮬레이션 시작 방법", "센서 연동 확인", "프로젝트 데이터 관리"],
-    contextKey: "SIMULATION",
+      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n굴착기 붐·암·버킷 각도 제어, 자세 프리셋, 상태 조회를 도와드립니다.",
+    quickPrompts: ["굴착기 상태 확인", "DIG 자세로 변경", "붐 각도 45도로 설정"],
+    agentName: "simulation_agent",
   },
   safe: {
-    title: "안전 분석 도우미",
-    subtitle: "균열 감지 · 안전 모니터링",
+    title: "안전 Agent",
+    subtitle: "헬멧 감지 · 침입 감지 · YOLO",
     icon: "⛑️",
     btnGradient: "linear-gradient(135deg,#dc2626,#9f1239)",
     btnBorder: "#ef4444",
     welcome:
-      "안녕하세요! ⛑️\n안전 현장 분석을 도와드릴게요.\n균열 감지, 안전 구역, 위험 요소 분석을 지원합니다.",
-    quickPrompts: ["균열 감지 결과 분석", "안전 등급 평가해줘", "위험 요소 파악"],
-    contextKey: "SAFETY",
+      "안녕하세요! ⛑️ 안전 Agent입니다.\n헬멧 미착용 감지, 침입 이벤트, 안전 통계를 도와드립니다.",
+    quickPrompts: ["최근 헬멧 위반 현황", "침입 감지 이벤트 조회", "안전 통계 보여줘"],
+    agentName: "safe_agent",
   },
   "safe-projects": {
-    title: "안전 도우미",
-    subtitle: "안전 프로젝트 관리",
+    title: "안전 Agent",
+    subtitle: "안전 프로젝트 · 카메라 관리",
     icon: "⛑️",
     btnGradient: "linear-gradient(135deg,#dc2626,#9f1239)",
     btnBorder: "#ef4444",
     welcome:
-      "안녕하세요! ⛑️\n안전 프로젝트 관리를 도와드릴게요.\n프로젝트 생성, 카메라 모니터링, 안전 기준을 안내해드립니다.",
-    quickPrompts: ["안전 프로젝트 생성", "카메라 모니터링 설정", "안전 기준 안내"],
-    contextKey: "SAFETY",
+      "안녕하세요! ⛑️ 안전 Agent입니다.\n안전 모니터링 기능, 카메라 설정, 감지 이벤트를 안내해드립니다.",
+    quickPrompts: ["안전 모니터링 사용법", "감지 서버 상태 확인", "안전 이벤트 통계"],
+    agentName: "safe_agent",
   },
   test: {
-    title: "충돌 분석 도우미",
-    subtitle: "3D 충돌 감지 · 구조 분석",
+    title: "충돌 테스트 Agent",
+    subtitle: "3D 충돌 감지 · 키보드 조작",
     icon: "⚠️",
     btnGradient: "linear-gradient(135deg,#b45309,#92400e)",
     btnBorder: "#f59e0b",
     welcome:
-      "안녕하세요! ⚠️\n3D 충돌 분석을 도와드릴게요.\n부재 간 충돌, 구조적 문제점, 보정 방안을 분석합니다.",
-    quickPrompts: ["충돌 발생 원인 분석", "충돌 해결 방안 제안", "구조 안전성 검토"],
-    contextKey: "COLLISION",
+      "안녕하세요! ⚠️ 충돌 테스트 Agent입니다.\n키보드 조작법, 충돌 로그 조회, 충돌 해결 방법을 안내해드립니다.",
+    quickPrompts: ["키보드 조작법 알려줘", "충돌 로그 확인", "충돌 해결 방법"],
+    agentName: "test_agent",
   },
 };
 
@@ -99,7 +99,7 @@ const DEFAULT_CONFIG = {
   welcome:
     "안녕하세요! 🤖\n건설 현장 관련 무엇이든 질문해주세요.\n프로젝트 분석, 일정 관리, 현장 지원을 도와드립니다.",
   quickPrompts: ["현장 현황 분석", "일정 조회", "안전 점검 항목"],
-  contextKey: "GENERAL",
+  agentName: null,
 };
 
 // ── 메시지 버블 ─────────────────────────────────────────────────
@@ -236,26 +236,29 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
     setLoading(true);
 
     const history = messagesRef.current.map(m => ({ role: m.role, content: m.content }));
+    const agentName = configRef.current.agentName || null;
 
     try {
-      const res = await AxiosCustom.post(`${API_BASE}/simple`, {
+      const res = await AxiosCustom.post(`${API_BASE}/message`, {
         sessionId,
         message: trimmed,
         history,
-        context: configRef.current.contextKey,
-        projectName: contextProject?.projectName || "",
+        directAgent:         agentName,
+        projectId:           selectedProject?.projectId   || null,
+        simulationProjectId: selectedSimulationProject?.projectId || null,
+        wbsProjectId:        null,
       });
-      setMessages(prev => [...prev, { role: "assistant", content: res.data.response }]);
+      setMessages(prev => [...prev, { role: "assistant", content: res.data.response || "응답을 받지 못했습니다." }]);
     } catch {
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: "죄송합니다, 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+        content: "죄송합니다, 오류가 발생했습니다. Agent 서버가 실행 중인지 확인해 주세요.",
       }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [loading, sessionId, contextProject]);
+  }, [loading, sessionId, selectedProject, selectedSimulationProject]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }

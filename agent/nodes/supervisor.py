@@ -247,7 +247,12 @@ def supervisor_node(state: AgentState) -> dict:
     Supervisor 노드: 사용자 메시지를 분석하여 처리할 에이전트를 결정합니다.
     `next_agent` 와 `intent` 를 설정하고 반환합니다.
     """
-    # ── 경로 0: multi-step BIM 대화 진행 중 ─────────────────────────────────
+    # ── 경로 0a: 탭 전용 직접 라우팅 (키워드 매칭 스킵) ────────────────────
+    direct = state.get("direct_agent")
+    if direct:
+        return {"intent": direct, "next_agent": direct}
+
+    # ── 경로 0b: multi-step BIM 대화 진행 중 ────────────────────────────────
     if state.get("pending_action"):
         return {"intent": "bim_agent", "next_agent": "bim_agent"}
 
