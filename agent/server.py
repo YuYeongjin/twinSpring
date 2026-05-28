@@ -42,6 +42,7 @@ class ChatContext(BaseModel):
     projectId: Optional[str] = None               # BIM project ID
     simulationProjectId: Optional[str] = None     # Simulation project ID
     wbsProjectId: Optional[str] = None            # WBS project ID (selected project)
+    directAgent: Optional[str] = None             # 탭 전용 에이전트 이름 (키워드 라우팅 스킵)
 
 class ChatRequest(BaseModel):
     message: str
@@ -91,6 +92,7 @@ def chat(req: ChatRequest):
         "bim_project_id":        req.context.projectId,
         "simulation_project_id": req.context.simulationProjectId,
         "wbs_project_id":        req.context.wbsProjectId,
+        "direct_agent":          req.context.directAgent,
         "bim_data":              None,
         "sensor_data":           None,
         "pending_action":        pending_action,
@@ -156,6 +158,8 @@ def chat_stream(req: ChatRequest):
         "context":               None,
         "bim_project_id":        req.context.projectId,
         "simulation_project_id": req.context.simulationProjectId,
+        "wbs_project_id":        req.context.wbsProjectId,
+        "direct_agent":          req.context.directAgent,
         "bim_data":              None,
         "sensor_data":           None,
         "pending_action":        pending_action,

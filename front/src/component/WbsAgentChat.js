@@ -102,6 +102,7 @@ export default function WbsAgentChat({ selectedProject, onDataChanged }) {
         sessionId:           SESSION_ID,
         message:             text.trim(),
         history,
+        directAgent:         "wbs_agent",
         wbsProjectId:        selectedProject?.projectId || null,
         projectId:           null,
         simulationProjectId: null,

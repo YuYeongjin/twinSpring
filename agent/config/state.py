@@ -39,6 +39,7 @@ class AgentState(TypedDict):
     bim_project_id: Optional[str]                  # 선택된 BIM 프로젝트 ID
     simulation_project_id: Optional[str]           # 선택된 시뮬레이션 프로젝트 ID
     wbs_project_id: Optional[str]                  # 선택된 WBS 프로젝트 ID
+    direct_agent: Optional[str]                    # 강제 라우팅 에이전트 (탭 전용 채팅)
 
     # ── 구조화 응답 (프론트 차트/테이블용) ─────────────────────────────────
     bim_data: Optional[dict]                       # bim_agent 구조화 데이터
