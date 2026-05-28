@@ -1,5 +1,8 @@
 https://yjtwin.duckdns.org/
 <br />
+<p>
+I'm developing version 2 so that each function is linked by adding WBS.
+</p>
 <hr>
 <p>
 1. BIM : Drone Photo Extraction, IFC Series BIM, Structural Analysis Function
