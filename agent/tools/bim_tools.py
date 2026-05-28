@@ -2,16 +2,9 @@
 BIM Agent 도구 모음
 
 담당 도메인:
-  - BIM 부재 CRUD (createElement / createComposite / deleteElement / updateElement / createProject)
-  - BIM 프로젝트·부재 통계 조회
-  - 드론 사진 분석 안내 (Spring /api/drone 정보)
-  - 구조 해석 조회 (Spring /api/bim/structural)
-  - IFC 파일 가져오기 안내 (Spring /api/bim/ifc 정보)
-
-Note:
-  BIM 부재 생성은 여러 단계 대화(좌표 확인 등)가 필요하므로
-  create_bim_element 는 좌표가 없을 때 "NEED_COORDS" 신호를 반환합니다.
-  bim_agent.py 의 ReAct 루프가 이 신호를 받아 사용자에게 추가 질문합니다.
+  - BIM 부재 CRUD (create_bim_element / create_composite_structure / delete_bim_element / create_bim_project)
+  - BIM 프로젝트·부재 통계 조회 (list_bim_projects / get_bim_stats)
+  - 드론 사진 분석 안내, 구조 해석 조회, IFC 파일 가져오기 안내
 """
 from __future__ import annotations
 from typing import Optional
@@ -142,7 +135,7 @@ def create_bim_project(project_name: str, structure_type: str = "Building") -> s
         return json.dumps({"success": False, "error": str(e)})
 
 
-# ── 복합 구조물 템플릿 (기존 bim_builder.py 에서 이관) ─────────────────────────
+# ── 복합 구조물 템플릿 ────────────────────────────────────────────────────────
 _COMPOSITE_TEMPLATES: dict[str, dict] = {
     "pier":           {"name": "교각 구조", "desc": "기초슬래브+기둥2+캡보"},
     "building_frame": {"name": "건물 골조", "desc": "슬래브+기둥4+보4"},
