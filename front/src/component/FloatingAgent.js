@@ -158,9 +158,15 @@ function LoadingBubble() {
 }
 
 // ── 메인 컴포넌트 ───────────────────────────────────────────────
-export default function FloatingAgent({ viewComponent, selectedProject, selectedSimulationProject }) {
+export default function FloatingAgent({ viewComponent, selectedProject, selectedSimulationProject, selectedSafeProject }) {
   const config = TAB_CONFIGS[viewComponent] || DEFAULT_CONFIG;
-  const contextProject = selectedProject || selectedSimulationProject;
+
+  // 현재 탭에 해당하는 프로젝트만 표시 · 전송 (다른 탭 프로젝트가 섞이지 않도록)
+  const contextProject =
+    viewComponent?.startsWith("bim")        ? selectedProject :
+    viewComponent?.startsWith("simulation") ? selectedSimulationProject :
+    viewComponent?.startsWith("safe")       ? selectedSafeProject :
+    null;
 
   const [open, setOpen]       = useState(false);
   const [messages, setMessages] = useState([]);
@@ -239,13 +245,17 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
     const agentName = configRef.current.agentName || null;
 
     try {
+      // 탭에 해당하는 프로젝트 ID만 전송 (다른 탭 ID 오염 방지)
+      const isBim  = viewComponent?.startsWith("bim");
+      const isSim  = viewComponent?.startsWith("simulation");
+
       const res = await AxiosCustom.post(`${API_BASE}/message`, {
         sessionId,
         message: trimmed,
         history,
         directAgent:         agentName,
-        projectId:           selectedProject?.projectId   || null,
-        simulationProjectId: selectedSimulationProject?.projectId || null,
+        projectId:           isBim  ? (selectedProject?.projectId          || null) : null,
+        simulationProjectId: isSim  ? (selectedSimulationProject?.projectId || null) : null,
         wbsProjectId:        null,
       });
       setMessages(prev => [...prev, { role: "assistant", content: res.data.response || "응답을 받지 못했습니다." }]);
@@ -258,7 +268,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [loading, sessionId, selectedProject, selectedSimulationProject]);
+  }, [loading, sessionId, viewComponent, selectedProject, selectedSimulationProject, selectedSafeProject]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
