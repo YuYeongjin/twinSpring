@@ -744,6 +744,241 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
   );
 }
 
+// ── 균열 비교뷰 ───────────────────────────────────────────────────
+
+/** 감지 결과 이미지 위에 균열 bbox를 캔버스로 오버레이 */
+function CrackPhotoCanvas({ entry }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!entry?.imageUrl || !ref.current) return;
+    const canvas = ref.current;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+      const lw = Math.max(2, img.naturalWidth / 200);
+      (entry.regions || []).forEach((r, i) => {
+        ctx.fillStyle   = 'rgba(239,68,68,0.14)';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth   = lw;
+        ctx.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+        ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+        ctx.fillStyle = '#ef4444';
+        ctx.font = `bold ${Math.max(13, img.naturalWidth / 45)}px sans-serif`;
+        ctx.fillText(`#${i + 1}`, r.x1 + 4, r.y1 + 16);
+      });
+    };
+    img.src = entry.imageUrl;
+  }, [entry]);
+  return (
+    <canvas ref={ref}
+      style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8, maxHeight: 260 }} />
+  );
+}
+
+/** 균열 영역을 정규화 좌표로 보여주는 위치 맵 */
+function CrackLocationMap({ entry }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!entry?.imageUrl || !ref.current) return;
+    const canvas = ref.current;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.offsetWidth  || 200;
+    const H = canvas.offsetHeight || 150;
+    canvas.width  = W;
+    canvas.height = H;
+
+    const img = new Image();
+    img.onload = () => {
+      const iw = img.naturalWidth  || 640;
+      const ih = img.naturalHeight || 480;
+
+      ctx.fillStyle = '#060f1a';
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#1e3a5f';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(1, 1, W - 2, H - 2);
+
+      // 격자
+      ctx.strokeStyle = '#0d1e30';
+      ctx.lineWidth = 0.5;
+      for (let i = 1; i < 4; i++) {
+        ctx.beginPath(); ctx.moveTo((W * i) / 4, 0); ctx.lineTo((W * i) / 4, H); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, (H * i) / 4); ctx.lineTo(W, (H * i) / 4); ctx.stroke();
+      }
+
+      // 퍼센트 레이블
+      ctx.fillStyle = '#1e3a5f';
+      ctx.font = '9px sans-serif';
+      ['0%','25%','50%','75%','100%'].forEach((lbl, i) => {
+        ctx.fillText(lbl, (W * i) / 4, H - 2);
+      });
+
+      // 균열 영역
+      (entry.regions || []).forEach((r, idx) => {
+        const nx = (r.x1 / iw) * W;
+        const ny = (r.y1 / ih) * H;
+        const nw = ((r.x2 - r.x1) / iw) * W;
+        const nh = ((r.y2 - r.y1) / ih) * H;
+        ctx.fillStyle   = 'rgba(239,68,68,0.4)';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth   = 1.5;
+        ctx.fillRect(nx, ny, Math.max(nw, 4), Math.max(nh, 4));
+        ctx.strokeRect(nx, ny, Math.max(nw, 4), Math.max(nh, 4));
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillText(`#${idx + 1}`, nx + 2, ny + 10);
+      });
+    };
+    img.src = entry.imageUrl;
+  }, [entry]);
+
+  return (
+    <canvas ref={ref} style={{ width: '100%', aspectRatio: '4/3', display: 'block',
+                                borderRadius: 8, border: '1px solid #1e3a5f' }}
+            width={200} height={150} />
+  );
+}
+
+/** 균열 감지 결과 사진 + BIM 위치 비교 패널 */
+function CrackCompareView({ entry, bimProject }) {
+  if (!entry?.imageUrl) return null;
+  const conf = Math.round((entry.confidence ?? 0) * 100);
+  const regionCount = (entry.regions || []).length;
+
+  return (
+    <div style={{ borderRadius: 12, border: `1px solid ${entry.hasCrack ? '#7c2d12' : '#14532d'}`,
+                  background: '#060f1a', overflow: 'hidden' }}>
+      {/* 헤더 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                    background: 'linear-gradient(135deg,#0a1a2e,#060f1a)',
+                    borderBottom: `1px solid ${entry.hasCrack ? '#7c2d12' : '#14532d'}` }}>
+        <span style={{ fontSize: 16 }}>{entry.hasCrack ? '🚨' : '✅'}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>균열 감지 비교뷰</span>
+        {bimProject && (
+          <span style={{ fontSize: 10, color: '#60a5fa', background: '#0d2040', borderRadius: 8,
+                         padding: '2px 8px', border: '1px solid #1e3a5f', maxWidth: 120,
+                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            🏗 {bimProject.projectName}
+          </span>
+        )}
+        {entry.hasCrack && regionCount > 0 && (
+          <span style={{ fontSize: 10, background: '#3a1a00', border: '1px solid #f97316',
+                         color: '#fb923c', borderRadius: 8, padding: '2px 7px' }}>
+            균열 {regionCount}개 영역 감지
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 10,
+                       color: entry.hasCrack ? '#fb923c' : '#4ade80' }}>
+          신뢰도 {conf}% · {entry.time.toLocaleTimeString('ko-KR', { hour12: false })}
+        </span>
+      </div>
+
+      {/* 본문: 좌(사진+박스) · 우(BIM정보+위치맵) */}
+      <div style={{ display: 'flex', gap: 0, minHeight: 280 }}>
+
+        {/* ── 좌: 감지 사진 ── */}
+        <div style={{ flex: 1, padding: 12, borderRight: '1px solid #1a2a3a',
+                      display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, color: '#8896a4', display: 'flex', alignItems: 'center', gap: 6 }}>
+            📷 감지 사진
+            <span style={{ fontSize: 10, color: '#4b5563' }}>
+              {entry.source === 'camera' ? '(카메라 촬영)' : '(파일 업로드)'}
+            </span>
+          </div>
+
+          <CrackPhotoCanvas entry={entry} />
+
+          {/* 좌표 목록 */}
+          {regionCount > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 2 }}>📐 균열 좌표</div>
+              {(entry.regions || []).map((r, i) => (
+                <div key={i} style={{ fontSize: 10, color: '#8896a4', display: 'flex', gap: 6,
+                                      padding: '3px 8px', background: '#0d1b2a', borderRadius: 6,
+                                      border: '1px solid #1a2a3a' }}>
+                  <span style={{ color: '#ef4444', fontWeight: 700, minWidth: 22 }}>#{i + 1}</span>
+                  <span>({r.x1},{r.y1})</span>
+                  <span style={{ color: '#253347' }}>→</span>
+                  <span>({r.x2},{r.y2})</span>
+                  <span style={{ color: '#4b5563', marginLeft: 'auto' }}>
+                    {r.x2 - r.x1}×{r.y2 - r.y1}px
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 10, color: '#4b5563', textAlign: 'center', padding: '8px 0' }}>
+              {entry.hasCrack ? '좌표 데이터 없음' : '균열 미감지'}
+            </div>
+          )}
+        </div>
+
+        {/* ── 우: BIM 정보 + 위치 맵 ── */}
+        <div style={{ width: 210, padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
+                      flexShrink: 0 }}>
+
+          {/* BIM 프로젝트 카드 */}
+          {bimProject ? (
+            <div style={{ background: '#0d2040', borderRadius: 8, border: '1px solid #1e3a5f', padding: 10 }}>
+              <div style={{ fontSize: 10, color: '#60a5fa', fontWeight: 700, marginBottom: 4 }}>
+                🏗 연결된 BIM 프로젝트
+              </div>
+              <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {bimProject.projectName}
+              </div>
+              {bimProject.location && (
+                <div style={{ fontSize: 10, color: '#4b5563', marginTop: 3 }}>
+                  📍 {bimProject.location}
+                </div>
+              )}
+              {bimProject.description && (
+                <div style={{ fontSize: 10, color: '#4b5563', marginTop: 2,
+                              display: '-webkit-box', WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {bimProject.description}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ background: '#0d1b2a', borderRadius: 8, border: '1px solid #1a2a3a',
+                          padding: 10, fontSize: 10, color: '#4b5563', textAlign: 'center' }}>
+              위의 드롭다운에서 BIM 프로젝트를 선택하면 도면 정보가 연결됩니다.
+            </div>
+          )}
+
+          {/* 위치 맵 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+            <div style={{ fontSize: 10, color: '#8896a4', display: 'flex', alignItems: 'center', gap: 4 }}>
+              📐 균열 위치 맵
+              <span style={{ fontSize: 9, color: '#4b5563' }}>(정규화 좌표)</span>
+            </div>
+            <CrackLocationMap entry={entry} />
+
+            {/* 정규화 % 좌표 */}
+            {regionCount > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {(entry.regions || []).map((r, i) => {
+                  // 이미지 크기를 모를 때 640×480 기본값 사용 (캔버스 드로우 후)
+                  return (
+                    <div key={i} style={{ fontSize: 9, color: '#4b5563', display: 'flex', gap: 4 }}>
+                      <span style={{ color: '#ef4444' }}>#{i + 1}</span>
+                      <span>X:{r.x1}–{r.x2}px · Y:{r.y1}–{r.y2}px</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 균열 감지 패널 ────────────────────────────────────────────────
 
 // CRACK_INTERVALS labels are translated at render time via t('intervalManual') / '{n}분'
@@ -769,6 +1004,9 @@ function CrackMonitorPanel({ selectedProject }) {
   const [bimProjectId, setBimProjectId] = useState('');
   const fileInputRef    = useRef(null);
   const visibleVideoRef = useRef(null);  // 표시 전용 (캡처는 Context 숨김 비디오)
+
+  // 선택된 BIM 프로젝트 객체 (비교뷰에 전달)
+  const selectedBimProject = bimProjects.find(p => (p.projectId || p.id) === bimProjectId) || null;
 
   // 현재 Safe 프로젝트를 Context ref에 주입 — 탭 이탈 후에도 알림 전송 시 사용
   useEffect(() => {
@@ -1016,6 +1254,14 @@ function CrackMonitorPanel({ selectedProject }) {
           </div>
         </div>
       </div>
+
+      {/* 균열 감지 비교뷰 — 감지 결과가 있을 때만 표시 */}
+      {crackLog.length > 0 && crackLog[0].imageUrl && (
+        <CrackCompareView
+          entry={crackLog[0]}
+          bimProject={selectedBimProject}
+        />
+      )}
     </div>
   );
 }

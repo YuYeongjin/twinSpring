@@ -55,6 +55,22 @@ const EVENT_META = {
     label:   '안전복장 위반',
     wbsMsg:  '안전복장 미착용이 감지되었습니다. 안전교육 일정을 WBS에 추가하겠습니까?',
   },
+  STRUCTURAL_DANGER: {
+    icon:    '🏗',
+    color:   '#ef4444',
+    bg:      'rgba(100,20,20,0.97)',
+    border:  '#ef4444',
+    label:   '구조 위험 부재 감지',
+    wbsMsg:  '안전율(SF < 1.0) 미달 부재가 발생했습니다. KDS 구조설계기준에 따라 구조 보강 공사 일정을 WBS에 추가하겠습니까?',
+  },
+  SIM_DANGER: {
+    icon:    '🦾',
+    color:   '#ef4444',
+    bg:      'rgba(100,20,20,0.97)',
+    border:  '#ef4444',
+    label:   '굴착기 전도 위험',
+    wbsMsg:  '굴착기 전도(Tip-Over) 위험이 감지되었습니다. KCS 건설기계 안전기준에 따라 작업 중단 및 안전 점검 일정을 WBS에 추가하겠습니까?',
+  },
 };
 
 const DEFAULT_META = {

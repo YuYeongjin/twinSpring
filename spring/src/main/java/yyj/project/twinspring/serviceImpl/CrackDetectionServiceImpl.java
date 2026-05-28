@@ -87,6 +87,7 @@ public class CrackDetectionServiceImpl implements CrackDetectionService {
 
         boolean[][] visited = new boolean[sh][sw];
         int crackCandidates = 0;
+        List<Map<String, Object>> regions = new ArrayList<>();
 
         for (int y = 0; y < sh; y++) {
             for (int x = 0; x < sw; x++) {
@@ -125,7 +126,16 @@ public class CrackDetectionServiceImpl implements CrackDetectionService {
                     ? (double) Math.max(bboxW, bboxH) / Math.min(bboxW, bboxH)
                     : 1;
 
-                if (aspect >= ASPECT_THR) crackCandidates++;
+                if (aspect >= ASPECT_THR) {
+                    crackCandidates++;
+                    // 원본 이미지 좌표로 스케일 복원
+                    Map<String, Object> region = new LinkedHashMap<>();
+                    region.put("x1", minX * SAMPLE_STEP);
+                    region.put("y1", minY * SAMPLE_STEP);
+                    region.put("x2", maxX * SAMPLE_STEP);
+                    region.put("y2", maxY * SAMPLE_STEP);
+                    regions.add(region);
+                }
             }
         }
 
@@ -146,6 +156,7 @@ public class CrackDetectionServiceImpl implements CrackDetectionService {
         result.put("detail", String.format(
             "crackRegions=%d, edgeDensity=%.3f, imageSize=%dx%d",
             crackCandidates, edgeDensity, w, h));
+        result.put("regions",     regions);
 
         return result;
     }

@@ -86,6 +86,18 @@ export function CrackMonitorProvider({ children }) {
   // ── Blob → 감지 API 호출 ──────────────────────────────────
   const detectFromBlob = useCallback(async (blob, source) => {
     setCapturing(true);
+
+    // 비교뷰 표시용으로 이미지를 data URL로 변환 (감지 전에 수행)
+    let imageUrl = null;
+    try {
+      imageUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch {}
+
     const form = new FormData();
     form.append('file', blob, 'capture.jpg');
     try {
@@ -102,8 +114,10 @@ export function CrackMonitorProvider({ children }) {
         method:     data.method     ?? 'unknown',
         detail:     data.detail     ?? '',
         source,
+        imageUrl,
+        regions:    Array.isArray(data.regions) ? data.regions : [],
       };
-      setCrackLog(prev => [entry, ...prev.slice(0, 99)]);
+      setCrackLog(prev => [entry, ...prev.slice(0, 49)]);
 
       if (data.hasCrack) {
         const conf = Math.round((data.confidence ?? 0) * 100);
@@ -134,7 +148,9 @@ export function CrackMonitorProvider({ children }) {
         detail:     e.message,
         source,
         error:      true,
-      }, ...prev.slice(0, 99)]);
+        imageUrl,
+        regions:    [],
+      }, ...prev.slice(0, 49)]);
     } finally {
       setCapturing(false);
     }

@@ -34,25 +34,25 @@ const TAB_CONFIGS = {
     agentName: "bim_agent",
   },
   simulation: {
-    title: "센서 Agent",
-    subtitle: "온습도 IoT 센서 · 환경 모니터링",
-    icon: "📡",
-    btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
-    btnBorder: "#10b981",
-    welcome:
-      "안녕하세요! 📡 센서 Agent입니다.\n온습도 실시간 데이터, 이상 감지, 임계값 알림을 도와드립니다.",
-    quickPrompts: ["현재 온습도는?", "임계값 초과 알림 확인", "최근 센서 데이터 보여줘"],
-    agentName: "sensor_agent",
-  },
-  "simulation-projects": {
     title: "시뮬레이션 Agent",
-    subtitle: "굴착기 시뮬레이션 제어",
+    subtitle: "굴착기 각도 제어 · 자세 프리셋",
     icon: "🦾",
     btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
     btnBorder: "#10b981",
     welcome:
-      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n굴착기 붐·암·버킷 각도 제어, 자세 프리셋, 상태 조회를 도와드립니다.",
+      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n굴착기 붐·암·버킷 각도 제어, 자세 프리셋 전환, 상태 조회를 도와드립니다.",
     quickPrompts: ["굴착기 상태 확인", "DIG 자세로 변경", "붐 각도 45도로 설정"],
+    agentName: "simulation_agent",
+  },
+  "simulation-projects": {
+    title: "시뮬레이션 Agent",
+    subtitle: "시뮬레이션 프로젝트 관리",
+    icon: "🦾",
+    btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
+    btnBorder: "#10b981",
+    welcome:
+      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n굴착기 시뮬레이션 제어, 자세 변경, 각도 설정을 도와드립니다.",
+    quickPrompts: ["굴착기 상태 확인", "IDLE 자세로 초기화", "선회 각도 설정"],
     agentName: "simulation_agent",
   },
   safe: {
@@ -158,9 +158,15 @@ function LoadingBubble() {
 }
 
 // ── 메인 컴포넌트 ───────────────────────────────────────────────
-export default function FloatingAgent({ viewComponent, selectedProject, selectedSimulationProject }) {
+export default function FloatingAgent({ viewComponent, selectedProject, selectedSimulationProject, selectedSafeProject }) {
   const config = TAB_CONFIGS[viewComponent] || DEFAULT_CONFIG;
-  const contextProject = selectedProject || selectedSimulationProject;
+
+  // 현재 탭에 해당하는 프로젝트만 표시 · 전송 (다른 탭 프로젝트가 섞이지 않도록)
+  const contextProject =
+    viewComponent?.startsWith("bim")        ? selectedProject :
+    viewComponent?.startsWith("simulation") ? selectedSimulationProject :
+    viewComponent?.startsWith("safe")       ? selectedSafeProject :
+    null;
 
   const [open, setOpen]       = useState(false);
   const [messages, setMessages] = useState([]);
@@ -239,13 +245,17 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
     const agentName = configRef.current.agentName || null;
 
     try {
+      // 탭에 해당하는 프로젝트 ID만 전송 (다른 탭 ID 오염 방지)
+      const isBim  = viewComponent?.startsWith("bim");
+      const isSim  = viewComponent?.startsWith("simulation");
+
       const res = await AxiosCustom.post(`${API_BASE}/message`, {
         sessionId,
         message: trimmed,
         history,
         directAgent:         agentName,
-        projectId:           selectedProject?.projectId   || null,
-        simulationProjectId: selectedSimulationProject?.projectId || null,
+        projectId:           isBim  ? (selectedProject?.projectId          || null) : null,
+        simulationProjectId: isSim  ? (selectedSimulationProject?.projectId || null) : null,
         wbsProjectId:        null,
       });
       setMessages(prev => [...prev, { role: "assistant", content: res.data.response || "응답을 받지 못했습니다." }]);
@@ -258,7 +268,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [loading, sessionId, selectedProject, selectedSimulationProject]);
+  }, [loading, sessionId, viewComponent, selectedProject, selectedSimulationProject, selectedSafeProject]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
