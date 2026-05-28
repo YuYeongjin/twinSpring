@@ -19,7 +19,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AxiosCustom from '../axios/AxiosCustom';
-import { AGENT_WBS_EVENT } from '../utils/alertStore';
+import { AGENT_WBS_EVENT, markApplied } from '../utils/alertStore';
 
 // ── 이벤트 유형별 메타데이터 ────────────────────────────────────────────────
 const EVENT_META = {
@@ -337,6 +337,9 @@ export default function AgentWbsPopup({ onApprove }) {
   const handleApprove = useCallback(() => {
     clearTimeout(autoHideId.current);
     if (ragAbortRef.current) ragAbortRef.current.cancelled = true;
+
+    // 연결된 alertStore 항목을 applied 처리 → WBS 로그 패널 버튼 비활성화
+    if (current?.alertId) markApplied(current.alertId);
 
     // ragEvidence 포함하여 콜백 호출
     const ragEvidence = (ragState && ragState.evidence) ? ragState.evidence : [];

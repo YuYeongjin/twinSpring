@@ -272,17 +272,17 @@ def supervisor_node(state: AgentState) -> dict:
     if _SIMULATION_KEYWORDS.search(user_text):
         return {"intent": "simulation_agent", "next_agent": "simulation_agent"}
 
-    # 4. BIM 에이전트 (부재·프로젝트·드론·구조해석·IFC)
+    # 4. WBS 에이전트 (현장 프로젝트·공정 관리) — BIM보다 먼저 체크 (프로젝트 키워드 충돌 방지)
+    if _WBS_KEYWORDS.search(user_text):
+        return {"intent": "wbs_agent", "next_agent": "wbs_agent"}
+
+    # 5. BIM 에이전트 (부재·프로젝트·드론·구조해석·IFC)
     if _BIM_KEYWORDS.search(user_text):
         return {"intent": "bim_agent", "next_agent": "bim_agent"}
 
-    # 5. 센서 에이전트 (온습도)
+    # 6. 센서 에이전트 (온습도)
     if _SENSOR_KEYWORDS.search(user_text):
         return {"intent": "sensor_agent", "next_agent": "sensor_agent"}
-
-    # 6. WBS 에이전트 (현장 프로젝트·공정 관리)
-    if _WBS_KEYWORDS.search(user_text):
-        return {"intent": "wbs_agent", "next_agent": "wbs_agent"}
 
     # 7. RAG 에이전트 (건설 공정서·시방서 KCS·KDS)
     if _RAG_KEYWORDS.search(user_text):

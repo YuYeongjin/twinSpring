@@ -1304,7 +1304,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       const margin = physicsResult.stabilityMargin != null
         ? `${(physicsResult.stabilityMargin * 100).toFixed(0)}%`
         : '';
-      pushAlert({
+      const alert = pushAlert({
         source:      'SIMULATION',
         severity:    'HIGH',
         title:       `굴착기 전도 위험 — ${proj?.projectName ?? '시뮬레이션'}`,
@@ -1319,6 +1319,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         detail:      `${proj?.projectName ?? '시뮬레이션'} — Tip-Over Risk 발생. KCS 건설기계 안전기준에 따른 작업 중단 및 점검 필요.`,
         projectId:   proj?.projectId ?? '',
         projectName: proj?.projectName ?? '',
+        alertId:     alert.id,
       });
     } else if (physicsResult.dangerLevel !== 'DANGER') {
       // 위험 해제 시 플래그 리셋 → 다음 위험 진입 시 다시 알림 가능
