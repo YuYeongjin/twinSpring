@@ -338,7 +338,11 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
         const ragEvidence = autoEditRequest.ragEvidence || [];
         const ragNote = ragEvidence.length > 0
           ? '\n\n[시방서 근거]\n' + ragEvidence
-            .map((ev, i) => `${i + 1}. ${ev.source}${ev.series ? ` (${ev.series})` : ''}`)
+            .map((ev, i) => {
+              const header = `${i + 1}. ${ev.source}${ev.series ? ` (${ev.series})` : ''}`;
+              const snippet = ev.content ? `\n   → ${ev.content.slice(0, 200).replace(/\n/g, ' ')}` : '';
+              return header + snippet;
+            })
             .join('\n')
           : '';
         const notes = `[Agent 자동 생성] ${autoEditRequest.title || ''} — ${autoEditRequest.detail || ''}${ragNote}`.trim();
@@ -573,8 +577,8 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
 
           <div className="flex-1 min-w-0" />
 
-          {/* 센서 칩 — 데스크탑만 표시 (모바일은 사이드바 하단에 있음) */}
-          <div className="hidden sm:block shrink-0">
+          {/* 센서 칩 — 항상 표시 */}
+          <div className="shrink-0">
             <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
           </div>
 

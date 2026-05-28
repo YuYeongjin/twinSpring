@@ -1,5 +1,5 @@
 """
-RAG initial document loading script
+RAG initial document loading script (PostgreSQL pgvector)
 
 Run: python scripts/init_rag.py
 """
@@ -35,11 +35,11 @@ DOCUMENTS = [
 
 
 def main():
-    print(f"Adding {len(DOCUMENTS)} documents to the vector store...")
+    print(f"Adding {len(DOCUMENTS)} documents to pgvector (twin_docs)...")
     texts = [d["text"] for d in DOCUMENTS]
     metadatas = [d["metadata"] for d in DOCUMENTS]
     add_documents(texts, metadatas)
-    print("Done! Vector store initialization complete.")
+    print("Done! pgvector initialization complete.")
 
 
 if __name__ == "__main__":
