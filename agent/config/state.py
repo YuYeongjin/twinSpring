@@ -45,5 +45,3 @@ class AgentState(TypedDict):
     bim_data: Optional[dict]                       # bim_agent 구조화 데이터
     sensor_data: Optional[dict]                    # sensor_agent 구조화 데이터
 
-    # ── 멀티스텝 BIM 대화 ───────────────────────────────────────────────────
-    pending_action: Optional[dict]                 # BIM 대화 중 대기 액션

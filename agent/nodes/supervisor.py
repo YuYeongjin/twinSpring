@@ -2,9 +2,8 @@
 Supervisor Node — Multi-Agent 라우터
 
 전략:
-1. pending_action 이 있으면 → bim_agent (멀티스텝 BIM 대화 진행 중)
-2. 키워드 빠른 매칭 (우선순위 순)
-3. LLM 최종 판단 (gemma3:12b)
+1. 키워드 빠른 매칭 (우선순위 순)
+2. 기본값: chat
 
 라우팅 대상:
   sensor_agent     — 온습도 센서 데이터 조회
@@ -251,10 +250,6 @@ def supervisor_node(state: AgentState) -> dict:
     direct = state.get("direct_agent")
     if direct:
         return {"intent": direct, "next_agent": direct}
-
-    # ── 경로 0b: multi-step BIM 대화 진행 중 ────────────────────────────────
-    if state.get("pending_action"):
-        return {"intent": "bim_agent", "next_agent": "bim_agent"}
 
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
