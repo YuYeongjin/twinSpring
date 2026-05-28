@@ -44,7 +44,9 @@ const PHASE_DURATION = 2200;
 
 /** Spring Boot WebSocket 엔드포인트 URL 생성 */
 function buildWsUrl() {
-  const base = (process.env.REACT_APP_API_URL || 'http://localhost:8080').replace(/\/$/, '');
+  const base = process.env.REACT_APP_API_URL
+    ? process.env.REACT_APP_API_URL.replace(/\/$/, '')
+    : `${window.location.protocol}//${window.location.hostname}:8080`;
   return `${base}/ws/sensor`;
 }
 

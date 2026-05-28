@@ -20,9 +20,10 @@ const API_CHAT = '/api/chat';
 
 // SSE 스트리밍은 fetch() 로 호출 — AxiosCustom 은 스트리밍 미지원
 // 상대경로로 쓰면 React 개발서버(3000)으로 날아가므로 환경별 base 명시
-const SPRING_BASE = process.env.NODE_ENV === 'development'
-  ? 'http://localhost:8080'
-  : '';
+const SPRING_BASE = process.env.REACT_APP_API_URL
+  || (process.env.NODE_ENV === 'development'
+      ? `http://${window.location.hostname}:8080`
+      : '');
 
 // ── Agent step 상태 레이블 (다국어) ──────────────────────────────────────────
 const STEP_LABELS = {
