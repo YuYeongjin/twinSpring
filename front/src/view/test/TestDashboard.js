@@ -42,10 +42,18 @@ const AUTO_PHASES = [
 ];
 const PHASE_DURATION = 2200;
 
-/** Spring Boot WebSocket 엔드포인트 URL 생성 */
+/** Spring Boot WebSocket 엔드포인트 URL 생성
+ *  - 운영(DNS+HTTPS+nginx): window.location.origin/ws/sensor → nginx 프록시
+ *  - 개발: hostname:8080/ws/sensor (localhost·IP 접속 모두 대응)
+ */
 function buildWsUrl() {
-  const base = (process.env.REACT_APP_API_URL || 'http://localhost:8080').replace(/\/$/, '');
-  return `${base}/ws/sensor`;
+  if (process.env.REACT_APP_API_URL) {
+    return `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/ws/sensor`;
+  }
+  if (process.env.NODE_ENV === 'development') {
+    return `${window.location.protocol}//${window.location.hostname}:8080/ws/sensor`;
+  }
+  return `${window.location.origin}/ws/sensor`;
 }
 
 /** 위도/경도 → Three.js XZ 미터 변환 (원점 기준 상대 좌표) */
