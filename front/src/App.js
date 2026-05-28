@@ -26,6 +26,14 @@ function App() {
     document.documentElement.classList.add("dark");
   }, []);
 
+  // 모바일 세로 방향 고정 (Android Chrome PWA 설치 환경에서 API 레벨 잠금)
+  useEffect(() => {
+    const lock = screen.orientation?.lock;
+    if (typeof lock === 'function') {
+      screen.orientation.lock('portrait').catch(() => {});
+    }
+  }, []);
+
   const [viewComponent, setViceComponent] = useState('wbs');
 
   const [elements, setElements] = useState(null);

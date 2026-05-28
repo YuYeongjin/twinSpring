@@ -225,15 +225,6 @@ function SensorChip({ sensorLatest, sensorWsStatus }) {
         <span style={{ color: humColor }}>{hum != null ? `${hum}%` : "—"}</span>
       </span>
 
-      {/* 위치 */}
-      {sensorLatest.location && (
-        <>
-          <span style={{ color: "#253347" }}>│</span>
-          <span className="text-xs truncate max-w-[64px]" style={{ color: "#334155" }}>
-            {sensorLatest.location}
-          </span>
-        </>
-      )}
     </div>
   );
 }
@@ -555,8 +546,8 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
           ════════════════════════════════ */}
       <div className="shrink-0" style={{ borderBottom: "1px solid #1a2a3a" }}>
 
-        {/* 1행: 고정 요소 (넘침 없는 단일 줄) */}
-        <div className="flex items-center gap-2 px-3 h-11">
+        {/* 1행: 고정 요소 */}
+        <div className="flex items-center gap-2 px-3 h-11 overflow-hidden">
 
           {/* 사이드바 토글 */}
           <button
@@ -572,13 +563,13 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
             </span>
           </button>
 
-          {/* 타이틀 */}
-          <span className="text-sm font-bold text-white shrink-0">🏗 {t('title')}</span>
+          {/* 타이틀 — 모바일에서 말줄임 허용 */}
+          <span className="text-sm font-bold text-white truncate min-w-0">🏗 {t('title')}</span>
 
           <div className="flex-1 min-w-0" />
 
-          {/* 센서 칩 — 항상 표시 */}
-          <div className="shrink-0">
+          {/* 센서 칩 — 데스크탑만 표시 (모바일은 사이드바 하단에 있음) */}
+          <div className="hidden sm:block shrink-0">
             <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
           </div>
 
@@ -588,7 +579,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
             className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition shrink-0"
             style={{ backgroundColor: "#1e1040", border: "1px solid #8b5cf6" }}>
             <span className="hidden sm:inline">{t('addSite')}</span>
-            <span className="sm:hidden">＋ {t('addSiteBtn').replace(/^\+\s*/, '')}</span>
+            <span className="sm:hidden">＋</span>
           </button>
         </div>
 
@@ -787,7 +778,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
           )}
 
           {/* ── 메인 콘텐츠 (스크롤 영역) ── */}
-          <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4 pb-24 sm:pb-4">
 
             {/* 태스크 로딩 */}
             {selectedProject && taskLoading ? (
@@ -814,9 +805,9 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
                     { label: t('siteManager'), icon: "👷", value: selectedProject.managerName || "-" },
                     { label: t('wbsTasks'), icon: "📋", value: t('taskCount', { n: tasks.length }) },
                   ].map(s => (
-                    <div key={s.label} className="rounded-xl p-2.5 sm:p-3"
+                    <div key={s.label} className="rounded-xl p-2.5 sm:p-3 min-w-0 overflow-hidden"
                       style={{ backgroundColor: TB.card, border: `1px solid ${TB.border}` }}>
-                      <p className="text-xs mb-0.5" style={{ color: TB.text2 }}>{s.icon} {s.label}</p>
+                      <p className="text-xs mb-0.5 truncate" style={{ color: TB.text2 }}>{s.icon} {s.label}</p>
                       <p className="text-sm font-bold text-white truncate">{s.value}</p>
                     </div>
                   ))}
