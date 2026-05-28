@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import {
@@ -548,14 +549,44 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   const [selectedId, setSelectedId] = useState(null);
   const [sortCfg, setSortCfg] = useState({ key: 'safetyFactor', asc: true });
 
+  // 구조해석 위험 알림: 분석 실행당 1회만 발행
+  const structuralAlertedRef = useRef(false);
+
   const handleAnalyze = useCallback(() => {
     if (!modelData.length) return;
     setIsAnalyzing(true);
+    structuralAlertedRef.current = false; // 새 분석 시작 시 초기화
     setTimeout(() => {
-      setResults(runAnalysis(modelData, env, loads, matId));
+      const newResults = runAnalysis(modelData, env, loads, matId);
+      setResults(newResults);
       setIsAnalyzing(false);
+
+      const dangerElems = newResults.filter(r => r.status === 'danger');
+      if (dangerElems.length > 0 && !structuralAlertedRef.current) {
+        structuralAlertedRef.current = true;
+        const proj = selectedProject;
+        const names = dangerElems.map(r => r.elementName).join(', ');
+        const minSF = Math.min(...dangerElems.map(r => r.safetyFactor)).toFixed(2);
+
+        pushAlert({
+          source:      'BIM',
+          severity:    'HIGH',
+          title:       `구조 위험 부재 감지 — ${proj?.projectName ?? '현재 모델'}`,
+          detail:      `${dangerElems.length}개 부재 안전율 미달 (최소 SF=${minSF}): ${names}`,
+          projectId:   proj?.projectId ?? '',
+          projectName: proj?.projectName ?? '',
+        });
+        pushWbsSuggest({
+          eventType:   'STRUCTURAL_DANGER',
+          source:      'BIM_STRUCTURAL',
+          title:       `구조 위험 부재 ${dangerElems.length}개 감지 (SF < 1.0)`,
+          detail:      `${proj?.projectName ?? '현재 모델'} — 최소 안전율 ${minSF}, 영향 부재: ${names.slice(0, 80)}`,
+          projectId:   proj?.projectId ?? '',
+          projectName: proj?.projectName ?? '',
+        });
+      }
     }, 500);
-  }, [modelData, env, loads, matId]);
+  }, [modelData, env, loads, matId, selectedProject]);
 
   // 입력값 변경 시 자동 재계산 (Run Analysis 최초 1회 이후만)
   useEffect(() => {
