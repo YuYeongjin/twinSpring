@@ -21,9 +21,16 @@ import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 
 // ── WebSocket 엔드포인트 URL ────────────────────────────────────────────────
+// 운영(DNS+HTTPS+nginx): window.location.origin/ws/sensor → nginx 프록시
+// 개발: hostname:8080/ws/sensor (localhost·IP 접속 모두 대응)
 function buildWsUrl() {
-  const base = (process.env.REACT_APP_API_URL || 'http://localhost:8080').replace(/\/$/, '');
-  return `${base}/ws/sensor`;
+  if (process.env.REACT_APP_API_URL) {
+    return `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/ws/sensor`;
+  }
+  if (process.env.NODE_ENV === 'development') {
+    return `${window.location.protocol}//${window.location.hostname}:8080/ws/sensor`;
+  }
+  return `${window.location.origin}/ws/sensor`;
 }
 
 // ── 상태 라벨 / 색상 맵 ────────────────────────────────────────────────────
@@ -134,14 +141,27 @@ export default function MobileGpsSender() {
       }
     }
 
-    // ② Geolocation 지원 확인
+    // ② 보안 컨텍스트 확인 (HTTPS 또는 localhost 필수)
+    if (!window.isSecureContext) {
+      setErrorMsg(
+        'GPS는 HTTPS 또는 localhost에서만 사용할 수 있습니다.\n' +
+        '현재 HTTP(비보안)로 접속 중이어서 브라우저가 위치 권한을 자동 차단했습니다.\n\n' +
+        '해결 방법:\n' +
+        '① 서버에 HTTPS(SSL)를 적용하거나\n' +
+        '② Chrome에서 chrome://flags → "Insecure origins treated as secure"에 이 주소를 추가하세요.'
+      );
+      setStatus('error');
+      return;
+    }
+
+    // ③ Geolocation 지원 확인
     if (!('geolocation' in navigator)) {
       setErrorMsg('이 브라우저는 Geolocation을 지원하지 않습니다.');
       setStatus('error');
       return;
     }
 
-    // ③ GPS watchPosition 시작
+    // ④ GPS watchPosition 시작
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, heading, speed, accuracy } = pos.coords;
@@ -157,11 +177,12 @@ export default function MobileGpsSender() {
       },
       (err) => {
         const msgs = {
-          1: 'GPS 권한이 거부되었습니다.',
-          2: 'GPS 신호를 받을 수 없습니다.',
-          3: 'GPS 응답 시간 초과.',
+          1: '위치 권한이 거부되었습니다.\n브라우저 설정 → 사이트 설정 → 위치에서 이 사이트를 허용해 주세요.',
+          2: 'GPS 신호를 받을 수 없습니다. 실외로 이동하거나 잠시 후 다시 시도하세요.',
+          3: 'GPS 응답 시간 초과. 실외에서 다시 시도해 주세요.',
         };
-        setErrorMsg(msgs[err.code] || `GPS 오류: ${err.message}`);
+        setErrorMsg(msgs[err.code] || `GPS 오류 (코드 ${err.code}): ${err.message}`);
+        setStatus('error');
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
@@ -431,9 +452,22 @@ export default function MobileGpsSender() {
 
       {/* 대기 중 간략 안내 */}
       {status === 'idle' && (
-        <div style={{ marginTop: '8px', fontSize: '10px', color: sc, lineHeight: 1.6 }}>
-          Start 버튼을 누르면 GPS · 기울기 센서 권한을 요청하고
-          WebSocket으로 굴착기를 실시간 제어합니다.
+        <div style={{ marginTop: '8px', fontSize: '10px', lineHeight: 1.6 }}>
+          <div style={{ color: sc }}>
+            Start 버튼을 누르면 GPS · 기울기 센서 권한을 요청하고
+            WebSocket으로 굴착기를 실시간 제어합니다.
+          </div>
+          {!window.isSecureContext && (
+            <div style={{
+              marginTop: '8px', padding: '7px 10px', borderRadius: '8px',
+              background: 'rgba(120,40,0,0.35)', border: '1px solid #f59e0b55',
+              color: '#fbbf24', lineHeight: 1.7,
+            }}>
+              ⚠ <strong>HTTPS 필요</strong><br />
+              현재 HTTP(비보안) 접속 중입니다. GPS는 HTTPS 또는 localhost에서만 동작합니다.
+              Start를 눌러도 위치 권한 대화상자 없이 즉시 거부됩니다.
+            </div>
+          )}
         </div>
       )}
     </div>
