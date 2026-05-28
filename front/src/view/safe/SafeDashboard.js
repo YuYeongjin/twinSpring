@@ -1403,7 +1403,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
     // 새로 침범한 구역에 대해서만 알림 발생 (중복 방지)
     for (const id of newSet) {
       if (!prevViolated.current.has(id)) {
-        pushAlert({
+        const zoneAlert = pushAlert({
           source:      'SAFE_ZONE',
           severity:    'HIGH',
           title:       `안전구역 침범 — ${selectedProject?.projectName ?? '현장'}`,
@@ -1419,6 +1419,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
           detail:      `${selectedProject?.projectName ?? '현장'}에서 작업자가 지정 안전구역에 진입했습니다. 안전 점검 일정 추가를 권장합니다.`,
           projectId:   selectedProject?.projectId   ?? '',
           projectName: selectedProject?.projectName ?? '',
+          alertId:     zoneAlert.id,
         });
       }
     }

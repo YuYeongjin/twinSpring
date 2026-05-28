@@ -78,7 +78,10 @@ export function markAllRead() {
 
 /** 특정 알림을 "WBS 반영 완료" 처리 */
 export function markApplied(id) {
-  save(load().map(a => a.id === id ? { ...a, applied: true, read: true } : a));
+  const updated = load().map(a => a.id === id ? { ...a, applied: true, read: true } : a);
+  save(updated);
+  // WbsAlertLogPanel 등 구독자에게 변경 알림
+  window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { id, applied: true } }));
 }
 
 /** 특정 알림 삭제 */
@@ -114,7 +117,7 @@ export const AGENT_WBS_EVENT = 'dt-agent-wbs-suggest';
  * @param {{ eventType: 'COLLISION'|'CRACK'|'SAFE_ZONE'|'SAFETY', source: string,
  *           title: string, detail: string, projectId?: string, projectName?: string }} opts
  */
-export function pushWbsSuggest({ eventType, source, title, detail = '', projectId = '', projectName = '' }) {
+export function pushWbsSuggest({ eventType, source, title, detail = '', projectId = '', projectName = '', alertId = null }) {
   // 1분 이내 동일 eventType 중복 방지
   const coolKey = `wbs_cool_${eventType}`;
   const lastTs  = parseInt(sessionStorage.getItem(coolKey) || '0', 10);
@@ -129,12 +132,13 @@ export function pushWbsSuggest({ eventType, source, title, detail = '', projectI
   const item = {
     id:          Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
     ts:          new Date().toISOString(),
-    eventType,   // COLLISION | CRACK | SAFE_ZONE | SAFETY
+    eventType,   // COLLISION | CRACK | SAFE_ZONE | SAFETY | STRUCTURAL_DANGER | SIM_DANGER
     source,
     title,
     detail,
     projectId,
     projectName,
+    alertId,     // 연결된 alertStore 항목 id (있으면 팝업 승인 시 자동 applied 처리)
   };
   window.dispatchEvent(new CustomEvent(AGENT_WBS_EVENT, { detail: item }));
 }
