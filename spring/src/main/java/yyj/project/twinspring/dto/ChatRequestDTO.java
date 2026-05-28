@@ -12,6 +12,8 @@ public class ChatRequestDTO {
     private List<ChatMessageDTO> history;
     private String projectId;             // 현재 선택된 BIM 프로젝트 ID (nullable)
     private String simulationProjectId;   // 현재 선택된 시뮬레이션 프로젝트 ID (nullable)
+    private String wbsProjectId;          // 현재 선택된 WBS 프로젝트 ID (nullable)
+    private String directAgent;           // 탭 전용 에이전트 이름 (nullable, 설정 시 supervisor 라우팅 스킵)
 
     public String getSessionId() { return sessionId; }
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
@@ -27,4 +29,10 @@ public class ChatRequestDTO {
 
     public String getSimulationProjectId() { return simulationProjectId; }
     public void setSimulationProjectId(String simulationProjectId) { this.simulationProjectId = simulationProjectId; }
+
+    public String getWbsProjectId() { return wbsProjectId; }
+    public void setWbsProjectId(String wbsProjectId) { this.wbsProjectId = wbsProjectId; }
+
+    public String getDirectAgent() { return directAgent; }
+    public void setDirectAgent(String directAgent) { this.directAgent = directAgent; }
 }

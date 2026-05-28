@@ -50,7 +50,7 @@
         ) VALUES (
             #{projectId}, #{projectName}, #{location}, #{contractAmount},
             #{status}, #{description},
-            #{startDate}::DATE, #{endDate}::DATE,
+            NULLIF(#{startDate}, '')::DATE, NULLIF(#{endDate}, '')::DATE,
             #{clientName}, #{managerName}
         )
     </insert>
@@ -62,8 +62,8 @@
             contract_amount = #{contractAmount},
             status          = #{status},
             description     = #{description},
-            start_date      = #{startDate}::DATE,
-            end_date        = #{endDate}::DATE,
+            start_date      = NULLIF(#{startDate}, '')::DATE,
+            end_date        = NULLIF(#{endDate}, '')::DATE,
             client_name     = #{clientName},
             manager_name    = #{managerName},
             updated_at      = CURRENT_TIMESTAMP
@@ -146,7 +146,7 @@
             source, sort_order
         ) VALUES (
             #{taskId}, #{wbsProjectId}, #{wbsCode}, #{taskName},
-            #{startDate}::DATE, #{endDate}::DATE,
+            NULLIF(#{startDate}, '')::DATE, NULLIF(#{endDate}, '')::DATE,
             #{duration}, #{progress},
             #{predecessorIds}, #{status}, #{responsible}, #{notes},
             #{source}, #{sortOrder}
@@ -157,8 +157,8 @@
         UPDATE wbs_task SET
             wbs_code        = #{wbsCode},
             task_name       = #{taskName},
-            start_date      = #{startDate}::DATE,
-            end_date        = #{endDate}::DATE,
+            start_date      = NULLIF(#{startDate}, '')::DATE,
+            end_date        = NULLIF(#{endDate}, '')::DATE,
             duration        = #{duration},
             progress        = #{progress},
             predecessor_ids = #{predecessorIds},
@@ -188,7 +188,7 @@
         <foreach collection="list" item="t" separator=" UNION ALL ">
             SELECT
                 #{t.taskId}, #{t.wbsProjectId}, #{t.wbsCode}, #{t.taskName},
-                #{t.startDate}::DATE, #{t.endDate}::DATE,
+                NULLIF(#{t.startDate}, '')::DATE, NULLIF(#{t.endDate}, '')::DATE,
                 #{t.duration}, #{t.progress},
                 #{t.predecessorIds}, #{t.status}, #{t.responsible}, #{t.notes},
                 #{t.source}, #{t.sortOrder}
