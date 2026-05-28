@@ -19,6 +19,7 @@ AgentName = Literal[
     "safe_agent",
     "test_agent",
     "rag_agent",
+    "wbs_agent",
     "tab_guide",
     "chat",
 ]
