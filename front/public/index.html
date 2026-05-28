@@ -15,8 +15,55 @@
 
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
     <title>Digital Twin</title>
+
+    <!-- 가로 방향 차단 오버레이 (모바일 터치 기기에서만 적용) -->
+    <style>
+      #rotate-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #0b0f1a;
+        z-index: 999999;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        color: #e2e8f0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #rotate-overlay .rot-icon {
+        font-size: 52px;
+        animation: rot-hint 1.8s ease-in-out infinite alternate;
+        display: block;
+      }
+      #rotate-overlay .rot-title {
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      #rotate-overlay .rot-sub {
+        font-size: 12px;
+        color: #64748b;
+      }
+      @keyframes rot-hint {
+        from { transform: rotate(0deg);   }
+        to   { transform: rotate(-90deg); }
+      }
+      /* 터치 전용 기기(모바일·태블릿)에서 가로 방향일 때만 오버레이 표시 */
+      @media screen and (orientation: landscape) and (hover: none) and (pointer: coarse) {
+        #rotate-overlay { display: flex; }
+      }
+    </style>
   </head>
   <body>
+    <!-- 가로 전환 차단 오버레이 -->
+    <div id="rotate-overlay">
+      <span class="rot-icon">📱</span>
+      <div class="rot-title">화면을 세로로 돌려주세요</div>
+      <div class="rot-sub">이 앱은 세로 화면에 최적화되어 있습니다</div>
+    </div>
+
     <noscript>JavaScript가 필요합니다.</noscript>
     <div id="root"></div>
   </body>
