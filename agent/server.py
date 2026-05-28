@@ -41,7 +41,7 @@ class HistoryMessage(BaseModel):
 class ChatContext(BaseModel):
     projectId: Optional[str] = None               # BIM project ID
     simulationProjectId: Optional[str] = None     # Simulation project ID
-    wbsProjectId: Optional[str] = None            # WBS project ID
+    wbsProjectId: Optional[str] = None            # WBS project ID (selected project)
 
 class ChatRequest(BaseModel):
     message: str

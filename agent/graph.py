@@ -9,6 +9,7 @@ LangGraph Multi-Agent 그래프 정의 (AtoA 구조)
             ├─ safe_agent        → END
             ├─ test_agent        → END
             ├─ rag_agent         → END  ← 건설 공정서·시방서 검색
+            ├─ wbs_agent         → END  ← WBS 현장 프로젝트·공정 관리
             ├─ tab_guide         → END
             └─ chat              → END
 
@@ -28,6 +29,7 @@ from agents.simulation_agent import run_simulation_agent
 from agents.safe_agent import run_safe_agent
 from agents.test_agent import run_test_agent
 from agents.rag_agent import run_rag_agent          # 건설 공정서·시방서 RAG
+from agents.wbs_agent import run_wbs_agent          # WBS 현장 프로젝트·공정 관리
 
 # ── 레거시 노드 (tab_guide · chat 은 기존 구현 유지) ─────────────────────────
 from nodes.tab_guide import tab_guide_node
@@ -45,6 +47,7 @@ def build_graph():
     builder.add_node("safe_agent",        run_safe_agent)       # 안전 모니터링
     builder.add_node("test_agent",        run_test_agent)       # 충돌 테스트 탭
     builder.add_node("rag_agent",         run_rag_agent)        # 건설 공정서·시방서
+    builder.add_node("wbs_agent",         run_wbs_agent)        # WBS 현장 프로젝트·공정
     builder.add_node("tab_guide",         tab_guide_node)       # 일반 탭 안내
     builder.add_node("chat",              chat_node)            # 일반 대화
 
@@ -62,6 +65,7 @@ def build_graph():
             "safe_agent":       "safe_agent",
             "test_agent":       "test_agent",
             "rag_agent":        "rag_agent",
+            "wbs_agent":        "wbs_agent",
             "tab_guide":        "tab_guide",
             "chat":             "chat",
         },
@@ -74,6 +78,7 @@ def build_graph():
     builder.add_edge("safe_agent",       END)
     builder.add_edge("test_agent",       END)
     builder.add_edge("rag_agent",        END)
+    builder.add_edge("wbs_agent",        END)
     builder.add_edge("tab_guide",        END)
     builder.add_edge("chat",             END)
 
