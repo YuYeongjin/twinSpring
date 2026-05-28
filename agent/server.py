@@ -440,10 +440,14 @@ class WbsRagResponse(BaseModel):
 
 # 이벤트 유형 → 건설 시방서 검색 쿼리 매핑
 _EVENT_RAG_QUERIES: dict[str, str] = {
-    "COLLISION": "부재 충돌 보정 공정 구조안전 확인 절차 간섭 오차",
-    "CRACK":     "구조물 균열 균열보수 보수공사 콘크리트 균열폭 시공기준",
-    "SAFE_ZONE": "안전구역 위험구역 안전점검 안전관리 출입금지 구역설정",
-    "SAFETY":    "안전보호구 안전복장 안전모 착용기준 안전교육 작업자",
+    "COLLISION":          "부재 충돌 보정 공정 구조안전 확인 절차 간섭 오차",
+    "CRACK":              "구조물 균열 균열보수 보수공사 콘크리트 균열폭 시공기준",
+    "SAFE_ZONE":          "안전구역 위험구역 안전점검 안전관리 출입금지 구역설정",
+    "SAFETY":             "안전보호구 안전복장 안전모 착용기준 안전교육 작업자",
+    # 구조해석 위험 부재 (StructuralDashboard — SF < 1.0 빨간 부재)
+    "STRUCTURAL_DANGER":  "구조부재 안전율 허용응력 초과 구조보강 내하력 검토 KDS 구조설계기준 하중조합",
+    # 시뮬레이션 굴착기 전도 위험 (physicsResult.dangerLevel === DANGER)
+    "SIM_DANGER":         "굴착기 건설기계 전도 위험 안전작업 경사면 굴착 안전기준 KCS 토공 건설기계 작업 안전",
 }
 
 
