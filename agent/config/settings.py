@@ -21,10 +21,15 @@ INFLUX_TOKEN = os.getenv("INFLUX_TOKEN", "twinspring-influx-admin-token")
 INFLUX_ORG = os.getenv("INFLUX_ORG", "twinspring")
 INFLUX_BUCKET = os.getenv("INFLUX_BUCKET", "iot_data")
 
-# RAG (ChromaDB - 로컬 개발용, K8s에서는 pgvector로 대체 가능)
-CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "twin_docs")
+# RAG (pgvector — PostgreSQL vector extension)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
+
+def get_pgvector_connection() -> str:
+    """psycopg2 연결 문자열 반환 (langchain-postgres PGVector 용)"""
+    return (
+        f"postgresql+psycopg2://{VECTOR_DB_USER}:{VECTOR_DB_PASSWORD}"
+        f"@{VECTOR_DB_HOST}:{VECTOR_DB_PORT}/{VECTOR_DB_NAME}"
+    )
 
 # Spring Boot
 SPRING_BASE_URL = os.getenv("SPRING_BASE_URL", "http://localhost:8080")
