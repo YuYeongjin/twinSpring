@@ -198,3 +198,18 @@ CREATE TABLE IF NOT EXISTS wbs_task
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_wbs_task_project ON wbs_task (wbs_project_id);
+
+-- ================================================================
+-- WBS ↔ 타 프로젝트 연결 테이블 (BIM / 안전 / 시뮬레이션)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS project_link
+(
+    link_id          VARCHAR(64)  NOT NULL PRIMARY KEY,
+    wbs_project_id   VARCHAR(64)  NOT NULL REFERENCES wbs_project (project_id) ON DELETE CASCADE,
+    linked_type      VARCHAR(32)  NOT NULL,
+    linked_project_id VARCHAR(64) NOT NULL,
+    note             TEXT         NULL,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_project_link_wbs    ON project_link (wbs_project_id);
+CREATE INDEX IF NOT EXISTS idx_project_link_linked ON project_link (linked_type, linked_project_id);

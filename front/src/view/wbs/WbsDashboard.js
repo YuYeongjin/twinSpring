@@ -279,6 +279,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
   // ── Agent WBS 자동 수정 ────────────────────────────────────────
   // App.js에서 승인 시 autoEditRequest가 설정되면 아래 로직이 자동 실행된다.
   const [autoEditStatus, setAutoEditStatus] = useState(null); // null|'running'|'done'|'error'
+  const [autoEditTargetName, setAutoEditTargetName] = useState('');
 
   useEffect(() => {
     if (!autoEditRequest) return;
@@ -306,14 +307,18 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
     (async () => {
       setAutoEditStatus('running');
       try {
-        // 1. IN_PROGRESS 프로젝트 우선, 없으면 첫 번째 프로젝트 사용
+        // 1. 대상 프로젝트 결정:
+        //    - autoEditRequest.targetProjectId가 있으면 (선택 모달 or 링크 자동탐지) 해당 프로젝트 사용
+        //    - 없으면 IN_PROGRESS 우선, 이후 PLANNED, 마지막으로 첫 번째 프로젝트
         const projectsRes = await AxiosCustom.get('/api/wbs/projects');
         const allProjs = projectsRes.data || [];
-        const target =
-          allProjs.find(p => p.status === 'IN_PROGRESS') ||
-          allProjs.find(p => p.status === 'PLANNED') ||
-          allProjs[0];
+        const target = autoEditRequest.targetProjectId
+          ? (allProjs.find(p => p.projectId === autoEditRequest.targetProjectId) || allProjs[0])
+          : (allProjs.find(p => p.status === 'IN_PROGRESS') ||
+             allProjs.find(p => p.status === 'PLANNED') ||
+             allProjs[0]);
         if (!target) { setAutoEditStatus('error'); return; }
+        setAutoEditTargetName(target.projectName || '');
 
         // 2. 대상 프로젝트 태스크 조회
         const tasksRes = await AxiosCustom.get(`/api/wbs/project/${target.projectId}/tasks`);
@@ -536,7 +541,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
           {autoEditStatus === 'done' && '✅'}
           {autoEditStatus === 'error' && '❌'}
           {autoEditStatus === 'running' && ' WBS 자동 수정 중 — CPM 재계산 진행 중…'}
-          {autoEditStatus === 'done' && ' WBS 자동 수정 완료 — 일정이 업데이트되었습니다.'}
+          {autoEditStatus === 'done' && ` WBS 자동 수정 완료${autoEditTargetName ? ` — ${autoEditTargetName}` : ''} 일정이 업데이트되었습니다.`}
           {autoEditStatus === 'error' && ' WBS 자동 수정 실패 — 수동으로 확인해 주세요.'}
         </div>
       )}
