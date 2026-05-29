@@ -1,5 +1,5 @@
 """
-Node 2: RAG + Database query node (Ollama - gemma3:12b)
+Node 2: RAG + Database query node
 """
 from __future__ import annotations
 
