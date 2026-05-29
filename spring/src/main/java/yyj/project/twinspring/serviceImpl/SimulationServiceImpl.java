@@ -114,7 +114,19 @@ public class SimulationServiceImpl implements SimulationService {
         dto.setHeightMapData((String) row.get("heightMapData"));
         dto.setZoneMapData((String) row.get("zoneMapData"));
         Object hrt = row.get("hasRandomTerrain");
-        dto.setHasRandomTerrain(hrt instanceof Boolean ? (Boolean) hrt : Boolean.FALSE);
+        log.debug("[rowToDTO] hasRandomTerrain type={} value={}", hrt == null ? "null" : hrt.getClass().getName(), hrt);
+        Boolean hasRandTerrain;
+        if (hrt instanceof Boolean) {
+            hasRandTerrain = (Boolean) hrt;
+        } else if (hrt instanceof Number) {
+            hasRandTerrain = ((Number) hrt).intValue() != 0;
+        } else if (hrt instanceof String) {
+            String s = ((String) hrt).trim();
+            hasRandTerrain = "1".equals(s) || Boolean.parseBoolean(s);
+        } else {
+            hasRandTerrain = Boolean.FALSE;
+        }
+        dto.setHasRandomTerrain(hasRandTerrain);
         return dto;
     }
 

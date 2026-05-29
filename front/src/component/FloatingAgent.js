@@ -40,8 +40,8 @@ const TAB_CONFIGS = {
     btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
     btnBorder: "#10b981",
     welcome:
-      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n굴착기 붐·암·버킷 각도 제어, 자세 프리셋 전환, 상태 조회를 도와드립니다.",
-    quickPrompts: ["굴착기 상태 확인", "DIG 자세로 변경", "붐 각도 45도로 설정"],
+      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n개발 중으로 기능 추가 중입니다.",
+    quickPrompts: [],
     agentName: "simulation_agent",
   },
   "simulation-projects": {
@@ -51,8 +51,8 @@ const TAB_CONFIGS = {
     btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
     btnBorder: "#10b981",
     welcome:
-      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n굴착기 시뮬레이션 제어, 자세 변경, 각도 설정을 도와드립니다.",
-    quickPrompts: ["굴착기 상태 확인", "IDLE 자세로 초기화", "선회 각도 설정"],
+      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n프로젝트에 대해 정보를 제공합니다.",
+    quickPrompts: [],
     agentName: "simulation_agent",
   },
   safe: {
