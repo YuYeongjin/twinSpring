@@ -162,4 +162,24 @@ public class ChatController {
         Map<String, Object> result = chatService.wbsProjectChat(request);
         return ResponseEntity.ok(result);
     }
+
+    /**
+     * 구조해석 결과에 기반한 KCS/KDS 시방서 RAG 검색
+     * StructuralDashboard 시방서 패널에서 사용
+     */
+    @PostMapping("/structural-spec")
+    public ResponseEntity<Map<String, Object>> structuralSpec(@RequestBody Map<String, Object> request) {
+        Map<String, Object> result = chatService.structuralSpec(request);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 굴착 존·날씨·깊이에 맞는 KCS/KDS 토공 시방서 RAG 검색
+     * SimulationDashboard 시방서 패널에서 사용
+     */
+    @PostMapping("/excavation-spec")
+    public ResponseEntity<Map<String, Object>> excavationSpec(@RequestBody Map<String, Object> request) {
+        Map<String, Object> result = chatService.excavationSpec(request);
+        return ResponseEntity.ok(result);
+    }
 }

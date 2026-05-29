@@ -369,6 +369,44 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> structuralSpec(Map<String, Object> request) {
+        try {
+            String raw = agentClient.post()
+                    .uri("/structural-spec")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(30))
+                    .block();
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[StructuralSpec] RAG 검색 실패: {}", e.getMessage());
+            return Map.of("citations", List.of(), "hasData", false, "query", "");
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> excavationSpec(Map<String, Object> request) {
+        try {
+            String raw = agentClient.post()
+                    .uri("/excavation-spec")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(30))
+                    .block();
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[ExcavationSpec] RAG 검색 실패: {}", e.getMessage());
+            return Map.of("citations", List.of(), "hasData", false, "query", "");
+        }
+    }
+
+    @Override
     public Map<String, Object> wbsRagSuggest(WbsRagRequestDTO request) {
         try {
             ObjectNode body = objectMapper.createObjectNode();
