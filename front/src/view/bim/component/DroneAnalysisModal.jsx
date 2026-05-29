@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { useT, useLanguage } from '../../../i18n/LanguageContext';
+import { useT } from '../../../i18n/LanguageContext';
 
 // ── Marching Squares ──────────────────────────────────────────────────────────
 const MS_EDGES = [
@@ -259,7 +259,6 @@ function buildCutFillLines(smooth,cols,rows,scaleW,scaleH,refT,nZones=4,rdpEps=1
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSelect}){
   const t = useT('drone');
-  const { lang } = useLanguage();
 
   const[file,setFile]=useState(null);
   const[imgUrl,setImgUrl]=useState(null);
@@ -293,7 +292,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     setFile(f);setResult(null);setCvDone(null);setTab('upload');
     setImgUrl(URL.createObjectURL(f));
     setCvName(f.name.replace(/\.[^.]+$/,''));
-  },[lang]);
+  },[t]);
 
   const analyse=useCallback(()=>{
     if(!imgUrl||!hidRef.current)return;
@@ -334,7 +333,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     };
     img.onerror=()=>{alert(t('imageLoadFailed'));setBusy(false);};
     img.src=imgUrl;
-  },[imgUrl,step,elevMin,elevMax,refElev,contourInt,scaleW,scaleH,lang]);
+  },[imgUrl,step,elevMin,elevMax,refElev,contourInt,scaleW,scaleH,t]);
 
   // canvas render
   useEffect(()=>{
@@ -444,7 +443,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     ctx.fillStyle='#facc15';ctx.fillText(refLineTxt,33,62);
     ctx.restore();
 
-  },[result,tab,showPhoto,scaleW,scaleH,refElev,elevMin,elevMax,lang]);
+  },[result,tab,showPhoto,scaleW,scaleH,refElev,elevMin,elevMax,t]);
 
   const exportPNG=useCallback(()=>{
     canvasRef.current?.toBlob(b=>{
