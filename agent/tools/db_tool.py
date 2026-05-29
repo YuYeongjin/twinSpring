@@ -103,8 +103,8 @@ def query_bim_projects() -> list[dict]:
         with _PooledConn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT project_id AS projectId, project_name AS projectName, "
-                    "structure_type AS structureType, span_count AS spanCount "
+                    'SELECT project_id AS "projectId", project_name AS "projectName", '
+                    'structure_type AS "structureType", span_count AS "spanCount" '
                     "FROM bim_project ORDER BY project_name ASC"
                 )
                 return [dict(row) for row in cur.fetchall()]
@@ -119,9 +119,9 @@ def query_bim_element_stats(project_id: str) -> list[dict]:
         with _PooledConn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT element_type AS elementType, COUNT(*) AS elementCount "
+                    'SELECT element_type AS "elementType", COUNT(*) AS "elementCount" '
                     "FROM bim_element WHERE project_id = %s "
-                    "GROUP BY element_type ORDER BY elementCount DESC",
+                    'GROUP BY element_type ORDER BY "elementCount" DESC',
                     (project_id,),
                 )
                 return [dict(row) for row in cur.fetchall()]
@@ -136,11 +136,11 @@ def query_bim_elements(project_id: str, limit: int = 200) -> list[dict]:
         with _PooledConn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT element_id AS elementId, element_type AS elementType, material, "
-                    "position_x AS positionX, position_y AS positionY, position_z AS positionZ, "
-                    "size_x AS sizeX, size_y AS sizeY, size_z AS sizeZ "
+                    'SELECT element_id AS "elementId", element_type AS "elementType", material, '
+                    'position_x AS "positionX", position_y AS "positionY", position_z AS "positionZ", '
+                    'size_x AS "sizeX", size_y AS "sizeY", size_z AS "sizeZ" '
                     "FROM bim_element WHERE project_id = %s "
-                    "ORDER BY element_type, element_id LIMIT %s",
+                    'ORDER BY element_type, element_id LIMIT %s',
                     (project_id, limit),
                 )
                 return [dict(row) for row in cur.fetchall()]
