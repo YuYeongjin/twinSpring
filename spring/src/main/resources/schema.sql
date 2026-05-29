@@ -139,8 +139,14 @@ CREATE TABLE IF NOT EXISTS simulation_state
     soil_in_bucket      DOUBLE PRECISION NOT NULL DEFAULT 0,
     selected_machine_id VARCHAR(20)      NOT NULL DEFAULT '0.6W',
     height_map_data     TEXT             NULL,
+    zone_map_data       TEXT             NULL,
+    has_random_terrain  BOOLEAN          NOT NULL DEFAULT FALSE,
     updated_at          TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 기존 DB에 컬럼 누락 시 마이그레이션 (IF NOT EXISTS는 PostgreSQL 9.6+)
+ALTER TABLE simulation_state ADD COLUMN IF NOT EXISTS zone_map_data      TEXT    NULL;
+ALTER TABLE simulation_state ADD COLUMN IF NOT EXISTS has_random_terrain BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- ================================================================
 -- 안전 현장 테이블
