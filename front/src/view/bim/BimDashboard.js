@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { View, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
@@ -146,7 +146,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
             shapeHeight: line.shapeHeight ?? 0,
             points: pts.map(p => [...p]), // 깊은 복사
         });
-    }, [line?.lineId]); // lineId 바뀔 때만
+    }, [line?.lineId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!line || !form) return null;
 
@@ -958,7 +958,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 >
                     {t('backToList')}
                 </button>
-                <h2 className="text-lg md:text-xl font-light text-white"></h2>
+                <h2 className="text-lg md:text-xl font-light text-white" aria-hidden="true"></h2>
 
                 {/* 서브 탭 */}
                 <div className="flex gap-1 bg-space-800/60 border border-space-700 rounded-xl p-1">

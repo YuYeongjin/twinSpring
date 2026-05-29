@@ -66,7 +66,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 setSelectedElement(prev => ({ ...prev, data: updated }));
             }
         }
-    }, [modelData]);
+    }, [modelData]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── 레이어 / 색상 DB 로드 (프로젝트 전환 시) ──────────────────
     useEffect(() => {

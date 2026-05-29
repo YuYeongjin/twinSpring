@@ -433,7 +433,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
     setProjects(prev => prev.filter(p => p.projectId !== projectId));
     if (selectedProject?.projectId === projectId) { setSelected(null); setTasks([]); }
     await loadAllTasks();
-  }, [selectedProject, loadAllTasks]);
+  }, [selectedProject, loadAllTasks, t]);
 
   const handleAddTask = useCallback(async (taskData) => {
     const r = await AxiosCustom.post(`/api/wbs/project/${selectedProject.projectId}/task`, taskData);

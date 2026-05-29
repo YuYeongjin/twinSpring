@@ -268,7 +268,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [loading, sessionId, viewComponent, selectedProject, selectedSimulationProject, selectedSafeProject]);
+  }, [loading, sessionId, viewComponent, selectedProject, selectedSimulationProject]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }

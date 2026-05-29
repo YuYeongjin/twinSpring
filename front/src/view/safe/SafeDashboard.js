@@ -186,7 +186,7 @@ function ZoneDrawingLayer({ enabled, onZoneCreated }) {
       canvas.removeEventListener('mouseup',     onUp);
       canvas.removeEventListener('contextmenu', onRightClick);
     };
-  }, [enabled, getGroundPt, onZoneCreated]);
+  }, [enabled, getGroundPt, onZoneCreated, gl]);
 
   if (!preview) return null;
   return (
@@ -337,7 +337,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
       }
     }
     setLiveDetecting(false);
-  }, [captureOnce, onDetectResult, onError]);
+  }, [captureOnce, onDetectResult, onError, t]);
 
   const canDetect = streaming;
   const serverColor = detectAvailable === true ? '#22c55e' : detectAvailable === false ? '#f87171' : '#6b7280';
