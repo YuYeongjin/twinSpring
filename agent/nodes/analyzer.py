@@ -70,7 +70,7 @@ _BIM_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# Simulation control keywords
+# Simulation control + earthwork info keywords
 _SIMULATION_KEYWORDS = re.compile(
     r"굴착기|굴삭기|excavator"
     r"|붐\s*(각도|올려|내려|설정|변경)|boom\s*(angle|up|down)"
@@ -81,7 +81,14 @@ _SIMULATION_KEYWORDS = re.compile(
     r"|굴착\s*(자세|모드|프리셋)|덤핑\s*(자세|모드|프리셋)"
     r"|이동\s*(자세|모드)|대기\s*(자세|모드)"
     r"|시뮬레이션\s*(상태|제어|조회|초기화)"
-    r"|굴착기\s*(상태|초기화|리셋|위치|이동)",
+    r"|굴착기\s*(상태|초기화|리셋|위치|이동)"
+    # 토공/굴착 정보 키워드
+    r"|토공\s*(량|현황|계산|산출|정보)|굴착\s*(량|현황|깊이|정보|기준|특성)"
+    r"|토적|성토\s*량|팽창\s*계수|수축\s*계수"
+    r"|암반\s*(굴착|특성|기준)|수중\s*(굴착|특성)"
+    r"|굴착\s*(시방서|기준|KCS|KDS)|비탈면\s*(기준|경사)"
+    r"|흙막이|지보공"
+    r"|earthwork\s*(volume|data)|excavation\s*(volume|spec|standard)",
     re.IGNORECASE,
 )
 

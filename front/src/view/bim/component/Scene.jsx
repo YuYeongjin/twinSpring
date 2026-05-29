@@ -224,7 +224,7 @@ function ElementResizeHandles({
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup',   onUp);
     }, [
-        x, y, z, sx, sy, sz,
+        x, y, z, sy,
         element.elementId, camera, getNDC,
         snapEnabled, snapVertices,
         updateElementData, pushUndo, onDragStateChange,
@@ -776,7 +776,7 @@ export default function Scene({
     });
 
     // ── TransformControls 드래그 ──────────────────────────────────────
-    const handleTransformComplete = (mesh) => {
+    const handleTransformComplete = useCallback((mesh) => {
         if (!mesh?.userData?.elementId) return;
         const id = mesh.userData.elementId;
         if (transformMode === 'translate') {
@@ -815,7 +815,7 @@ export default function Scene({
                 rotationZ: parseFloat(mesh.rotation.z.toFixed(5)),
             });
         }
-    };
+    }, [transformMode, selectedElements, updateElementData]);
 
     useEffect(() => {
         const ctrl = transformRef.current;
@@ -837,7 +837,7 @@ export default function Scene({
         };
         ctrl.addEventListener('dragging-changed', onDrag);
         return () => ctrl.removeEventListener('dragging-changed', onDrag);
-    }, [transformMode, modelData, updateElementData, selectedElements]);
+    }, [transformMode, modelData, updateElementData, selectedElements, handleTransformComplete, pushUndo]);
 
     // ── 선 클릭 (스냅 적용) ──────────────────────────────────────────
     const handleLinePlaneClick = (e) => {

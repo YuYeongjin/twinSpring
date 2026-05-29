@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useT, useLanguage } from '../../i18n/LanguageContext';
 import {
-  LineChart, Line,
   BarChart, Bar, Cell,
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,

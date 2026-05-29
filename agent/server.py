@@ -475,6 +475,258 @@ def wbs_rag_suggest(req: WbsRagRequest):
     )
 
 
+# ── Structural Spec RAG ──────────────────────────────────────────────────────
+
+class StructuralSpecRequest(BaseModel):
+    materialType: str                   # 'concrete_24' | 'concrete_30' | 'concrete_40' | 'steel_235' | 'steel_355'
+    elementTypes: List[str] = []        # ['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcSlab', ...]
+    hasWarning: bool = False
+    hasDanger: bool = False
+    seismicZone: int = 2
+    query: Optional[str] = None
+
+
+class SpecCitation(BaseModel):
+    source: str
+    series: str
+    content: str
+
+
+class StructuralSpecResponse(BaseModel):
+    citations: list[SpecCitation]
+    hasData: bool
+    query: str
+
+
+# 재료별 기본 검색 쿼리
+_MATERIAL_QUERIES: dict[str, str] = {
+    "concrete_24": "콘크리트 구조 허용압축응력 설계기준 안전율 KDS 14 20 콘크리트강도 24MPa",
+    "concrete_30": "콘크리트 구조 허용압축응력 설계기준 안전율 KDS 14 20 콘크리트강도 30MPa",
+    "concrete_40": "콘크리트 구조 허용압축응력 설계기준 안전율 KDS 14 20 고강도콘크리트",
+    "steel_235":   "강구조 허용응력 설계 SS275 허용휨응력 허용전단응력 KDS 14 30",
+    "steel_355":   "강구조 허용응력 설계 SM355 고장력강 허용휨응력 KDS 14 30 KDS 14 31",
+}
+
+# 부재 유형별 추가 검색어
+_ELEMENT_QUERIES: dict[str, str] = {
+    "IfcColumn": "기둥 축력 허용압축응력 세장비 좌굴 검토 하중조합",
+    "IfcBeam":   "보 허용휨응력 허용전단응력 처짐 제한 L/360 연속보",
+    "IfcWall":   "벽체 전단벽 허용전단응력 축력 설계",
+    "IfcSlab":   "슬래브 허용처짐 휨강도 분포하중 연속슬래브 KDS 14 20",
+    "IfcPier":   "교각 기둥 축력 허용응력 내진 설계",
+    "IfcMember": "부재 허용응력 안전율 하중조합",
+}
+
+
+@app.post("/structural-spec", response_model=StructuralSpecResponse)
+def structural_spec(req: StructuralSpecRequest):
+    """
+    구조해석 결과에 맞는 KCS/KDS 시방서 근거 검색.
+
+    재료 종류·부재 유형·위험 여부를 종합해 최적 쿼리를 구성하고
+    pgvector에서 관련 조문을 반환합니다.
+    """
+    from tools.construction_rag_tool import search_construction_docs
+
+    # ── 쿼리 조립 ──────────────────────────────────────────────────────────────
+    parts: list[str] = []
+
+    # 1) 재료 기반
+    parts.append(_MATERIAL_QUERIES.get(req.materialType, "구조 설계기준 허용응력 안전율"))
+
+    # 2) 부재 유형별 (중복 제거, 최대 2종)
+    seen_elem: set[str] = set()
+    for et in req.elementTypes:
+        if et in _ELEMENT_QUERIES and et not in seen_elem:
+            parts.append(_ELEMENT_QUERIES[et])
+            seen_elem.add(et)
+        if len(seen_elem) >= 2:
+            break
+
+    # 3) 위험·경고 상태
+    if req.hasDanger:
+        parts.append("구조부재 허용응력 초과 안전율 미달 구조보강 내하력 검토")
+    elif req.hasWarning:
+        parts.append("구조부재 안전율 경계값 하중조합 검토 보강 여부")
+
+    # 4) 내진 구역
+    if req.seismicZone >= 3:
+        parts.append("내진설계 지진하중 스펙트럼 가속도 KDS 17 내진성능")
+
+    # 5) 사용자 추가 검색어
+    if req.query:
+        parts.append(req.query.strip()[:100])
+
+    full_query = " ".join(parts)[:300]
+
+    # ── RAG 검색 ───────────────────────────────────────────────────────────────
+    try:
+        docs = search_construction_docs(full_query, k=5)
+    except Exception as e:
+        print(f"[structural_spec] RAG 검색 오류: {e}")
+        docs = []
+
+    citations: list[SpecCitation] = []
+    seen_texts: set[str] = set()
+    for doc in docs:
+        text = doc.page_content.strip()
+        if not text or text in seen_texts:
+            continue
+        seen_texts.add(text)
+        meta = doc.metadata
+        source = f"{meta.get('code', '')} {meta.get('title', '')}".strip() or meta.get("source", "알 수 없음")
+        series = meta.get("series", "") or meta.get("category", "")
+        citations.append(SpecCitation(source=source, series=series, content=text[:500]))
+
+    return StructuralSpecResponse(
+        citations=citations,
+        hasData=len(citations) > 0,
+        query=full_query,
+    )
+
+
+# ── Excavation & Earthwork Spec RAG ──────────────────────────────────────────
+
+class ExcavationSpecRequest(BaseModel):
+    soilZone: str = "Common Earth"       # 'Common Earth' | 'Sandy Soil' | 'Gravel' | 'Rock' | 'Water'
+    weatherMode: str = "clear"           # 'clear' | 'light-rain' | 'heavy-rain'
+    totalExcav: float = 0.0              # 누계 굴착량 (m³)
+    totalFill: float = 0.0               # 누계 성토량 (m³)
+    digDepth: float = 0.0                # 현재 굴착 깊이 (m)
+    hasRandomTerrain: bool = False       # 무작위 지형 활성 여부
+    query: Optional[str] = None         # 사용자 추가 검색어
+
+
+class ExcavationCitation(BaseModel):
+    source: str
+    series: str
+    content: str
+
+
+class ExcavationSpecResponse(BaseModel):
+    citations: list[ExcavationCitation]
+    summary: str                         # LLM 요약 (토공 조건 + 시방서 해석)
+    hasData: bool
+    query: str
+
+
+# 토질별 기본 검색 쿼리
+_ZONE_QUERIES: dict[str, str] = {
+    "Common Earth":  "토공 일반토 굴착 다짐 쌓기 깎기 시공기준 KCS 11 20 토공 팽창계수 수축계수",
+    "Sandy Soil":    "사질토 모래 굴착 다짐 포화 지하수 비탈면 안정 KCS 11 20 사면안정",
+    "Gravel":        "자갈 굴착 쇄석 입도 다짐 다짐도 KCS 11 20 골재",
+    "Rock":          "암반 굴착 발파 리핑 암질 분류 기계굴착 암반등급 RQD KCS 11 20 암반굴착",
+    "Water":         "수중 굴착 준설 지하수 용출 굴착 배수 흙막이 KCS 21 굴착공사 배수처리",
+}
+
+# 날씨별 추가 검색어
+_WEATHER_QUERIES: dict[str, str] = {
+    "clear":      "",
+    "light-rain": "우천 시공 강우 토공 함수비 다짐 기준 우기 시공제한 KCS",
+    "heavy-rain": "호우 폭우 시공중지 기준 비탈면 간극수압 토석류 붕괴 KCS 21 지반안정",
+}
+
+_EARTHWORK_BASE_QUERY = (
+    "토공 굴착량 토적 산출 팽창계수 수축계수 체적변화 토공량 계산 "
+    "토공 배분 운반 경제운반거리 KCS 11 20 00 토공 시공일반"
+)
+
+
+@app.post("/excavation-spec", response_model=ExcavationSpecResponse)
+def excavation_spec(req: ExcavationSpecRequest):
+    """
+    시뮬레이션 굴착 컨텍스트에 맞는 KCS/KDS 시방서 근거 + LLM 요약 반환.
+
+    토질 구역·날씨·토공량을 종합하여 관련 시방서 조문을 검색하고,
+    굴착 조건에 대한 간결한 해석을 LLM으로 생성합니다.
+    """
+    from tools.construction_rag_tool import search_construction_docs
+
+    # ── 1. 쿼리 조립 ──────────────────────────────────────────────────────────
+    parts: list[str] = [_EARTHWORK_BASE_QUERY]
+
+    # 토질 구역별
+    zone_q = _ZONE_QUERIES.get(req.soilZone, _ZONE_QUERIES["Common Earth"])
+    parts.append(zone_q)
+
+    # 날씨
+    weather_q = _WEATHER_QUERIES.get(req.weatherMode, "")
+    if weather_q:
+        parts.append(weather_q)
+
+    # 깊이 5m 이상 → 흙막이 검색어 추가
+    if req.digDepth >= 5.0:
+        parts.append("흙막이 지보공 굴착깊이 5m 이상 KCS 21 30 굴착공사 안전기준")
+
+    # 암반 또는 수중 특수 조건
+    if req.soilZone == "Rock":
+        parts.append("암반 굴착 시 장비 진동 소음 민원 발파 진동 기준 KDS KCS 암질 판정")
+    if req.soilZone == "Water":
+        parts.append("굴착 시 지하수 처리 차수 그라우팅 강변 굴착 세굴 방지")
+
+    if req.query:
+        parts.append(req.query.strip()[:100])
+
+    full_query = " ".join(parts)[:350]
+
+    # ── 2. RAG 검색 ───────────────────────────────────────────────────────────
+    try:
+        docs = search_construction_docs(full_query, k=5)
+    except Exception as e:
+        print(f"[excavation_spec] RAG 검색 오류: {e}")
+        docs = []
+
+    citations: list[ExcavationCitation] = []
+    seen_texts: set[str] = set()
+    for doc in docs:
+        text = doc.page_content.strip()
+        if not text or text in seen_texts:
+            continue
+        seen_texts.add(text)
+        meta  = doc.metadata
+        source = f"{meta.get('code', '')} {meta.get('title', '')}".strip() or meta.get("source", "알 수 없음")
+        series = meta.get("series", "") or meta.get("category", "")
+        citations.append(ExcavationCitation(source=source, series=series, content=text[:500]))
+
+    # ── 3. LLM 요약 생성 ──────────────────────────────────────────────────────
+    spec_excerpt = "\n".join(
+        f"[{c.source}] {c.content[:180]}" for c in citations[:3]
+    ) or "관련 시방서 조문 없음"
+
+    hardness_map = {
+        "Sandy Soil": "0.85× (모래, 굴착 쉬움)",
+        "Common Earth": "1.0× (기준)",
+        "Gravel": "1.2× (자갈, 다짐 필요)",
+        "Rock": "3.5× (암반, 기계굴착 한계)",
+        "Water": "0.3× 토적 효율 (수중 손실)",
+    }
+    hardness_desc = hardness_map.get(req.soilZone, "1.0×")
+
+    summary_prompt = (
+        f"다음은 현재 굴착 시뮬레이션 상태입니다:\n"
+        f"- 토질 구역: {req.soilZone} (굴착 저항: {hardness_desc})\n"
+        f"- 날씨: {req.weatherMode}\n"
+        f"- 누계 굴착량: {req.totalExcav:.2f} m³ / 성토량: {req.totalFill:.2f} m³\n"
+        f"- 현재 굴착 깊이: {req.digDepth:.2f} m\n\n"
+        f"관련 시방서 조문:\n{spec_excerpt}\n\n"
+        "위 내용을 바탕으로 현재 굴착 조건의 특징, 주의사항, 시방서 적용 기준을 "
+        "3~5줄로 한국어로 간결하게 요약해 주세요."
+    )
+
+    try:
+        resp = llm_precise.invoke([HumanMessage(content=summary_prompt)])
+        summary = resp.content.strip()
+    except Exception:
+        summary = f"{req.soilZone} 구역 굴착 중입니다. 누계 굴착량 {req.totalExcav:.2f}m³, 성토량 {req.totalFill:.2f}m³."
+
+    return ExcavationSpecResponse(
+        citations=citations,
+        summary=summary,
+        hasData=len(citations) > 0,
+        query=full_query,
+    )
+
+
 @app.delete("/session/{session_id}")
 def clear_session(session_id: str):
     """Clear session state."""
