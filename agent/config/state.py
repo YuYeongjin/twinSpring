@@ -20,6 +20,7 @@ AgentName = Literal[
     "test_agent",
     "rag_agent",
     "wbs_agent",
+    "orchestrator",
     "tab_guide",
     "chat",
 ]
@@ -44,4 +45,5 @@ class AgentState(TypedDict):
     # ── 구조화 응답 (프론트 차트/테이블용) ─────────────────────────────────
     bim_data: Optional[dict]                       # bim_agent 구조화 데이터
     sensor_data: Optional[dict]                    # sensor_agent 구조화 데이터
+    report_data: Optional[dict]                    # orchestrator 보고서 데이터
 

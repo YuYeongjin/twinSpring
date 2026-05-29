@@ -14,6 +14,23 @@ from config.settings import SPRING_BASE_URL
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
 @tool
+def list_safe_projects() -> str:
+    """
+    DB에 저장된 안전 모니터링 프로젝트 목록을 반환합니다.
+    프로젝트 ID, 현장명, 위치, 상태를 포함합니다.
+    """
+    try:
+        res = httpx.get(f"{SPRING_BASE_URL}/api/safe/projects", timeout=10)
+        res.raise_for_status()
+        projects = res.json()
+        return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
+    except httpx.ConnectError:
+        return json.dumps({"error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@tool
 def get_detection_server_status() -> str:
     """
     YOLO 감지 서버(Python) 의 온라인/오프라인 상태를 확인합니다.
@@ -127,6 +144,7 @@ def get_safe_tab_guide() -> str:
 
 # ── 도구 목록 ──────────────────────────────────────────────────────────────────
 SAFE_TOOLS = [
+    list_safe_projects,
     get_detection_server_status,
     get_recent_detections,
     get_safety_stats,

@@ -1,5 +1,5 @@
 """
-Node: General chat node (Ollama - gemma3:12b)
+Node: General chat node
 """
 
 from langchain_core.messages import SystemMessage, AIMessage
