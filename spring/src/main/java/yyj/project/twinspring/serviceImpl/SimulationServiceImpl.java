@@ -112,6 +112,9 @@ public class SimulationServiceImpl implements SimulationService {
         dto.setSoilInBucket(toDouble(row.get("soilInBucket")));
         dto.setSelectedMachineId(row.get("selectedMachineId") != null ? (String) row.get("selectedMachineId") : "0.6W");
         dto.setHeightMapData((String) row.get("heightMapData"));
+        dto.setZoneMapData((String) row.get("zoneMapData"));
+        Object hrt = row.get("hasRandomTerrain");
+        dto.setHasRandomTerrain(hrt instanceof Boolean ? (Boolean) hrt : Boolean.FALSE);
         return dto;
     }
 
@@ -130,6 +133,8 @@ public class SimulationServiceImpl implements SimulationService {
         m.put("soilInBucket",     dto.getSoilInBucket() != null ? dto.getSoilInBucket() : 0.0);
         m.put("selectedMachineId",dto.getSelectedMachineId() != null ? dto.getSelectedMachineId() : "0.6W");
         m.put("heightMapData",    dto.getHeightMapData());
+        m.put("zoneMapData",      dto.getZoneMapData());
+        m.put("hasRandomTerrain", dto.getHasRandomTerrain() != null ? dto.getHasRandomTerrain() : false);
         return m;
     }
 

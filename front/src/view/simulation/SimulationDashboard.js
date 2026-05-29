@@ -464,6 +464,20 @@ function deserializeTerrain(b64, hm) {
   if (floats.length === hm.length) hm.set(floats);
 }
 
+function serializeZoneMap(zm) {
+  let b64 = '';
+  for (let i = 0; i < zm.length; i += 8192) {
+    b64 += String.fromCharCode(...zm.subarray(i, Math.min(i + 8192, zm.length)));
+  }
+  return btoa(b64);
+}
+
+function deserializeZoneMap(b64, zm) {
+  const binary = atob(b64);
+  if (binary.length !== zm.length) return;
+  for (let i = 0; i < binary.length; i++) zm[i] = binary.charCodeAt(i);
+}
+
 // 덤핑: 버킷이 흙을 쏟을 때 해당 좌표에 첨예한 봉우리 형태로 흙 쌓기
 function applyFill(hm, col, row, volume, R = 2.6) {
   let totalW = 0;
@@ -1626,6 +1640,12 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           deserializeTerrain(res.data.heightMapData, heightMapRef.current);
           terrainDirtyRef.current = true;
         }
+        if (res.data.zoneMapData) {
+          deserializeZoneMap(res.data.zoneMapData, terrainZoneMapRef.current);
+        }
+        if (res.data.hasRandomTerrain != null) {
+          setHasRandomTerrain(res.data.hasRandomTerrain);
+        }
         if (res.data.soilInBucket != null) {
           soilInBucketRef.current = res.data.soilInBucket;
           setSoilDisplay(res.data.soilInBucket);
@@ -1750,6 +1770,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         excavatorId,
         soilInBucket: soilInBucketRef.current,
         heightMapData: serializeTerrain(heightMapRef.current),
+        zoneMapData: serializeZoneMap(terrainZoneMapRef.current),
+        hasRandomTerrain,
         selectedMachineId: selectedMachineIdRef.current,
       };
       AxiosCustom.put('/api/simulation/excavator', payload)
@@ -2090,6 +2112,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       excavatorId,
       soilInBucket: soilInBucketRef.current,
       heightMapData: serializeTerrain(heightMapRef.current),
+      zoneMapData: serializeZoneMap(terrainZoneMapRef.current),
+      hasRandomTerrain,
       selectedMachineId,
     };
     AxiosCustom.put('/api/simulation/excavator', payload)
