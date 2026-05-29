@@ -106,6 +106,7 @@ function genBurjKhalifa() {
                 positionX: 0, positionY: yBase + f * h, positionZ: 0,
             });
             // 날개 슬래브
+            // eslint-disable-next-line no-loop-func
             armAngles.forEach(angle => {
                 const dist = baseW * 0.8;
                 els.push({

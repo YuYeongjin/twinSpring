@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
+import AxiosCustom from '../../axios/AxiosCustom';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import {
@@ -549,17 +550,50 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   const [selectedId, setSelectedId] = useState(null);
   const [sortCfg, setSortCfg] = useState({ key: 'safetyFactor', asc: true });
 
+  // 드론 데이터 경고 모달
+  const [droneWarnOpen, setDroneWarnOpen] = useState(false);
+
+  // 시방서 기준 RAG
+  const [specData, setSpecData]       = useState(null);
+  const [specLoading, setSpecLoading] = useState(false);
+  const [specOpen, setSpecOpen]       = useState(null);
+
+  const fetchSpecData = useCallback(async (analysisResults) => {
+    if (!analysisResults?.length) return;
+    setSpecLoading(true);
+    setSpecData(null);
+    const elementTypes = [...new Set(analysisResults.map(r => r.elementType))];
+    const hasDanger  = analysisResults.some(r => r.status === 'danger');
+    const hasWarning = analysisResults.some(r => r.status === 'warning');
+    try {
+      const res = await AxiosCustom.post('/api/chat/structural-spec', {
+        materialType: matId,
+        elementTypes,
+        hasDanger,
+        hasWarning,
+        seismicZone: env.seismicZone,
+      });
+      setSpecData(res.data);
+    } catch (_) {
+      setSpecData({ citations: [], hasData: false, query: '' });
+    } finally {
+      setSpecLoading(false);
+    }
+  }, [matId, env.seismicZone]);
+
   // 구조해석 위험 알림: 분석 실행당 1회만 발행
   const structuralAlertedRef = useRef(false);
 
-  const handleAnalyze = useCallback(() => {
+  // 실제 해석 실행 (드론 경고 확인 후에도 재사용)
+  const runActualAnalysis = useCallback(() => {
     if (!modelData.length) return;
     setIsAnalyzing(true);
-    structuralAlertedRef.current = false; // 새 분석 시작 시 초기화
+    structuralAlertedRef.current = false;
     setTimeout(() => {
       const newResults = runAnalysis(modelData, env, loads, matId);
       setResults(newResults);
       setIsAnalyzing(false);
+      fetchSpecData(newResults);
 
       const dangerElems = newResults.filter(r => r.status === 'danger');
       if (dangerElems.length > 0 && !structuralAlertedRef.current) {
@@ -587,7 +621,17 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
         });
       }
     }, 500);
-  }, [modelData, env, loads, matId, selectedProject]);
+  }, [modelData, env, loads, matId, selectedProject, fetchSpecData]);
+
+  const handleAnalyze = useCallback(() => {
+    if (!modelData.length) return;
+    // 드론 사진 추출 프로젝트는 치수 정확도 경고 먼저 표시
+    if (selectedProject?.structureType === 'DRONE') {
+      setDroneWarnOpen(true);
+      return;
+    }
+    runActualAnalysis();
+  }, [modelData, selectedProject, runActualAnalysis]);
 
   // 입력값 변경 시 자동 재계산 (Run Analysis 최초 1회 이후만)
   useEffect(() => {
@@ -652,6 +696,43 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   return (
     <div className="w-full bg-space-900 flex flex-col overflow-hidden box-border p-3">
 
+      {/* 드론 데이터 경고 모달 */}
+      {droneWarnOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-[#0f1422] border border-amber-600/40 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-2xl">⚠️</span>
+              <h3 className="text-base font-bold text-amber-300">드론 사진 추출 데이터 경고</h3>
+            </div>
+            <p className="text-xs text-gray-300 leading-relaxed mb-5">
+              이 프로젝트는 <span className="text-amber-300 font-semibold">드론 사진 분석</span>으로 생성된 BIM 데이터입니다.<br /><br />
+              사진 해상도·카메라 왜곡·기준점 오차 등으로 인해 추출된 치수가
+              <span className="text-red-400 font-semibold"> 실제 치수와 다를 수 있습니다.</span><br /><br />
+              응력·안전율 계산 결과가 부정확할 수 있으므로, 반드시 실측 치수와 비교한 후 판단하세요.
+              설계 의사결정에 직접 사용하지 마세요.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setDroneWarnOpen(false); runActualAnalysis(); }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold
+                  bg-amber-900/30 text-amber-300 border border-amber-600/40
+                  hover:bg-amber-900/50 transition"
+              >
+                경고 확인 후 진행
+              </button>
+              <button
+                onClick={() => setDroneWarnOpen(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold
+                  bg-[#141a2a] text-gray-400 border border-[#1b2236]
+                  hover:bg-[#1b2236] transition"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -672,6 +753,11 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             <span className="text-xs text-gray-500 flex items-center gap-1.5">
               {modelData.length} elements
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" title="Live — auto-recalculates on input change" />
+            </span>
+          )}
+          {selectedProject?.structureType === 'DRONE' && (
+            <span className="flex items-center gap-1 text-xs text-amber-400 border border-amber-600/30 bg-amber-900/20 px-2 py-1 rounded-lg">
+              ⚠️ 드론 추출 데이터
             </span>
           )}
           <button
@@ -1138,6 +1224,52 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
               ))}
             </div>
           </Card>
+
+          {/* 시방서 기준 (KCS/KDS) */}
+          {(specLoading || specData) && (
+            <Card title="📋 시방서 기준 (KCS/KDS)">
+              {specLoading ? (
+                <div className="flex items-center gap-2 py-3 justify-center">
+                  <span className="inline-block w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
+                  <span className="text-xs text-gray-500">시방서 검색 중…</span>
+                </div>
+              ) : !specData?.hasData ? (
+                <p className="text-xs text-gray-600 text-center py-3">관련 시방서를 찾지 못했습니다</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {specData.citations.map((c, i) => (
+                    <div key={i}
+                      className="border border-[#1b2236] rounded-xl overflow-hidden">
+                      <button
+                        onClick={() => setSpecOpen(p => p === i ? null : i)}
+                        className="w-full flex items-start justify-between gap-2 px-2.5 py-2 text-left
+                          hover:bg-[#141a2a] transition-colors"
+                      >
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span className="text-xs font-semibold text-blue-400 truncate leading-tight">
+                            {c.source || '출처 불명'}
+                          </span>
+                          <span className="text-xs text-gray-500 truncate leading-tight">
+                            {c.series}
+                          </span>
+                        </div>
+                        <span className="text-gray-500 text-xs shrink-0 mt-0.5">
+                          {specOpen === i ? '▲' : '▼'}
+                        </span>
+                      </button>
+                      {specOpen === i && (
+                        <div className="px-2.5 pb-2.5 border-t border-[#1b2236]">
+                          <p className="text-xs text-gray-400 leading-relaxed mt-2 whitespace-pre-wrap break-words">
+                            {c.content}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
 
           {/* Selected Element Detail */}
           {selectedResult && (

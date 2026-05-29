@@ -96,7 +96,7 @@ function AutoZoom({ modelData }) {
         camera.up.set(0, 0, -1);
         camera.lookAt(cx, 0, cz);
         camera.updateProjectionMatrix();
-    }, [modelData.length, camera]);
+    }, [modelData, camera]);
 
     return null;
 }

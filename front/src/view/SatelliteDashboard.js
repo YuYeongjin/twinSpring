@@ -148,7 +148,7 @@ function ChartTooltip({ active, payload, label }) {
  */
 export default function SatelliteDashboard({ setViceComponent, onProjectSelect, projectList }) {
   const {
-    data, mode, setMode, batt, rssi,
+    data, mode, setMode,
     latest,
     wsStatus,
     activeAlert, setActiveAlert,

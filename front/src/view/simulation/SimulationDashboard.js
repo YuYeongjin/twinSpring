@@ -6,6 +6,8 @@ import { OrbitControls, Sky, GizmoHelper, GizmoViewport } from '@react-three/dre
 import { Physics, RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
 import AxiosCustom from '../../axios/AxiosCustom';
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
 import {
   TerrainRapierCollider,
   ExcavatorCollider,
@@ -14,6 +16,20 @@ import {
 
 // ── 공통 상수 ──────────────────────────────────────────────────────────────────
 const D2R = Math.PI / 180;
+
+function buildWsUrl() {
+  if (process.env.REACT_APP_API_URL)
+    return `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/ws/sensor`;
+  if (process.env.NODE_ENV === 'development')
+    return `${window.location.protocol}//${window.location.hostname}:8080/ws/sensor`;
+  return `${window.location.origin}/ws/sensor`;
+}
+
+function latLngToXZ(lat, lng, originLat, originLng) {
+  const dx = (lat - originLat) * 111111;
+  const dz = (lng - originLng) * 111111 * Math.cos(originLat * D2R);
+  return { x: dx, z: dz };
+}
 
 const JOINT_LIMITS = {
   boomAngle:   { min: 0,   max: 80  },
@@ -82,14 +98,131 @@ const DEFAULT_MACHINE = MACHINE_CONFIGS['0.6W'];
 
 // ── 토질 다짐 계수 ─────────────────────────────────────────────────────────────
 // Lf: Loose Factor (Bank → Loose), Cf: Compaction Factor (Bank → Compacted)
+// digHardness: 굴착 속도 역수 배율 (1.0 = 기본, 2.0 = 2배 어려움)
 const SOIL_TYPES = {
-  'Sandy Soil':   { lf: 1.10, cf: 0.95, desc: 'Sand / Sandy Loam' },
-  'Common Earth': { lf: 1.20, cf: 0.90, desc: 'General Soil / Silt' },
-  'Clay':         { lf: 1.25, cf: 0.88, desc: 'Clay / Heavy Clay' },
-  'Gravel':       { lf: 1.13, cf: 0.92, desc: 'Gravel / Crushed Stone' },
-  'Rock':         { lf: 1.50, cf: 1.30, desc: 'Blasted Rock' },
+  'Sandy Soil':   { lf: 1.10, cf: 0.95, desc: 'Sand / Sandy Loam',      digHardness: 0.85 },
+  'Common Earth': { lf: 1.20, cf: 0.90, desc: 'General Soil / Silt',    digHardness: 1.00 },
+  'Clay':         { lf: 1.25, cf: 0.88, desc: 'Clay / Heavy Clay',       digHardness: 1.30 },
+  'Gravel':       { lf: 1.13, cf: 0.92, desc: 'Gravel / Crushed Stone',  digHardness: 1.20 },
+  'Rock':         { lf: 1.50, cf: 1.30, desc: 'Blasted Rock',            digHardness: 3.50 },
 };
 const DEFAULT_SOIL = 'Common Earth';
+
+// ── 지형 구역(Zone) 상수 ────────────────────────────────────────────────────────
+const ZONE = { SOIL: 0, SAND: 1, GRAVEL: 2, ROCK: 3, WATER: 4 };
+// 구역별 기본 토질 → SOIL_TYPES 키 매핑
+const ZONE_SOIL = {
+  [ZONE.SOIL]:   'Common Earth',
+  [ZONE.SAND]:   'Sandy Soil',
+  [ZONE.GRAVEL]: 'Gravel',
+  [ZONE.ROCK]:   'Rock',
+  [ZONE.WATER]:  'Sandy Soil',
+};
+
+// ── 무작위 지형 생성 ──────────────────────────────────────────────────────────
+function generateRandomTerrain(hm, zm) {
+  hm.fill(0);
+  zm.fill(ZONE.SOIL);
+
+  // 1. 완만한 언덕 (여러 개 중첩)
+  const hills = [
+    { cx: -15, cz: -10, r: 18, h: 2.2 },
+    { cx:  18, cz:  12, r: 14, h: 1.8 },
+    { cx:  -8, cz:  20, r: 12, h: 1.5 },
+    { cx:  22, cz: -18, r: 10, h: 1.2 },
+  ];
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      const wx = col - HALF_C + 0.5;
+      const wz = row - HALF_R + 0.5;
+      let hillH = 0;
+      for (const hill of hills) {
+        const d = Math.sqrt((wx - hill.cx) ** 2 + (wz - hill.cz) ** 2);
+        if (d < hill.r) hillH += hill.h * Math.cos((d / hill.r) * Math.PI * 0.5) ** 2;
+      }
+      hm[row * GRID_COLS + col] = hillH;
+    }
+  }
+
+  // 2. 구불구불한 강 경로 (중심선 bezier 근사)
+  const riverWidth = 4.5;
+  const controlPts = [
+    { x: -38, z: -15 }, { x: -20, z: -8 }, { x: -5, z: 5 },
+    { x:  12, z: 2  }, { x:  22, z: 15 }, { x:  38, z: 20 },
+  ];
+  function riverCenterAt(t) {
+    const n = controlPts.length - 1;
+    const seg = Math.min(Math.floor(t * n), n - 1);
+    const lt  = t * n - seg;
+    const p0  = controlPts[seg];
+    const p1  = controlPts[Math.min(seg + 1, n)];
+    return { x: p0.x + (p1.x - p0.x) * lt, z: p0.z + (p1.z - p0.z) * lt };
+  }
+
+  // 강 경로 마스크 생성
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      const wx = col - HALF_C + 0.5;
+      const wz = row - HALF_R + 0.5;
+      let minDist = Infinity;
+      for (let ti = 0; ti <= 80; ti++) {
+        const { x, z } = riverCenterAt(ti / 80);
+        const d = Math.sqrt((wx - x) ** 2 + (wz - z) ** 2);
+        if (d < minDist) minDist = d;
+      }
+      if (minDist < riverWidth) {
+        const depth = 0.6 + (riverWidth - minDist) / riverWidth * 0.8;
+        hm[row * GRID_COLS + col] = -depth;
+        zm[row * GRID_COLS + col] = ZONE.WATER;
+      } else if (minDist < riverWidth + 4.0) {
+        // 강변 모래/자갈 둑
+        zm[row * GRID_COLS + col] = ZONE.SAND;
+        hm[row * GRID_COLS + col] = Math.max(0, hm[row * GRID_COLS + col] * 0.4);
+      }
+    }
+  }
+
+  // 3. 자갈 구역 (강에서 멀리 떨어진 곳)
+  const gravelPatches = [
+    { cx: -22, cz:  18, r: 7 }, { cx:  30, cz: -20, r: 6 },
+    { cx: -30, cz: -25, r: 5 }, { cx:  15, cz: -30, r: 6 },
+  ];
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      if (zm[row * GRID_COLS + col] !== ZONE.SOIL) continue;
+      const wx = col - HALF_C + 0.5;
+      const wz = row - HALF_R + 0.5;
+      for (const p of gravelPatches) {
+        const d = Math.sqrt((wx - p.cx) ** 2 + (wz - p.cz) ** 2);
+        if (d < p.r) {
+          zm[row * GRID_COLS + col] = ZONE.GRAVEL;
+          hm[row * GRID_COLS + col] += 0.05 + Math.random() * 0.15;
+        }
+      }
+    }
+  }
+
+  // 4. 암반 군집 (불규칙한 클러스터)
+  const rockClusters = [
+    { cx: -12, cz: -28, r: 5 }, { cx:  28, cz:  -8, r: 4 },
+    { cx: -35, cz:   5, r: 4 }, { cx:  10, cz:  28, r: 5 },
+  ];
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      if (zm[row * GRID_COLS + col] !== ZONE.SOIL) continue;
+      const wx = col - HALF_C + 0.5;
+      const wz = row - HALF_R + 0.5;
+      for (const p of rockClusters) {
+        const d = Math.sqrt((wx - p.cx) ** 2 + (wz - p.cz) ** 2);
+        const noiseOff = Math.sin(wx * 0.7) * Math.cos(wz * 0.7) * 2.0;
+        if (d + noiseOff < p.r) {
+          zm[row * GRID_COLS + col] = ZONE.ROCK;
+          hm[row * GRID_COLS + col] += 0.3 + Math.random() * 0.5;
+        }
+      }
+    }
+  }
+}
 
 // ── 날씨 모드 ──────────────────────────────────────────────────────────────────
 // digMod   : 굴착 속도 배수 (젖은 흙은 연해져 더 빨리 굴착)
@@ -195,16 +328,26 @@ function vertH(hm, c, r) {
   return n ? s / n : 0;
 }
 
-// 높이값 → 버텍스 색상 (굴착 구멍은 어두운 갈색~거의 검정, 성토는 황토)
-function hToRGB(h) {
+// 높이값 + 구역 → 버텍스 색상
+function hToRGBZone(h, zone) {
   if (h < 0) {
-    // 구멍: 표면에서 3m 이상 파면 거의 검정에 가까운 진흙색
+    // 구멍 (구역 무관): 깊을수록 진흙 검정
     const t = Math.min(1, -h / 3.0);
+    if (zone === ZONE.WATER) return [0.05, 0.18, 0.38];
     return [0.42 - t * 0.38, 0.30 - t * 0.28, 0.16 - t * 0.15];
   }
   const t = Math.min(1, h / MAX_FILL);
-  return [0.50 - t * 0.10, 0.38 - t * 0.10, 0.22 - t * 0.06];
+  switch (zone) {
+    case ZONE.WATER:  return [0.08, 0.28, 0.62];
+    case ZONE.SAND:   return [0.78 - t * 0.08, 0.68 - t * 0.08, 0.38 - t * 0.06];
+    case ZONE.GRAVEL: return [0.50 - t * 0.10, 0.46 - t * 0.08, 0.38 - t * 0.06];
+    case ZONE.ROCK:   return [0.36 - t * 0.06, 0.34 - t * 0.06, 0.32 - t * 0.06];
+    default:          return [0.50 - t * 0.10, 0.38 - t * 0.10, 0.22 - t * 0.06];
+  }
 }
+
+// 구역 없을 때(평탄 지형) 기본 색상 — buildTerrainGeo 초기화에 사용
+function hToRGB(h) { return hToRGBZone(h, ZONE.SOIL); }
 
 // 지형 BufferGeometry 초기 생성 (높이 = 0인 평탄 지형)
 function buildTerrainGeo() {
@@ -245,8 +388,8 @@ function buildTerrainGeo() {
   return geo;
 }
 
-// height map 변경분을 기존 지오메트리에 반영 (in-place mutation)
-function updateTerrainGeo(geo, hm) {
+// height map + zone map 변경분을 기존 지오메트리에 반영 (in-place mutation)
+function updateTerrainGeo(geo, hm, zm) {
   const vC  = GRID_COLS + 1;
   const pos = geo.attributes.position;
   const clr = geo.attributes.color;
@@ -255,7 +398,11 @@ function updateTerrainGeo(geo, hm) {
       const i = r * vC + c;
       const h = vertH(hm, c, r);
       pos.setY(i, h);
-      const [cr, cg, cb] = hToRGB(h);
+      // 버텍스 구역: 인접 셀 중 가장 많은 구역 사용 (단순화: 좌상단 셀 참조)
+      const zc = Math.max(0, Math.min(GRID_COLS - 1, c - 1));
+      const zr = Math.max(0, Math.min(GRID_ROWS - 1, r - 1));
+      const zone = zm ? zm[zr * GRID_COLS + zc] : ZONE.SOIL;
+      const [cr, cg, cb] = hToRGBZone(h, zone);
       clr.setXYZ(i, cr, cg, cb);
     }
   }
@@ -424,8 +571,6 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
   const wm   = WEATHER_MODES[weatherKey];
   const sp   = SAFETY_PARAMS;
   const ru   = wm.ruSlope;
-  const betaR = sp.beta * Math.PI / 180;
-  const phiR  = sp.phi  * Math.PI / 180;
   const u    = ru * sp.gamma * sp.h;
 
   const FS_slope   = calcSlopeFS(weatherKey);
@@ -447,13 +592,6 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
     <div style={{ background: '#060e18', borderRadius: '6px', padding: '8px 12px', margin: '6px 0', fontFamily: 'monospace', fontSize: '12px' }}>
       <div style={{ color: '#a78bfa', marginBottom: '3px' }}>{latex}</div>
       {desc && <div style={{ color: '#4a6a7a', fontSize: '10px' }}>{desc}</div>}
-    </div>
-  );
-
-  const Row = ({ label, value, unit, color }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' }}>
-      <span style={{ color: '#8896a4' }}>{label}</span>
-      <span style={{ color: color ?? '#e2e8f0', fontFamily: 'monospace', fontWeight: 600 }}>{value} <span style={{ color: '#4a6a7a' }}>{unit}</span></span>
     </div>
   );
 
@@ -623,12 +761,12 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
 
 // ── TerrainMesh 컴포넌트 ───────────────────────────────────────────────────────
 // useFrame 안에서 dirty 플래그를 감시하여 React 렌더링 없이 지형 업데이트
-function TerrainMesh({ heightMapRef, dirtyRef }) {
+function TerrainMesh({ heightMapRef, dirtyRef, zoneMapRef }) {
   const geometry = useMemo(() => buildTerrainGeo(), []);
 
   useFrame(() => {
     if (dirtyRef.current) {
-      updateTerrainGeo(geometry, heightMapRef.current);
+      updateTerrainGeo(geometry, heightMapRef.current, zoneMapRef?.current);
       dirtyRef.current = false;
     }
   });
@@ -637,6 +775,89 @@ function TerrainMesh({ heightMapRef, dirtyRef }) {
     <mesh receiveShadow>
       <primitive object={geometry} attach="geometry" />
       <meshStandardMaterial vertexColors roughness={1.0} metalness={0} />
+    </mesh>
+  );
+}
+
+// ── 강물 표면 메시 (방향성 흐름 파동 포함) ────────────────────────────────────
+// 강 흐름 방향: (-38,-15) → (38,20) ≈ (0.908, 0, 0.418) 정규화
+const RIVER_FLOW_DIR = { x: 0.908, z: 0.418 };
+
+function WaterSurface({ zoneMapRef, visible }) {
+  const meshRef = useRef();
+  const geoRef  = useRef(null);
+  const timeRef = useRef(0);
+
+  // visible이 true가 될 때 한 번만 강 구역 지오메트리를 생성
+  const geometry = useMemo(() => {
+    if (!visible) return null;
+    const zm = zoneMapRef.current;
+    if (!zm) return null;
+    const verts = [];
+    const idxArr = [];
+    let vi = 0;
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        if (zm[row * GRID_COLS + col] !== ZONE.WATER) continue;
+        const wx0 = (col - HALF_C) * CELL_M;
+        const wz0 = (row - HALF_R) * CELL_M;
+        const wx1 = wx0 + CELL_M;
+        const wz1 = wz0 + CELL_M;
+        verts.push(wx0, 0, wz0,  wx1, 0, wz0,  wx0, 0, wz1,  wx1, 0, wz1);
+        idxArr.push(vi, vi+2, vi+1,  vi+1, vi+2, vi+3);
+        vi += 4;
+      }
+    }
+    if (verts.length === 0) return null;
+    const geo = new THREE.BufferGeometry();
+    // dynamic=true: useFrame에서 매 프레임 위치를 갱신하므로 Dynamic 힌트
+    const posAttr = new THREE.BufferAttribute(new Float32Array(verts), 3);
+    posAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('position', posAttr);
+    geo.setIndex(idxArr);
+    geo.computeVertexNormals();
+    geoRef.current = geo;
+    return geo;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  useFrame((_, delta) => {
+    if (!geometry || !meshRef.current) return;
+    timeRef.current += delta;
+    const t = timeRef.current;
+    const pos = geometry.attributes.position;
+    const fdx = RIVER_FLOW_DIR.x, fdz = RIVER_FLOW_DIR.z;
+    for (let i = 0; i < pos.count; i++) {
+      const wx = pos.getX(i);
+      const wz = pos.getZ(i);
+      // 강 흐름 방향 투영값 = 진행 거리
+      const along = wx * fdx + wz * fdz;
+      // 주 파동(흐름 방향)  + 교차 잔물결
+      const wave = Math.sin(along * 0.45 - t * 2.8) * 0.055
+                 + Math.sin(along * 1.1  - t * 4.5) * 0.022
+                 + Math.sin((wx - wz) * 0.3 + t * 1.5) * 0.012;
+      pos.setY(i, wave);
+    }
+    pos.needsUpdate = true;
+    geometry.computeVertexNormals();
+
+    if (meshRef.current.material) {
+      meshRef.current.material.opacity = 0.60 + Math.sin(t * 1.8) * 0.07;
+    }
+  });
+
+  if (!visible || !geometry) return null;
+
+  return (
+    <mesh ref={meshRef} geometry={geometry}>
+      <meshStandardMaterial
+        color="#1a68d0"
+        transparent
+        opacity={0.65}
+        roughness={0.05}
+        metalness={0.2}
+        side={THREE.DoubleSide}
+      />
     </mesh>
   );
 }
@@ -1198,7 +1419,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
   // 지형 시스템
   const heightMapRef    = useRef(new Float32Array(GRID_COLS * GRID_ROWS).fill(0));
+  const terrainZoneMapRef = useRef(new Uint8Array(GRID_COLS * GRID_ROWS).fill(ZONE.SOIL));
   const terrainDirtyRef = useRef(false);
+  const [hasRandomTerrain, setHasRandomTerrain] = useState(false);
 
   // BEPUphysics2 / rapier 물리 시스템
   // wobbleRef: ExcavatorModel이 직접 읽어 진동 애니메이션에 적용
@@ -1237,9 +1460,6 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const selectedMachineIdRef = useRef(DEFAULT_MACHINE.id);
   useEffect(() => { selectedMachineIdRef.current = selectedMachineId; }, [selectedMachineId]);
 
-  // 덤핑 상태 중복 방지
-  const dumpingRef = useRef(false);
-
   // 흙 파티클 풀
   const particlesRef = useRef([]);
 
@@ -1248,6 +1468,17 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const autoSimRef   = useRef(false);
   const autoPhaseRef = useRef(0);
   const [autoPhaseLabel, setAutoPhaseLabel] = useState('');
+
+  // ── GPS 실시간 제어 ──
+  const [gpsConnected,   setGpsConnected]   = useState(false);
+  const [gpsHz,          setGpsHz]          = useState(0);
+  const [gpsPacketCount, setGpsPacketCount] = useState(0);
+  const [gpsError,       setGpsError]       = useState('');
+  const gpsStompRef   = useRef(null);
+  const gpsActiveRef  = useRef(false);
+  const gpsOriginRef  = useRef(null);
+  const gpsHzCountRef = useRef(0);
+  const gpsHzTimerRef = useRef(null);
 
   // 서버 동기화
   const [syncStatus, setSyncStatus] = useState('idle');
@@ -1273,6 +1504,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const [alertPulse, setAlertPulse]       = useState(true);
   const thresholdsRef   = useRef(thresholds);
   const wasAlertingRef  = useRef(false);
+  // 현재 굴착 중인 지형 구역 (경고 표시용)
+  const [currentExcavZone, setCurrentExcavZone] = useState(null);
+  const currentExcavZoneRef = useRef(null);
+  // 굴착 시방서 RAG 패널
+  const [excavSpecData, setExcavSpecData]     = useState(null);
+  const [excavSpecLoading, setExcavSpecLoading] = useState(false);
+  const [excavSpecOpen, setExcavSpecOpen]     = useState(false);
 
   // stateRef 항상 최신 유지
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -1410,6 +1648,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       'ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
     ]);
     const onDown = e => {
+      if (gpsActiveRef.current) return; // GPS 활성 시 키보드 무시
       if (CONTROLLED.has(e.key)) {
         e.preventDefault();
         // 키 입력 시 자동 시뮬레이션 중지
@@ -1573,10 +1812,26 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       const cell = worldToCell(tipX, tipZ);
       if (cell.valid) {
         const digMod = WEATHER_MODES[weatherModeRef.current]?.digMod ?? 1.0;
-        const rate = Math.min(machine.digRate * digMod, digDepth * 0.055 * digMod);
+        // 셀 구역에 따른 굴착 경도 적용
+        const cellZone = terrainZoneMapRef.current[cell.row * GRID_COLS + cell.col];
+        const zoneSoilKey = ZONE_SOIL[cellZone] ?? DEFAULT_SOIL;
+        const digHardness = SOIL_TYPES[zoneSoilKey]?.digHardness ?? 1.0;
+        const rate = Math.min(machine.digRate * digMod / digHardness, digDepth * 0.055 * digMod / digHardness);
         applyExcavation(heightMapRef.current, cell.col, cell.row, rate, machine.digRadius);
-        const added = Math.min(maxBucket, soilInBucketRef.current + rate * 0.9) - soilInBucketRef.current;
-        soilInBucketRef.current = Math.min(maxBucket, soilInBucketRef.current + rate * 0.9);
+        // 수중 굴착 시 버킷에 담기는 양 감소 (물이 섞여 흘러내림)
+        const bucketFillMult = cellZone === ZONE.WATER ? 0.3 : 0.9;
+        const added = Math.min(maxBucket, soilInBucketRef.current + rate * bucketFillMult) - soilInBucketRef.current;
+        soilInBucketRef.current = Math.min(maxBucket, soilInBucketRef.current + rate * bucketFillMult);
+        // 암반 굴착 시 장비 진동 강화
+        if (cellZone === ZONE.ROCK) {
+          wobbleRef.current.amplitude = Math.max(wobbleRef.current.amplitude, 0.22);
+          wobbleRef.current.frequency = 8.0;
+        }
+        // 구역 경고 업데이트
+        if (currentExcavZoneRef.current !== cellZone) {
+          currentExcavZoneRef.current = cellZone;
+          setCurrentExcavZone(cellZone);
+        }
         // 토공량 누계 & 로그 (2초마다 1건)
         totalExcavRef.current += added;
         setTotalExcavDisplay(parseFloat(totalExcavRef.current.toFixed(3)));
@@ -1591,6 +1846,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             type:   'DIG',
             machine: machine.id,
             weather: weatherModeRef.current,
+            zone: zoneSoilKey,
           });
         }
         terrainDirtyRef.current = true;
@@ -1601,6 +1857,12 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           for (let i = 0; i < emit; i++)
             particlesRef.current.push(createParticle(tipX, Math.max(tipY, 0.1), tipZ, 'dig'));
         }
+      }
+    } else {
+      // 굴착 중 아닐 때 구역 경고 해제
+      if (currentExcavZoneRef.current !== null) {
+        currentExcavZoneRef.current = null;
+        setCurrentExcavZone(null);
       }
     }
 
@@ -1649,27 +1911,173 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     setSoilDisplay(0);
   };
 
-  const handleClearTerrain = () => {
-    heightMapRef.current.fill(0);
+  // ── 굴착 시방서 RAG 조회 ─────────────────────────────────────────────────────
+  const fetchExcavSpec = useCallback(async () => {
+    if (excavSpecLoading) return;
+    setExcavSpecLoading(true);
+    const zoneKey = currentExcavZoneRef.current;
+    const soilZone = ZONE_SOIL[zoneKey != null ? zoneKey : ZONE.SOIL] ?? 'Common Earth';
+    try {
+      const res = await AxiosCustom.post('/api/chat/excavation-spec', {
+        soilZone,
+        weatherMode,
+        totalExcav: totalExcavRef.current,
+        totalFill:  totalFillRef.current,
+        digDepth:   parseFloat(kinematics?.depth ?? 0),
+        hasRandomTerrain,
+      });
+      setExcavSpecData(res.data);
+      setExcavSpecOpen(true);
+    } catch {
+      setExcavSpecData({ citations: [], summary: '시방서 조회 중 오류가 발생했습니다.', hasData: false });
+      setExcavSpecOpen(true);
+    } finally {
+      setExcavSpecLoading(false);
+    }
+  }, [excavSpecLoading, weatherMode, hasRandomTerrain, kinematics]);
+
+  const handleRandomTerrain = () => {
+    generateRandomTerrain(heightMapRef.current, terrainZoneMapRef.current);
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
     totalExcavRef.current = 0; totalFillRef.current = 0;
     setTotalExcavDisplay(0); setTotalFillDisplay(0);
     excavLogRef.current = [];
     terrainDirtyRef.current = true;
+    setHasRandomTerrain(true);
     setObjectResetSignal(v => v + 1);
   };
+
+  const handleClearTerrain = () => {
+    heightMapRef.current.fill(0);
+    terrainZoneMapRef.current.fill(ZONE.SOIL);
+    soilInBucketRef.current = 0;
+    setSoilDisplay(0);
+    totalExcavRef.current = 0; totalFillRef.current = 0;
+    setTotalExcavDisplay(0); setTotalFillDisplay(0);
+    excavLogRef.current = [];
+    terrainDirtyRef.current = true;
+    setHasRandomTerrain(false);
+    setObjectResetSignal(v => v + 1);
+  };
+
+  // ── GPS 데이터 → 굴착기 상태 변환 ─────────────────────────────────────────
+  const handleGpsData = useCallback((packet) => {
+    if (gpsOriginRef.current === null && packet.lat != null && packet.lng != null)
+      gpsOriginRef.current = { lat: packet.lat, lng: packet.lng };
+
+    let posX = stateRef.current.positionX;
+    let posZ = stateRef.current.positionZ;
+    if (packet.lat != null && packet.lng != null && gpsOriginRef.current) {
+      const { x, z } = latLngToXZ(packet.lat, packet.lng, gpsOriginRef.current.lat, gpsOriginRef.current.lng);
+      posX = x; posZ = z;
+    }
+
+    let bodyRot = stateRef.current.bodyRotation;
+    if      (packet.heading != null) bodyRot = packet.heading;
+    else if (packet.alpha   != null) bodyRot = packet.alpha;
+
+    let boom   = stateRef.current.boomAngle;
+    let arm    = stateRef.current.armAngle;
+    let bucket = stateRef.current.bucketAngle;
+    let swing  = stateRef.current.swingAngle;
+
+    if      (packet.boomAngle   != null) boom   = clamp(packet.boomAngle,   JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
+    else if (packet.beta        != null) boom   = clamp(packet.beta * 0.6 + 35, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
+    if      (packet.armAngle    != null) arm    = clamp(packet.armAngle,    JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
+    if      (packet.bucketAngle != null) bucket = clamp(packet.bucketAngle, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+    if      (packet.swingAngle  != null) swing  = packet.swingAngle;
+    else if (packet.gamma       != null) swing  = clamp(packet.gamma * 1.33, -120, 120);
+
+    stateRef.current = { ...stateRef.current, positionX: posX, positionZ: posZ, bodyRotation: bodyRot, swingAngle: swing, boomAngle: boom, armAngle: arm, bucketAngle: bucket };
+    setState({ ...stateRef.current });
+    gpsHzCountRef.current++;
+    setGpsPacketCount(c => c + 1);
+  }, []);
+
+  const connectGps = useCallback(() => {
+    if (gpsStompRef.current) return;
+    setGpsError('');
+    setAutoSim(false); autoSimRef.current = false;
+
+    const client = new Client({
+      webSocketFactory: () => new SockJS(buildWsUrl()),
+      reconnectDelay: 3000,
+      onConnect: () => {
+        client.subscribe('/topic/excavator', (msg) => {
+          try { handleGpsData(JSON.parse(msg.body)); } catch (_) {}
+        });
+        setGpsConnected(true);
+        gpsActiveRef.current = true;
+        gpsHzTimerRef.current = setInterval(() => {
+          setGpsHz(gpsHzCountRef.current);
+          gpsHzCountRef.current = 0;
+        }, 1000);
+      },
+      onDisconnect: () => {
+        setGpsConnected(false); gpsActiveRef.current = false;
+        clearInterval(gpsHzTimerRef.current); setGpsHz(0);
+      },
+      onStompError: (frame) => {
+        setGpsError('연결 실패: ' + (frame.headers?.message || ''));
+        setGpsConnected(false); gpsActiveRef.current = false;
+      },
+    });
+    client.activate();
+    gpsStompRef.current = client;
+  }, [handleGpsData]);
+
+  const disconnectGps = useCallback(() => {
+    if (gpsStompRef.current) { gpsStompRef.current.deactivate(); gpsStompRef.current = null; }
+    clearInterval(gpsHzTimerRef.current);
+    setGpsConnected(false); gpsActiveRef.current = false; gpsOriginRef.current = null;
+    setGpsPacketCount(0); setGpsHz(0); setGpsError('');
+  }, []);
+
+  const resetGpsOrigin = useCallback(() => {
+    gpsOriginRef.current = null;
+    stateRef.current = { ...stateRef.current, positionX: 0, positionZ: 0 };
+    setState(prev => ({ ...prev, positionX: 0, positionZ: 0 }));
+  }, []);
+
+  // GPS 언마운트 정리
+  useEffect(() => {
+    return () => {
+      if (gpsStompRef.current) gpsStompRef.current.deactivate();
+      clearInterval(gpsHzTimerRef.current);
+    };
+  }, []);
+
+  // ── 수중 침투 물리: WATER 구역 굴착 시 물이 서서히 다시 차오름 ──────────────
+  // 강바닥 기준선(-0.4m) 위로 0.04m/500ms 속도로 침수
+  useEffect(() => {
+    const id = setInterval(() => {
+      const hm = heightMapRef.current;
+      const zm = terrainZoneMapRef.current;
+      let changed = false;
+      for (let i = 0; i < GRID_COLS * GRID_ROWS; i++) {
+        if (zm[i] === ZONE.WATER && hm[i] < -0.4) {
+          hm[i] = Math.min(-0.4, hm[i] + 0.04);
+          changed = true;
+        }
+      }
+      if (changed) terrainDirtyRef.current = true;
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
 
   const handleReset = () => {
     const excavatorId = selectedProject?.projectId || 'EX-001';
     setState({ ...DEFAULT_STATE, excavatorId });
     heightMapRef.current.fill(0);
+    terrainZoneMapRef.current.fill(ZONE.SOIL);
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
     totalExcavRef.current = 0; totalFillRef.current = 0;
     setTotalExcavDisplay(0); setTotalFillDisplay(0);
     excavLogRef.current = [];
     terrainDirtyRef.current = true;
+    setHasRandomTerrain(false);
     setObjectResetSignal(v => v + 1);
     AxiosCustom.post(`/api/simulation/excavator/reset?excavatorId=${excavatorId}`).catch(() => {});
   };
@@ -1825,7 +2233,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
     const fileName = `Earthwork_${projectName}_${now.toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, fileName);
-  }, [selectedProject, soilType]);
+  }, [selectedProject, soilType, weatherMode]);
 
   const pressKey   = (k) => { keysRef.current.add(k);    setKeysDisplay(new Set(keysRef.current)); };
   const releaseKey = (k) => { keysRef.current.delete(k); setKeysDisplay(new Set(keysRef.current)); };
@@ -1834,7 +2242,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const panelBg    = '#0d1b2a';
   const panelBorder = '1px solid #253347';
   const secColor   = '#8896a4';
-  const accentBlue = '#60a5fa';
+  const accentBlue  = '#60a5fa';
+  const accentGreen = '#4ade80';
+  const accentRed   = '#f87171';
   const syncColor  = syncStatus === 'synced' ? '#4ade80' : syncStatus === 'error' ? '#f87171' : syncStatus === 'syncing' ? '#facc15' : '#8896a4';
 
   const isDigging = kinematics && parseFloat(kinematics.depth) > 0.05;
@@ -1870,6 +2280,15 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         }}>
           Excavator
         </span>
+        {gpsConnected && (
+          <span style={{
+            background: 'rgba(4,47,46,0.9)', border: '1px solid #4ade80',
+            color: accentGreen, borderRadius: '8px', padding: '3px 12px',
+            fontSize: '12px', fontWeight: 700,
+          }}>
+            📡 GPS 실시간 제어 중 — {gpsHz}Hz
+          </span>
+        )}
       </div>
 
     {!isMobile && <div style={{ display: 'flex', width: '100%', flex: 1, minHeight: 0, gap: '10px' }}>
@@ -1974,7 +2393,64 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           <div style={{ color: '#3a4a5a', fontSize: '8px', marginTop: '4px' }}>
             Soil: {soilType} · Lf {(SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL]).lf} / Cf {(SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL]).cf}
           </div>
+          {/* 시방서 조회 버튼 */}
+          <button
+            onClick={fetchExcavSpec}
+            disabled={excavSpecLoading}
+            style={{
+              marginTop: '8px', width: '100%',
+              background: excavSpecLoading ? '#0a1a2a' : '#0a1520',
+              border: `1px solid ${excavSpecLoading ? '#1e3a5f' : '#1e5a3a'}`,
+              borderRadius: '6px', color: excavSpecLoading ? '#3a4a5a' : '#4ade80',
+              padding: '5px', fontSize: '10px', cursor: excavSpecLoading ? 'wait' : 'pointer', fontWeight: 600,
+            }}
+          >
+            {excavSpecLoading ? '⏳ 시방서 조회 중...' : '📋 KCS/KDS 시방서 조회'}
+          </button>
         </div>
+
+        {/* 굴착 시방서 패널 */}
+        {excavSpecOpen && excavSpecData && (
+          <div style={{ background: '#0a1520', border: '1px solid #1e3a5f', borderRadius: '8px', padding: '10px', fontSize: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ color: '#4ade80', fontWeight: 700, fontSize: '11px' }}>📋 굴착 시방서 (KCS/KDS)</span>
+              <button onClick={() => setExcavSpecOpen(false)} style={{ background: 'none', border: 'none', color: '#3a4a5a', cursor: 'pointer', fontSize: '12px', padding: '0 2px' }}>✕</button>
+            </div>
+            {/* 현재 구역 표시 */}
+            {currentExcavZone !== null && (
+              <div style={{
+                background: currentExcavZone === ZONE.ROCK ? 'rgba(60,20,20,0.8)' :
+                            currentExcavZone === ZONE.WATER ? 'rgba(10,30,60,0.8)' : 'rgba(20,30,20,0.8)',
+                border: `1px solid ${currentExcavZone === ZONE.ROCK ? '#ef444455' : currentExcavZone === ZONE.WATER ? '#38bdf855' : '#4ade8055'}`,
+                borderRadius: '5px', padding: '5px 8px', marginBottom: '8px', fontSize: '10px',
+                color: currentExcavZone === ZONE.ROCK ? '#fca5a5' : currentExcavZone === ZONE.WATER ? '#7dd3fc' : '#86efac',
+              }}>
+                현재 구역: {ZONE_SOIL[currentExcavZone] ?? 'Common Earth'} ·
+                저항 {SOIL_TYPES[ZONE_SOIL[currentExcavZone] ?? 'Common Earth']?.digHardness ?? 1.0}×
+              </div>
+            )}
+            {/* LLM 요약 */}
+            {excavSpecData.summary && (
+              <div style={{ background: '#0d1e30', borderRadius: '5px', padding: '7px', marginBottom: '8px', color: '#94a3b8', lineHeight: 1.5 }}>
+                {excavSpecData.summary}
+              </div>
+            )}
+            {/* 시방서 인용 */}
+            {excavSpecData.hasData ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                {excavSpecData.citations?.slice(0, 3).map((c, i) => (
+                  <div key={i} style={{ background: '#111e2e', borderRadius: '5px', padding: '6px 8px', borderLeft: '2px solid #1e5a3a' }}>
+                    <div style={{ color: '#4ade80', fontWeight: 700, marginBottom: '3px', fontSize: '9px' }}>{c.source}</div>
+                    {c.series && <div style={{ color: '#3a5a4a', fontSize: '8px', marginBottom: '3px' }}>{c.series}</div>}
+                    <div style={{ color: '#94a3b8', lineHeight: 1.4, fontSize: '9px' }}>{c.content.slice(0, 200)}{c.content.length > 200 ? '...' : ''}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '8px' }}>관련 시방서 조문을 찾지 못했습니다.</div>
+            )}
+          </div>
+        )}
 
         {/* 위치 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
@@ -2192,6 +2668,45 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </div>
         )}
 
+        {/* 지형 구역 경고 오버레이 (굴착 중에만 표시) */}
+        {currentExcavZone === ZONE.ROCK && (
+          <div style={{
+            position: 'absolute', bottom: '58px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 20, background: 'rgba(60,20,20,0.94)',
+            border: `${alertPulse ? 2 : 1}px solid #ef4444`,
+            borderRadius: '9px', padding: '7px 18px',
+            color: '#fca5a5', fontSize: '12px', fontWeight: 700, pointerEvents: 'none',
+            boxShadow: alertPulse ? '0 0 18px #ef444466' : 'none',
+            transition: 'box-shadow 0.3s, border-width 0.3s',
+          }}>
+            🪨 암반 구역 — 굴착 저항 3.5× 증가 / 장비 진동 주의
+          </div>
+        )}
+        {currentExcavZone === ZONE.WATER && (
+          <div style={{
+            position: 'absolute', bottom: '58px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 20, background: 'rgba(10,30,70,0.94)',
+            border: `${alertPulse ? 2 : 1}px solid #38bdf8`,
+            borderRadius: '9px', padding: '7px 18px',
+            color: '#7dd3fc', fontSize: '12px', fontWeight: 700, pointerEvents: 'none',
+            boxShadow: alertPulse ? '0 0 18px #38bdf866' : 'none',
+            transition: 'box-shadow 0.3s, border-width 0.3s',
+          }}>
+            💧 수중 굴착 — 토적량 70% 감소 / 굴착 후 물이 침수됩니다
+          </div>
+        )}
+        {currentExcavZone === ZONE.GRAVEL && (
+          <div style={{
+            position: 'absolute', bottom: '58px', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 20, background: 'rgba(40,30,10,0.92)',
+            border: `1px solid #f59e0b`,
+            borderRadius: '9px', padding: '7px 18px',
+            color: '#fde68a', fontSize: '12px', fontWeight: 700, pointerEvents: 'none',
+          }}>
+            🪨 자갈 구역 — 굴착 저항 1.2× / 다짐 효율 양호
+          </div>
+        )}
+
         {/* 굴착/덤핑 상태 HUD */}
         {(isDigging || isDumping) && (
           <div style={{
@@ -2272,7 +2787,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             <ExcavatorCollider stateRef={stateRef} machine={MACHINE_CONFIGS[selectedMachineId]} />
 
             {/* 동적 지형 메시 */}
-            <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
+            <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} zoneMapRef={terrainZoneMapRef} />
+            {/* 강물 표면 */}
+            <WaterSurface zoneMapRef={terrainZoneMapRef} visible={hasRandomTerrain} />
             <ConstructionOverlay key={`overlay-${objectResetSignal}`} version={terrainPhysicsVersion} />
             <StonePhysics key={`stones-${objectResetSignal}`} kinematicsRef={kinematicsRef} stateRef={stateRef} onCountChange={setStonesInBucket} version={terrainPhysicsVersion} />
             {/* wobbleRef 전달 → BEPUphysics2 진동 파라미터로 실시간 흔들림 적용 */}
@@ -2462,6 +2979,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px', letterSpacing: '0.04em' }}>🤖 Auto Simulation</div>
           <button
             onClick={() => {
+              if (gpsConnected) return;
               const next = !autoSim;
               setAutoSim(next);
               autoSimRef.current = next;
@@ -2473,7 +2991,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               border: `1px solid ${autoSim ? '#22c55e' : '#253347'}`,
               borderRadius: '8px', padding: '9px 10px',
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              cursor: 'pointer', transition: 'all 0.2s',
+              opacity: gpsConnected ? 0.4 : 1,
+              cursor: gpsConnected ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
             }}
           >
             <span style={{ color: autoSim ? '#4ade80' : secColor, fontWeight: 700, fontSize: '12px' }}>
@@ -2510,14 +3030,83 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           )}
         </div>
 
+        {/* ── GPS 실시간 제어 ── */}
+        <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
+          <div style={{ color: '#a78bfa', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>📡 GPS 실시간 제어</div>
+
+          <div style={{
+            background: gpsConnected ? '#042f2e' : '#111e2e',
+            border: `1px solid ${gpsConnected ? '#4ade8040' : '#253347'}`,
+            borderRadius: '8px', padding: '8px', marginBottom: '6px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: secColor, fontSize: '10px' }}>상태</span>
+              <span style={{ color: gpsConnected ? accentGreen : (gpsError ? accentRed : secColor), fontWeight: 700, fontSize: '11px' }}>
+                {gpsConnected ? '● 연결됨' : '○ 대기 중'}
+              </span>
+            </div>
+            {gpsConnected && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                  <span style={{ color: secColor, fontSize: '10px' }}>수신 주파수</span>
+                  <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
+                  <span style={{ color: secColor, fontSize: '10px' }}>총 패킷</span>
+                  <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
+                </div>
+              </>
+            )}
+            {gpsError && <div style={{ color: accentRed, fontSize: '10px', marginTop: '4px' }}>{gpsError}</div>}
+          </div>
+
+          {!gpsConnected ? (
+            <button
+              onClick={connectGps}
+              style={{ width: '100%', background: '#1a1040', border: '1px solid #7c3aed', borderRadius: '8px', padding: '8px', color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
+            >
+              📡 GPS 연결
+            </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <button
+                onClick={resetGpsOrigin}
+                style={{ width: '100%', background: '#0f2a18', border: '1px solid #22c55e', borderRadius: '8px', padding: '6px', color: accentGreen, fontWeight: 700, fontSize: '11px', cursor: 'pointer' }}
+              >
+                ⌖ 원점 초기화
+              </button>
+              <button
+                onClick={disconnectGps}
+                style={{ width: '100%', background: '#1a0808', border: '1px solid #ef4444', borderRadius: '8px', padding: '6px', color: accentRed, fontWeight: 700, fontSize: '11px', cursor: 'pointer' }}
+              >
+                ✕ 연결 해제
+              </button>
+            </div>
+          )}
+          {gpsConnected && (
+            <div style={{
+              background: '#1a1040', border: '1px solid #7c3aed33',
+              borderRadius: '6px', padding: '7px', marginTop: '6px',
+              fontSize: '10px', color: '#a78bfa', lineHeight: 1.5,
+            }}>
+              ⚠ GPS 연결 중에는 키보드 제어가 비활성화됩니다.
+            </div>
+          )}
+        </div>
+
         {/* 버튼 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '8px', color: '#4ade80', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
             💾 Save State
           </button>
-          <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '8px', color: '#fbbf24', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
-            🗑 Clear Terrain
-          </button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+            <button onClick={handleRandomTerrain} style={{ background: '#0a1a2a', border: '1px solid #1e5a7a', borderRadius: '8px', color: '#38bdf8', padding: '8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>
+              🌍 Random
+            </button>
+            <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '8px', color: '#fbbf24', padding: '8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>
+              🗑 Reset
+            </button>
+          </div>
           <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '8px', color: '#f87171', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
             ↺ Full Reset
           </button>
@@ -2670,7 +3259,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             <ExcavatorCollider stateRef={stateRef} machine={MACHINE_CONFIGS[selectedMachineId]} />
 
             {/* 동적 지형 메시 */}
-            <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} />
+            <TerrainMesh heightMapRef={heightMapRef} dirtyRef={terrainDirtyRef} zoneMapRef={terrainZoneMapRef} />
+            {/* 강물 표면 */}
+            <WaterSurface zoneMapRef={terrainZoneMapRef} visible={hasRandomTerrain} />
             <ConstructionOverlay key={`overlay-${objectResetSignal}`} version={terrainPhysicsVersion} />
             <StonePhysics key={`stones-${objectResetSignal}`} kinematicsRef={kinematicsRef} stateRef={stateRef} onCountChange={setStonesInBucket} version={terrainPhysicsVersion} />
             <ExcavatorModel
@@ -2859,8 +3450,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '10px', color: '#4ade80', padding: '14px', fontSize: '14px', cursor: 'pointer', fontWeight: 600 }}>
             💾 Save State
           </button>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '10px', color: '#fbbf24', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🗑 Clear Terrain</button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+            <button onClick={handleRandomTerrain} style={{ background: '#0a1a2a', border: '1px solid #1e5a7a', borderRadius: '10px', color: '#38bdf8', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🌍 Random</button>
+            <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '10px', color: '#fbbf24', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🗑 Reset</button>
             <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '10px', color: '#f87171', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>↺ Full Reset</button>
           </div>
         </div>
