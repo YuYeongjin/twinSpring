@@ -48,4 +48,16 @@ public interface ChatService {
      * WbsDashboard 의 에이전트 채팅 패널에서 사용.
      */
     Map<String, Object> wbsProjectChat(Map<String, Object> request);
+
+    /**
+     * 구조해석 결과에 기반한 KCS/KDS 시방서 RAG 검색.
+     * StructuralDashboard 의 시방서 패널에서 사용.
+     */
+    Map<String, Object> structuralSpec(Map<String, Object> request);
+
+    /**
+     * 굴착 존·날씨·깊이에 맞는 KCS/KDS 토공 시방서 RAG 검색.
+     * SimulationDashboard 의 시방서 패널에서 사용.
+     */
+    Map<String, Object> excavationSpec(Map<String, Object> request);
 }
