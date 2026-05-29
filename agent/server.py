@@ -28,7 +28,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Per-session state store (pending_action and other Python Agent internal state)
 _session_store: Dict[str, dict] = {}
 
 
@@ -79,10 +78,6 @@ def chat(req: ChatRequest):
 
     messages = history_messages + [HumanMessage(content=req.message)]
 
-    # Load pending_action from session
-    session_data = _session_store.get(req.session_id, {})
-    pending_action = session_data.get("pending_action")
-
     initial_state = {
         "messages":              messages,
         "intent":                None,
@@ -95,7 +90,6 @@ def chat(req: ChatRequest):
         "direct_agent":          req.context.directAgent,
         "bim_data":              None,
         "sensor_data":           None,
-        "pending_action":        pending_action,
     }
 
     try:
@@ -106,11 +100,6 @@ def chat(req: ChatRequest):
             response="An error occurred while processing your request. Please try again.",
             intent="chat",
         )
-
-    # Save pending_action to session (maintain multi-step BIM conversation)
-    _session_store[req.session_id] = {
-        "pending_action": result.get("pending_action")
-    }
 
     result_messages = result.get("messages", [])
     last_content = result_messages[-1].content if result_messages else "No response received."
@@ -147,9 +136,6 @@ def chat_stream(req: ChatRequest):
             history_messages.append(AIMessage(content=msg.content))
     messages = history_messages + [HumanMessage(content=req.message)]
 
-    session_data = _session_store.get(req.session_id, {})
-    pending_action = session_data.get("pending_action")
-
     initial_state = {
         "messages":              messages,
         "intent":                None,
@@ -162,7 +148,6 @@ def chat_stream(req: ChatRequest):
         "direct_agent":          req.context.directAgent,
         "bim_data":              None,
         "sensor_data":           None,
-        "pending_action":        pending_action,
     }
 
     def generate():
@@ -182,14 +167,10 @@ def chat_stream(req: ChatRequest):
                 full_result = graph.invoke(merged)
                 result_messages = full_result.get("messages", [])
                 last_content = result_messages[-1].content if result_messages else ""
-                _session_store[req.session_id] = {"pending_action": full_result.get("pending_action")}
 
                 done_event = {
                     "done":       True,
                     "response":   last_content,
-                    # agent 가 반환한 refined intent 우선 사용
-                    # (bim_query/bim_builder/sensor_agent 등 세부 구분 보존)
-                    # agent 가 intent 를 반환하지 않은 경우 supervisor intent 로 폴백
                     "intent":     full_result.get("intent") or intent,
                     "nextAgent":  next_agent,
                     "bimData":    full_result.get("bim_data"),
@@ -216,7 +197,6 @@ def chat_stream(req: ChatRequest):
                     full_content += chunk.content
                     yield f"data: {json.dumps({'content': chunk.content}, ensure_ascii=False)}\n\n"
 
-            _session_store[req.session_id] = {"pending_action": None}
             done_event = {
                 "done":       True,
                 "response":   full_content,
@@ -262,7 +242,6 @@ def chat_simple(req: ChatRequest):
         "simulation_project_id": None,
         "bim_data":              None,
         "sensor_data":           None,
-        "pending_action":        None,
     }
 
     try:
@@ -498,7 +477,7 @@ def wbs_rag_suggest(req: WbsRagRequest):
 
 @app.delete("/session/{session_id}")
 def clear_session(session_id: str):
-    """Clear session state (pending_action, etc.)."""
+    """Clear session state."""
     _session_store.pop(session_id, None)
     return {"status": "cleared", "session_id": session_id}
 
