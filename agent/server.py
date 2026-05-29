@@ -175,6 +175,7 @@ def chat_stream(req: ChatRequest):
                     "nextAgent":  next_agent,
                     "bimData":    full_result.get("bim_data"),
                     "sensorData": full_result.get("sensor_data"),
+                    "reportData": full_result.get("report_data"),
                 }
                 yield f"data: {json.dumps(done_event, ensure_ascii=False)}\n\n"
                 return

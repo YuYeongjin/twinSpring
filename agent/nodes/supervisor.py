@@ -2,8 +2,6 @@
 Supervisor Node — Multi-Agent 라우터
 
 전략:
-1. 키워드 빠른 매칭 (우선순위 순)
-2. 기본값: chat
 
 라우팅 대상:
   sensor_agent     — 온습도 센서 데이터 조회
@@ -13,6 +11,7 @@ Supervisor Node — Multi-Agent 라우터
   test_agent       — 충돌 테스트 탭 (키보드 조작법, 충돌 로그)
   wbs_agent        — WBS 현장 프로젝트·공정 CRUD, 탭 연결 관리
   rag_agent        — 건설 공정서·시방서 (KCS·KDS) 검색
+  orchestrator     — WBS·BIM·Safe 멀티도메인 통합 보고서 생성
   tab_guide        — 대시보드 탭 일반 안내
   chat             — 일반 대화
 """
@@ -108,17 +107,19 @@ _SAFE_KEYWORDS = re.compile(
     r"|침입\s*(감지|탐지|이벤트|기록)"
     r"|yolo|감지\s*(서버|상태|결과|이벤트)"
     r"|안전\s*(위반|통계|이력|이벤트|현황|감지|모니터|모니터링)"
+    r"|안전\s*프로젝트\s*(목록|리스트|현황|보여|알려|확인|생성|만들)"
     r"|제한\s*구역|감지\s*카메라"
     r"|최근\s*(감지|이벤트|위반)"
     # 영어
     r"|helmet\s*(detect|violation)|safety\s*(violation|event|stats|log)"
     r"|webcam\s*(detect|status)|detection\s*(event|log|history|status)"
     r"|restricted\s*area|detection\s*server"
-    r"|safety\s*monitoring.{0,20}(?:how|guide|use|explain)"
+    r"|safety\s*(project|monitoring).{0,20}(?:how|guide|use|explain|list|show)"
     # 일본어
     r"|ヘルメット\s*(検知|着用|未着用|違反|認識)"
     r"|侵入\s*(検知|検出|イベント|記録)"
     r"|安全\s*(違反|統計|履歴|イベント|状況|監視|モニタリング)"
+    r"|安全プロジェクト\s*(一覧|リスト|確認|状況)"
     r"|制限区域|検知カメラ"
     r"|最近の(検知|イベント|違反)"
     r"|安全監視.{0,20}(方法|説明|使い方|機能)",
@@ -217,6 +218,24 @@ _WBS_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# Orchestrator: WBS·BIM·Safe 멀티도메인 통합 보고서 (한/영)
+_ORCHESTRATOR_KEYWORDS = re.compile(
+    # 한국어
+    r"통합\s*(보고서|분석|현황|문서|리포트)"
+    r"|종합\s*(보고서|분석|현황|문서|리포트)"
+    r"|멀티\s*도메인|전체\s*(현황|보고서|분석|문서)"
+    r"|WBS.{0,5}BIM|BIM.{0,5}안전|WBS.{0,5}안전"
+    r"|현장\s*통합|프로젝트\s*통합\s*(분석|보고|현황)"
+    r"|보고서\s*(만들|생성|작성|출력|뽑아)"
+    r"|(?:월간|주간|분기|연간).{0,5}(?:통합|종합).{0,5}(?:보고|현황|문서)"
+    # 영어
+    r"|integrated\s*(report|analysis|overview)"
+    r"|comprehensive\s*(report|analysis|summary)"
+    r"|multi.?domain|cross.?domain\s*(report|analysis)"
+    r"|generate\s*(report|document)|create\s*(report|document)",
+    re.IGNORECASE,
+)
+
 # Tab 안내: 일반 탭 사용법 (한/영/일)
 _TAB_GUIDE_KEYWORDS = re.compile(
     # 한국어
@@ -283,11 +302,15 @@ def supervisor_node(state: AgentState) -> dict:
     if _RAG_KEYWORDS.search(user_text):
         return {"intent": "rag_agent", "next_agent": "rag_agent"}
 
-    # 8. 일반 탭 안내
+    # 8. Orchestrator (멀티도메인 통합 보고서)
+    if _ORCHESTRATOR_KEYWORDS.search(user_text):
+        return {"intent": "orchestrator", "next_agent": "orchestrator"}
+
+    # 9. 일반 탭 안내
     if _TAB_GUIDE_KEYWORDS.search(user_text):
         return {"intent": "tab_guide", "next_agent": "tab_guide"}
 
-    # ── 9. 기본값: 일반 대화 (LLM 호출 없이 즉시 반환) ──────────────────────
+    # ── 10. 기본값: 일반 대화 (LLM 호출 없이 즉시 반환) ─────────────────────
     # 키워드에 해당하지 않는 모든 메시지는 chat으로 라우팅
     # 기존 LLM 폴백 제거 → supervisor가 항상 ~1ms 이내 완료됨
     return {"intent": "chat", "next_agent": "chat"}
