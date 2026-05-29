@@ -115,6 +115,7 @@ public class ChatServiceImpl implements ChatService {
         String intent = "chat";
         Map<String, Object> bimData = null;
         Map<String, Object> sensorData = null;
+        Map<String, Object> reportData = null;
         try {
             String raw = agentClient.post()
                     .uri("/chat")
@@ -141,6 +142,12 @@ public class ChatServiceImpl implements ChatService {
                 sensorData = objectMapper.convertValue(sensorDataNode, Map.class);
             }
 
+            // reportData 파싱 (orchestrator 노드에서 반환)
+            JsonNode reportDataNode = json.path("reportData");
+            if (!reportDataNode.isMissingNode() && !reportDataNode.isNull()) {
+                reportData = objectMapper.convertValue(reportDataNode, Map.class);
+            }
+
         } catch (Exception e) {
             log.error("Agent 호출 실패: {}", e.getMessage());
             agentResponse = "AI Agent에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
@@ -153,6 +160,7 @@ public class ChatServiceImpl implements ChatService {
         ChatResponseDTO responseDTO = new ChatResponseDTO(agentResponse, intent, sessionId);
         responseDTO.setBimData(bimData);
         responseDTO.setSensorData(sensorData);
+        responseDTO.setReportData(reportData);
         return responseDTO;
     }
 

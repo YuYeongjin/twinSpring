@@ -34,6 +34,7 @@ const STEP_LABELS = {
     simulation_agent:  '시뮬레이션 Agent 처리 중...',
     safe_agent:        '안전 모니터링 Agent 처리 중...',
     test_agent:        '충돌 테스트 Agent 처리 중...',
+    orchestrator:      '통합 보고서 생성 중...',
     tab_guide:         '탭 안내 준비 중...',
     generating:        '답변 생성 중...',
   },
@@ -44,6 +45,7 @@ const STEP_LABELS = {
     simulation_agent:  'Simulation Agent processing...',
     safe_agent:        'Safety Monitoring Agent processing...',
     test_agent:        'Collision Test Agent processing...',
+    orchestrator:      'Generating integrated report...',
     tab_guide:         'Preparing tab guide...',
     generating:        'Generating response...',
   },
@@ -54,6 +56,7 @@ const STEP_LABELS = {
     simulation_agent:  'シミュレーションエージェント処理中...',
     safe_agent:        '安全監視エージェント処理中...',
     test_agent:        '衝突テストエージェント処理中...',
+    orchestrator:      '統合レポート生成中...',
     tab_guide:         'タブガイドを準備中...',
     generating:        '回答を生成中...',
   },
@@ -113,6 +116,9 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   const [bimTotal, setBimTotal]         = useState(0);
   const [bimTargetProject, setBimTargetProject] = useState(null);
   const [bimLoading, setBimLoading]     = useState(false);
+
+  // ── Report data (orchestrator) ──
+  const [reportData, setReportData] = useState(null);
 
   // ── Right panel tab ──
   const [activeTab, setActiveTab] = useState('data');
@@ -334,6 +340,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
               intent: event.intent,
               bimData: event.bimData || null,
               sensorData: event.sensorData || null,
+              reportData: event.reportData || null,
               _streaming: false,
             }));
             speak(event.response || '');
@@ -358,6 +365,11 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
                 );
                 setBimTargetProject(proj || { projectId: event.bimData.targetProjectId });
               }
+            }
+            // 통합 보고서 — orchestrator
+            if (event.intent === 'orchestrator' && event.reportData) {
+              setReportData(event.reportData);
+              setActiveTab('report');
             }
           } else if (event.content) {
             // 토큰 청크: 버블에 실시간 추가
@@ -581,6 +593,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             {[
               { id: 'data',   label: t('dataTab') },
               { id: 'bim',    label: t('bimTab')  },
+              { id: 'report', label: t('reportTab') || '보고서' },
               { id: 'caps',   label: t('capsTab')  },
               { id: 'export', label: t('exportTab') },
             ].map(tab => (
@@ -623,6 +636,9 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
                 onSelectProject={(proj) => { setBimTargetProject(proj); fetchBimStats(proj.projectId); }}
                 onOpenProject={() => { if (onBimUpdate) onBimUpdate(); }}
               />
+            )}
+            {activeTab === 'report' && (
+              <ReportPanel reportData={reportData} />
             )}
             {activeTab === 'caps' && <CapsPanel />}
             {activeTab === 'export' && (
@@ -1020,6 +1036,7 @@ function AgentMessageBubble({ msg }) {
     simulation_agent: { label: t('intentSimulation'),      color: 'text-indigo-400 bg-indigo-900/40 border-indigo-800/50'  },
     safe_agent:       { label: t('intentSafety'),          color: 'text-red-400 bg-red-900/40 border-red-800/50'           },
     test_agent:       { label: t('intentCollisionTest'),   color: 'text-orange-400 bg-orange-900/40 border-orange-800/50'  },
+    orchestrator:     { label: t('intentReport') || '통합 보고서', color: 'text-teal-400 bg-teal-900/40 border-teal-800/50' },
     chat: null,
   };
   const isUser = msg.role === 'user';
@@ -1225,6 +1242,150 @@ function AgentTypingIndicator() {
       </div>
     </div>
   );
+}
+
+// ────────────────────────────────────────────────────
+// Report panel (orchestrator output)
+// ────────────────────────────────────────────────────
+function ReportPanel({ reportData }) {
+  if (!reportData) {
+    return (
+      <div className="p-4 flex flex-col items-center justify-center text-center gap-3 py-12">
+        <span className="text-4xl opacity-30">📄</span>
+        <p className="text-xs text-gray-500">통합 보고서가 없습니다.</p>
+        <p className="text-xs text-gray-600 opacity-60">
+          "통합 보고서 만들어줘" 또는 "전체 현황 분석해줘" 라고 입력하세요.
+        </p>
+      </div>
+    );
+  }
+
+  const handleDownload = () => {
+    const content = `# ${reportData.title}\n생성일시: ${reportData.generatedAt}\n\n${reportData.content}`;
+    downloadBlob(new Blob([content], { type: 'text/markdown;charset=utf-8' }), `report-${reportData.generatedAt?.slice(0, 10) || today()}.md`);
+  };
+
+  return (
+    <div className="p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-teal-400">{reportData.title}</p>
+          <p className="text-xs text-gray-500 mt-0.5">생성: {reportData.generatedAt}</p>
+        </div>
+        <button
+          onClick={handleDownload}
+          className="text-xs px-3 py-1.5 rounded-lg bg-teal-800/40 text-teal-300 border border-teal-700/50 hover:bg-teal-700/50 transition-colors shrink-0"
+        >
+          ↓ MD
+        </button>
+      </div>
+      <div className="bg-[#162032] rounded-xl border border-[#253347] p-3 overflow-y-auto max-h-[calc(100vh-340px)]">
+        <SimpleMarkdown content={reportData.content} />
+      </div>
+    </div>
+  );
+}
+
+// Lightweight Markdown renderer (no external deps)
+// Handles: headings, tables, blockquotes, bullet lists, bold/italic, horizontal rules
+function SimpleMarkdown({ content }) {
+  if (!content) return null;
+
+  const lines = content.split('\n');
+  const elements = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Heading
+    const h3 = line.match(/^###\s+(.*)/);
+    const h2 = line.match(/^##\s+(.*)/);
+    const h1 = line.match(/^#\s+(.*)/);
+    if (h1) { elements.push(<h1 key={i} className="text-sm font-bold text-gray-100 mt-3 mb-1">{inlineMarkdown(h1[1])}</h1>); i++; continue; }
+    if (h2) { elements.push(<h2 key={i} className="text-xs font-bold text-teal-300 mt-3 mb-1 border-b border-[#253347] pb-1">{inlineMarkdown(h2[1])}</h2>); i++; continue; }
+    if (h3) { elements.push(<h3 key={i} className="text-xs font-semibold text-gray-200 mt-2 mb-0.5">{inlineMarkdown(h3[1])}</h3>); i++; continue; }
+
+    // Blockquote
+    if (line.startsWith('> ')) {
+      elements.push(<p key={i} className="text-xs text-gray-400 italic border-l-2 border-teal-600 pl-2 my-1">{inlineMarkdown(line.slice(2))}</p>);
+      i++; continue;
+    }
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      elements.push(<hr key={i} className="border-[#253347] my-2" />);
+      i++; continue;
+    }
+
+    // Table: collect all consecutive table lines
+    if (line.startsWith('|')) {
+      const tableLines = [];
+      while (i < lines.length && lines[i].startsWith('|')) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      // separator row is "|---|---|"
+      const rows = tableLines.filter(l => !/^\|[-| :]+\|$/.test(l.trim()));
+      elements.push(
+        <div key={i} className="overflow-x-auto my-2">
+          <table className="w-full text-xs border-collapse">
+            <tbody>
+              {rows.map((row, ri) => {
+                const cells = row.split('|').filter((_, ci) => ci > 0 && ci < row.split('|').length - 1);
+                const isHeader = ri === 0;
+                return (
+                  <tr key={ri} className={isHeader ? 'bg-[#1e3a4a]' : ri % 2 === 0 ? 'bg-[#0d1b2a]' : 'bg-[#162032]'}>
+                    {cells.map((cell, ci) => isHeader ? (
+                      <th key={ci} className="px-2 py-1 text-left text-teal-300 font-semibold border border-[#253347] whitespace-nowrap">{inlineMarkdown(cell.trim())}</th>
+                    ) : (
+                      <td key={ci} className="px-2 py-1 text-gray-300 border border-[#253347]">{inlineMarkdown(cell.trim())}</td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
+    // Bullet list item
+    const bullet = line.match(/^[-*]\s+(.*)/);
+    if (bullet) {
+      elements.push(
+        <div key={i} className="flex gap-1.5 text-xs text-gray-300 my-0.5">
+          <span className="text-teal-400 shrink-0 mt-0.5">•</span>
+          <span>{inlineMarkdown(bullet[1])}</span>
+        </div>
+      );
+      i++; continue;
+    }
+
+    // Empty line
+    if (line.trim() === '') { elements.push(<div key={i} className="h-1" />); i++; continue; }
+
+    // Regular paragraph
+    elements.push(<p key={i} className="text-xs text-gray-300 leading-relaxed">{inlineMarkdown(line)}</p>);
+    i++;
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
+}
+
+function inlineMarkdown(text) {
+  // bold **text** or __text__
+  const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__)/);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('__') && part.endsWith('__')) {
+      return <strong key={i} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
 }
 
 // ────────────────────────────────────────────────────

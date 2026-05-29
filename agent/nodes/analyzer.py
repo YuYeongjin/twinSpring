@@ -4,7 +4,7 @@ Node 1: Prompt analysis + routing classification
 Strategy:
 1. If pending_action exists, route immediately to bim_builder (multi-step BIM conversation in progress)
 2. Fast keyword matching
-3. Final judgment via gemma3:12b LLM
+3. Final judgment LLM
 """
 
 import re

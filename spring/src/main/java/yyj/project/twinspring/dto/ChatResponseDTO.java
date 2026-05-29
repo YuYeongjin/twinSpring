@@ -8,10 +8,11 @@ import java.util.Map;
 public class ChatResponseDTO {
 
     private String response;
-    private String intent;      // "rag_db" | "bim_builder" | "bim_query" | "chat"
+    private String intent;      // "rag_db" | "bim_builder" | "bim_query" | "chat" | "orchestrator"
     private String sessionId;
     private Map<String, Object> bimData;    // bim_query 구조화 데이터
     private Map<String, Object> sensorData; // rag_db 구조화 데이터 (센서·에너지)
+    private Map<String, Object> reportData; // orchestrator 통합 보고서 데이터
 
     public ChatResponseDTO() {}
 
@@ -35,4 +36,7 @@ public class ChatResponseDTO {
 
     public Map<String, Object> getSensorData() { return sensorData; }
     public void setSensorData(Map<String, Object> sensorData) { this.sensorData = sensorData; }
+
+    public Map<String, Object> getReportData() { return reportData; }
+    public void setReportData(Map<String, Object> reportData) { this.reportData = reportData; }
 }

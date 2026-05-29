@@ -1,8 +1,8 @@
 """
-Node: BIM Builder node (Ollama - gemma3:12b)
+Node: BIM Builder node
 
 Supports multi-step conversation:
-1. Parse BIM action with LLM (leveraging gemma3:12b's strong understanding)
+1. Parse BIM action with LLM (leveraging qwen2.5:3b's strong understanding)
 2. Ask user for missing information (store in pending_action)
 3. Call Spring BIM API once all information is gathered
 
