@@ -28,7 +28,7 @@ _SYSTEM = SystemMessage(content=(
     "\n- get_safe_tab_guide: explain how to use the Safe tab (camera, detection, 3D visualization)."
     "\n\nAlways check server status first before reporting detection results."
     "\nHighlight danger events clearly with appropriate emojis (⚠️ for danger, ✅ for safe)."
-    "\nAlways respond in Korean."
+    "\nMatch the language of the user's input."
 ))
 
 # ReAct 에이전트

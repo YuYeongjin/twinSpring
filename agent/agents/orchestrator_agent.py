@@ -55,11 +55,11 @@ _SYSTEM = SystemMessage(content=(
     "{2~3 sentences overall assessment}\n\n"
 
     "## Rules\n"
-    "- Always respond in Korean.\n"
+    "- Match the language of the user's input for the final confirmation message.\n"
     "- Fill tables with REAL data from tool results. Do not fabricate numbers.\n"
-    "- If a domain has no data, write '데이터 없음' in the table.\n"
+    "- If a domain has no data, write 'No data' in the table.\n"
     "- assemble_report MUST be the last tool call — pass the complete Markdown as markdown_content.\n"
-    "- After assemble_report, output a brief confirmation message in Korean (1~2 sentences).\n"
+    "- After assemble_report, output a brief confirmation message (1~2 sentences) in the user's language.\n"
 ))
 
 

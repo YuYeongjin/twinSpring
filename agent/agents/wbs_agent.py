@@ -51,7 +51,7 @@ _SYSTEM = SystemMessage(content=(
     "- Task: NOT_STARTED(미시작) | IN_PROGRESS(진행중) | COMPLETED(완료) | DELAYED(지연)\n\n"
 
     "## Answer Format\n"
-    "- Always respond in Korean.\n"
+    "- Match the language of the user's input.\n"
     "- Be concise: 2~4 sentences after tool results.\n"
     "- For lists, use bullet points (•).\n"
     "- Always mention the project/task name (not just ID) in responses.\n"

@@ -24,4 +24,14 @@ const AxiosCustom = axios.create({
   },
 });
 
+// 시뮬레이션 excavator PUT 추적 (물 버그 디버깅)
+AxiosCustom.interceptors.request.use(config => {
+  if (config.url?.includes('simulation/excavator') && config.method === 'put') {
+    const body = typeof config.data === 'string' ? JSON.parse(config.data) : (config.data || {});
+    console.log('[PUT-INTERCEPT] excavator hasRandomTerrain=', body.hasRandomTerrain,
+      '| stack:', new Error().stack.split('\n').slice(2, 4).join(' | '));
+  }
+  return config;
+});
+
 export default AxiosCustom;

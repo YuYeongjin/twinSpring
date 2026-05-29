@@ -34,15 +34,16 @@ _SYSTEM = SystemMessage(content=(
     "  or when you need to understand what topics are covered.\n"
     "\n"
     "## Answer Format\n"
-    "1. **핵심 답변**: 질문에 직접 답하는 1~3문장 요약\n"
-    "2. **관련 규정**: 검색된 문서에서 인용한 핵심 조항 (직접 인용 시 따옴표 사용)\n"
-    "3. **출처**: 각 인용의 규격코드와 문서명 명시\n"
+    "1. **Summary**: 1~3 sentence direct answer to the question\n"
+    "2. **Relevant Provisions**: Key clauses cited from search results (use quotes for direct citations)\n"
+    "3. **Source**: Cite the standard code and document name for each reference\n"
     "\n"
     "## Rules\n"
-    "- 검색 결과가 없으면 솔직하게 '해당 내용을 찾지 못했습니다'라고 밝히세요.\n"
-    "- 검색 결과 밖의 내용을 추측하거나 창작하지 마세요.\n"
-    "- 출처는 반드시 검색 결과의 메타데이터(code, series)를 기반으로 명시하세요.\n"
-    "- 수치(온도, 강도, 두께 등)는 검색 결과에서 직접 인용하세요.\n"
+    "- Match the language of the user's input (Korean/English/Japanese).\n"
+    "- If no results found, clearly state that the content was not found.\n"
+    "- Do not speculate or fabricate content beyond search results.\n"
+    "- Source must be based on metadata (code, series) from search results.\n"
+    "- Numeric values (temperature, strength, thickness, etc.) must be cited directly from search results.\n"
 ))
 
 

@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { useT } from '../../i18n/LanguageContext';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import * as XLSX from 'xlsx';
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -582,6 +583,7 @@ function RainParticles({ weatherKey }) {
 
 // ── 날씨 안전 모달 ─────────────────────────────────────────────────────────────
 function WeatherSafetyModal({ weatherKey, onClose }) {
+  const t    = useT('simDashboard');
   const wm   = WEATHER_MODES[weatherKey];
   const sp   = SAFETY_PARAMS;
   const ru   = wm.ruSlope;
@@ -619,10 +621,10 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
           <div>
             <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '16px' }}>
-              {wm.icon} Weather Safety Analysis
+              {wm.icon} {t('weatherSafetyTitle')}
             </div>
             <div style={{ color: '#8896a4', fontSize: '11px', marginTop: '2px' }}>
-              Condition: <span style={{ color: '#f5a623' }}>{wm.label}</span>
+              {t('weatherCondition')} <span style={{ color: '#f5a623' }}>{wm.label}</span>
               {' · '}Pore Pressure Ratio ru = {ru}
             </div>
           </div>
@@ -630,13 +632,13 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
         </div>
 
         {/* ① 비탈면 안정 */}
-        <Section title="① Slope Stability  (Infinite Slope Method)" color="#60a5fa">
+        <Section title={t('weatherSlopeTitle')} color="#60a5fa">
           <Formula
             latex="FS = [ c + (γ·h·cos²β − u) · tan φ ] / (γ·h·sin β·cos β)"
             desc="Infinite slope stability formula — pore pressure u = rᵤ · γ · h increases with rainfall"
           />
           <div style={{ background: '#060e18', borderRadius: '6px', padding: '8px 12px', marginBottom: '8px', fontSize: '11px' }}>
-            <div style={{ color: '#4a6a7a', marginBottom: '4px' }}>Input Parameters</div>
+            <div style={{ color: '#4a6a7a', marginBottom: '4px' }}>{t('weatherInputParams')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px' }}>
               {[
                 [`Slope angle β`, `${sp.beta}°`],
@@ -660,7 +662,7 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
             </div>
             <div style={{ flex: 2 }}>
               <div style={{ fontSize: '11px', color: levelColor(slopeLevel), fontWeight: 700, marginBottom: '3px' }}>
-                {slopeLevel === 'SAFE' ? '✓ Stable (FS ≥ 1.5)' : slopeLevel === 'CAUTION' ? '⚠ Marginal (1.0 ≤ FS < 1.5)' : '✗ Unstable (FS < 1.0)'}
+                {slopeLevel === 'SAFE' ? t('weatherStable') : slopeLevel === 'CAUTION' ? t('weatherMarginal') : t('weatherUnstable')}
               </div>
               <div style={{ fontSize: '10px', color: '#4a6a7a', lineHeight: 1.5 }}>
                 {weatherKey === 'clear'
@@ -674,13 +676,13 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
         </Section>
 
         {/* ② 지지력 */}
-        <Section title="② Ground Bearing Capacity  (Terzaghi)" color="#34d399">
+        <Section title={t('weatherBearingTitle')} color="#34d399">
           <Formula
             latex="qᵤ = c·Nᶜ + γ·D·Nq + 0.5·γ·B·Nᵧ   (strip footing)"
             desc="Saturated soil: effective unit weight γ' reduced → Nq, Nγ terms multiplied by saturation coefficient"
           />
           <div style={{ background: '#060e18', borderRadius: '6px', padding: '8px 12px', marginBottom: '8px', fontSize: '11px' }}>
-            <div style={{ color: '#4a6a7a', marginBottom: '4px' }}>Parameters  (φ = {sp.phi}°)</div>
+            <div style={{ color: '#4a6a7a', marginBottom: '4px' }}>{t('weatherInputParams')}  (φ = {sp.phi}°)</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px' }}>
               {[
                 ['Nᶜ', sp.Nc], ['Nq', sp.Nq], ['Nᵧ', sp.Ngamma],
@@ -716,7 +718,7 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
         </Section>
 
         {/* ③ 토공량 보정 */}
-        <Section title="③ Earthwork Volume Correction" color="#f5a623">
+        <Section title={t('weatherEarthworkTitle')} color="#f5a623">
           <Formula
             latex="Lf_wet = Lf_dry + ΔLf   |   Cf_wet = Cf_dry − ΔCf"
             desc="Wet soil swells more (↑ Lf) and is harder to compact properly (↓ Cf)"
@@ -741,7 +743,7 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
         {/* ④ 작업 중지 권고 */}
         {weatherKey === 'heavy-rain' && (
           <div style={{ background: '#2a0a0a', border: '1px solid #ef4444', borderRadius: '10px', padding: '14px' }}>
-            <div style={{ color: '#f87171', fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>⚠ Work Suspension Recommended</div>
+            <div style={{ color: '#f87171', fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>{t('weatherSuspendTitle')}</div>
             <div style={{ fontSize: '10px', color: '#fca5a5', lineHeight: 1.7 }}>
               Heavy rain conditions meet suspension criteria per KOSHA safety guidelines:<br/>
               • Slope FS = {FS_slope.toFixed(2)} &lt; 1.0 → Imminent slide risk<br/>
@@ -753,7 +755,7 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
         )}
         {weatherKey === 'light-rain' && (
           <div style={{ background: '#1a1200', border: '1px solid #f59e0b', borderRadius: '10px', padding: '14px' }}>
-            <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>⚠ Proceed with Caution</div>
+            <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>{t('weatherCautionTitle')}</div>
             <div style={{ fontSize: '10px', color: '#fde68a', lineHeight: 1.7 }}>
               • Monitor slope for signs of tension cracks or seepage<br/>
               • Check equipment footing — avoid soft saturated areas<br/>
@@ -766,7 +768,7 @@ function WeatherSafetyModal({ weatherKey, onClose }) {
           onClick={onClose}
           style={{ width: '100%', marginTop: '4px', background: '#162032', border: '1px solid #253347', borderRadius: '8px', color: '#8896a4', padding: '12px', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }}
         >
-          Close
+          {t('weatherClose')}
         </button>
       </div>
     </div>
@@ -1431,11 +1433,22 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   const animRef    = useRef(null);
   const stateRef   = useRef(state);
 
+  const t = useT('simDashboard');
+
+  // mount/unmount 디버그
+  useEffect(() => {
+    console.log('[MOUNT] SimulationDashboard mounted. selectedProject:', selectedProject?.projectId);
+    return () => { console.log('[UNMOUNT] SimulationDashboard unmounted'); };
+  }, []);
+
   // 지형 시스템
   const heightMapRef    = useRef(new Float32Array(GRID_COLS * GRID_ROWS).fill(0));
   const terrainZoneMapRef = useRef(new Uint8Array(GRID_COLS * GRID_ROWS).fill(ZONE.SOIL));
   const terrainDirtyRef = useRef(false);
   const [hasRandomTerrain, setHasRandomTerrain] = useState(false);
+  // setInterval 클로저에서 stale closure 방지 — 항상 최신 hasRandomTerrain 값을 참조
+  const hasRandomTerrainRef = useRef(false);
+  useEffect(() => { hasRandomTerrainRef.current = hasRandomTerrain; }, [hasRandomTerrain]);
 
   // BEPUphysics2 / rapier 물리 시스템
   // wobbleRef: ExcavatorModel이 직접 읽어 진동 애니메이션에 적용
@@ -1624,17 +1637,20 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     const excavatorId = selectedProject?.projectId || 'EX-001';
     // 프로젝트 전환 시 지형·버킷 초기화
     heightMapRef.current.fill(0);
+    terrainZoneMapRef.current.fill(ZONE.SOIL);   // zoneMap 초기화 (이전 water zone 오염 방지)
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
     totalExcavRef.current = 0; totalFillRef.current = 0;
     setTotalExcavDisplay(0); setTotalFillDisplay(0);
     excavLogRef.current = [];
     terrainDirtyRef.current = true;
+    setHasRandomTerrain(false);                  // WaterSurface useMemo 강제 재실행을 위해 리셋
     setState({ ...DEFAULT_STATE, excavatorId });
 
     AxiosCustom.get(`/api/simulation/excavator?excavatorId=${excavatorId}`)
       .then(res => {
         if (!res.data) return;
+        console.log('[LOAD-FETCH] hasRandomTerrain=', res.data.hasRandomTerrain, 'excavatorId=', excavatorId);
         setState(prev => ({ ...prev, ...res.data }));
         if (res.data.heightMapData) {
           deserializeTerrain(res.data.heightMapData, heightMapRef.current);
@@ -1642,9 +1658,10 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         }
         if (res.data.zoneMapData) {
           deserializeZoneMap(res.data.zoneMapData, terrainZoneMapRef.current);
+          terrainDirtyRef.current = true;        // zoneMap 변경 → 지형 색상 즉시 반영
         }
         if (res.data.hasRandomTerrain != null) {
-          setHasRandomTerrain(res.data.hasRandomTerrain);
+          setHasRandomTerrain(res.data.hasRandomTerrain); // false→true 변화 → WaterSurface useMemo 재실행
         }
         if (res.data.soilInBucket != null) {
           soilInBucketRef.current = res.data.soilInBucket;
@@ -1771,15 +1788,69 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         soilInBucket: soilInBucketRef.current,
         heightMapData: serializeTerrain(heightMapRef.current),
         zoneMapData: serializeZoneMap(terrainZoneMapRef.current),
-        hasRandomTerrain,
+        hasRandomTerrain: hasRandomTerrainRef.current,   // ref로 읽어 stale closure 방지
         selectedMachineId: selectedMachineIdRef.current,
       };
+      console.log('[AUTO-SYNC] hasRandomTerrainRef.current=', hasRandomTerrainRef.current);
       AxiosCustom.put('/api/simulation/excavator', payload)
         .then(() => setSyncStatus('synced'))
         .catch(() => setSyncStatus('error'));
     }, 10000);
     return () => clearInterval(id);
   }, [selectedProject?.projectId]);
+
+  // ── AI 에이전트 명령 polling (2초) ──────────────────────────────────────────
+  // 에이전트는 항상 EX-001을 제어하므로 EX-001 기준으로 polling.
+  // agentBaseRef: 마운트 시점의 EX-001 기준값 — 이후 변화만 프론트에 반영.
+  const agentBaseRef = useRef(null);
+
+  useEffect(() => {
+    // 초기 EX-001 기준값 캡처 (프로젝트 로드 시 기존 EX-001 값으로 오버라이드 방지)
+    AxiosCustom.get('/api/simulation/excavator?excavatorId=EX-001')
+      .then(res => { if (res.data) agentBaseRef.current = res.data; })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      AxiosCustom.get('/api/simulation/excavator?excavatorId=EX-001')
+        .then(res => {
+          if (!res.data || !agentBaseRef.current) return;
+          const s    = res.data;
+          const base = agentBaseRef.current;
+          const TOL  = 0.5;
+
+          // EX-001이 기준값에서 변했는지 확인 (에이전트가 업데이트한 경우)
+          const agentChanged =
+            Math.abs(s.boomAngle   - base.boomAngle)   > TOL ||
+            Math.abs(s.armAngle    - base.armAngle)    > TOL ||
+            Math.abs(s.bucketAngle - base.bucketAngle) > TOL ||
+            Math.abs(s.swingAngle  - base.swingAngle)  > TOL ||
+            Math.abs(s.positionX   - base.positionX)   > TOL ||
+            Math.abs(s.positionZ   - base.positionZ)   > TOL ||
+            s.operationMode !== base.operationMode;
+
+          if (!agentChanged) return;
+
+          // 기준값 갱신 + 프론트 state 반영
+          agentBaseRef.current = s;
+          setState(prev => ({
+            ...prev,
+            boomAngle:     s.boomAngle,
+            armAngle:      s.armAngle,
+            bucketAngle:   s.bucketAngle,
+            swingAngle:    s.swingAngle,
+            bodyRotation:  s.bodyRotation  ?? prev.bodyRotation,
+            positionX:     s.positionX,
+            positionY:     s.positionY     ?? prev.positionY,
+            positionZ:     s.positionZ,
+            operationMode: s.operationMode,
+          }));
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(id);
+  }, []); // selectedProject에 의존하지 않음 — 에이전트는 항상 EX-001 제어
 
   // ── 순기구학 계산 (장비 사양 반영, 차체+선회 합산) ──
   const calcKinematics = useCallback((s, machine) => {
@@ -1951,7 +2022,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       setExcavSpecData(res.data);
       setExcavSpecOpen(true);
     } catch {
-      setExcavSpecData({ citations: [], summary: '시방서 조회 중 오류가 발생했습니다.', hasData: false });
+      setExcavSpecData({ citations: [], summary: t('specError'), hasData: false });
       setExcavSpecOpen(true);
     } finally {
       setExcavSpecLoading(false);
@@ -2041,7 +2112,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         clearInterval(gpsHzTimerRef.current); setGpsHz(0);
       },
       onStompError: (frame) => {
-        setGpsError('연결 실패: ' + (frame.headers?.message || ''));
+        setGpsError(t('gpsConnFailed') + (frame.headers?.message || ''));
         setGpsConnected(false); gpsActiveRef.current = false;
       },
     });
@@ -2116,6 +2187,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       hasRandomTerrain,
       selectedMachineId,
     };
+    console.log('[SAVE] hasRandomTerrain=', hasRandomTerrain, 'payload.hasRandomTerrain=', payload.hasRandomTerrain);
     AxiosCustom.put('/api/simulation/excavator', payload)
       .then(() => setSyncStatus('synced'))
       .catch(() => {
@@ -2310,7 +2382,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             color: accentGreen, borderRadius: '8px', padding: '3px 12px',
             fontSize: '12px', fontWeight: 700,
           }}>
-            📡 GPS 실시간 제어 중 — {gpsHz}Hz
+            {t('gpsBadge', { hz: gpsHz })}
           </span>
         )}
       </div>
@@ -2429,7 +2501,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               padding: '5px', fontSize: '10px', cursor: excavSpecLoading ? 'wait' : 'pointer', fontWeight: 600,
             }}
           >
-            {excavSpecLoading ? '⏳ 시방서 조회 중...' : '📋 KCS/KDS 시방서 조회'}
+            {excavSpecLoading ? t('specLoading') : t('specBtn')}
           </button>
         </div>
 
@@ -2437,7 +2509,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {excavSpecOpen && excavSpecData && (
           <div style={{ background: '#0a1520', border: '1px solid #1e3a5f', borderRadius: '8px', padding: '10px', fontSize: '10px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <span style={{ color: '#4ade80', fontWeight: 700, fontSize: '11px' }}>📋 굴착 시방서 (KCS/KDS)</span>
+              <span style={{ color: '#4ade80', fontWeight: 700, fontSize: '11px' }}>{t('specTitle')}</span>
               <button onClick={() => setExcavSpecOpen(false)} style={{ background: 'none', border: 'none', color: '#3a4a5a', cursor: 'pointer', fontSize: '12px', padding: '0 2px' }}>✕</button>
             </div>
             {/* 현재 구역 표시 */}
@@ -2449,8 +2521,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
                 borderRadius: '5px', padding: '5px 8px', marginBottom: '8px', fontSize: '10px',
                 color: currentExcavZone === ZONE.ROCK ? '#fca5a5' : currentExcavZone === ZONE.WATER ? '#7dd3fc' : '#86efac',
               }}>
-                현재 구역: {ZONE_SOIL[currentExcavZone] ?? 'Common Earth'} ·
-                저항 {SOIL_TYPES[ZONE_SOIL[currentExcavZone] ?? 'Common Earth']?.digHardness ?? 1.0}×
+                {t('specZone')} {ZONE_SOIL[currentExcavZone] ?? 'Common Earth'} ·
+                {t('specResistance')} {SOIL_TYPES[ZONE_SOIL[currentExcavZone] ?? 'Common Earth']?.digHardness ?? 1.0}×
               </div>
             )}
             {/* LLM 요약 */}
@@ -2703,7 +2775,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             boxShadow: alertPulse ? '0 0 18px #ef444466' : 'none',
             transition: 'box-shadow 0.3s, border-width 0.3s',
           }}>
-            🪨 암반 구역 — 굴착 저항 3.5× 증가 / 장비 진동 주의
+            {t('zoneRock')}
           </div>
         )}
         {currentExcavZone === ZONE.WATER && (
@@ -2716,7 +2788,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             boxShadow: alertPulse ? '0 0 18px #38bdf866' : 'none',
             transition: 'box-shadow 0.3s, border-width 0.3s',
           }}>
-            💧 수중 굴착 — 토적량 70% 감소 / 굴착 후 물이 침수됩니다
+            {t('zoneWater')}
           </div>
         )}
         {currentExcavZone === ZONE.GRAVEL && (
@@ -2727,7 +2799,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             borderRadius: '9px', padding: '7px 18px',
             color: '#fde68a', fontSize: '12px', fontWeight: 700, pointerEvents: 'none',
           }}>
-            🪨 자갈 구역 — 굴착 저항 1.2× / 다짐 효율 양호
+            {t('zoneGravel')}
           </div>
         )}
 
@@ -3056,7 +3128,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
         {/* ── GPS 실시간 제어 ── */}
         <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
-          <div style={{ color: '#a78bfa', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>📡 GPS 실시간 제어</div>
+          <div style={{ color: '#a78bfa', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>{t('gpsTitle')}</div>
 
           <div style={{
             background: gpsConnected ? '#042f2e' : '#111e2e',
@@ -3064,19 +3136,19 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             borderRadius: '8px', padding: '8px', marginBottom: '6px',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: secColor, fontSize: '10px' }}>상태</span>
+              <span style={{ color: secColor, fontSize: '10px' }}>{t('gpsStatus')}</span>
               <span style={{ color: gpsConnected ? accentGreen : (gpsError ? accentRed : secColor), fontWeight: 700, fontSize: '11px' }}>
-                {gpsConnected ? '● 연결됨' : '○ 대기 중'}
+                {gpsConnected ? t('gpsConnected') : t('gpsStandby')}
               </span>
             </div>
             {gpsConnected && (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                  <span style={{ color: secColor, fontSize: '10px' }}>수신 주파수</span>
+                  <span style={{ color: secColor, fontSize: '10px' }}>{t('gpsFreq')}</span>
                   <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                  <span style={{ color: secColor, fontSize: '10px' }}>총 패킷</span>
+                  <span style={{ color: secColor, fontSize: '10px' }}>{t('gpsPackets')}</span>
                   <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
                 </div>
               </>
@@ -3089,7 +3161,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               onClick={connectGps}
               style={{ width: '100%', background: '#1a1040', border: '1px solid #7c3aed', borderRadius: '8px', padding: '8px', color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer' }}
             >
-              📡 GPS 연결
+              {t('gpsConnect')}
             </button>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -3097,13 +3169,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
                 onClick={resetGpsOrigin}
                 style={{ width: '100%', background: '#0f2a18', border: '1px solid #22c55e', borderRadius: '8px', padding: '6px', color: accentGreen, fontWeight: 700, fontSize: '11px', cursor: 'pointer' }}
               >
-                ⌖ 원점 초기화
+                {t('gpsResetOrigin')}
               </button>
               <button
                 onClick={disconnectGps}
                 style={{ width: '100%', background: '#1a0808', border: '1px solid #ef4444', borderRadius: '8px', padding: '6px', color: accentRed, fontWeight: 700, fontSize: '11px', cursor: 'pointer' }}
               >
-                ✕ 연결 해제
+                {t('gpsDisconnect')}
               </button>
             </div>
           )}
@@ -3113,7 +3185,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               borderRadius: '6px', padding: '7px', marginTop: '6px',
               fontSize: '10px', color: '#a78bfa', lineHeight: 1.5,
             }}>
-              ⚠ GPS 연결 중에는 키보드 제어가 비활성화됩니다.
+              {t('gpsWarning')}
             </div>
           )}
         </div>
@@ -3139,23 +3211,23 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 이상 감지 임계값 설정 */}
         <div>
           <div style={{ color: secColor, fontSize: '10px', marginBottom: '8px', letterSpacing: '0.04em' }}>
-            🚨 Alert Thresholds
+            {t('alertTitle')}
             {activeAlerts.length > 0 && (
               <span style={{ marginLeft: '6px', color: activeAlerts.some(a => a.level === 'danger') ? '#f87171' : '#fbbf24', fontWeight: 700 }}>
-                ({activeAlerts.length} exceeded)
+                {t('alertExceeded', { n: activeAlerts.length })}
               </span>
             )}
           </div>
 
           {/* 온도 */}
           <div style={{ marginBottom: '10px' }}>
-            <div style={{ color: '#fb923c', fontSize: '10px', marginBottom: '5px' }}>🌡 Temperature Range (°C)</div>
+            <div style={{ color: '#fb923c', fontSize: '10px', marginBottom: '5px' }}>{t('tempRange')}</div>
             <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>Min</span>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>{t('alertMin')}</span>
               <input type="number" value={thresholds.tempMin}
                 onChange={e => setThresholds(prev => ({ ...prev, tempMin: parseFloat(e.target.value) || 0 }))}
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
-              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>Max</span>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>{t('alertMax')}</span>
               <input type="number" value={thresholds.tempMax}
                 onChange={e => setThresholds(prev => ({ ...prev, tempMax: parseFloat(e.target.value) || 0 }))}
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
@@ -3168,13 +3240,13 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
           {/* 습도 */}
           <div>
-            <div style={{ color: accentBlue, fontSize: '10px', marginBottom: '5px' }}>💧 Humidity Range (%)</div>
+            <div style={{ color: accentBlue, fontSize: '10px', marginBottom: '5px' }}>{t('humRange')}</div>
             <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>Min</span>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px' }}>{t('alertMin')}</span>
               <input type="number" value={thresholds.humMin}
                 onChange={e => setThresholds(prev => ({ ...prev, humMin: parseFloat(e.target.value) || 0 }))}
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
-              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>Max</span>
+              <span style={{ color: secColor, fontSize: '10px', minWidth: '22px', textAlign: 'right' }}>{t('alertMax')}</span>
               <input type="number" value={thresholds.humMax}
                 onChange={e => setThresholds(prev => ({ ...prev, humMax: parseFloat(e.target.value) || 0 }))}
                 style={{ width: '50px', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '4px', color: '#e2e8f0', padding: '3px 4px', fontSize: '11px', textAlign: 'center' }} />
