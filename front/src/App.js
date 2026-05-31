@@ -278,17 +278,23 @@ function App() {
       const project = projectRes.data;
 
       if (elements.length > 0) {
+        // projectId를 suffix로 붙여 동일 IFC 파일을 여러 프로젝트에 임포트해도 PK 충돌 방지
         const payload = elements.map(el => ({
           ...el,
-          elementId: 'ELEM-' + Math.random().toString(36).substr(2, 9).toUpperCase(),
           projectId: project.projectId,
+          elementId: `${el.elementId}-${project.projectId}`,
         }));
         await AxiosCustom.post('/api/bim/elements/batch', payload);
       }
 
       // IFC 실제 지오메트리를 클라이언트 캐시에 저장 (DB 미저장)
+      // DB elementId와 동일한 suffix를 ifcMeshes에도 적용해 IFCMeshGroup 매칭 유지
       if (ifcMeshes && ifcMeshes.length > 0) {
-        ifcMeshesRef.current.set(project.projectId, ifcMeshes);
+        const renamedMeshes = ifcMeshes.map(mesh => ({
+          ...mesh,
+          elementId: `${mesh.elementId}-${project.projectId}`,
+        }));
+        ifcMeshesRef.current.set(project.projectId, renamedMeshes);
       }
 
       await refreshProjectList();

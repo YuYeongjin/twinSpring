@@ -24,6 +24,7 @@ export const getBaseColor = (elementType) => {
     case 'IfcWall':   return '#E0E0E0';
     case 'IfcSlab':   return '#B0C4DE';
     case 'IfcPier':   return '#D2691E';
+    case 'IfcRebar':  return '#CC2200';
     default:          return '#ff4444';
   }
 };
@@ -33,20 +34,19 @@ export function BimElement({ element, onElementSelect, isPlacementMode }) {
   const meshRef = useRef();
   const [hovered, setHover] = useState(false);
 
+  // 좌표 규칙: positionX/Y = 평면(2D), positionZ = 높이(3D)
+  // Three.js(Y-up): X=posX, Y(up)=posZ+sizeZ/2, Z(depth)=posY
   const { size, position } = useMemo(() => {
-    const rawPosition = [
-      Number(element.positionX) || 0,
-      Number(element.positionY) || 0,
-      Number(element.positionZ) || 0,
-    ];
-    const rawSize = [
-      Number(element.sizeX) || 0.1,
-      Number(element.sizeY) || 0.1,
-      Number(element.sizeZ) || 0.1,
-    ];
-    const adjustedPosition = [...rawPosition];
-    adjustedPosition[1] = rawPosition[1] + rawSize[1] / 2;
-    return { size: rawSize, position: adjustedPosition };
+    const pX = Number(element.positionX) || 0;
+    const pY = Number(element.positionY) || 0;  // 평면 Y
+    const pZ = Number(element.positionZ) || 0;  // 높이
+    const sX = Number(element.sizeX) || 0.1;
+    const sY = Number(element.sizeY) || 0.1;    // 평면 Y 크기
+    const sZ = Number(element.sizeZ) || 0.1;    // 높이 크기
+    return {
+      size:     [sX, sZ, sY],                    // Three.js [X, height, depth]
+      position: [pX, pZ + sZ / 2, pY],           // Three.js [X, Z+half, Y]
+    };
   }, [element.positionX, element.positionY, element.positionZ,
       element.sizeX, element.sizeY, element.sizeZ]);
 

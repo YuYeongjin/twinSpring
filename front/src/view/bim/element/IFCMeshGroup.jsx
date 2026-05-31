@@ -65,29 +65,36 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
 
   const handleClick = (e) => {
     e.stopPropagation();
-    if (element && onElementSelect) {
-      onElementSelect({ data: element, meshRef });
-    }
+    if (!onElementSelect) return;
+    // modelData에서 찾은 element 우선, 없으면 mesh 데이터로 폴백
+    const target = element ?? {
+      elementId: mesh.elementId,
+      elementType: mesh.elementType,
+      positionX: 0, positionY: 0, positionZ: 0,
+      sizeX: 1, sizeY: 1, sizeZ: 1,
+      material: '',
+    };
+    onElementSelect(target, meshRef, e.shiftKey);
   };
 
   // ── 투명 AABB 히트박스 (작은 모델도 안정적으로 선택 가능) ──────────
-  // element AABB: positionX/Z = 중심, positionY = 밑면, sizeY = 높이
+  // 좌표 규칙: positionX/Y = 평면(2D), positionZ = 높이(3D)
+  // Three.js: X=posX, Y(up)=posZ+sizeZ/2, Z(depth)=posY
   const hitPos = useMemo(() => {
     if (!element) return null;
     return [
       Number(element.positionX) || 0,
-      (Number(element.positionY) || 0) + (Number(element.sizeY) || 0.1) / 2,
-      Number(element.positionZ) || 0,
+      (Number(element.positionZ) || 0) + (Number(element.sizeZ) || 0.1) / 2,
+      Number(element.positionY) || 0,
     ];
   }, [element]);
 
   const hitArgs = useMemo(() => {
     if (!element) return null;
-    // 최소 0.02m 보장 — 극소 모델도 클릭 가능
     return [
       Math.max(Number(element.sizeX) || 0.02, 0.02),
-      Math.max(Number(element.sizeY) || 0.02, 0.02),
-      Math.max(Number(element.sizeZ) || 0.02, 0.02),
+      Math.max(Number(element.sizeZ) || 0.02, 0.02),  // 높이
+      Math.max(Number(element.sizeY) || 0.02, 0.02),  // 평면 Y
     ];
   }, [element]);
 

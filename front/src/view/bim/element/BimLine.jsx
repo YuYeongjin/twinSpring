@@ -38,21 +38,22 @@ export function BimLine({ line, selected, onClick }) {
     const isSolid = isShape && height > 0;
 
     // ── 돌출 지오메트리 (closed + shapeHeight > 0) ──────────────────
+    // 좌표 규칙: 점 = [dataX, dataY(floor), dataZ(height)]
+    // Three.js: X=dataX, Y(up)=dataZ, Z(depth)=dataY
     const extrudeGeom = useMemo(() => {
         if (!isSolid) return null;
         try {
-            const baseY   = points[0]?.[1] ?? 0;
-            const v2pts   = points.map(([x, , z]) => new THREE.Vector2(x, z));
-            // 최소 면적 확인 (겹치는 점 제거)
+            const baseZ   = points[0]?.[2] ?? 0;   // data Z (height base) → Three.js Y
+            const v2pts   = points.map(([x, y]) => new THREE.Vector2(x, y)); // data XY floor plane
             if (v2pts.length < 3) return null;
             const shape   = new THREE.Shape(v2pts);
             const geom    = new THREE.ExtrudeGeometry(shape, {
                 depth: height,
                 bevelEnabled: false,
             });
-            // ExtrudeGeometry: shape=XY, extrude=+Z → -90° 회전 → extrude=+Y
+            // ExtrudeGeometry: shape=XY(dataXY), extrude=+Z → -90° 회전 → extrude=+Y(Three.js)
             geom.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
-            geom.applyMatrix4(new THREE.Matrix4().makeTranslation(0, baseY, 0));
+            geom.applyMatrix4(new THREE.Matrix4().makeTranslation(0, baseZ, 0));
             return geom;
         } catch (e) {
             console.warn('[BimLine] ExtrudeGeometry 생성 실패:', e);
@@ -66,10 +67,10 @@ export function BimLine({ line, selected, onClick }) {
     }, [extrudeGeom]);
 
     // ── 폴리라인 점 목록 ─────────────────────────────────────────────
-    // drei Line은 Vector3 또는 [x,y,z] 배열을 받음
+    // 데이터: [dataX, dataY(floor), dataZ(height)] → Three.js: [X, Y=dataZ, Z=dataY]
     const linePoints = useMemo(() => {
-        const pts = points.map(p => new THREE.Vector3(p[0], p[1], p[2]));
-        if (closed && pts.length >= 2) pts.push(pts[0].clone()); // 닫기
+        const pts = points.map(p => new THREE.Vector3(p[0], p[2] ?? 0, p[1] ?? 0));
+        if (closed && pts.length >= 2) pts.push(pts[0].clone());
         return pts;
     }, [points, closed]);
 
@@ -118,7 +119,7 @@ export function BimLine({ line, selected, onClick }) {
 
             {/* ── 꼭짓점 마커 (비선택 상태만) — 선택됐을 때는 LineVertexHandles가 드래그 핸들 표시 ── */}
             {!selected && points.map((pos, i) => (
-                <mesh key={i} position={[pos[0], pos[1], pos[2]]}>
+                <mesh key={i} position={[pos[0], pos[2] ?? 0, pos[1] ?? 0]}>
                     <sphereGeometry args={[hovered ? 0.10 : 0.07, 8, 8]} />
                     <meshBasicMaterial color={i === 0 ? '#4ade80' : color} />
                 </mesh>

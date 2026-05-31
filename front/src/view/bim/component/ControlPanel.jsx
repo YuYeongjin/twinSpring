@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { useT } from '../../../i18n/LanguageContext';
 
+// 좌표 규칙: positionX/Y=평면(2D), positionZ=높이(3D), sizeX/Y=평면 크기, sizeZ=높이 크기
+// 기존 데이터(positionY=높이, positionZ=평면Z)를 새 규칙으로 변환
+function toNewCoords(el) {
+    const { positionY: pY, positionZ: pZ, sizeY: sY, sizeZ: sZ, ...rest } = el;
+    return { ...rest, positionY: pZ ?? 0, positionZ: pY ?? 0, sizeY: sZ ?? sY ?? 0.1, sizeZ: sY ?? sZ ?? 0.1 };
+}
+
 // ── 랜드마크 구조물 생성 함수 ────────────────────────────────────────
 
 function genTowerOfPisa() {
@@ -209,12 +216,12 @@ function genIncheonBridge() {
     return els;
 }
 
-// 정적 생성 (컴포넌트 외부, 한 번만 실행)
-const _TOWER_OF_PISA   = genTowerOfPisa();
-const _EIFFEL_TOWER    = genEiffelTower();
-const _PYRAMID         = genPyramid();
-const _BURJ_KHALIFA    = genBurjKhalifa();
-const _INCHEON_BRIDGE  = genIncheonBridge();
+// 정적 생성 — 새 좌표 규칙(positionX/Y=평면, positionZ=높이)으로 변환
+const _TOWER_OF_PISA   = genTowerOfPisa().map(toNewCoords);
+const _EIFFEL_TOWER    = genEiffelTower().map(toNewCoords);
+const _PYRAMID         = genPyramid().map(toNewCoords);
+const _BURJ_KHALIFA    = genBurjKhalifa().map(toNewCoords);
+const _INCHEON_BRIDGE  = genIncheonBridge().map(toNewCoords);
 
 /**
  * BIM 편집 도구 패널
@@ -232,8 +239,10 @@ export default function ControlPanel({
     setMode,
     isSelectMode,
     toggleSelectMode,
-    onPlaceSample,       // (elements) => void — 샘플 구조물 일괄 배치
-    isPlacingSample,     // boolean — 샘플 배치 중
+    onPlaceSample,
+    isPlacingSample,
+    onStartLine,
+    lineDrawMode,
 }) {
 
     const t = useT('controlPanel');
@@ -246,7 +255,7 @@ export default function ControlPanel({
             activeColor: 'bg-yellow-600/70 text-yellow-100 ring-1 ring-yellow-400',
             data: {
                 elementType: 'IfcColumn', material: 'Concrete C30',
-                sizeX: 0.5, sizeY: 6.0, sizeZ: 0.5,
+                sizeX: 0.5, sizeY: 0.5, sizeZ: 6.0,  // sizeZ=height
             },
         },
         {
@@ -255,7 +264,7 @@ export default function ControlPanel({
             activeColor: 'bg-gray-500/70 text-white ring-1 ring-gray-300',
             data: {
                 elementType: 'IfcBeam', material: 'Steel Grade A',
-                sizeX: 8.0, sizeY: 0.5, sizeZ: 0.3,
+                sizeX: 8.0, sizeY: 0.3, sizeZ: 0.5,  // sizeZ=height, sizeY=depth
             },
         },
         {
@@ -264,7 +273,7 @@ export default function ControlPanel({
             activeColor: 'bg-slate-500/70 text-white ring-1 ring-slate-300',
             data: {
                 elementType: 'IfcWall', material: 'Concrete C25',
-                sizeX: 0.2, sizeY: 3.0, sizeZ: 5.0,
+                sizeX: 0.2, sizeY: 5.0, sizeZ: 3.0,  // sizeZ=height, sizeY=length
             },
         },
         {
@@ -273,7 +282,7 @@ export default function ControlPanel({
             activeColor: 'bg-blue-600/70 text-white ring-1 ring-blue-400',
             data: {
                 elementType: 'IfcSlab', material: 'Concrete C30',
-                sizeX: 8.0, sizeY: 0.25, sizeZ: 8.0,
+                sizeX: 8.0, sizeY: 8.0, sizeZ: 0.25,  // sizeZ=thickness(height), sizeY=depth
             },
         },
         {
@@ -282,7 +291,16 @@ export default function ControlPanel({
             activeColor: 'bg-orange-600/70 text-white ring-1 ring-orange-400',
             data: {
                 elementType: 'IfcPier', material: 'Concrete C50',
-                sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0,
+                sizeX: 3.0, sizeY: 3.0, sizeZ: 10.0,  // sizeZ=height
+            },
+        },
+        {
+            label: 'Rebar', icon: '≋',
+            color: 'bg-red-900/50 text-red-200 hover:bg-red-800/60',
+            activeColor: 'bg-red-600/70 text-white ring-1 ring-red-400',
+            data: {
+                elementType: 'IfcRebar', material: 'Steel D25',
+                sizeX: 0.025, sizeY: 0.025, sizeZ: 6.0,  // sizeZ=height
             },
         },
     ];
@@ -301,18 +319,18 @@ export default function ControlPanel({
             desc: '4 Columns + 4 Beams + Slab',
             color: 'bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/50',
             elements: [
-                // 기둥 4개 (모서리)
-                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 4.0, sizeZ: 0.5, positionX: -4,  positionY: 0, positionZ: -4 },
-                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 4.0, sizeZ: 0.5, positionX:  4,  positionY: 0, positionZ: -4 },
-                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 4.0, sizeZ: 0.5, positionX: -4,  positionY: 0, positionZ:  4 },
-                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 4.0, sizeZ: 0.5, positionX:  4,  positionY: 0, positionZ:  4 },
-                // 보 4개 (테두리, sizeY 기준 top)
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 8.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0,  positionY: 3.8, positionZ: -4 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 8.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0,  positionY: 3.8, positionZ:  4 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 8.5, positionX: -4,  positionY: 3.8, positionZ:  0 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 8.5, positionX:  4,  positionY: 3.8, positionZ:  0 },
-                // 슬래브
-                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 8.5, sizeY: 0.25, sizeZ: 8.5, positionX:  0,  positionY: 4.2, positionZ:  0 },
+                // 기둥 4개 (모서리) — sizeZ=height, positionZ=height_base
+                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 0.5, sizeZ: 4.0, positionX: -4, positionY: -4, positionZ: 0 },
+                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 0.5, sizeZ: 4.0, positionX:  4, positionY: -4, positionZ: 0 },
+                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 0.5, sizeZ: 4.0, positionX: -4, positionY:  4, positionZ: 0 },
+                { elementType: 'IfcColumn', material: 'Concrete C30', sizeX: 0.5, sizeY: 0.5, sizeZ: 4.0, positionX:  4, positionY:  4, positionZ: 0 },
+                // 보 4개 — positionZ=3.8(height), sizeZ=0.4(beam height)
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 8.5, sizeY: 0.3, sizeZ: 0.4, positionX:  0, positionY: -4, positionZ: 3.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 8.5, sizeY: 0.3, sizeZ: 0.4, positionX:  0, positionY:  4, positionZ: 3.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 8.5, sizeZ: 0.4, positionX: -4, positionY:  0, positionZ: 3.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 8.5, sizeZ: 0.4, positionX:  4, positionY:  0, positionZ: 3.8 },
+                // 슬래브 — positionZ=4.2, sizeZ=0.25(thickness)
+                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 8.5, sizeY: 8.5, sizeZ: 0.25, positionX: 0, positionY: 0, positionZ: 4.2 },
             ],
         },
         {
@@ -321,10 +339,10 @@ export default function ControlPanel({
             desc: '3 Piers + Deck Slab',
             color: 'bg-orange-900/40 text-orange-200 hover:bg-orange-800/50',
             elements: [
-                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 8.0, sizeZ: 2.5, positionX: -20, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 8.0, sizeZ: 2.5, positionX:   0, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 8.0, sizeZ: 2.5, positionX:  20, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcSlab', material: 'Prestressed Concrete', sizeX: 42.0, sizeY: 1.0, sizeZ: 10.0, positionX: 0, positionY: 8.0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 2.5, sizeZ: 8.0, positionX: -20, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 2.5, sizeZ: 8.0, positionX:   0, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 2.5, sizeY: 2.5, sizeZ: 8.0, positionX:  20, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcSlab', material: 'Prestressed Concrete', sizeX: 42.0, sizeY: 10.0, sizeZ: 1.0, positionX: 0, positionY: 0, positionZ: 8.0 },
             ],
         },
         {
@@ -333,9 +351,9 @@ export default function ControlPanel({
             desc: '2 Pier Columns + Cap Beam',
             color: 'bg-violet-900/40 text-violet-200 hover:bg-violet-800/50',
             elements: [
-                { elementType: 'IfcPier', material: 'Concrete C40', sizeX: 2.0, sizeY: 8.0, sizeZ: 2.0, positionX: -6, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcPier', material: 'Concrete C40', sizeX: 2.0, sizeY: 8.0, sizeZ: 2.0, positionX:  6, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcBeam', material: 'Concrete C40', sizeX: 14.0, sizeY: 1.5, sizeZ: 2.5, positionX: 0, positionY: 8.0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C40', sizeX: 2.0, sizeY: 2.0, sizeZ: 8.0, positionX: -6, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C40', sizeX: 2.0, sizeY: 2.0, sizeZ: 8.0, positionX:  6, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcBeam', material: 'Concrete C40', sizeX: 14.0, sizeY: 2.5, sizeZ: 1.5, positionX: 0, positionY: 0, positionZ: 8.0 },
             ],
         },
         {
@@ -344,11 +362,11 @@ export default function ControlPanel({
             desc: '4 Piers + Long Deck Slab',
             color: 'bg-sky-900/40 text-sky-200 hover:bg-sky-800/50',
             elements: [
-                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX: -30, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX: -10, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX:  10, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 10.0, sizeZ: 3.0, positionX:  30, positionY: 0, positionZ: 0 },
-                { elementType: 'IfcSlab', material: 'Prestressed Concrete', sizeX: 64.0, sizeY: 1.2, sizeZ: 12.0, positionX: 0, positionY: 10.0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 3.0, sizeZ: 10.0, positionX: -30, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 3.0, sizeZ: 10.0, positionX: -10, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 3.0, sizeZ: 10.0, positionX:  10, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcPier', material: 'Concrete C50', sizeX: 3.0, sizeY: 3.0, sizeZ: 10.0, positionX:  30, positionY: 0, positionZ: 0 },
+                { elementType: 'IfcSlab', material: 'Prestressed Concrete', sizeX: 64.0, sizeY: 12.0, sizeZ: 1.2, positionX: 0, positionY: 0, positionZ: 10.0 },
             ],
         },
         // ── 랜드마크 구조물 ──────────────────────────────────────────
@@ -393,25 +411,25 @@ export default function ControlPanel({
             desc: '4 Columns + 8 Beams + 2 Slabs',
             color: 'bg-teal-900/40 text-teal-200 hover:bg-teal-800/50',
             elements: [
-                // 기둥 4개 (2층 높이)
-                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 8.0, sizeZ: 0.5, positionX: -5, positionY: 0, positionZ: -5 },
-                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 8.0, sizeZ: 0.5, positionX:  5, positionY: 0, positionZ: -5 },
-                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 8.0, sizeZ: 0.5, positionX: -5, positionY: 0, positionZ:  5 },
-                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 8.0, sizeZ: 0.5, positionX:  5, positionY: 0, positionZ:  5 },
-                // 1층 보 4개
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0, positionY: 3.8, positionZ: -5 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0, positionY: 3.8, positionZ:  5 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 10.5, positionX: -5, positionY: 3.8, positionZ:  0 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 10.5, positionX:  5, positionY: 3.8, positionZ:  0 },
+                // 기둥 4개 (2층 높이) — sizeZ=8(height), positionZ=0(base)
+                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 0.5, sizeZ: 8.0, positionX: -5, positionY: -5, positionZ: 0 },
+                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 0.5, sizeZ: 8.0, positionX:  5, positionY: -5, positionZ: 0 },
+                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 0.5, sizeZ: 8.0, positionX: -5, positionY:  5, positionZ: 0 },
+                { elementType: 'IfcColumn', material: 'Concrete C35', sizeX: 0.5, sizeY: 0.5, sizeZ: 8.0, positionX:  5, positionY:  5, positionZ: 0 },
+                // 1층 보 4개 — positionZ=3.8(height)
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.3, sizeZ: 0.4, positionX:  0, positionY: -5, positionZ: 3.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.3, sizeZ: 0.4, positionX:  0, positionY:  5, positionZ: 3.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 10.5, sizeZ: 0.4, positionX: -5, positionY:  0, positionZ: 3.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 10.5, sizeZ: 0.4, positionX:  5, positionY:  0, positionZ: 3.8 },
                 // 1층 슬래브
-                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 10.5, sizeY: 0.25, sizeZ: 10.5, positionX: 0, positionY: 4.2, positionZ: 0 },
+                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 10.5, sizeY: 10.5, sizeZ: 0.25, positionX: 0, positionY: 0, positionZ: 4.2 },
                 // 2층 보 4개
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0, positionY: 7.8, positionZ: -5 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.4, sizeZ: 0.3, positionX:  0, positionY: 7.8, positionZ:  5 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 10.5, positionX: -5, positionY: 7.8, positionZ:  0 },
-                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 0.4, sizeZ: 10.5, positionX:  5, positionY: 7.8, positionZ:  0 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.3, sizeZ: 0.4, positionX:  0, positionY: -5, positionZ: 7.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 10.5, sizeY: 0.3, sizeZ: 0.4, positionX:  0, positionY:  5, positionZ: 7.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 10.5, sizeZ: 0.4, positionX: -5, positionY:  0, positionZ: 7.8 },
+                { elementType: 'IfcBeam', material: 'Steel Grade A', sizeX: 0.3, sizeY: 10.5, sizeZ: 0.4, positionX:  5, positionY:  0, positionZ: 7.8 },
                 // 2층 슬래브 (지붕)
-                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 10.5, sizeY: 0.25, sizeZ: 10.5, positionX: 0, positionY: 8.2, positionZ: 0 },
+                { elementType: 'IfcSlab', material: 'Concrete C30', sizeX: 10.5, sizeY: 10.5, sizeZ: 0.25, positionX: 0, positionY: 0, positionZ: 8.2 },
             ],
         },
     ];
@@ -457,6 +475,25 @@ export default function ControlPanel({
                             </button>
                         );
                     })}
+
+                    {/* LINE 버튼 */}
+                    <button
+                        onClick={onStartLine}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                            lineDrawMode !== 'off'
+                                ? 'bg-blue-600/70 text-white ring-1 ring-blue-400'
+                                : 'bg-blue-900/40 text-blue-300 hover:bg-blue-800/50'
+                        }`}
+                        title={lineDrawMode !== 'off' ? 'Exit line drawing (L / Esc)' : 'Draw line (L)'}
+                    >
+                        <span className="text-base leading-none">╱</span>
+                        <span>Line</span>
+                        {lineDrawMode !== 'off' ? (
+                            <span className="ml-auto text-xs animate-pulse">✏ drawing</span>
+                        ) : (
+                            <kbd className="ml-auto text-xs bg-black/30 px-1 py-0.5 rounded opacity-60">L</kbd>
+                        )}
+                    </button>
                 </div>
 
                 {pendingElement && (

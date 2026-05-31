@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { View, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
 import Scene from './component/Scene';
 import Plan2DView from './component/Plan2DView';
 import ControlPanel from './component/ControlPanel';
 import LayerPanel from './component/LayerPanel';
-import LinePanel from './component/LinePanel';
+
 import BimDashboardAPI from './BimDashboardAPI';
 import { ENV_PRESETS, DEFAULT_ENV_ID } from './component/SkyEnvironment';
 import MiniMapCanvas from './component/MiniMapCanvas';
@@ -309,6 +309,195 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
 }
 
 // ================================================================
+// CoordCommandBar — X→Y→Z 순차 좌표 입력 + 마우스 실시간 매핑
+// ================================================================
+
+function CoordCommandBar({
+    label, accentColor,
+    hoverPosRef,
+    mode,                    // 'place' | 'line'
+    lockZ = false,           // 2D 모드: Z축(높이) 0으로 고정, 입력 불가 (x→y만 입력)
+    lineStart, lineChainStart,
+    lineColor, setLineColor, lineWidth, setLineWidth,
+    onConfirm,               // ({ x, y, z }) => void  — data 좌표
+    onAxisLocked,            // (axis, value|null) => void
+    onCloseChain,
+    onFinish,
+}) {
+    const initLocked = () => ({ x: null, y: null, z: lockZ ? 0 : null });
+    const [phase, setPhase]       = React.useState('x');
+    const [lockedVals, setLocked] = React.useState(initLocked);
+    const [inputVal, setInputVal] = React.useState('');
+    const [livePos, setLivePos]   = React.useState({ x: 0, y: 0, z: 0 });
+    const inputRef = React.useRef();
+
+    // RAF 루프로 hoverPosRef → 표시 state 동기화
+    React.useEffect(() => {
+        let id;
+        function tick() {
+            if (hoverPosRef?.current) {
+                const p = hoverPosRef.current;
+                setLivePos(prev =>
+                    Math.abs(prev.x - p.x) > 0.005 || Math.abs(prev.z - p.z) > 0.005
+                        ? { x: p.x, y: p.y, z: p.z } : prev
+                );
+            }
+            id = requestAnimationFrame(tick);
+        }
+        id = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(id);
+    }, [hoverPosRef]);
+
+    // label/lockZ 변경 시 초기화
+    React.useEffect(() => {
+        setPhase('x');
+        setLocked(initLocked());
+        setInputVal('');
+        if (lockZ) onAxisLocked?.('z', 0);
+        const t = setTimeout(() => inputRef.current?.focus(), 60);
+        return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [label, lockZ]);
+
+    function advance() {
+        const raw = inputVal.trim();
+        const num = raw !== '' ? parseFloat(raw) : livePos[phase];
+        if (isNaN(num)) return;
+
+        const newLocked = { ...lockedVals, [phase]: num };
+        onAxisLocked?.(phase, num);
+
+        // lockZ=true 면 z(높이) 단계를 건너뜀: x → y
+        const nextPhase = phase === 'x' ? 'y' : phase === 'y' ? (lockZ ? null : 'z') : null;
+
+        if (nextPhase === null) {
+            onConfirm({
+                x: newLocked.x ?? livePos.x,
+                y: lockZ ? (newLocked.y ?? livePos.y) : (newLocked.y ?? livePos.y),
+                z: lockZ ? 0 : num,
+            });
+            setPhase('x');
+            setLocked(initLocked());
+            setInputVal('');
+            onAxisLocked?.('__reset__', null);
+        } else {
+            setLocked(newLocked);
+            setPhase(nextPhase);
+            setInputVal('');
+        }
+        setTimeout(() => inputRef.current?.focus(), 30);
+    }
+
+    function handleKeyDown(e) {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); advance(); }
+        if (e.key === 'Tab')   { e.preventDefault(); advance(); }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            const orderedAxes = lockZ ? ['x', 'y'] : ['x', 'y', 'z'];
+            const idx = orderedAxes.indexOf(phase);
+            if (idx > 0) {
+                // 이전 축 고정 해제 (한 단계 되돌리기)
+                const prevAxis = orderedAxes[idx - 1];
+                setLocked(prev => ({ ...prev, [prevAxis]: null }));
+                onAxisLocked?.(prevAxis, null);
+                setPhase(prevAxis);
+                setInputVal('');
+                setTimeout(() => inputRef.current?.focus(), 30);
+            } else {
+                onFinish();
+            }
+        }
+    }
+
+    const axes = ['x', 'y', 'z'];
+    const borderCls = accentColor === 'orange' ? 'border-orange-600/60' : 'border-blue-600/60';
+    const labelCls  = accentColor === 'orange' ? 'text-orange-400'      : 'text-blue-400';
+    const focusCls  = accentColor === 'orange' ? 'focus:ring-orange-500' : 'focus:ring-blue-500';
+
+    const canClose = mode === 'line' && lineChainStart && lineStart &&
+        JSON.stringify(lineStart) !== JSON.stringify(lineChainStart);
+
+    return (
+        <div
+            className={`fixed bottom-6 left-1/2 z-50 pointer-events-auto flex items-center gap-2 bg-space-900/95 border ${borderCls} rounded-xl px-3 py-2 shadow-xl backdrop-blur-sm text-xs`}
+            style={{ transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}
+        >
+            <span className={`${labelCls} font-bold tracking-wider min-w-[3rem]`}>{label}</span>
+
+            {/* X Y Z 필드 */}
+            <div className="flex items-center gap-0.5">
+                {axes.map((axis, i) => {
+                    const isZFixed  = lockZ && axis === 'z';
+                    const isLocked  = isZFixed || lockedVals[axis] !== null;
+                    const isActive  = !isZFixed && phase === axis;
+                    const dispVal   = isZFixed ? '0.00'
+                        : isLocked ? lockedVals[axis].toFixed(2)
+                        : (livePos[axis]?.toFixed(2) ?? '0.00');
+                    return (
+                        <React.Fragment key={axis}>
+                            <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 border ${
+                                isZFixed  ? 'bg-space-800/60 border-space-600/40 opacity-50' :
+                                isLocked  ? 'bg-green-900/30 border-green-700/50' :
+                                isActive  ? 'bg-space-700/80 border-blue-500/60' :
+                                            'bg-space-800/40 border-space-600/30'
+                            }`}>
+                                <span className={`font-semibold text-[11px] ${
+                                    isZFixed  ? 'text-gray-600' :
+                                    isLocked  ? 'text-green-400' :
+                                    isActive  ? 'text-blue-300' : 'text-gray-600'
+                                }`}>{axis.toUpperCase()}</span>
+                                {isActive ? (
+                                    <input
+                                        ref={inputRef}
+                                        value={inputVal}
+                                        onChange={e => setInputVal(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        placeholder={livePos[axis]?.toFixed(2)}
+                                        className={`w-14 bg-transparent text-white outline-none text-right text-xs placeholder-gray-600 ${focusCls}`}
+                                    />
+                                ) : (
+                                    <span className={`w-14 text-right text-xs ${
+                                        isZFixed  ? 'text-gray-600' :
+                                        isLocked  ? 'text-green-300 font-medium' : 'text-gray-600 italic'
+                                    }`}>{dispVal}</span>
+                                )}
+                                {isLocked && !isZFixed && <span className="text-green-500 text-[9px]">✓</span>}
+                            </div>
+                            {i < 2 && <span className="text-gray-700 px-0.5">›</span>}
+                        </React.Fragment>
+                    );
+                })}
+            </div>
+
+            {/* LINE 전용: 색상 + 두께 */}
+            {mode === 'line' && (
+                <div className="flex items-center gap-1 border-l border-space-600 pl-2">
+                    <input type="color" value={lineColor}
+                        onChange={e => setLineColor(e.target.value)}
+                        onKeyDown={e => e.stopPropagation()}
+                        className="w-6 h-6 cursor-pointer bg-transparent border-0 p-0 rounded" />
+                    <input type="number" min="1" max="20" step="0.5" value={lineWidth}
+                        onChange={e => setLineWidth(parseFloat(e.target.value) || 2)}
+                        onKeyDown={e => e.stopPropagation()}
+                        className="w-10 text-center rounded border border-space-600 bg-space-800 px-1 py-0.5 text-white text-xs outline-none" />
+                </div>
+            )}
+
+            {/* 힌트 */}
+            <div className="flex items-center gap-1 border-l border-space-600 pl-2 text-gray-600">
+                <span>↵</span>
+                {canClose && (
+                    <><span>·</span>
+                    <button onClick={onCloseChain} className="text-cyan-500 hover:text-cyan-300">C</button></>
+                )}
+                <span>·</span><span>Esc</span>
+            </div>
+        </div>
+    );
+}
+
+// ================================================================
 // PropertyPanel
 // ================================================================
 
@@ -359,7 +548,7 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
     }
 
     const el = selectedElement.data;
-    const typeColor = { IfcColumn: 'brown', IfcBeam: 'gray', IfcWall: 'gray', IfcSlab: 'blue', IfcPier: 'orange' }[el.elementType] ?? 'gray';
+    const typeColor = { IfcColumn: 'brown', IfcBeam: 'gray', IfcWall: 'gray', IfcSlab: 'blue', IfcPier: 'orange', IfcRebar: 'red' }[el.elementType] ?? 'gray';
 
     const handleChange = (field, value) => {
         const isNum = field !== 'material';
@@ -406,7 +595,7 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
             <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">{t('size')}</label>
                 <div className="grid grid-cols-3 gap-1">
-                    {[['sizeX', 'W'], ['sizeY', 'H'], ['sizeZ', 'D']].map(([f, lbl]) => (
+                    {[['sizeX', 'X'], ['sizeY', 'Y'], ['sizeZ', 'H']].map(([f, lbl]) => (
                         <div key={f}>
                             <span className="text-xs text-gray-500">{lbl}</span>
                             <input type="number" step="0.01" min="0.01" value={form[f]}
@@ -486,13 +675,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
     const t = useT('bimDashboard');
-    const mainViewRef = useRef(null);
+    const mainViewRef   = useRef(null);
+    const hoverPosRef   = useRef({ x: 0, y: 0, z: 0 });
 
     // ── 패널 표시 여부 ─────────────────────────────────────────────
     const [showLayerPanel, setShowLayerPanel] = useState(typeof window !== 'undefined' && window.innerWidth >= 768);
     const [showLeftPanel, setShowLeftPanel] = useState(typeof window !== 'undefined' && window.innerWidth >= 768);
-    // 좌측 패널 탭: 'edit' | 'line'
-    const [leftTab, setLeftTab] = useState('edit');
 
     // ── 스냅 (꼭짓점 자동 흡착) ────────────────────────────────────
     const [snapEnabled, setSnapEnabled] = useState(true);
@@ -569,7 +757,20 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const [linesVisible, setLinesVisible] = useState(true);
     const [lineDrawMode, setLineDrawMode] = useState('off'); // 'off' | 'click' | 'coord'
     const [lineStart, setLineStart] = useState(null);
-    const [lineDrawHeight, setLineDrawHeight] = useState(0);
+    const [lineChainStart, setLineChainStart] = useState(null);
+    const [placeLocked, setPlaceLocked] = useState({ x: null, y: null, z: null });
+    const [lineLocked,  setLineLocked]  = useState({ x: null, y: null, z: null });
+    const lineDrawHeight = 0;
+
+    // 배치 완료/취소 시 locked 축 리셋
+    useEffect(() => {
+        if (!pendingElement) setPlaceLocked({ x: null, y: null, z: null });
+    }, [pendingElement]);
+
+    // LINE 모드 종료 시 locked 축 리셋
+    useEffect(() => {
+        if (lineDrawMode === 'off') setLineLocked({ x: null, y: null, z: null });
+    }, [lineDrawMode]);
     const [lineColor, setLineColor] = useState('#60a5fa');
     const [lineWidth, setLineWidth] = useState(2);
     const [selectedLineId, setSelectedLineId] = useState(null);
@@ -620,7 +821,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 }]);
             })
             .catch(err => console.error('선 저장 실패:', err));
-        setLineStart(null);
     }, [selectedProject]);
 
     const deleteLine = useCallback((lineId) => {
@@ -645,9 +845,32 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // 가시성 필터: 레이어 패널에서 선 전체를 숨길 수 있음
     const visibleLines = linesVisible ? lines : [];
 
-    const cancelLineDraw = useCallback(() => {
+    const handleStartPlacement = useCallback((data) => {
+        // LINE 모드나 선택 모드가 활성화된 상태면 먼저 종료
+        if (lineDrawMode !== 'off') {
+            setLineDrawMode('off');
+            setLineStart(null);
+            setLineChainStart(null);
+            setLineLocked({ x: null, y: null, z: null });
+        }
+        startPlacement(data);
+    }, [lineDrawMode, startPlacement]);
+
+    const finishLineDraw = useCallback(() => {
+        setLineDrawMode('off');
         setLineStart(null);
+        setLineChainStart(null);
     }, []);
+
+    const closeLineChain = useCallback(() => {
+        if (lineStart && lineChainStart &&
+            JSON.stringify(lineStart) !== JSON.stringify(lineChainStart)) {
+            addLine(lineStart, lineChainStart, lineColor, lineWidth);
+        }
+        setLineDrawMode('off');
+        setLineStart(null);
+        setLineChainStart(null);
+    }, [lineStart, lineChainStart, lineColor, lineWidth, addLine]);
 
     /** 선 데이터 즉시 업데이트 (3D 뷰어 실시간 반영) */
     const updateLineData = useCallback((lineId, updates) => {
@@ -711,16 +934,18 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     const handleLineClick = useCallback((point) => {
         const pos = [
-            parseFloat(point.x.toFixed(3)),
-            lineDrawHeight,
-            parseFloat(point.z.toFixed(3)),
+            parseFloat((point.x ?? 0).toFixed(3)),
+            parseFloat((point.y ?? 0).toFixed(3)),
+            parseFloat((point.z ?? 0).toFixed(3)),
         ];
         if (!lineStart) {
             setLineStart(pos);
+            setLineChainStart(pos);
         } else {
             addLine(lineStart, pos, lineColor, lineWidth);
+            setLineStart(pos);
         }
-    }, [lineStart, lineDrawHeight, lineColor, lineWidth, addLine]);
+    }, [lineStart, lineColor, lineWidth, addLine]);
 
     // ── 환경 프리셋 ─────────────────────────────────────────────────
     const [envId, setEnvId] = useState(DEFAULT_ENV_ID);
@@ -739,9 +964,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     }, []);
 
     // 부재 클릭 시 선 선택 해제 (cross-selection 방지)
-    const handleElementSelectAndClearLine = useCallback((el, meshRef) => {
+    const handleElementSelectAndClearLine = useCallback((el, meshRef, shiftKey) => {
         if (el) setSelectedLineId(null);
-        handleElementSelect(el, meshRef);
+        handleElementSelect(el, meshRef, shiftKey);
     }, [handleElementSelect]);
 
     const currentProjectId = useMemo(
@@ -825,11 +1050,11 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
         const hit = modelData.filter(el => {
             const px = Number(el.positionX) || 0;
-            const py = Number(el.positionY) || 0;
-            const pz = Number(el.positionZ) || 0;
-            const sy = Number(el.sizeY) || 1;
-            // 중심점 (positionY는 밑면 기준이므로 + sy/2)
-            const center = new THREE.Vector3(px, py + sy / 2, pz);
+            const py = Number(el.positionY) || 0;   // floor Y → Three.js Z
+            const pz = Number(el.positionZ) || 0;   // height → Three.js Y
+            const sz = Number(el.sizeZ) || 1;        // height size
+            // 중심점: Three.js [X, Y=posZ+sizeZ/2, Z=posY]
+            const center = new THREE.Vector3(px, pz + sz / 2, py);
             center.project(camera);
             // NDC → 캔버스 픽셀 좌표
             const sx = (center.x + 1) / 2 * domRect.width;
@@ -904,6 +1129,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             if (e.key === 'r' || e.key === 'R') setTransformMode('rotate');
             if (e.key === 's' || e.key === 'S') setTransformMode('scale');
             if (e.key === 'q' || e.key === 'Q') toggleSelectMode();
+            if (e.key === 'l' || e.key === 'L') {
+                if (lineDrawMode !== 'off') { finishLineDraw(); }
+                else { setLineDrawMode('click'); }
+            }
             if ((e.key === 'Delete' || e.key === 'Backspace') && !pendingElement) {
                 // 선이 선택됐으면 선 삭제, 아니면 부재 삭제
                 if (selectedLineId) {
@@ -918,8 +1147,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             }
             if (e.key === 'Escape') {
                 if (lineDrawMode !== 'off') {
-                    setLineDrawMode('off');
-                    cancelLineDraw();
+                    finishLineDraw();
                 } else if (pendingElement) { cancelPlacement(); }
                 else if (isSelectMode) { toggleSelectMode(); }
                 else {
@@ -933,7 +1161,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [selectedElement, pendingElement, isSelectMode, lineDrawMode, deleteSelectedElements,
         cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements,
-        undo, cancelLineDraw, selectedLineId, deleteLine, setSelectedLineId]);
+        undo, finishLineDraw, selectedLineId, deleteLine, setSelectedLineId]);
 
     return (
         <div className="w-full bg-space-900 pb-2 flex flex-col overflow-hidden" style={{height:'85vh'}} >
@@ -1170,100 +1398,55 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             className="w-full min-h-0 shrink-0 flex flex-col gap-3 px-0 md:pr-1.5 overflow-y-auto"
                             style={isDesktop ? { width: `${leftPanelPct}%`, minWidth: 120 } : undefined}
                         >
-                            {/* 탭 */}
-                            <div className="flex gap-1 bg-space-800/80 border border-space-700 rounded-xl p-1">
-                                <button
-                                    onClick={() => setLeftTab('edit')}
-                                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${leftTab === 'edit'
-                                            ? 'bg-blue-600 text-white'
-                                            : 'text-gray-400 hover:text-white'
-                                        }`}
-                                >
-                                    {t('editTab')}
-                                </button>
-                                <button
-                                    onClick={() => setLeftTab('line')}
-                                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${leftTab === 'line'
-                                            ? 'bg-blue-600 text-white'
-                                            : 'text-gray-400 hover:text-white'
-                                        }`}
-                                >
-                                    {t('drawLine')}
-                                    {lines.length > 0 && (
-                                        <span className="ml-1 px-1 rounded-full bg-blue-800/60 text-blue-300 text-xs">{lines.length}</span>
-                                    )}
-                                </button>
-                            </div>
+                            <Card title={t('editTools')}>
+                                <ControlPanel
+                                    startPlacement={handleStartPlacement}
+                                    pendingElement={pendingElement}
+                                    cancelPlacement={cancelPlacement}
+                                    currentMode={transformMode}
+                                    setMode={setTransformMode}
+                                    isSelectMode={isSelectMode}
+                                    toggleSelectMode={toggleSelectMode}
+                                    onPlaceSample={handlePlaceSample}
+                                    isPlacingSample={isPlacingSample}
+                                    onStartLine={() => {
+                                        if (lineDrawMode !== 'off') finishLineDraw();
+                                        else { cancelPlacement(); setLineDrawMode('click'); }
+                                    }}
+                                    lineDrawMode={lineDrawMode}
+                                />
+                            </Card>
 
-                            {leftTab === 'edit' && (
-                                <>
-                                    <Card title={t('editTools')}>
-                                        <ControlPanel
-                                            startPlacement={startPlacement}
-                                            pendingElement={pendingElement}
-                                            cancelPlacement={cancelPlacement}
-                                            currentMode={transformMode}
-                                            setMode={setTransformMode}
-                                            isSelectMode={isSelectMode}
-                                            toggleSelectMode={toggleSelectMode}
-                                            onPlaceSample={handlePlaceSample}
-                                            isPlacingSample={isPlacingSample}
-                                        />
-                                    </Card>
-                                    <Card
-                                        title={t('elementProperties')}
-                                        right={
-                                            <Chip color={selectedElement ? 'orange' : totalSelectedCount > 1 ? 'violet' : 'gray'}>
-                                                {selectedElement ? 'SEL' : totalSelectedCount > 1 ? `${totalSelectedCount} ${t('items')}` : 'NONE'}
-                                            </Chip>
-                                        }
-                                        className="flex-1"
-                                    >
-                                        <PropertyPanel
-                                            selectedElement={selectedElement}
-                                            selectedElements={selectedElements}
-                                            updateElementData={updateElementData}
-                                            saveUpdateElement={saveUpdateElement}
-                                            deleteSelectedElements={deleteSelectedElements}
-                                        />
-                                    </Card>
-                                </>
-                            )}
-
-                            {leftTab === 'line' && (
-                                <Card title={t('drawLine')} className="flex-1">
-                                    {/* 선 선택 시 편집 패널 */}
-                                    {selectedLineId && (
-                                        <div className="mb-3">
-                                            <LinePropertyPanel
-                                                line={lines.find(l => l.lineId === selectedLineId)}
-                                                onUpdate={updateLineData}
-                                                onSave={saveUpdateLine}
-                                                onDelete={deleteLine}
-                                                onClose={() => setSelectedLineId(null)}
-                                            />
-                                        </div>
-                                    )}
-                                    <LinePanel
-                                        lineDrawMode={lineDrawMode}
-                                        setLineDrawMode={setLineDrawMode}
-                                        lineStart={lineStart}
-                                        lineDrawHeight={lineDrawHeight}
-                                        setLineDrawHeight={setLineDrawHeight}
-                                        onCancelDraw={cancelLineDraw}
-                                        lineColor={lineColor}
-                                        setLineColor={setLineColor}
-                                        lineWidth={lineWidth}
-                                        setLineWidth={setLineWidth}
-                                        lines={lines}
-                                        selectedLineId={selectedLineId}
-                                        setSelectedLineId={setSelectedLineId}
-                                        onAddLine={addLine}
-                                        onDeleteLine={deleteLine}
-                                        onClearLines={clearLines}
+                            {/* 선 선택 시 편집 패널 */}
+                            {selectedLineId && (
+                                <Card title={t('editLine')} right={<Chip color="blue">{t('drawLineChip')}</Chip>}>
+                                    <LinePropertyPanel
+                                        line={lines.find(l => l.lineId === selectedLineId)}
+                                        onUpdate={updateLineData}
+                                        onSave={saveUpdateLine}
+                                        onDelete={deleteLine}
+                                        onClose={() => setSelectedLineId(null)}
                                     />
                                 </Card>
                             )}
+
+                            <Card
+                                title={t('elementProperties')}
+                                right={
+                                    <Chip color={selectedElement ? 'orange' : totalSelectedCount > 1 ? 'violet' : 'gray'}>
+                                        {selectedElement ? 'SEL' : totalSelectedCount > 1 ? `${totalSelectedCount} ${t('items')}` : 'NONE'}
+                                    </Chip>
+                                }
+                                className="flex-1"
+                            >
+                                <PropertyPanel
+                                    selectedElement={selectedElement}
+                                    selectedElements={selectedElements}
+                                    updateElementData={updateElementData}
+                                    saveUpdateElement={saveUpdateElement}
+                                    deleteSelectedElements={deleteSelectedElements}
+                                />
+                            </Card>
                         </div>
                     )}
 
@@ -1322,33 +1505,78 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     }}
                                 >
                                     {viewMode === '2d' ? (
-                                        <Plan2DView
-                                            modelData={visibleModelData}
-                                            lines={visibleLines}
-                                            selectedElement={selectedElement}
-                                            onElementSelect={handleElementSelectAndClearLine}
-                                            selectedElements={selectedElements}
-                                            isSelectMode={isSelectMode}
-                                            onRubberBandSelect={applyRubberBandSelection}
-                                            pendingElement={pendingElement}
-                                            onPlacementConfirm={({ x, z }) => confirmPlacement({ x, z }, currentProjectId)}
-                                            lineDrawMode={lineDrawMode}
-                                            lineStart={lineStart}
-                                            onLineClick={handleLineClick}
-                                            snapEnabled={snapEnabled}
-                                            selectedLineId={selectedLineId}
-                                            onLineVertexUpdate={updateLineData}
-                                            onLineVertexSave={saveLineVertexDrag}
-                                            onLineSelect={(id) => {
-                                                setSelectedLineId(id);
-                                                if (id) {
-                                                    setLeftTab('line');
-                                                    setShowLeftPanel(true);
-                                                    setSelectedElement(null);
-                                                    setSelectedElements(new Set());
-                                                }
-                                            }}
-                                        />
+                                        <>
+                                            <Plan2DView
+                                                modelData={visibleModelData}
+                                                lines={visibleLines}
+                                                selectedElement={selectedElement}
+                                                onElementSelect={handleElementSelectAndClearLine}
+                                                selectedElements={selectedElements}
+                                                isSelectMode={isSelectMode}
+                                                onRubberBandSelect={applyRubberBandSelection}
+                                                pendingElement={pendingElement}
+                                                onPlacementConfirm={({ x, y }) => confirmPlacement({
+                                                    x: placeLocked.x ?? x,
+                                                    y: placeLocked.y ?? y,  // data Y (floor)
+                                                    z: placeLocked.z ?? 0,   // data Z (height=0)
+                                                }, currentProjectId)}
+                                                lineDrawMode={lineDrawMode}
+                                                lineStart={lineStart}
+                                                onLineClick={handleLineClick}
+                                                snapEnabled={snapEnabled}
+                                                onHoverPosition={pos => { hoverPosRef.current = pos; }}
+                                                placementLockedAxes={placeLocked}
+                                                lineLockedAxes={lineLocked}
+                                                selectedLineId={selectedLineId}
+                                                onLineVertexUpdate={updateLineData}
+                                                onLineVertexSave={saveLineVertexDrag}
+                                                onLineSelect={(id) => {
+                                                    setSelectedLineId(id);
+                                                    if (id) {
+                                                        setShowLeftPanel(true);
+                                                        setSelectedElement(null);
+                                                        setSelectedElements(new Set());
+                                                    }
+                                                }}
+                                            />
+                                            {pendingElement && (
+                                                <CoordCommandBar
+                                                    label={pendingElement.elementType.replace('Ifc', '').toUpperCase()}
+                                                    accentColor="orange"
+                                                    hoverPosRef={hoverPosRef}
+                                                    mode="place"
+                                                    lockZ
+                                                    onConfirm={(pos) => confirmPlacement(pos, currentProjectId)}
+                                                    onAxisLocked={(axis, val) => {
+                                                        if (axis === '__reset__') setPlaceLocked({ x: null, y: null, z: null });
+                                                        else setPlaceLocked(prev => ({ ...prev, [axis]: val }));
+                                                    }}
+                                                    onFinish={cancelPlacement}
+                                                />
+                                            )}
+                                            {lineDrawMode === 'click' && (
+                                                <CoordCommandBar
+                                                    label="LINE"
+                                                    accentColor="blue"
+                                                    hoverPosRef={hoverPosRef}
+                                                    mode="line"
+                                                    lockZ
+                                                    lineStart={lineStart}
+                                                    lineChainStart={lineChainStart}
+                                                    lineColor={lineColor}
+                                                    setLineColor={setLineColor}
+                                                    lineWidth={lineWidth}
+                                                    setLineWidth={setLineWidth}
+                                                    onConfirm={handleLineClick}
+                                                    onAxisLocked={(axis, val) => {
+                                                        if (axis === '__reset__') setLineLocked({ x: null, y: null, z: null });
+                                                        else setLineLocked(prev => ({ ...prev, [axis]: val }));
+                                                    }}
+                                                    onCloseChain={closeLineChain}
+                                                    onFinish={finishLineDraw}
+                                                />
+                                            )}
+                                        </>
                                     ) : (<>
 
                                         {/* R3F 이벤트 소스 div */}
@@ -1357,7 +1585,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         <Canvas
                                             eventSource={mainViewRef}
                                             className="!absolute inset-0 rounded-xl pointer-events-none z-0"
-                                            camera={{ position: [15, 12, 15], fov: 55 }}
+                                            camera={{ position: [15, 12, 15],up: [0, 0, 1], fov: 55 }}
                                             shadows
                                             onPointerMissed={() => {
                                                 if (!isSelectMode) {
@@ -1368,7 +1596,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                 }
                                             }}
                                         >
-                                            <View track={mainViewRef}>
                                                 <Scene
                                                     modelData={visibleModelData}
                                                     onElementSelect={handleElementSelectAndClearLine}
@@ -1390,9 +1617,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     onLineSelect={(id) => {
                                                         setSelectedLineId(id);
                                                         if (id) {
-                                                            setLeftTab('line');
                                                             setShowLeftPanel(true);
-                                                            // 부재 선택 해제
                                                             setSelectedElement(null);
                                                             setSelectedElements(new Set());
                                                         }
@@ -1406,15 +1631,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     onLineVertexUpdate={updateLineData}
                                                     onLineVertexSave={saveLineVertexDrag}
                                                     snapEnabled={snapEnabled}
+                                                    onHoverPosition={pos => { hoverPosRef.current = pos; }}
+                                                    placementLockedAxes={placeLocked}
+                                                    lineLockedAxes={lineLocked}
                                                     ifcMeshes={ifcMeshes}
                                                     fitCameraTrigger={fitCameraTrigger}
                                                     viewPreset={viewPreset}
                                                 />
-                                            </View>
-
-                                            <GizmoHelper alignment="bottom-left" margin={[72, 72]}>
-                                                <GizmoViewport axisColors={['#ff4060', '#80ff80', '#2080ff']} labelColor="white" />
-                                            </GizmoHelper>
+                                                <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+                                                    {/* axisNames: Three.js[X,Y,Z] → data[X,Z(height),Y(depth)] */}
+                                                    <GizmoViewport axisColors={['#ff4060', '#80ff80', '#2080ff']} labelColor="white"/>
+                                                </GizmoHelper>
 
                                         </Canvas>
 
@@ -1509,27 +1736,48 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             );
                                         })()}
 
-                                        {/* ── 배치 모드 커서 힌트 ── */}
+                                        {/* ── 부재 배치 커맨드바 ── */}
                                         {pendingElement && (
-                                            <div className="absolute bottom-3 right-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20 mr-44">
-                                                {t('clickToPlace')} &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd>
-                                            </div>
+                                            <CoordCommandBar
+                                                label={pendingElement.elementType.replace('Ifc', '').toUpperCase()}
+                                                accentColor="orange"
+                                                hoverPosRef={hoverPosRef}
+                                                mode="place"
+                                                onConfirm={(pos) => confirmPlacement(pos, currentProjectId)}
+                                                onAxisLocked={(axis, val) => {
+                                                    if (axis === '__reset__') setPlaceLocked({ x: null, y: null, z: null });
+                                                    else setPlaceLocked(prev => ({ ...prev, [axis]: val }));
+                                                }}
+                                                onFinish={cancelPlacement}
+                                            />
                                         )}
 
-                                        {/* ── 선 작도 클릭 힌트 ── */}
+                                        {/* ── LINE 커맨드바 ── */}
                                         {lineDrawMode === 'click' && (
-                                            <div className="absolute bottom-3 left-3 bg-space-900/80 border border-blue-700/60 rounded-lg px-3 py-2 text-xs text-blue-300 z-20">
-                                                {!lineStart
-                                                    ? t('firstPoint')
-                                                    : t('secondPoint')}
-                                                {snapEnabled && <span className="ml-2 text-yellow-400">{t('snapOnHint')}</span>}
-                                                &nbsp;|&nbsp; <kbd className="bg-black/30 px-1 rounded">ESC</kbd>
-                                            </div>
+                                            <CoordCommandBar
+                                                label="LINE"
+                                                accentColor="blue"
+                                                hoverPosRef={hoverPosRef}
+                                                mode="line"
+                                                lineStart={lineStart}
+                                                lineChainStart={lineChainStart}
+                                                lineColor={lineColor}
+                                                setLineColor={setLineColor}
+                                                lineWidth={lineWidth}
+                                                setLineWidth={setLineWidth}
+                                                onConfirm={handleLineClick}
+                                                onAxisLocked={(axis, val) => {
+                                                    if (axis === '__reset__') setLineLocked({ x: null, y: null, z: null });
+                                                    else setLineLocked(prev => ({ ...prev, [axis]: val }));
+                                                }}
+                                                onCloseChain={closeLineChain}
+                                                onFinish={finishLineDraw}
+                                            />
                                         )}
 
-                                        {/* ── 배치 모드 스냅 힌트 ── */}
-                                        {pendingElement && snapEnabled && (
-                                            <div className="absolute bottom-14 right-3 bg-space-900/70 border border-yellow-700/40 rounded-lg px-2 py-1 text-xs text-yellow-400 z-20 mr-44">
+                                        {/* ── 스냅 힌트 ── */}
+                                        {(pendingElement || lineDrawMode === 'click') && snapEnabled && (
+                                            <div className="absolute bottom-14 right-3 bg-space-900/70 border border-yellow-700/40 rounded-lg px-2 py-1 text-xs text-yellow-400 z-20">
                                                 {t('snapOnHint')}
                                             </div>
                                         )}
@@ -1603,7 +1851,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         onDeleteLine={deleteLine}
                                         onSelectLine={(lineId) => {
                                             setSelectedLineId(lineId);
-                                            if (lineId) setLeftTab('line');
                                         }}
                                         selectedLineId={selectedLineId}
                                     />
@@ -1612,8 +1859,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
                             {/* 구조 데이터 분석 */}
                             <Card title={t('elementList')} right={<Chip color="green">{t('liveChip')}</Chip>} className="mt-3 shrink-0">
-                                <div className="grid grid-cols-5 gap-1.5">
-                                    {['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcSlab', 'IfcPier'].map(type => {
+                                <div className="grid grid-cols-6 gap-1.5">
+                                    {['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcSlab', 'IfcPier', 'IfcRebar'].map(type => {
                                         const count = modelData.filter(e => e.elementType === type).length;
                                         return (
                                             <div key={type} className="bg-space-700/60 rounded-lg p-2 flex flex-col items-center gap-0.5">

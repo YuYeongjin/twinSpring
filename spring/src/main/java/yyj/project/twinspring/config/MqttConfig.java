@@ -25,7 +25,7 @@ public class MqttConfig {
     @Autowired
     public MqttService mqttService;
 
-    @Value("${mqtt.broker.url:tcp://localhost:1883}")
+    @Value("${mqtt.broker.url:tcp://192.168.219.103:1883}")
     private String brokerUrl;
 
     @Value("${mqtt.topic:test/topic}")
@@ -49,7 +49,6 @@ public class MqttConfig {
 
     @Bean
     public MessageProducerSupport mqttInbound() {
-        // 재시작 시 클라이언트 ID 충돌을 방지하기 위해 타임스탬프 추가
         String clientId = "twinspring-client_" + System.currentTimeMillis();
         MqttPahoMessageDrivenChannelAdapter adapter =
                 new MqttPahoMessageDrivenChannelAdapter(clientId, mqttClientFactory(), mqttTopic);

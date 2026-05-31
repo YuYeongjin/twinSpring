@@ -78,31 +78,44 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
         {/* Desktop navigation (md+) */}
         {setViceComponent && (
-          <nav className="hidden md:flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
-            {NAV_ITEMS.map(({ id, label, icon }) => {
-              const isActive = activeTab === id;
-              const disabled = isTabDisabled(id);
-              return (
-                <button
-                  key={id}
-                  onClick={() => handleNavClick(id)}
-                  disabled={disabled}
-                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
-                  style={{
-                    backgroundColor: isActive ? "#1e3a5f" : "transparent",
-                    color: disabled ? "#4a5568" : isActive ? "#60a5fa" : "#8896a4",
-                    border: isActive ? "1px solid #2a5080" : "1px solid transparent",
-                    boxShadow: isActive ? "0 0 8px #2196f330" : "none",
-                    cursor: disabled ? "not-allowed" : "pointer",
-                    opacity: disabled ? 0.5 : 1,
-                  }}
-                >
-                  <span className="text-base">{icon}</span>
-                  <span>{label}{disabled ? " " + t('offline') : ""}</span>
-                </button>
-              );
-            })}
-          </nav>
+            <nav className="hidden md:flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-xl p-1">
+              {NAV_ITEMS.map(({ id, label, icon }) => {
+                const isActive = activeTab === id;
+                const disabled = isTabDisabled(id);
+                return (
+                    <button
+                        key={id}
+                        onClick={() => handleNavClick(id)}
+                        disabled={disabled}
+                        className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150"
+                        style={{
+                          backgroundColor: isActive ? "#1e3a5f" : "transparent",
+                          color: disabled ? "#4a5568" : isActive ? "#60a5fa" : "#8896a4",
+                          border: isActive ? "1px solid #2a5080" : "1px solid transparent",
+                          boxShadow: isActive ? "0 0 8px #2196f330" : "none",
+                          cursor: disabled ? "not-allowed" : "pointer",
+                          opacity: disabled ? 0.5 : 1,
+                          maxWidth: "200px",
+                          minWidth: "60px",
+                          flexShrink: 1,
+                        }}
+                    >
+                      <span className="text-base flex-shrink-0">{icon}</span>
+
+                      <span
+                          style={{
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            width: "100%"
+                          }}
+                      >
+            {label}{disabled ? " " + t('offline') : ""}
+          </span>
+                    </button>
+                );
+              })}
+            </nav>
         )}
 
         <div className="flex items-center gap-2 shrink-0">
