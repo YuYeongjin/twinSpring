@@ -36,13 +36,38 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         ];
     }, [modelData]);
 
-    const undo = useCallback(() => {
+    const undo = useCallback(async () => {
         if (undoHistoryRef.current.length === 0) return;
         const prev = undoHistoryRef.current.pop();
+        const current = modelData;
+
+        // 현재에는 있고 이전에는 없는 요소 → DB에서 삭제
+        const prevIds = new Set(prev.map(e => e.elementId));
+        const toDelete = current.filter(e => !prevIds.has(e.elementId));
+        for (const el of toDelete) {
+            AxiosCustom.delete(`${API_BASE}/element/${el.elementId}`).catch(() => {});
+        }
+
+        // 이전에는 있고 현재에는 없는 요소 → DB에 복원
+        const currentIds = new Set(current.map(e => e.elementId));
+        const toRestore = prev.filter(e => !currentIds.has(e.elementId));
+        for (const el of toRestore) {
+            AxiosCustom.post(`${API_BASE}/element`, { ...el, projectId: el.projectId ?? selectedProject?.projectId }).catch(() => {});
+        }
+
+        // 양쪽에 있지만 데이터가 다른 요소 → DB 업데이트
+        const currentMap = new Map(current.map(e => [e.elementId, e]));
+        for (const el of prev) {
+            const cur = currentMap.get(el.elementId);
+            if (cur && JSON.stringify(cur) !== JSON.stringify(el)) {
+                AxiosCustom.put(`${API_BASE}/model/element`, { ...el, projectId: el.projectId ?? selectedProject?.projectId }).catch(() => {});
+            }
+        }
+
         setModelData(prev);
         setSelectedElement(null);
         setSelectedElements(new Set());
-    }, [setModelData]);
+    }, [modelData, selectedProject, setModelData]);
 
     // ── 레이어 & 색상 상태 ──────────────────────────────────────────
     const [layers, setLayers] = useState([]);
@@ -209,7 +234,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 projectId,
                 elementId: "ELEM-" + Math.random().toString(36).substr(2, 9),
                 positionX: parseFloat(position.x.toFixed(3)),
-                positionY: 0,
+                positionY: parseFloat((position.y ?? 0).toFixed(3)),
                 positionZ: parseFloat(position.z.toFixed(3)),
                 sizeX: pendingElement.sizeX ?? 1,
                 sizeY: pendingElement.sizeY ?? 1,

@@ -76,16 +76,18 @@ function getMaterial(ourType) {
  *
  * @param {File}     file       .ifc 파일 객체
  * @param {Function} onProgress 진행률 콜백 (0~100)
- * @returns {{ elements: BimElementDTO[], ifcMeshes: IfcMeshData[] }}
+ * @param {number}   userScale  사용자 지정 스케일 배율 (기본 1.0)
+ * @returns {{ elements: BimElementDTO[], ifcMeshes: IfcMeshData[], detectedScale: number }}
  */
-export async function parseIfcFile(file, onProgress) {
+export async function parseIfcFile(file, onProgress, userScale = 1.0) {
   const ifcAPI = new IfcAPI();
   ifcAPI.SetWasmPath((process.env.PUBLIC_URL || '') + '/', true);
   await ifcAPI.Init();
 
   const buffer = await file.arrayBuffer();
   const modelId = ifcAPI.OpenModel(new Uint8Array(buffer));
-  const scale   = detectUnitScale(ifcAPI, modelId);
+  const detectedScale = detectUnitScale(ifcAPI, modelId);
+  const scale = detectedScale * userScale;
 
   onProgress?.(5);
 
@@ -200,20 +202,22 @@ export async function parseIfcFile(file, onProgress) {
     if (!isFinite(wMinX)) return;
 
     // ── AABB → BimElementDTO ─────────────────────────────────────
-    // Three.js 공간에서의 AABB (이미 좌표 변환 완료)
-    const sizeX = Math.max(wMaxX - wMinX, 0.05);
-    const sizeY = Math.max(wMaxY - wMinY, 0.05);
-    const sizeZ = Math.max(wMaxZ - wMinZ, 0.05);
+    // 좌표 규칙: positionX/Y = 평면(2D), positionZ = 높이
+    // Three.js: X=ThreeX, Y(height)=ThreeY, Z(depth)=ThreeZ
+    // → DTO:    positionX=ThreeX, positionY=ThreeZ(depth), positionZ=ThreeY(height)
+    const sX = Math.max(wMaxX - wMinX, 0.05);
+    const sY = Math.max(wMaxZ - wMinZ, 0.05);  // DTO sizeY = Three.js Z depth
+    const sZ = Math.max(wMaxY - wMinY, 0.05);  // DTO sizeZ = Three.js Y height
 
     elements.push({
       elementId:   `IFC-${expressId}`,
       elementType: ourType,
       positionX:   parseFloat(((wMinX + wMaxX) / 2).toFixed(4)),
-      positionY:   parseFloat(wMinY.toFixed(4)),
-      positionZ:   parseFloat(((wMinZ + wMaxZ) / 2).toFixed(4)),
-      sizeX:       parseFloat(sizeX.toFixed(4)),
-      sizeY:       parseFloat(sizeY.toFixed(4)),
-      sizeZ:       parseFloat(sizeZ.toFixed(4)),
+      positionY:   parseFloat(((wMinZ + wMaxZ) / 2).toFixed(4)),  // depth center
+      positionZ:   parseFloat(wMinY.toFixed(4)),                   // height base
+      sizeX:       parseFloat(sX.toFixed(4)),
+      sizeY:       parseFloat(sY.toFixed(4)),  // depth
+      sizeZ:       parseFloat(sZ.toFixed(4)),  // height
       rotationX: 0, rotationY: 0, rotationZ: 0,
       material:  getMaterial(ourType),
     });
@@ -255,43 +259,46 @@ export async function parseIfcFile(file, onProgress) {
 
   if (elements.length === 0) {
     onProgress?.(100);
-    return { elements: [], ifcMeshes: [] };
+    return { elements: [], ifcMeshes: [], detectedScale };
   }
 
-  // ── Step 3: 중앙 정렬 — XZ 중심 = 원점, Y 기저 = 0 ──────────────
+  // ── Step 3: 중앙 정렬 — XY 중심 = 원점, Z 기저(높이) = 0 ──────────────
+  // DTO: positionX/Y = 평면 좌표, positionZ = 높이
+  // ifcMeshes 정점은 Three.js 공간: X=ThreeX, Y=ThreeY(height), Z=ThreeZ(depth)
   let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity;
-  let minZ = Infinity, maxZ = -Infinity;
+  let minY = Infinity, maxY = -Infinity;  // DTO Y = Three.js Z = 평면 depth
+  let minZ = Infinity;                     // DTO Z = Three.js Y = 높이 최솟값
 
   for (const el of elements) {
     if (el.positionX < minX) minX = el.positionX;
     if (el.positionX > maxX) maxX = el.positionX;
-    if (el.positionY < minY) minY = el.positionY;
-    if (el.positionZ < minZ) minZ = el.positionZ;
-    if (el.positionZ > maxZ) maxZ = el.positionZ;
+    if (el.positionY < minY) minY = el.positionY;   // 평면 Y
+    if (el.positionY > maxY) maxY = el.positionY;
+    if (el.positionZ < minZ) minZ = el.positionZ;   // 높이 base
   }
 
   const cx = (minX + maxX) / 2;
-  const cz = (minZ + maxZ) / 2;
+  const cy = (minY + maxY) / 2;
 
   // elements 중앙 정렬
   const centered = elements.map(el => ({
     ...el,
     positionX: parseFloat((el.positionX - cx).toFixed(3)),
-    positionY: parseFloat((el.positionY - minY).toFixed(3)),
-    positionZ: parseFloat((el.positionZ - cz).toFixed(3)),
+    positionY: parseFloat((el.positionY - cy).toFixed(3)),   // 평면 Y 센터링
+    positionZ: parseFloat((el.positionZ - minZ).toFixed(3)), // 높이 base → 0
   }));
 
-  // ifcMeshes 정점 위치 중앙 정렬
+  // ifcMeshes 정점 위치 중앙 정렬 (Three.js 공간 기준)
+  // ThreeX -= cx, ThreeY(height) -= minZ(=DTO positionZ min), ThreeZ(depth) -= cy
   for (const mesh of ifcMeshes) {
     const pos = mesh.positions;
     for (let i = 0; i < pos.length; i += 3) {
-      pos[i]   -= cx;
-      pos[i+1] -= minY;
-      pos[i+2] -= cz;
+      pos[i]   -= cx;    // ThreeX
+      pos[i+1] -= minZ;  // ThreeY (height) — minZ는 DTO positionZ의 최솟값 = Three.js Y 최솟값
+      pos[i+2] -= cy;    // ThreeZ (depth) — cy는 DTO positionY의 중심 = Three.js Z 중심
     }
   }
 
   onProgress?.(100);
-  return { elements: centered, ifcMeshes };
+  return { elements: centered, ifcMeshes, detectedScale };
 }

@@ -374,9 +374,9 @@ function IfcImportModal({ onClose, onImport }) {
   const [dragging, setDragging]         = useState(false);
   const [phase, setPhase]               = useState("idle"); // idle | parsing | importing | done | error
   const [progress, setProgress]         = useState(0);
-  // parseIfcFile now returns { elements, ifcMeshes }
   const [parsedData, setParsedData]     = useState(null);
   const [errorMsg, setErrorMsg]         = useState("");
+  const [userScale, setUserScale]       = useState(1);
   const fileInputRef = useRef(null);
 
   const handleFile = useCallback((file) => {
@@ -406,8 +406,7 @@ function IfcImportModal({ onClose, onImport }) {
     setProgress(0);
     setErrorMsg("");
     try {
-      // parseIfcFile now returns { elements, ifcMeshes }
-      const result = await parseIfcFile(selectedFile, setProgress);
+      const result = await parseIfcFile(selectedFile, setProgress, userScale);
       setParsedData(result);
       setPhase("done");
     } catch (e) {
@@ -415,7 +414,7 @@ function IfcImportModal({ onClose, onImport }) {
       setErrorMsg(`IFC parsing failed: ${e?.message || String(e)}`);
       setPhase("error");
     }
-  }, [selectedFile]);
+  }, [selectedFile, userScale]);
 
   const handleImport = useCallback(() => {
     if (!parsedData || !projectName.trim()) return;
@@ -528,6 +527,52 @@ function IfcImportModal({ onClose, onImport }) {
               }}
             />
           </div>
+        </div>
+
+        {/* 스케일 설정 */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium" style={{ color: TB.text2 }}>
+              Scale Factor
+            </label>
+            {parsedData?.detectedScale != null && parsedData.detectedScale !== 1 && (
+              <span className="text-xs px-2 py-0.5 rounded"
+                    style={{ backgroundColor: "#1c2a3a", color: "#f59e0b" }}>
+                단위 감지: {parsedData.detectedScale === 0.001 ? 'mm' : parsedData.detectedScale === 0.01 ? 'cm' : parsedData.detectedScale === 0.1 ? 'dm' : 'm'}
+                → 권장 ×{Math.round(1 / parsedData.detectedScale)}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="0.001"
+              max="10000"
+              step="any"
+              value={userScale}
+              onChange={e => { setUserScale(parseFloat(e.target.value) || 1); if (phase === 'done') setPhase('idle'); }}
+              className="w-24 px-2 py-1.5 rounded-lg text-sm outline-none text-right"
+              style={{ backgroundColor: "#152030", border: "1px solid #253347", color: TB.text1 }}
+            />
+            <span className="text-xs" style={{ color: TB.text2 }}>× multiplier</span>
+            <div className="flex gap-1 ml-auto">
+              {[1, 10, 100, 1000].map(v => (
+                <button
+                  key={v}
+                  onClick={() => { setUserScale(v); if (phase === 'done') setPhase('idle'); }}
+                  className="px-2 py-1 rounded text-xs font-medium transition"
+                  style={{
+                    backgroundColor: userScale === v ? "#0ea5e9" : "#152030",
+                    border: `1px solid ${userScale === v ? "#0ea5e9" : "#253347"}`,
+                    color: userScale === v ? "#fff" : TB.text2,
+                  }}
+                >×{v}</button>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs mt-1" style={{ color: "#475569" }}>
+            mm 단위 IFC는 ×1000, cm 단위는 ×100 을 권장합니다.
+          </p>
         </div>
 
         {/* 파싱 진행바 */}

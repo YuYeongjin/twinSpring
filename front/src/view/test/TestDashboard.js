@@ -819,7 +819,10 @@ export default function TestDashboard() {
                       textAlign: 'left', width: '100%', transition: 'all 0.15s',
                     }}
                   >
-                    <div style={{ color: active ? accentBlue : '#e2e8f0', fontWeight: active ? 700 : 400, fontSize: '12px' }}>
+                    <div style={{ color: active ? accentBlue : '#e2e8f0', fontWeight: active ? 700 : 400, fontSize: '12px', whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '150px' }}>
                       {proj.projectName}
                     </div>
                     <div style={{ color: '#4a5568', fontSize: '10px', marginTop: '2px' }}>{proj.structureType}</div>

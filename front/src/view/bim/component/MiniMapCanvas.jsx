@@ -7,15 +7,17 @@ import { getBaseColor } from '../element/BimElement';
 // ================================================================
 // 부재 요소 (상단 뷰, 납작한 박스)
 // ================================================================
+// 좌표 규칙: positionX/Y = 평면(2D), positionZ = 높이(3D)
+// Three.js: X=posX, Y(up)=posZ, Z(depth)=posY
 function MiniElem({ element }) {
     const { pos, size, color } = useMemo(() => {
         const x  = Number(element.positionX) || 0;
-        const z  = Number(element.positionZ) || 0;
+        const y  = Number(element.positionY) || 0;  // floor Y → Three.js Z
         const sx = Math.max(Number(element.sizeX) || 1, 0.3);
-        const sz = Math.max(Number(element.sizeZ) || 1, 0.3);
+        const sy = Math.max(Number(element.sizeY) || 1, 0.3);  // floor Y size → Three.js Z
         return {
-            pos:   [x, 0.05, z],
-            size:  [sx, 0.1, sz],
+            pos:   [x, 0.05, y],
+            size:  [sx, 0.1, sy],
             color: element.resolvedColor || getBaseColor(element.elementType),
         };
     }, [element]);
@@ -77,20 +79,19 @@ function AutoZoom({ modelData }) {
 
         modelData.forEach(el => {
             const x  = Number(el.positionX) || 0;
-            const z  = Number(el.positionZ) || 0;
+            const y  = Number(el.positionY) || 0;   // floor Y → Three.js Z
             const sx = (Number(el.sizeX)    || 1) / 2;
-            const sz = (Number(el.sizeZ)    || 1) / 2;
+            const sy = (Number(el.sizeY)    || 1) / 2;  // floor Y → Three.js Z
             minX = Math.min(minX, x - sx);
             maxX = Math.max(maxX, x + sx);
-            minZ = Math.min(minZ, z - sz);
-            maxZ = Math.max(maxZ, z + sz);
+            minZ = Math.min(minZ, y - sy);
+            maxZ = Math.max(maxZ, y + sy);
         });
 
         const span = Math.max(maxX - minX, maxZ - minZ, 15) + 10;
         const cx   = (minX + maxX) / 2;
         const cz   = (minZ + maxZ) / 2;
 
-        // 미니맵 픽셀 크기 약 144px → span 미터가 120px에 들어오도록
         camera.zoom = 120 / span;
         camera.position.set(cx, 100, cz);
         camera.up.set(0, 0, -1);

@@ -73,20 +73,20 @@ function CameraAutoFit({ ifcMeshes, modelData, orbitRef, fitTrigger }) {
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
         if (modelData && modelData.length > 0) {
-            // 빠른 경로: BimElementDTO AABB 사용
+            // 좌표 규칙: positionX/Y=평면, positionZ=높이 / Three.js: X=posX, Y=posZ, Z=posY
             for (const el of modelData) {
                 const px = Number(el.positionX) || 0;
-                const py = Number(el.positionY) || 0;
-                const pz = Number(el.positionZ) || 0;
+                const py = Number(el.positionY) || 0;  // floor Y → Three.js Z
+                const pz = Number(el.positionZ) || 0;  // height  → Three.js Y
                 const hx = (Number(el.sizeX) || 0.1) / 2;
-                const sy = Number(el.sizeY) || 0.1;
-                const hz = (Number(el.sizeZ) || 0.1) / 2;
+                const hy = (Number(el.sizeY) || 0.1) / 2;  // floor Y half
+                const sz = Number(el.sizeZ) || 0.1;         // height size
                 if (px - hx < minX) minX = px - hx;
                 if (px + hx > maxX) maxX = px + hx;
-                if (py       < minY) minY = py;
-                if (py + sy  > maxY) maxY = py + sy;
-                if (pz - hz < minZ) minZ = pz - hz;
-                if (pz + hz > maxZ) maxZ = pz + hz;
+                if (pz       < minY) minY = pz;          // Three.js Y = data Z
+                if (pz + sz  > maxY) maxY = pz + sz;
+                if (py - hy < minZ) minZ = py - hy;      // Three.js Z = data Y
+                if (py + hy > maxZ) maxZ = py + hy;
             }
         } else {
             // 느린 경로: 첫 번째 메시 정점 직접 순회 (fallback)
@@ -137,13 +137,14 @@ function ElementResizeHandles({
 }) {
     const { camera, gl } = useThree();
 
-    const x  = Number(element.positionX) || 0;
-    const y  = Number(element.positionY) || 0;
-    const z  = Number(element.positionZ) || 0;
-    const sx = Math.max(0.1, Number(element.sizeX) || 1);
-    const sy = Math.max(0.1, Number(element.sizeY) || 1);
-    const sz = Math.max(0.1, Number(element.sizeZ) || 1);
-    const hx = sx / 2, hz = sz / 2;
+    // 좌표 규칙: positionX/Y=평면, positionZ=높이 / Three.js: X=posX, Y=posZ, Z=posY
+    const pX = Number(element.positionX) || 0;
+    const pY = Number(element.positionY) || 0;   // floor Y → Three.js Z
+    const pZ = Number(element.positionZ) || 0;   // height  → Three.js Y
+    const sX = Math.max(0.1, Number(element.sizeX) || 1);
+    const sY = Math.max(0.1, Number(element.sizeY) || 1);   // floor Y size → Three.js Z size
+    const sZ = Math.max(0.1, Number(element.sizeZ) || 1);   // height size  → Three.js Y size
+    const hx = sX / 2, hy = sY / 2;
 
     /** 클라이언트 좌표 → NDC */
     const getNDC = useCallback((cx, cy) => {
@@ -174,11 +175,11 @@ function ElementResizeHandles({
             camera.getWorldDirection(dir);
             dir.y = 0; dir.normalize();
             plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-                dir, new THREE.Vector3(x, y + sy, z)
+                dir, new THREE.Vector3(pX, pZ + sZ, pY)  // Three.js 상단 중심
             );
         } else {
-            // 바닥 수평 평면 (XZ 치수 조절용)
-            plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -y);
+            // 바닥 수평 평면 — Three.js Y = data Z (height base)
+            plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -pZ);
         }
 
         const rc  = new THREE.Raycaster();
@@ -190,27 +191,28 @@ function ElementResizeHandles({
 
             // ── 높이 핸들 ─────────────────────────────────────────────
             if (type === 'top') {
-                const newSY = Math.max(0.1, parseFloat((hit.y - y).toFixed(3)));
-                updateElementData(element.elementId, { sizeY: newSY });
+                const newSZ = Math.max(0.1, parseFloat((hit.y - pZ).toFixed(3)));
+                updateElementData(element.elementId, { sizeZ: newSZ });
                 return;
             }
 
-            // ── XZ 핸들 (스냅 적용) ───────────────────────────────────
-            let hx2 = hit.x, hz2 = hit.z;
+            // ── XY floor 핸들 (스냅 적용) ─────────────────────────────
+            // hit.x = Three.jsX = dataX, hit.z = Three.jsZ = dataY
+            let hx2 = hit.x, hy2 = hit.z;
             if (snapEnabled && snapVertices.length > 0) {
                 const sv = findSnapVertex(hit.x, hit.z, snapVertices);
-                if (sv) { hx2 = sv[0]; hz2 = sv[2]; }
+                if (sv) { hx2 = sv[0]; hy2 = sv[2]; }
             }
 
-            const [ax, , az] = anchor;
+            const [ax, , az] = anchor;  // anchor: [threeX, threeY, threeZ=dataY]
             const updates = {};
             if (type === 'corner' || type === 'edge-x') {
                 updates.sizeX     = Math.max(0.1, parseFloat(Math.abs(hx2 - ax).toFixed(3)));
                 updates.positionX = parseFloat(((hx2 + ax) / 2).toFixed(3));
             }
             if (type === 'corner' || type === 'edge-z') {
-                updates.sizeZ     = Math.max(0.1, parseFloat(Math.abs(hz2 - az).toFixed(3)));
-                updates.positionZ = parseFloat(((hz2 + az) / 2).toFixed(3));
+                updates.sizeY     = Math.max(0.1, parseFloat(Math.abs(hy2 - az).toFixed(3)));  // data sizeY
+                updates.positionY = parseFloat(((hy2 + az) / 2).toFixed(3));                   // data posY
             }
             updateElementData(element.elementId, updates);
         };
@@ -224,35 +226,36 @@ function ElementResizeHandles({
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup',   onUp);
     }, [
-        x, y, z, sy,
+        pX, pY, pZ, sZ,
         element.elementId, camera, getNDC,
         snapEnabled, snapVertices,
         updateElementData, pushUndo, onDragStateChange,
     ]);
 
-    // ── 핸들 정의 ────────────────────────────────────────────────────
+    // ── 핸들 정의 — Three.js 좌표: X=dataX, Y=dataZ(height), Z=dataY(floorY)
     const handles = useMemo(() => [
-        // 바닥 코너 (파란색) — X + Z 동시 조절
-        { id:'c0', pos:[x+hx,y,z+hz], type:'corner',  anchor:[x-hx,y,z-hz], color:'#3b82f6', cursor:'nw-resize' },
-        { id:'c1', pos:[x+hx,y,z-hz], type:'corner',  anchor:[x-hx,y,z+hz], color:'#3b82f6', cursor:'ne-resize' },
-        { id:'c2', pos:[x-hx,y,z+hz], type:'corner',  anchor:[x+hx,y,z-hz], color:'#3b82f6', cursor:'ne-resize' },
-        { id:'c3', pos:[x-hx,y,z-hz], type:'corner',  anchor:[x+hx,y,z+hz], color:'#3b82f6', cursor:'nw-resize' },
-        // 바닥 엣지 중점 (보라색) — 단일 축 조절
-        { id:'ex0', pos:[x+hx,y,z],   type:'edge-x',  anchor:[x-hx,y,z],    color:'#8b5cf6', cursor:'ew-resize' },
-        { id:'ex1', pos:[x-hx,y,z],   type:'edge-x',  anchor:[x+hx,y,z],    color:'#8b5cf6', cursor:'ew-resize' },
-        { id:'ez0', pos:[x,y,z+hz],   type:'edge-z',  anchor:[x,y,z-hz],    color:'#8b5cf6', cursor:'ns-resize' },
-        { id:'ez1', pos:[x,y,z-hz],   type:'edge-z',  anchor:[x,y,z+hz],    color:'#8b5cf6', cursor:'ns-resize' },
+        // 바닥 코너 (파란색) — X + Y(floorY) 동시 조절
+        { id:'c0', pos:[pX+hx, pZ, pY+hy], type:'corner', anchor:[pX-hx, pZ, pY-hy], color:'#3b82f6', cursor:'nw-resize' },
+        { id:'c1', pos:[pX+hx, pZ, pY-hy], type:'corner', anchor:[pX-hx, pZ, pY+hy], color:'#3b82f6', cursor:'ne-resize' },
+        { id:'c2', pos:[pX-hx, pZ, pY+hy], type:'corner', anchor:[pX+hx, pZ, pY-hy], color:'#3b82f6', cursor:'ne-resize' },
+        { id:'c3', pos:[pX-hx, pZ, pY-hy], type:'corner', anchor:[pX+hx, pZ, pY+hy], color:'#3b82f6', cursor:'nw-resize' },
+        // X축 엣지 중점 (보라색) — X만 조절
+        { id:'ex0', pos:[pX+hx, pZ, pY], type:'edge-x', anchor:[pX-hx, pZ, pY], color:'#8b5cf6', cursor:'ew-resize' },
+        { id:'ex1', pos:[pX-hx, pZ, pY], type:'edge-x', anchor:[pX+hx, pZ, pY], color:'#8b5cf6', cursor:'ew-resize' },
+        // Y(floorY)축 엣지 중점 (보라색) — Y만 조절 (type='edge-z' 유지, hit.z 기준)
+        { id:'ey0', pos:[pX, pZ, pY+hy], type:'edge-z', anchor:[pX, pZ, pY-hy], color:'#8b5cf6', cursor:'ns-resize' },
+        { id:'ey1', pos:[pX, pZ, pY-hy], type:'edge-z', anchor:[pX, pZ, pY+hy], color:'#8b5cf6', cursor:'ns-resize' },
         // 상단 중심 (초록색) — 높이 조절
-        { id:'top', pos:[x,y+sy,z],   type:'top',     anchor:null,           color:'#10b981', cursor:'n-resize'  },
-    ], [x, y, z, hx, hz, sy]);
+        { id:'top', pos:[pX, pZ+sZ, pY], type:'top', anchor:null, color:'#10b981', cursor:'n-resize' },
+    ], [pX, pY, pZ, hx, hy, sZ]);
 
     const hs = HANDLE_HALF * 2; // 핸들 한 변 길이
 
     return (
         <group>
-            {/* CAD 바운딩 박스 와이어프레임 */}
-            <mesh position={[x, y + sy / 2, z]}>
-                <boxGeometry args={[sx + 0.02, sy + 0.02, sz + 0.02]} />
+            {/* CAD 바운딩 박스 와이어프레임 — Three.js [X, Y=center_height, Z=floorY] */}
+            <mesh position={[pX, pZ + sZ / 2, pY]}>
+                <boxGeometry args={[sX + 0.02, sZ + 0.02, sY + 0.02]} />
                 <meshBasicMaterial color="#00e5ff" wireframe transparent opacity={0.35} />
             </mesh>
 
@@ -276,7 +279,7 @@ function ElementResizeHandles({
                 <bufferGeometry>
                     <bufferAttribute
                         attach="attributes-position"
-                        array={new Float32Array([x, y, z,  x, y + sy, z])}
+                        array={new Float32Array([pX, pZ, pY,  pX, pZ + sZ, pY])}
                         count={2}
                         itemSize={3}
                     />
@@ -363,9 +366,48 @@ function VertexSnapIndicator({ snapVertices, snapEnabled }) {
 }
 
 // ================================================================
+// HoverTracker — 마우스 → 월드 좌표 실시간 추적 (렌더 없음)
+// ================================================================
+function HoverTracker({ drawHeight, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef, lineStart }) {
+    const { camera, raycaster, mouse } = useThree();
+    const floorPlane = useMemo(
+        () => new THREE.Plane(new THREE.Vector3(0, 1, 0), -drawHeight),
+        [drawHeight]
+    );
+    const hitPoint = useMemo(() => new THREE.Vector3(), []);
+
+    useFrame(() => {
+        raycaster.setFromCamera(mouse, camera);
+        if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return;
+        // Three.js: ex=X=dataX, ey=Y(up)=drawHeight=dataZ, ez=Z(depth)=dataY
+        let ex = hitPoint.x, ey = drawHeight, ez = hitPoint.z;
+        if (snapEnabled && snapVertices.length > 0) {
+            const sv = findSnapVertex(hitPoint.x, hitPoint.z, snapVertices);
+            if (sv) { ex = sv[0]; ey = sv[1] ?? drawHeight; ez = sv[2]; }
+        }
+        // lockedAxes는 data 좌표: x=dataX, y=dataY, z=dataZ
+        if (lockedAxes?.x != null) ex = lockedAxes.x;          // dataX = Three.jsX
+        if (lockedAxes?.y != null) ez = lockedAxes.y;          // dataY = Three.jsZ
+        if (lockedAxes?.z != null) ey = lockedAxes.z;          // dataZ = Three.jsY
+        // Shift 직교: lineStart = [dataX, dataY, dataZ] 기준
+        if (shiftRef?.current && lineStart) {
+            const dx = ex - lineStart[0], dz = ez - (lineStart[1] ?? 0);  // floor XY
+            if (lockedAxes?.x == null && lockedAxes?.y == null) {
+                if (Math.abs(dx) >= Math.abs(dz)) ez = lineStart[1] ?? 0;
+                else ex = lineStart[0];
+            }
+        }
+        // data 좌표로 emit: x=dataX, y=dataY, z=dataZ
+        onHoverPosition?.({ x: ex, y: ez, z: ey });
+    });
+
+    return null;
+}
+
+// ================================================================
 // 배치 고스트 (스마트 스냅 — 센터 + 코너)
 // ================================================================
-function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled }) {
+function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef }) {
     const meshRef   = useRef();
     const snapRef   = useRef();
     const { camera, raycaster, mouse } = useThree();
@@ -374,43 +416,57 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled }) {
     const hitPoint   = useMemo(() => new THREE.Vector3(), []);
     const snappedPos = useRef([0, 0]); // [x, z]
 
+    // 좌표 규칙: sizeX/Y=평면 크기, sizeZ=높이 / Three.js: X=dataX, Y=dataZ+half, Z=dataY
     const sizeX = template.sizeX ?? 1;
-    const sizeY = template.sizeY ?? 1;
-    const sizeZ = template.sizeZ ?? 1;
+    const sizeY = template.sizeY ?? 1;   // floor Y size → Three.js Z
+    const sizeZ = template.sizeZ ?? 1;   // height       → Three.js Y
 
     useFrame(() => {
         raycaster.setFromCamera(mouse, camera);
         if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return;
 
+        // px=Three.jsX=dataX, pz=Three.jsZ=dataY
         let px = hitPoint.x, pz = hitPoint.z;
         let snapped = false;
 
         if (snapEnabled && snapVertices.length > 0) {
-            const r = findSmartSnap(hitPoint.x, hitPoint.z, sizeX, sizeZ, snapVertices);
+            const r = findSmartSnap(hitPoint.x, hitPoint.z, sizeX, sizeY, snapVertices);  // floor XY
             if (r) { [px, pz] = r; snapped = true; }
         }
 
+        // lockedAxes: x=dataX, y=dataY(floorY), z=dataZ(height)
+        if (lockedAxes?.x != null) px = lockedAxes.x;           // dataX = Three.jsX
+        if (lockedAxes?.y != null) pz = lockedAxes.y;           // dataY = Three.jsZ
+        if (shiftRef?.current) {
+            if (lockedAxes?.x == null) px = Math.round(px * 2) / 2;
+            if (lockedAxes?.y == null) pz = Math.round(pz * 2) / 2;
+        }
+
+        const ghostZbase = lockedAxes?.z ?? 0;  // data Z (height base) = Three.js Y base
         snappedPos.current = [px, pz];
-        if (meshRef.current) meshRef.current.position.set(px, sizeY / 2, pz);
+        // data 좌표로 emit: x=dataX, y=dataY(=Three.jsZ), z=dataZ(height)
+        onHoverPosition?.({ x: px, y: pz, z: ghostZbase });
+        const ghostY = ghostZbase + sizeZ / 2;  // Three.js Y center
+        if (meshRef.current) meshRef.current.position.set(px, ghostY, pz);
 
         if (snapRef.current) {
             snapRef.current.visible = snapped;
-            if (snapped) snapRef.current.position.set(px, 0.1, pz);
+            if (snapped) snapRef.current.position.set(px, ghostZbase + 0.1, pz);
         }
     });
 
     return (
         <>
-            <mesh ref={meshRef} position={[0, sizeY / 2, 0]}>
-                <boxGeometry args={[sizeX, sizeY, sizeZ]} />
+            <mesh ref={meshRef} position={[0, sizeZ / 2, 0]}>
+                <boxGeometry args={[sizeX, sizeZ, sizeY]} />  {/* Three.js [X, height, depth] */}
                 <meshStandardMaterial
                     color={getBaseColor(template.elementType)}
                     opacity={0.45} transparent depthWrite={false}
                 />
             </mesh>
             {/* 와이어프레임 */}
-            <mesh position={[0, sizeY / 2, 0]}>
-                <boxGeometry args={[sizeX + 0.02, sizeY + 0.02, sizeZ + 0.02]} />
+            <mesh position={[0, sizeZ / 2, 0]}>
+                <boxGeometry args={[sizeX + 0.02, sizeZ + 0.02, sizeY + 0.02]} />
                 <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.6} />
             </mesh>
             {/* 스냅 인디케이터 */}
@@ -424,7 +480,12 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled }) {
                 position={[0, 0.001, 0]}
                 onClick={e => {
                     e.stopPropagation();
-                    onConfirm({ x: snappedPos.current[0], y: 0, z: snappedPos.current[1] });
+                    // data 좌표로 전달: x=dataX, y=dataY(floor), z=dataZ(height)
+                    onConfirm({
+                        x: lockedAxes?.x ?? snappedPos.current[0],    // dataX
+                        y: lockedAxes?.y ?? snappedPos.current[1],    // dataY (Three.jsZ)
+                        z: lockedAxes?.z ?? 0,                         // dataZ (height=0)
+                    });
                 }}
             >
                 <planeGeometry args={[500, 500]} />
@@ -437,7 +498,7 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled }) {
 // ================================================================
 // 선 작도 미리보기 (스냅 + 시작점 마커)
 // ================================================================
-function LinePreview({ lineStart, lineColor, lineWidth, drawHeight, snapVertices, snapEnabled }) {
+function LinePreview({ lineStart, lineColor, lineWidth, drawHeight, snapVertices, snapEnabled, lockedAxes }) {
     const { camera, raycaster, mouse } = useThree();
 
     const floorPlane = useMemo(
@@ -464,24 +525,30 @@ function LinePreview({ lineStart, lineColor, lineWidth, drawHeight, snapVertices
         raycaster.setFromCamera(mouse, camera);
         if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return;
 
-        let ex = hitPoint.x, ez = hitPoint.z;
+        let ex = hitPoint.x, ey = drawHeight, ez = hitPoint.z;
         let snapped = false;
 
         if (snapEnabled && snapVertices.length > 0) {
             const sv = findSnapVertex(hitPoint.x, hitPoint.z, snapVertices);
-            if (sv) {
-                ex = sv[0]; ez = sv[2]; snapped = true;
-                if (snapSphRef.current) {
-                    snapSphRef.current.position.set(sv[0], sv[1] ?? drawHeight, sv[2]);
-                    snapSphRef.current.visible = true;
-                }
-            }
+            if (sv) { ex = sv[0]; ey = sv[1] ?? drawHeight; ez = sv[2]; snapped = true; }
         }
         if (!snapped && snapSphRef.current) snapSphRef.current.visible = false;
 
+        // lockedAxes: data 좌표 (x=dataX, y=dataY, z=dataZ)
+        if (lockedAxes?.x != null) ex = lockedAxes.x;          // dataX = Three.jsX
+        if (lockedAxes?.y != null) ez = lockedAxes.y;          // dataY = Three.jsZ
+        if (lockedAxes?.z != null) ey = lockedAxes.z;          // dataZ = Three.jsY
+
+        // 스냅 구는 locked 축 적용 후의 최종 위치에 표시
+        if (snapped && snapSphRef.current) {
+            snapSphRef.current.position.set(ex, ey, ez);
+            snapSphRef.current.visible = true;
+        }
+
+        // lineStart = [dataX, dataY, dataZ] → Three.js = [X, dataZ, dataY]
         const pos = lineObj.geometry.attributes.position;
-        pos.setXYZ(0, lineStart[0], lineStart[1], lineStart[2]);
-        pos.setXYZ(1, ex, drawHeight, ez);
+        pos.setXYZ(0, lineStart[0], lineStart[2] ?? 0, lineStart[1] ?? 0);
+        pos.setXYZ(1, ex, ey, ez);  // ex=Three.jsX, ey=Three.jsY, ez=Three.jsZ
         pos.needsUpdate = true;
         lineObj.geometry.computeBoundingSphere();
     });
@@ -489,7 +556,7 @@ function LinePreview({ lineStart, lineColor, lineWidth, drawHeight, snapVertices
     return (
         <>
             <primitive object={lineObj} />
-            <mesh position={lineStart}>
+            <mesh position={[lineStart[0], lineStart[2] ?? 0, lineStart[1] ?? 0]}>
                 <sphereGeometry args={[0.15, 12, 12]} />
                 <meshBasicMaterial color="#4ade80" />
             </mesh>
@@ -535,9 +602,10 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
         document.body.style.cursor = 'crosshair';
 
         // 드래그 시작 시점의 꼭짓점 좌표를 기준점으로 고정
-        const basePoints = getLinePoints(line).map(p => [p[0], p[1] ?? 0, p[2]]);
-        const planeY = basePoints[vertexIndex]?.[1] ?? 0;
-        const plane  = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+        // 데이터: [dataX, dataY(floor), dataZ(height)]
+        const basePoints = getLinePoints(line).map(p => [p[0], p[1] ?? 0, p[2] ?? 0]);
+        const planeZ = basePoints[vertexIndex]?.[2] ?? 0;  // data Z (height) = Three.js Y
+        const plane  = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeZ);
         const rc     = new THREE.Raycaster();
         const hit    = new THREE.Vector3();
         let latestPoints = basePoints;
@@ -545,10 +613,10 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
         const onMove = (ev) => {
             rc.setFromCamera(getNDC(ev.clientX, ev.clientY), camera);
             if (!rc.ray.intersectPlane(plane, hit)) return;
-
+            // hit.x=Three.jsX=dataX, hit.z=Three.jsZ=dataY
             latestPoints = basePoints.map((p, i) =>
                 i === vertexIndex
-                    ? [parseFloat(hit.x.toFixed(3)), planeY, parseFloat(hit.z.toFixed(3))]
+                    ? [parseFloat(hit.x.toFixed(3)), parseFloat(hit.z.toFixed(3)), planeZ]
                     : p
             );
             onVertexUpdate?.(line.lineId, {
@@ -581,9 +649,9 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
 
                 return (
                     <group key={i}>
-                        {/* 드래그 가능한 꼭짓점 구체 */}
+                        {/* 드래그 가능한 꼭짓점 구체 — Three.js: [X, Y=dataZ, Z=dataY] */}
                         <mesh
-                            position={[pos[0], (pos[1] ?? 0) + 0.001, pos[2]]}
+                            position={[pos[0], (pos[2] ?? 0) + 0.001, pos[1] ?? 0]}
                             onPointerDown={makeDragHandler(i)}
                             onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'crosshair'; }}
                             onPointerOut={() => { document.body.style.cursor = ''; }}
@@ -593,9 +661,9 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
                             <meshBasicMaterial color={handleColor} depthTest={false} />
                         </mesh>
 
-                        {/* 외곽 링 (드래그 가능 표시) */}
+                        {/* 외곽 링 */}
                         <mesh
-                            position={[pos[0], (pos[1] ?? 0) + 0.001, pos[2]]}
+                            position={[pos[0], (pos[2] ?? 0) + 0.001, pos[1] ?? 0]}
                             rotation={[-Math.PI / 2, 0, 0]}
                             renderOrder={999}
                         >
@@ -603,9 +671,9 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
                             <meshBasicMaterial color={handleColor} transparent opacity={0.55} depthTest={false} />
                         </mesh>
 
-                        {/* 꼭짓점 인덱스 레이블 (0 = 시작점) */}
+                        {/* 시작점 마커 */}
                         {isFirst && (
-                            <mesh position={[pos[0], (pos[1] ?? 0) + 0.42, pos[2]]}>
+                            <mesh position={[pos[0], (pos[2] ?? 0) + 0.42, pos[1] ?? 0]}>
                                 <sphereGeometry args={[0.08, 6, 6]} />
                                 <meshBasicMaterial color="#4ade80" depthTest={false} />
                             </mesh>
@@ -617,11 +685,11 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
             {/* 중간 꼭짓점 수 표시 라인 (꼭짓점이 3개 이상일 때) */}
             {points.length >= 3 && points.slice(0, -1).map((pos, i) => {
                 const next = points[i + 1];
-                const mx = (pos[0] + next[0]) / 2;
-                const mz = (pos[2] + next[2]) / 2;
-                const my = ((pos[1] ?? 0) + (next[1] ?? 0)) / 2;
+                const mx  = (pos[0] + next[0]) / 2;                          // dataX midpoint
+                const my  = ((pos[1] ?? 0) + (next[1] ?? 0)) / 2;           // dataY midpoint → Three.jsZ
+                const mz  = ((pos[2] ?? 0) + (next[2] ?? 0)) / 2;           // dataZ midpoint → Three.jsY
                 return (
-                    <mesh key={`mid-${i}`} position={[mx, my + 0.001, mz]} renderOrder={998}>
+                    <mesh key={`mid-${i}`} position={[mx, mz + 0.001, my]} renderOrder={998}>
                         <sphereGeometry args={[0.09, 6, 6]} />
                         <meshBasicMaterial color="#94a3b8" transparent opacity={0.7} depthTest={false} />
                     </mesh>
@@ -665,6 +733,11 @@ export default function Scene({
     onLineVertexSave,
     // 스냅
     snapEnabled = true,
+    // 마우스 → 월드 좌표 실시간 콜백 (커맨드바 좌표 표시용)
+    onHoverPosition = null,
+    // 고정된 축 ({x,y,z} 각 null|number)
+    placementLockedAxes = null,
+    lineLockedAxes = null,
     // IFC 실제 지오메트리 (옵션) — 있으면 BimElement 박스 대신 렌더링
     ifcMeshes = null,
     // 카메라 자동 맞춤 수동 트리거 (숫자가 바뀌면 재맞춤)
@@ -675,6 +748,17 @@ export default function Scene({
     const { camera } = useThree();
     const transformRef     = useRef();
     const orbitRef         = useRef();
+    const shiftRef         = useRef(false);
+
+    useEffect(() => {
+        const handler = (e) => { shiftRef.current = e.shiftKey; };
+        window.addEventListener('keydown', handler);
+        window.addEventListener('keyup', handler);
+        return () => {
+            window.removeEventListener('keydown', handler);
+            window.removeEventListener('keyup', handler);
+        };
+    }, []);
     const [isDragging,            setIsDragging]            = useState(false);
     const [isResizeDragging,      setIsResizeDragging]      = useState(false);
     const [isLineVertexDragging,  setIsLineVertexDragging]  = useState(false);
@@ -699,14 +783,16 @@ export default function Scene({
             }
         }
         for (const el of modelData) {
+            // 좌표 규칙: positionX/Y=평면, positionZ=높이 → Three.js: X=posX, Y=posZ, Z=posY
             const ex = Number(el.positionX)||0, ey = Number(el.positionY)||0, ez = Number(el.positionZ)||0;
-            const esx = (Number(el.sizeX)||1)/2, esy = Number(el.sizeY)||1, esz = (Number(el.sizeZ)||1)/2;
-            for (const dx of [-1,1]) for (const dz of [-1,1]) {
-                verts.push([ex+dx*esx, ey,     ez+dz*esz]);
-                verts.push([ex+dx*esx, ey+esy, ez+dz*esz]);
+            const esx = (Number(el.sizeX)||1)/2, esy = (Number(el.sizeY)||1)/2, esz = Number(el.sizeZ)||1;
+            // 스냅 꼭짓점: Three.js [X, Y=height, Z=floorY]
+            for (const dx of [-1,1]) for (const dy of [-1,1]) {
+                verts.push([ex+dx*esx, ez,      ey+dy*esy]);  // 바닥 코너
+                verts.push([ex+dx*esx, ez+esz,  ey+dy*esy]);  // 상단 코너
             }
-            verts.push([ex, ey, ez]);
-            verts.push([ex, ey+esy, ez]);
+            verts.push([ex, ez,      ey]);  // 중심 바닥
+            verts.push([ex, ez+esz,  ey]);  // 중심 상단
         }
         return verts;
     }, [snapEnabled, pendingElement, lineDrawMode, lines, modelData]);
@@ -727,10 +813,10 @@ export default function Scene({
             let minZ = Infinity, maxZ = -Infinity;
             for (const el of modelData) {
                 const px = Number(el.positionX)||0, py = Number(el.positionY)||0, pz = Number(el.positionZ)||0;
-                const hx = (Number(el.sizeX)||0.1)/2, sy = Number(el.sizeY)||0.1, hz = (Number(el.sizeZ)||0.1)/2;
+                const hx = (Number(el.sizeX)||0.1)/2, hy = (Number(el.sizeY)||0.1)/2, sz = Number(el.sizeZ)||0.1;
                 if (px-hx < minX) minX = px-hx; if (px+hx > maxX) maxX = px+hx;
-                if (py    < minY) minY = py;      if (py+sy  > maxY) maxY = py+sy;
-                if (pz-hz < minZ) minZ = pz-hz; if (pz+hz > maxZ) maxZ = pz+hz;
+                if (pz    < minY) minY = pz;      if (pz+sz  > maxY) maxY = pz+sz;  // Three.js Y = data Z
+                if (py-hy < minZ) minZ = py-hy; if (py+hy > maxZ) maxZ = py+hy;     // Three.js Z = data Y
             }
             cx = (minX+maxX)/2; cy = (minY+maxY)/2; cz = (minZ+maxZ)/2;
             span = Math.max(maxX-minX, maxY-minY, maxZ-minZ, 1);
@@ -780,11 +866,12 @@ export default function Scene({
         if (!mesh?.userData?.elementId) return;
         const id = mesh.userData.elementId;
         if (transformMode === 'translate') {
+            // rawSize = [sizeX, sizeZ, sizeY] (Three.js [X, height, depth])
             const rawSize = mesh.userData.rawSize ?? [1,1,1];
-            const bottomY = mesh.position.y - rawSize[1]/2;
-            const nx = parseFloat(mesh.position.x.toFixed(3));
-            const ny = parseFloat(bottomY.toFixed(3));
-            const nz = parseFloat(mesh.position.z.toFixed(3));
+            const baseZ = mesh.position.y - rawSize[1] / 2;   // Three.js Y - sizeZ/2 = data Z base
+            const nx = parseFloat(mesh.position.x.toFixed(3));        // data X
+            const ny = parseFloat(mesh.position.z.toFixed(3));        // data Y = Three.js Z
+            const nz = parseFloat(baseZ.toFixed(3));                   // data Z = Three.js Y - half
             const sp = startPositionsRef.current[id];
             const dx = nx-(sp?.positionX??nx), dy = ny-(sp?.positionY??ny), dz = nz-(sp?.positionZ??nz);
             updateElementData(id, { positionX:nx, positionY:ny, positionZ:nz });
@@ -801,11 +888,12 @@ export default function Scene({
                 }
             }
         } else if (transformMode === 'scale') {
+            // rawSize = [sizeX, sizeZ(height), sizeY(floorY)] → Three.js scale X/Y/Z
             const rawSize = mesh.userData.rawSize ?? [1,1,1];
             updateElementData(id, {
                 sizeX: parseFloat((rawSize[0]*mesh.scale.x).toFixed(3)),
-                sizeY: parseFloat((rawSize[1]*mesh.scale.y).toFixed(3)),
-                sizeZ: parseFloat((rawSize[2]*mesh.scale.z).toFixed(3)),
+                sizeZ: parseFloat((rawSize[1]*mesh.scale.y).toFixed(3)),  // Three.js Y scale = data sizeZ
+                sizeY: parseFloat((rawSize[2]*mesh.scale.z).toFixed(3)),  // Three.js Z scale = data sizeY
             });
             mesh.scale.set(1,1,1);
         } else if (transformMode === 'rotate') {
@@ -839,15 +927,29 @@ export default function Scene({
         return () => ctrl.removeEventListener('dragging-changed', onDrag);
     }, [transformMode, modelData, updateElementData, selectedElements, handleTransformComplete, pushUndo]);
 
-    // ── 선 클릭 (스냅 적용) ──────────────────────────────────────────
+    // ── 선 클릭 (스냅 + locked + shift 직교 적용) ───────────────────────
     const handleLinePlaneClick = (e) => {
         e.stopPropagation();
-        let pt = { x: e.point.x, y: e.point.y, z: e.point.z };
+        // Three.js hit: X=dataX, Y=height(≈0), Z=dataY
+        let threeX = e.point.x, threeY = e.point.y, threeZ = e.point.z;
         if (snapEnabled && snapVertices.length > 0) {
-            const sv = findSnapVertex(e.point.x, e.point.z, snapVertices);
-            if (sv) pt = { x: sv[0], y: sv[1] ?? lineDrawHeight, z: sv[2] };
+            const sv = findSnapVertex(threeX, threeZ, snapVertices);
+            if (sv) { threeX = sv[0]; threeY = sv[1] ?? lineDrawHeight; threeZ = sv[2]; }
         }
-        onLineClick?.(pt);
+        // lockedAxes: data 좌표 적용 (x=dataX→Three.jsX, y=dataY→Three.jsZ, z=dataZ→Three.jsY)
+        if (lineLockedAxes?.x != null) threeX = lineLockedAxes.x;
+        if (lineLockedAxes?.y != null) threeZ = lineLockedAxes.y;
+        if (lineLockedAxes?.z != null) threeY = lineLockedAxes.z;
+        // Shift 직교: lineStart=[dataX,dataY,dataZ]
+        if (shiftRef.current && lineStart) {
+            const dx = threeX - lineStart[0], dz = threeZ - (lineStart[1] ?? 0);
+            if (!lineLockedAxes?.x && !lineLockedAxes?.y) {
+                if (Math.abs(dx) >= Math.abs(dz)) threeZ = lineStart[1] ?? 0;
+                else threeX = lineStart[0];
+            }
+        }
+        // data 좌표로 emit: x=dataX, y=dataY(Three.jsZ), z=dataZ(Three.jsY=height)
+        onLineClick?.({ x: threeX, y: threeZ, z: threeY });
     };
 
     // OrbitControls: 드래그 중 / 리사이즈 핸들 드래그 중 / 선 꼭짓점 드래그 중 / 선택모드 / 선 작도 중 비활성화
@@ -944,19 +1046,33 @@ export default function Scene({
                     onConfirm={onPlacementConfirm}
                     snapVertices={snapVertices}
                     snapEnabled={snapEnabled}
+                    onHoverPosition={onHoverPosition}
+                    lockedAxes={placementLockedAxes}
+                    shiftRef={shiftRef}
                 />
             )}
 
-            {/* 선 작도 클릭 평면 */}
+            {/* 선 작도 클릭 평면 + hover tracker */}
             {lineDrawMode === 'click' && (
-                <mesh
-                    rotation={[-Math.PI/2, 0, 0]}
-                    position={[0, lineDrawHeight, 0]}
-                    onClick={handleLinePlaneClick}
-                >
-                    <planeGeometry args={[500,500]} />
-                    <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} />
-                </mesh>
+                <>
+                    <HoverTracker
+                        drawHeight={lineDrawHeight}
+                        snapVertices={snapVertices}
+                        snapEnabled={snapEnabled}
+                        onHoverPosition={onHoverPosition}
+                        lockedAxes={lineLockedAxes}
+                        shiftRef={shiftRef}
+                        lineStart={lineStart}
+                    />
+                    <mesh
+                        rotation={[-Math.PI/2, 0, 0]}
+                        position={[0, lineDrawHeight, 0]}
+                        onClick={handleLinePlaneClick}
+                    >
+                        <planeGeometry args={[500,500]} />
+                        <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} />
+                    </mesh>
+                </>
             )}
 
             {/* 선 작도 미리보기 */}
@@ -968,6 +1084,7 @@ export default function Scene({
                     drawHeight={lineDrawHeight}
                     snapVertices={snapVertices}
                     snapEnabled={snapEnabled}
+                    lockedAxes={lineLockedAxes}
                 />
             )}
 
@@ -1005,6 +1122,7 @@ export default function Scene({
                         envPreset?.id==='night' ? '#0d1020' : '#1e293b',
                     ]}
                     position={[0,-0.01,0]}
+                    rotation={[Math.PI / 2, 0, 0]}
                 />
             )}
 
