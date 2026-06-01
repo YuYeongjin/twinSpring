@@ -498,7 +498,7 @@ export default function Plan2DView({
       snapRef.current = null;
     }
     draw();
-  }, [draw, snapEnabled, allSnapPoints, lineDrawMode, pendingElement, lineLockedAxes, placementLockedAxes]);
+  }, [draw, snapEnabled, allSnapPoints, lineDrawMode, pendingElement]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -655,7 +655,7 @@ export default function Plan2DView({
     }
 
     draw();
-  }, [draw, isSelectMode, snapEnabled, allSnapPoints, lineDrawMode, lineStart, pendingElement, selectedLineId, lines, onLineVertexUpdate, lineLockedAxes, placementLockedAxes]);
+  }, [draw, isSelectMode, snapEnabled, allSnapPoints, lineDrawMode, lineStart, pendingElement, selectedLineId, lines, onLineVertexUpdate, lineLockedAxes, placementLockedAxes, onHoverPosition]);
 
   const handlePointerUp = useCallback(() => {
     // ── 꼭짓점 드래그 완료 → 서버 저장 ──────────────────────────
@@ -817,7 +817,7 @@ export default function Plan2DView({
       onLineSelect?.(null);
       onElementSelect(null, null, false);
     }
-  }, [isSelectMode, modelData, lines, onElementSelect, onLineSelect, lineDrawMode, onLineClick, pendingElement, onPlacementConfirm, snapEnabled]);
+  }, [isSelectMode, modelData, lines, onElementSelect, onLineSelect, lineDrawMode, onLineClick, pendingElement, onPlacementConfirm, lineLockedAxes, lineStart, placementLockedAxes]);
 
   // ── 전체보기 ──────────────────────────────────────────────────────
   const handleFit = useCallback(() => {

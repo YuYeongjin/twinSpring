@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useT } from '../../i18n/LanguageContext';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import AxiosCustom from '../../axios/AxiosCustom';
 import { Canvas } from '@react-three/fiber';
@@ -525,6 +526,7 @@ function NumRow({ label, value, unit, min = 0, max = 1000, step = 0.5, onChange,
 // ──────────────────────────────────────────────────────────────────────────────
 
 export default function StructuralDashboard({ selectedProject, modelData = [] }) {
+  const t = useT('bimDashboard');
 
   const [env, setEnv] = useState({
     windSpeed: 20,
@@ -631,7 +633,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
       setResults(runAnalysis(modelData, env, loads, matId));
     }, 250);
     return () => clearTimeout(id);
-  }, [env, loads, matId, modelData]);
+  }, [env, loads, matId, modelData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resultMap = useMemo(() => {
     if (!results) return {};
@@ -1218,14 +1220,14 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
 
             {/* 시방서 기준 (KCS/KDS) */}
             {(specLoading || specData) && (
-                <Card title="📋 시방서 기준 (KCS/KDS)">
+                <Card title={t('specPanelTitle')}>
                   {specLoading ? (
                       <div className="flex items-center gap-2 py-3 justify-center">
                         <span className="inline-block w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
-                        <span className="text-xs text-gray-500">시방서 검색 중…</span>
+                        <span className="text-xs text-gray-500">{t('specSearching')}</span>
                       </div>
                   ) : !specData?.hasData ? (
-                      <p className="text-xs text-gray-600 text-center py-3">관련 시방서를 찾지 못했습니다</p>
+                      <p className="text-xs text-gray-600 text-center py-3">{t('specNoData')}</p>
                   ) : (
                       <div className="flex flex-col gap-2">
                         {specData.citations.map((c, i) => (
@@ -1238,7 +1240,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                               >
                                 <div className="flex flex-col gap-0.5 min-w-0">
                           <span className="text-xs font-semibold text-blue-400 truncate leading-tight">
-                            {c.source || '출처 불명'}
+                            {c.source || t('specSourceUnknown')}
                           </span>
                                   <span className="text-xs text-gray-500 truncate leading-tight">
                             {c.series}

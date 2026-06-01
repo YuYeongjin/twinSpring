@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>TwinSpring AI Agent Architecture</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #060e18;
+    color: #e2e8f0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    color: #60a5fa;
+    margin-bottom: 6px;
+    letter-spacing: 0.04em;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 12px;
+    color: #4a6a8a;
+    margin-bottom: 28px;
+  }
+
+  /* ── Flow diagram ── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* Nodes */
+  .node {
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    position: relative;
+    min-width: 120px;
+  }
+  .node-start { background: #0d2a0d; border: 2px solid #22c55e; color: #4ade80; }
+  .node-end   { background: #1a0a0a; border: 2px solid #ef4444; color: #f87171; }
+  .node-supervisor {
+    background: #0d1b35; border: 2px solid #3b82f6; color: #93c5fd;
+    min-width: 260px; padding: 12px 28px; font-size: 14px;
+  }
+
+  /* Arrow down */
+  .arrow-down {
+    width: 2px; height: 28px;
+    background: linear-gradient(to bottom, #3b82f6, #1e3a5f);
+    position: relative;
+  }
+  .arrow-down::after {
+    content: '▼';
+    position: absolute;
+    bottom: -4px; left: 50%;
+    transform: translateX(-50%);
+    color: #3b82f6;
+    font-size: 10px;
+  }
+
+  /* Fan-out section */
+  .fan-section {
+    width: 100%;
+    max-width: 1100px;
+    margin-top: 0;
+  }
+  .fan-label {
+    text-align: center;
+    font-size: 10px;
+    color: #2a4a6a;
+    margin-bottom: 6px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Horizontal line across fan */
+  .fan-bar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 8px;
+    position: relative;
+  }
+  .fan-bar::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 6%; right: 6%;
+    height: 2px;
+    background: linear-gradient(to right, transparent, #1e3a5f 10%, #1e3a5f 90%, transparent);
+  }
+
+  /* Agent card */
+  .agent-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+  }
+  .agent-tick {
+    width: 2px; height: 18px;
+    background: #1e3a5f;
+    position: relative;
+  }
+  .agent-card {
+    border-radius: 10px;
+    padding: 10px 10px 8px;
+    width: 100%;
+    max-width: 130px;
+    font-size: 10px;
+    border: 1px solid;
+    transition: transform 0.15s, box-shadow 0.15s;
+    cursor: pointer;
+  }
+  .agent-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  }
+  .agent-name {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .agent-badge {
+    font-size: 8px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .tool-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
+  }
+  .tool-item {
+    font-size: 9px;
+    color: #4a6a8a;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.03);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .keyword-row {
+    margin-top: 5px;
+    font-size: 8px;
+    color: #3a5a4a;
+    line-height: 1.5;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    padding-top: 4px;
+  }
+
+  /* Agent colors */
+  .c-sensor     { background: #0a1a12; border-color: #22c55e44; }
+  .c-sensor     .agent-name  { color: #4ade80; }
+  .c-sensor     .agent-badge { background: #0d3020; color: #4ade80; }
+
+  .c-bim        { background: #0a1020; border-color: #60a5fa44; }
+  .c-bim        .agent-name  { color: #60a5fa; }
+  .c-bim        .agent-badge { background: #0d1e3a; color: #60a5fa; }
+
+  .c-sim        { background: #1a1000; border-color: #fb923c44; }
+  .c-sim        .agent-name  { color: #fb923c; }
+  .c-sim        .agent-badge { background: #2a1a00; color: #fb923c; }
+
+  .c-safe       { background: #1a0a0a; border-color: #f87171aa; }
+  .c-safe       .agent-name  { color: #f87171; }
+  .c-safe       .agent-badge { background: #2a0a0a; color: #f87171; }
+
+  .c-test       { background: #0a0a1a; border-color: #a78bfa44; }
+  .c-test       .agent-name  { color: #a78bfa; }
+  .c-test       .agent-badge { background: #1a0a2a; color: #a78bfa; }
+
+  .c-rag        { background: #120a1a; border-color: #e879f944; }
+  .c-rag        .agent-name  { color: #e879f9; }
+  .c-rag        .agent-badge { background: #1e0a2a; color: #e879f9; }
+
+  .c-wbs        { background: #0a1218; border-color: #38bdf844; }
+  .c-wbs        .agent-name  { color: #38bdf8; }
+  .c-wbs        .agent-badge { background: #0d1e2e; color: #38bdf8; }
+
+  .c-orch       { background: #101018; border-color: #fbbf2444; }
+  .c-orch       .agent-name  { color: #fbbf24; }
+  .c-orch       .agent-badge { background: #1a1800; color: #fbbf24; }
+
+  .c-tab        { background: #0e1010; border-color: #67e8f944; }
+  .c-tab        .agent-name  { color: #67e8f9; }
+  .c-tab        .agent-badge { background: #0a1e20; color: #67e8f9; }
+
+  .c-chat       { background: #0a0e0a; border-color: #86efac44; }
+  .c-chat       .agent-name  { color: #86efac; }
+  .c-chat       .agent-badge { background: #0a1a0e; color: #86efac; }
+
+  /* END arrows from each agent */
+  .agent-end-tick {
+    width: 2px; height: 14px;
+    background: #1e2e3e;
+  }
+  .end-row {
+    width: 100%;
+    max-width: 1100px;
+    display: flex;
+    justify-content: center;
+    padding: 6px 0 0;
+  }
+  .end-bar {
+    height: 2px;
+    background: linear-gradient(to right, transparent, #2a1a1a 10%, #2a1a1a 90%, transparent);
+    width: 100%;
+  }
+
+  /* ── Bottom section: RAG + Server ── */
+  .bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    max-width: 1100px;
+    margin: 28px auto 0;
+  }
+
+  .panel {
+    background: #0d1b2a;
+    border: 1px solid #1e3a5f;
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #60a5fa;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #1e3a5f;
+  }
+
+  /* RAG */
+  .rag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .rag-box {
+    background: #060e18;
+    border: 1px solid #2a1e4a;
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .rag-box-title { font-size: 11px; font-weight: 700; color: #e879f9; margin-bottom: 6px; }
+  .rag-box-item  { font-size: 9px; color: #4a6a8a; margin-bottom: 2px; }
+  .rag-box-used  { font-size: 9px; color: #2a4a3a; margin-top: 6px; border-top: 1px solid #1e1e2e; padding-top: 5px; }
+
+  /* Endpoints */
+  .ep-list { display: flex; flex-direction: column; gap: 5px; }
+  .ep-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 8px;
+    background: #060e18;
+    border-radius: 6px;
+    border-left: 3px solid;
+  }
+  .ep-method {
+    font-size: 9px;
+    font-weight: 700;
+    min-width: 38px;
+    text-align: center;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  .ep-path { font-size: 10px; color: #94a3b8; font-family: monospace; }
+  .ep-desc { font-size: 9px; color: #4a6a8a; margin-top: 1px; }
+
+  .m-post  { border-color: #22c55e44; }
+  .m-post  .ep-method  { background: #0d2a10; color: #4ade80; }
+  .m-del   { border-color: #f8717144; }
+  .m-del   .ep-method  { background: #2a0a0a; color: #f87171; }
+  .m-get   { border-color: #60a5fa44; }
+  .m-get   .ep-method  { background: #0d1e3a; color: #60a5fa; }
+
+  /* ── Config panel ── */
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cfg-box {
+    background: #060e18;
+    border: 1px solid #1e2a3e;
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .cfg-title { font-size: 10px; font-weight: 700; color: #4a6a8a; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .cfg-item  { font-size: 9px; color: #2a4a5a; margin-bottom: 2px; font-family: monospace; }
+
+  /* ── Priority legend ── */
+  .legend {
+    max-width: 1100px;
+    margin: 16px auto 0;
+    background: #0d1b2a;
+    border: 1px solid #1e2a3e;
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .legend-title { font-size: 11px; font-weight: 700; color: #4a6a8a; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .legend-row   { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .legend-item  {
+    font-size: 9px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .pri-num { font-weight: 700; opacity: 0.6; }
+
+  /* Supervisor detail */
+  .sup-detail {
+    max-width: 1100px;
+    margin: 16px auto 0;
+    background: #0d1520;
+    border: 1px solid #1e3a5f;
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .sup-detail-title { font-size: 11px; font-weight: 700; color: #60a5fa; margin-bottom: 8px; }
+  .sup-row { display: flex; gap: 8px; margin-bottom: 5px; align-items: flex-start; }
+  .sup-label { font-size: 10px; color: #3a5a8a; min-width: 130px; font-family: monospace; }
+  .sup-keywords { font-size: 9px; color: #2a4a5a; line-height: 1.6; }
+
+  /* Nodes legend */
+  .nodes-legend {
+    max-width: 1100px;
+    margin: 16px auto 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .node-leg-box {
+    background: #0d1b2a;
+    border: 1px solid #1e2a3e;
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .node-leg-title { font-size: 10px; font-weight: 700; color: #60a5fa; margin-bottom: 6px; }
+  .node-leg-item  { font-size: 9px; color: #2a4a5a; margin-bottom: 2px; }
+
+  footer {
+    text-align: center;
+    font-size: 10px;
+    color: #1e2e3e;
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid #0d1b2a;
+  }
+</style>
+</head>
+<body>
+
+<h1>🤖 TwinSpring — AI Agent Architecture</h1>
+<div class="subtitle">LangGraph Multi-Agent System · Supervisor Routing · ReAct Pattern · pgvector RAG</div>
+
+<!-- ── MAIN FLOW ── -->
+<div class="flow">
+
+  <!-- START -->
+  <div class="node node-start">▶ START</div>
+  <div class="arrow-down"></div>
+
+  <!-- SUPERVISOR -->
+  <div class="node node-supervisor">
+    🧭 supervisor_node
+    <div style="font-size:10px;font-weight:400;color:#4a6a8a;margin-top:3px;">Regex keyword routing · ~1ms · No LLM</div>
+  </div>
+
+  <!-- fan tick -->
+  <div style="width:2px;height:16px;background:#1e3a5f;"></div>
+
+  <!-- AGENT CARDS -->
+  <div class="fan-section">
+    <div class="fan-bar">
+
+      <!-- sensor_agent -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-sensor">
+          <div class="agent-name">🌡 sensor_agent<span class="agent-badge">ReAct</span></div>
+          <div class="tool-list">
+            <div class="tool-item">get_latest_sensor()</div>
+            <div class="tool-item">get_sensor_history()</div>
+            <div class="tool-item">search_building_knowledge()</div>
+          </div>
+          <div class="keyword-row">온도 · 습도 · 센서 · temperature · humidity</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- bim_agent -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-bim">
+          <div class="agent-name">🏗 bim_agent<span class="agent-badge">ReAct</span></div>
+          <div class="tool-list">
+            <div class="tool-item">list_bim_projects()</div>
+            <div class="tool-item">create_bim_element()</div>
+            <div class="tool-item">create_composite_structure()</div>
+            <div class="tool-item">get_structural_analysis()</div>
+            <div class="tool-item">get_drone_analysis_info()</div>
+            <div class="tool-item">+4 tools</div>
+          </div>
+          <div class="keyword-row">bim · ifc · 기둥 · 보 · 벽 · 에펠탑 · 드론</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- simulation_agent -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-sim">
+          <div class="agent-name">🚜 simulation_agent<span class="agent-badge">Direct+ReAct</span></div>
+          <div class="tool-list">
+            <div class="tool-item">get_excavator_state()</div>
+            <div class="tool-item">set_excavator_preset()</div>
+            <div class="tool-item">set_excavator_angles()</div>
+            <div class="tool-item">move_excavator()</div>
+            <div class="tool-item">get_earthwork_summary()</div>
+            <div class="tool-item">search_excavation_specs()</div>
+          </div>
+          <div class="keyword-row">굴착기 · 붐 · 버킷 · 토공량 · 암반</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- safe_agent -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-safe">
+          <div class="agent-name">🛡 safe_agent<span class="agent-badge">ReAct</span></div>
+          <div class="tool-list">
+            <div class="tool-item">list_safe_projects()</div>
+            <div class="tool-item">get_detection_server_status()</div>
+            <div class="tool-item">get_recent_detections()</div>
+            <div class="tool-item">get_safety_stats()</div>
+            <div class="tool-item">get_safe_tab_guide()</div>
+          </div>
+          <div class="keyword-row">헬멧 · YOLO · 침입 · 안전 · helmet</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- test_agent -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-test">
+          <div class="agent-name">🎮 test_agent<span class="agent-badge">ReAct</span></div>
+          <div class="tool-list">
+            <div class="tool-item">get_test_tab_guide()</div>
+            <div class="tool-item">get_keyboard_controls()</div>
+            <div class="tool-item">get_collision_log()</div>
+          </div>
+          <div class="keyword-row">충돌 테스트 · 키보드 · WASD · collision</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- rag_agent -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-rag">
+          <div class="agent-name">📚 rag_agent<span class="agent-badge">Lazy+ReAct</span></div>
+          <div class="tool-list">
+            <div class="tool-item">search_spec_tool()</div>
+            <div class="tool-item">list_spec_sources()</div>
+          </div>
+          <div class="keyword-row">KCS · KDS · 시방서 · 콘크리트 · 철근</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- wbs_agent -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-wbs">
+          <div class="agent-name">📋 wbs_agent<span class="agent-badge">Lazy+ReAct</span></div>
+          <div class="tool-list">
+            <div class="tool-item">list/create/update/delete_wbs_project()</div>
+            <div class="tool-item">list/add/update/delete_wbs_task()</div>
+            <div class="tool-item">list/link/delete_wbs_link()</div>
+            <div class="tool-item">search_spec_tool()</div>
+          </div>
+          <div class="keyword-row">wbs · 공정표 · 태스크 · 현장 · gantt</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- orchestrator -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-orch">
+          <div class="agent-name">🔮 orchestrator<span class="agent-badge">Lazy+ReAct</span></div>
+          <div class="tool-list">
+            <div class="tool-item">collect_wbs_overview()</div>
+            <div class="tool-item">collect_bim_overview()</div>
+            <div class="tool-item">collect_safe_overview()</div>
+            <div class="tool-item">collect_project_links()</div>
+            <div class="tool-item">assemble_report()</div>
+          </div>
+          <div class="keyword-row">통합보고서 · 멀티도메인 · 종합현황</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- tab_guide -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-tab">
+          <div class="agent-name">📖 tab_guide<span class="agent-badge">Node</span></div>
+          <div class="tool-list">
+            <div class="tool-item">simulation/bim/test/safe 탭 정보</div>
+            <div class="tool-item">키보드 단축키 설명</div>
+          </div>
+          <div class="keyword-row">시뮬레이션탭 · BIM탭 · 대시보드 설명</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <!-- chat -->
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-chat">
+          <div class="agent-name">💬 chat<span class="agent-badge">Node</span></div>
+          <div class="tool-list">
+            <div class="tool-item">llm_chat (ChatOllama)</div>
+            <div class="tool-item">언어 감지 + 다국어 응답</div>
+          </div>
+          <div class="keyword-row">keyword 미매칭 → 기본 일반 대화</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+    </div><!-- fan-bar -->
+  </div><!-- fan-section -->
+
+  <!-- END bar -->
+  <div class="end-row">
+    <div class="end-bar"></div>
+  </div>
+  <div style="width:2px;height:16px;background:#2a1a1a;"></div>
+  <div class="node node-end">⏹ END</div>
+
+</div><!-- flow -->
+
+<!-- ── SUPERVISOR ROUTING PRIORITY ── -->
+<div class="legend">
+  <div class="legend-title">⚡ Supervisor 라우팅 우선순위 (키워드 매칭 순서)</div>
+  <div class="legend-row">
+    <span class="legend-item" style="background:#0a0a1a;border:1px solid #a78bfa44;color:#a78bfa"><span class="pri-num">1</span>🎮 test</span>
+    <span class="legend-item" style="background:#1a0a0a;border:1px solid #f8717144;color:#f87171"><span class="pri-num">2</span>🛡 safe</span>
+    <span class="legend-item" style="background:#1a1000;border:1px solid #fb923c44;color:#fb923c"><span class="pri-num">3</span>🚜 simulation</span>
+    <span class="legend-item" style="background:#0a1218;border:1px solid #38bdf844;color:#38bdf8"><span class="pri-num">4</span>📋 wbs</span>
+    <span class="legend-item" style="background:#0a1020;border:1px solid #60a5fa44;color:#60a5fa"><span class="pri-num">5</span>🏗 bim</span>
+    <span class="legend-item" style="background:#0a1a12;border:1px solid #22c55e44;color:#4ade80"><span class="pri-num">6</span>🌡 sensor</span>
+    <span class="legend-item" style="background:#120a1a;border:1px solid #e879f944;color:#e879f9"><span class="pri-num">7</span>📚 rag</span>
+    <span class="legend-item" style="background:#101018;border:1px solid #fbbf2444;color:#fbbf24"><span class="pri-num">8</span>🔮 orchestrator</span>
+    <span class="legend-item" style="background:#0e1010;border:1px solid #67e8f944;color:#67e8f9"><span class="pri-num">9</span>📖 tab_guide</span>
+    <span class="legend-item" style="background:#0a0e0a;border:1px solid #86efac44;color:#86efac"><span class="pri-num">10</span>💬 chat (기본값)</span>
+    <span style="font-size:9px;color:#1e3a5a;margin-left:auto;">direct_agent override → 즉시 라우팅 (0순위)</span>
+  </div>
+</div>
+
+<!-- ── NODES DIR (remaining) ── -->
+<div class="nodes-legend">
+  <div class="node-leg-box">
+    <div class="node-leg-title">📁 nodes/ 현재 구성</div>
+    <div class="node-leg-item">✅ supervisor.py — 키워드 라우터</div>
+    <div class="node-leg-item">✅ chat.py — 일반 대화 노드</div>
+    <div class="node-leg-item">✅ tab_guide.py — 탭 안내 노드</div>
+    <div class="node-leg-item" style="color:#f8717144;">🗑 analyzer.py — 삭제됨 (레거시)</div>
+    <div class="node-leg-item" style="color:#f8717144;">🗑 bim_builder.py — 삭제됨 (레거시)</div>
+    <div class="node-leg-item" style="color:#f8717144;">🗑 rag_db.py — 삭제됨 (레거시)</div>
+  </div>
+  <div class="node-leg-box">
+    <div class="node-leg-title">⚙ config/ 공통 설정</div>
+    <div class="node-leg-item">state.py — AgentState TypedDict</div>
+    <div class="node-leg-item">llm_config.py — ChatOllama (qwen2.5:3b)</div>
+    <div class="node-leg-item">lang_util.py — 한/영/일 감지 & 번역</div>
+    <div class="node-leg-item">settings.py — ENV vars (DB, Influx, Ollama)</div>
+  </div>
+  <div class="node-leg-box">
+    <div class="node-leg-title">🔧 AgentState 주요 필드</div>
+    <div class="node-leg-item">messages — 대화 이력 (add_messages)</div>
+    <div class="node-leg-item">intent / next_agent — 라우팅 결정값</div>
+    <div class="node-leg-item">direct_agent — 탭별 강제 라우팅</div>
+    <div class="node-leg-item">bim_data / sensor_data / report_data</div>
+    <div class="node-leg-item">bim/simulation/wbs_project_id — 컨텍스트</div>
+  </div>
+</div>
+
+<!-- ── BOTTOM GRID ── -->
+<div class="bottom-grid">
+
+  <!-- RAG -->
+  <div class="panel">
+    <div class="panel-title">🗄 RAG Pipeline — PostgreSQL pgvector</div>
+    <div class="rag-grid">
+      <div class="rag-box">
+        <div class="rag-box-title">📦 twin_docs</div>
+        <div class="rag-box-item">건물·시설 일반 문서</div>
+        <div class="rag-box-item">사용자 업로드 데이터</div>
+        <div class="rag-box-item">임베딩: multilingual-e5-small</div>
+        <div class="rag-box-used">사용: sensor_agent, chat</div>
+      </div>
+      <div class="rag-box">
+        <div class="rag-box-title">📦 construction_specs</div>
+        <div class="rag-box-item">KCS / KDS 한국 건설 표준</div>
+        <div class="rag-box-item">메타: code, title, series, category</div>
+        <div class="rag-box-item">임베딩: multilingual-e5-small</div>
+        <div class="rag-box-used">사용: rag_agent, wbs_agent, orchestrator, /structural-spec, /excavation-spec</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;background:#060e18;border-radius:6px;padding:8px;font-size:9px;color:#2a4a5a;">
+      <span style="color:#4a6a8a;font-weight:700;">LLM:</span> llm_precise (temp=0) — 판단·파싱·보고서 &nbsp;|&nbsp;
+      <span style="color:#4a6a8a;font-weight:700;">LLM:</span> llm_chat (temp=0.7) — 대화 응답<br>
+      <span style="color:#4a6a8a;font-weight:700;">Timeout:</span> 600s &nbsp;|&nbsp;
+      <span style="color:#4a6a8a;font-weight:700;">Pool:</span> max 5 connections &nbsp;|&nbsp;
+      <span style="color:#4a6a8a;font-weight:700;">Model:</span> qwen2.5:3b (Ollama)
+    </div>
+  </div>
+
+  <!-- Server Endpoints -->
+  <div class="panel">
+    <div class="panel-title">🌐 FastAPI Server Endpoints</div>
+    <div class="ep-list">
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/chat</div><div class="ep-desc">전체 LangGraph 그래프 실행</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/chat-stream</div><div class="ep-desc">SSE 스트리밍 (분류→생성 2단계)</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/chat-simple</div><div class="ep-desc">라우팅 없이 chat 노드 직접 호출</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/chat-multimodal</div><div class="ep-desc">이미지+텍스트 비전 분석</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/wbs-project-chat</div><div class="ep-desc">공정표 프로젝트 정보 수집 대화</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/wbs-rag-suggest</div><div class="ep-desc">WBS 이벤트 → KCS/KDS 시방서 근거</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/structural-spec</div><div class="ep-desc">구조해석 결과 → 시방서 RAG 검색</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/excavation-spec</div><div class="ep-desc">굴착 존/날씨/깊이 → 토공 시방서</div></div>
+      </div>
+      <div class="ep-item m-del">
+        <div><div class="ep-method">DELETE</div></div>
+        <div><div class="ep-path">/session/{session_id}</div><div class="ep-desc">세션 대화 이력 초기화</div></div>
+      </div>
+      <div class="ep-item m-get">
+        <div><div class="ep-method">GET</div></div>
+        <div><div class="ep-path">/health</div><div class="ep-desc">서버 헬스체크</div></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- bottom-grid -->
+
+<!-- ── ENV CONFIG ── -->
+<div class="sup-detail">
+  <div class="sup-detail-title">🔑 환경 변수 (config/settings.py)</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+    <div style="background:#060e18;border:1px solid #1e2a3e;border-radius:6px;padding:8px;">
+      <div style="font-size:10px;font-weight:700;color:#4ade80;margin-bottom:4px;">Ollama LLM</div>
+      <div style="font-size:9px;color:#2a4a5a;font-family:monospace;">OLLAMA_BASE_URL<br>LLM_MODEL<br>EMBEDDING_MODEL</div>
+    </div>
+    <div style="background:#060e18;border:1px solid #1e2a3e;border-radius:6px;padding:8px;">
+      <div style="font-size:10px;font-weight:700;color:#60a5fa;margin-bottom:4px;">PostgreSQL</div>
+      <div style="font-size:9px;color:#2a4a5a;font-family:monospace;">VECTOR_DB_HOST<br>VECTOR_DB_PORT<br>VECTOR_DB_NAME</div>
+    </div>
+    <div style="background:#060e18;border:1px solid #1e2a3e;border-radius:6px;padding:8px;">
+      <div style="font-size:10px;font-weight:700;color:#fb923c;margin-bottom:4px;">InfluxDB</div>
+      <div style="font-size:9px;color:#2a4a5a;font-family:monospace;">INFLUX_URL<br>INFLUX_TOKEN<br>INFLUX_ORG · BUCKET</div>
+    </div>
+    <div style="background:#060e18;border:1px solid #1e2a3e;border-radius:6px;padding:8px;">
+      <div style="font-size:10px;font-weight:700;color:#e879f9;margin-bottom:4px;">Spring Backend</div>
+      <div style="font-size:9px;color:#2a4a5a;font-family:monospace;">SPRING_BASE_URL<br>(http://localhost:8080)</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  TwinSpring Digital Twin Platform · AI Agent Architecture · LangGraph + Ollama + pgvector
+</footer>
+
+</body>
+</html>

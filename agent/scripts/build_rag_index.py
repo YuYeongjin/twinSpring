@@ -132,12 +132,40 @@ def collect_hwp_files(root_dir: str) -> list[str]:
     return sorted(hwp_files)
 
 
-def build_index():
+def is_index_populated() -> bool:
+    """construction_specs 컬렉션에 문서가 있는지 확인."""
+    try:
+        import psycopg
+        from config.settings import (
+            VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME,
+            VECTOR_DB_USER, VECTOR_DB_PASSWORD,
+        )
+        with psycopg.connect(
+            host=VECTOR_DB_HOST, port=VECTOR_DB_PORT, dbname=VECTOR_DB_NAME,
+            user=VECTOR_DB_USER, password=VECTOR_DB_PASSWORD, connect_timeout=5,
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT COUNT(*) FROM langchain_pg_embedding e
+                    JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+                    WHERE c.name = %s
+                """, (COLLECTION_NAME,))
+                count = cur.fetchone()[0]
+                return count > 0
+    except Exception:
+        return False
+
+
+def build_index(force: bool = False):
     print("=" * 60)
     print("  건설 공정서/시방서 RAG 인덱스 구축 (pgvector)")
     print(f"  소스 디렉토리 : {RAG_DIR}")
     print(f"  컬렉션 이름   : {COLLECTION_NAME}")
     print("=" * 60)
+
+    if not force and is_index_populated():
+        print("\n[SKIP] 인덱스가 이미 구축되어 있습니다. 재구축하려면 --force 옵션을 사용하세요.")
+        return
 
     hwp_files = collect_hwp_files(RAG_DIR)
     if not hwp_files:
@@ -208,4 +236,8 @@ def build_index():
 
 
 if __name__ == "__main__":
-    build_index()
+    import argparse
+    parser = argparse.ArgumentParser(description="건설 시방서 RAG 인덱스 구축")
+    parser.add_argument("--force", action="store_true", help="기존 인덱스를 삭제하고 재구축")
+    args = parser.parse_args()
+    build_index(force=args.force)
