@@ -102,6 +102,9 @@ export const translations = {
       wbsListTitle: '📋 WBS ({n} tasks)', sourceInfo: '🔗 CPM  🔍 Crack  🤖 Auto',
       loadingWbs: 'Loading WBS…', criticalDays: 'CPM {n}d', criticalTag: '🔴 Critical',
       tabLog: '🔔 Log',
+      editBtn: 'Edit', deleteBtn: 'Delete', saveBtn: 'Save',
+      colAuthor: 'Author', authorUser: 'User', authorAgent: 'Agent',
+      cpmReset: 'Reset', cpmManualTag: 'Manual', cpmManualHint: 'Click any value to override. Reset restores auto-calculation.',
     },
     wbsLog: {
       title: 'Alert Log',
@@ -774,6 +777,9 @@ export const translations = {
       wbsListTitle: '📋 WBS ({n}개 작업)', sourceInfo: '🔗 CPM  🔍 균열  🤖 자동',
       loadingWbs: 'WBS 불러오는 중…', criticalDays: 'CPM {n}일', criticalTag: '🔴 주공정',
       tabLog: '🔔 로그',
+      editBtn: '수정', deleteBtn: '삭제', saveBtn: '저장',
+      colAuthor: '작성자', authorUser: '사용자', authorAgent: 'Agent',
+      cpmReset: '초기화', cpmManualTag: '수동', cpmManualHint: '값을 클릭하면 직접 수정할 수 있습니다. 초기화 시 자동 계산으로 복원됩니다.',
     },
     wbsLog: {
       title: '알림 로그',
@@ -1441,6 +1447,9 @@ export const translations = {
       wbsListTitle: '📋 WBS ({n}件の作業)', sourceInfo: '🔗 CPM  🔍 ひび割れ  🤖 自動',
       loadingWbs: 'WBS読み込み中…', criticalDays: 'CPM {n}日', criticalTag: '🔴 クリティカル',
       tabLog: '🔔 ログ',
+      editBtn: '編集', deleteBtn: '削除', saveBtn: '保存',
+      colAuthor: '作成者', authorUser: 'ユーザー', authorAgent: 'Agent',
+      cpmReset: 'リセット', cpmManualTag: '手動', cpmManualHint: '値をクリックして上書き入力できます。リセットで自動計算に戻ります。',
     },
     wbsLog: {
       title: 'アラートログ',
