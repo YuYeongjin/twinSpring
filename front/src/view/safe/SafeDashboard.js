@@ -264,7 +264,11 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {}); // iOS Safari: srcObject 동적 할당 후 명시적 play 필요
+        setStreaming(true);
+      }
     } catch (e) {
       // NotAllowedError: 사용자 거부 또는 Permissions-Policy 차단
       // NotFoundError: 카메라 없음
