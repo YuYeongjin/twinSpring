@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
 import Scene from './component/Scene';
-import Plan2DView from './component/Plan2DView';
+// Plan2DView는 OrthographicCamera 방식으로 대체됨
 import ControlPanel from './component/ControlPanel';
 import LayerPanel from './component/LayerPanel';
 
@@ -695,14 +695,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     }, []);
 
     // ── 뷰 모드 ────────────────────────────────────────────────────
-    const [viewMode, setViewMode] = useState('3d'); // '3d' | '2d'
+    const [viewMode, setViewMode] = useState('3d'); // '3d' | 'xy' | 'xz' | 'yz'
     const [bimSubView, setBimSubView] = useState('editor'); // 'editor' | 'structural'
     const [showDroneModal, setShowDroneModal] = useState(false);
 
     // 드론 프로젝트는 2D 전용 (무거운 지형 모델 → 3D 불필요)
     const isDroneProject = selectedProject?.structureType === 'DRONE';
     useEffect(() => {
-        if (isDroneProject) setViewMode('2d');
+        if (isDroneProject) setViewMode('xy');
     }, [isDroneProject]);
 
     // ── 패널 드래그 리사이즈 ───────────────────────────────────────
@@ -1252,16 +1252,27 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 🛸 2D 전용
                             </span>
                         ) : (
-                            <button
-                                onClick={() => setViewMode(v => v === '3d' ? '2d' : '3d')}
-                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition ${viewMode === '2d'
-                                        ? 'bg-emerald-700/60 text-emerald-300 border border-emerald-600/60'
-                                        : 'bg-space-700/70 text-gray-400 border border-space-600'
-                                    }`}
-                                title={viewMode === '2d' ? t('switchTo3D') : t('switchTo2D')}
-                            >
-                                {viewMode === '2d' ? t('switch2D') : t('switch3D')}
-                            </button>
+                            <div className="flex items-center gap-1">
+                                {[
+                                    { mode: '3d',  label: '3D',  title: t('view3DTitle') },
+                                    { mode: 'xy',  label: 'XY',  title: t('viewXYTitle') },
+                                    { mode: 'xz',  label: 'XZ',  title: t('viewXZTitle') },
+                                    { mode: 'yz',  label: 'YZ',  title: t('viewYZTitle') },
+                                ].map(({ mode, label, title }) => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => setViewMode(mode)}
+                                        title={title}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                                            viewMode === mode
+                                                ? 'bg-emerald-700/60 text-emerald-300 border border-emerald-600/60'
+                                                : 'bg-space-700/70 text-gray-400 border border-space-600 hover:text-gray-200'
+                                        }`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
                         )}
 
                         {/* 환경 선택 */}
@@ -1471,7 +1482,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     {/* ── 중앙 3D 뷰어 ── */}
                     <div className="flex-1 min-w-0 flex flex-col gap-3 min-h-0" style={{ paddingLeft: showLeftPanel && isDesktop ? 4 : 0, paddingRight: showLayerPanel && isDesktop ? 4 : 0 }}>
                         <Card
-                            title={`${viewMode === '2d' ? t('view2D') : t('view3D')} — ${currentProjectId ?? t('project')} (${visibleModelData.length} ${t('itemsUnit')})`}
+                            title={`${viewMode === '3d' ? t('view3D') : viewMode.toUpperCase() + ' 2D'} — ${currentProjectId ?? t('project')} (${visibleModelData.length} ${t('itemsUnit')})`}
                             right={
                                 <div className="flex gap-1.5 items-center flex-wrap">
                                     <Chip color="orange">
@@ -1496,88 +1507,13 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 <div
                                     className="w-full flex-1 relative min-h-0"
                                     style={{
-                         
-                                        cursor: viewMode === '2d' ? 'default'
-                                            : pendingElement ? 'crosshair'
-                                                : isSelectMode ? 'crosshair'
-                                                    : lineDrawMode === 'click' ? 'crosshair'
-                                                        : 'default',
+                                        cursor: pendingElement ? 'crosshair'
+                                            : isSelectMode ? 'crosshair'
+                                                : lineDrawMode === 'click' ? 'crosshair'
+                                                    : 'default',
                                     }}
                                 >
-                                    {viewMode === '2d' ? (
-                                        <>
-                                            <Plan2DView
-                                                modelData={visibleModelData}
-                                                lines={visibleLines}
-                                                selectedElement={selectedElement}
-                                                onElementSelect={handleElementSelectAndClearLine}
-                                                selectedElements={selectedElements}
-                                                isSelectMode={isSelectMode}
-                                                onRubberBandSelect={applyRubberBandSelection}
-                                                pendingElement={pendingElement}
-                                                onPlacementConfirm={({ x, y }) => confirmPlacement({
-                                                    x: placeLocked.x ?? x,
-                                                    y: placeLocked.y ?? y,  // data Y (floor)
-                                                    z: placeLocked.z ?? 0,   // data Z (height=0)
-                                                }, currentProjectId)}
-                                                lineDrawMode={lineDrawMode}
-                                                lineStart={lineStart}
-                                                onLineClick={handleLineClick}
-                                                snapEnabled={snapEnabled}
-                                                onHoverPosition={pos => { hoverPosRef.current = pos; }}
-                                                placementLockedAxes={placeLocked}
-                                                lineLockedAxes={lineLocked}
-                                                selectedLineId={selectedLineId}
-                                                onLineVertexUpdate={updateLineData}
-                                                onLineVertexSave={saveLineVertexDrag}
-                                                onLineSelect={(id) => {
-                                                    setSelectedLineId(id);
-                                                    if (id) {
-                                                        setShowLeftPanel(true);
-                                                        setSelectedElement(null);
-                                                        setSelectedElements(new Set());
-                                                    }
-                                                }}
-                                            />
-                                            {pendingElement && (
-                                                <CoordCommandBar
-                                                    label={pendingElement.elementType.replace('Ifc', '').toUpperCase()}
-                                                    accentColor="orange"
-                                                    hoverPosRef={hoverPosRef}
-                                                    mode="place"
-                                                    lockZ
-                                                    onConfirm={(pos) => confirmPlacement(pos, currentProjectId)}
-                                                    onAxisLocked={(axis, val) => {
-                                                        if (axis === '__reset__') setPlaceLocked({ x: null, y: null, z: null });
-                                                        else setPlaceLocked(prev => ({ ...prev, [axis]: val }));
-                                                    }}
-                                                    onFinish={cancelPlacement}
-                                                />
-                                            )}
-                                            {lineDrawMode === 'click' && (
-                                                <CoordCommandBar
-                                                    label="LINE"
-                                                    accentColor="blue"
-                                                    hoverPosRef={hoverPosRef}
-                                                    mode="line"
-                                                    lockZ
-                                                    lineStart={lineStart}
-                                                    lineChainStart={lineChainStart}
-                                                    lineColor={lineColor}
-                                                    setLineColor={setLineColor}
-                                                    lineWidth={lineWidth}
-                                                    setLineWidth={setLineWidth}
-                                                    onConfirm={handleLineClick}
-                                                    onAxisLocked={(axis, val) => {
-                                                        if (axis === '__reset__') setLineLocked({ x: null, y: null, z: null });
-                                                        else setLineLocked(prev => ({ ...prev, [axis]: val }));
-                                                    }}
-                                                    onCloseChain={closeLineChain}
-                                                    onFinish={finishLineDraw}
-                                                />
-                                            )}
-                                        </>
-                                    ) : (<>
+                                    <>
 
                                         {/* R3F 이벤트 소스 div */}
                                         <div ref={mainViewRef} className="absolute inset-0 z-10 touch-none" />
@@ -1637,6 +1573,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     ifcMeshes={ifcMeshes}
                                                     fitCameraTrigger={fitCameraTrigger}
                                                     viewPreset={viewPreset}
+                                                    viewMode={viewMode}
                                                 />
                                                 <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
                                                     {/* axisNames: Three.js[X,Y,Z] → data[X,Z(height),Y(depth)] */}
@@ -1645,8 +1582,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
                                         </Canvas>
 
-                                        {/* ── 표준 뷰 프리셋 버튼 (좌하단 수직 배치) ── */}
-                                        <div className="absolute bottom-16 left-3 z-20 pointer-events-auto flex flex-col gap-1 hidden sm:flex">
+                                        {/* ── 표준 뷰 프리셋 버튼 (3D 전용, 좌하단 수직 배치) ── */}
+                                        {viewMode === '3d' && <div className="absolute bottom-16 left-3 z-20 pointer-events-auto flex flex-col gap-1 hidden sm:flex">
                                             {[
                                                 { id: 'iso',   label: 'ISO',  title: '등각뷰 (Isometric)' },
                                                 { id: 'top',   label: 'TOP',  title: '평면도 (Plan / Z-up 기준 위)' },
@@ -1668,9 +1605,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     {label}
                                                 </button>
                                             ))}
-                                        </div>
+                                        </div>}
 
-                                        {/* 미니맵 앵커 + MiniMapCanvas (별도 Canvas, portal) — 모바일 숨김 */}
+                                        {/* 미니맵 앵커 + MiniMapCanvas — 3D 모드 전용 */}
+                                        {viewMode === '3d' && <>
                                         <div
                                             ref={minimapContainerRef}
                                             className="absolute top-3 right-3 w-40 h-40 border border-space-500 rounded-xl overflow-hidden shadow-2xl z-20 pointer-events-auto hidden sm:block"
@@ -1686,6 +1624,15 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                 envId={envId}
                                                 onNavigate={handleMiniMapNavigate}
                                             />
+                                        )}
+                                        </>}
+
+                                        {/* 2D 뷰 모드 레이블 */}
+                                        {viewMode !== '3d' && (
+                                            <div className="absolute top-3 left-3 z-20 bg-space-900/80 border border-emerald-700/60 rounded-lg px-3 py-1.5 text-xs text-emerald-300 font-semibold pointer-events-none">
+                                                {viewMode === 'xy' ? t('viewXYLabel') : viewMode === 'xz' ? t('viewXZLabel') : t('viewYZLabel')}
+                                                <span className="ml-2 text-gray-500 font-normal">{t('orthoProjection')}</span>
+                                            </div>
                                         )}
 
                                         {/* ── 러버밴드 선택 박스 ── */}
@@ -1781,7 +1728,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                 {t('snapOnHint')}
                                             </div>
                                         )}
-                                    </>)}
+                                    </>
                                 </div>
                             )}
                         </Card>

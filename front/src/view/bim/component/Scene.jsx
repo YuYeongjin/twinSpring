@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, TransformControls } from '@react-three/drei';
+import { OrbitControls, TransformControls, OrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
 import { BimLine } from '../element/BimLine';
@@ -11,35 +11,65 @@ import SkyEnvironment from './SkyEnvironment';
 // 스냅 상수 & 유틸
 // ================================================================
 const SNAP_THRESHOLD = 0.8;
-const HANDLE_HALF    = 0.13; // 핸들 정육면체 반변 (m)
+const HANDLE_HALF    = 0.13;
 
-/** XZ 평면 기준 가장 가까운 스냅 꼭짓점 반환 (없으면 null) */
-function findSnapVertex(wx, wz, verts) {
+/**
+ * viewMode에 맞는 레이캐스트 교차 평면 반환
+ * - '3d' / 'xy' : Y=0 수평 평면 (바닥)
+ * - 'xz'        : Z=avgZ 수직 평면 (정면도 — 카메라가 Z+ 방향에서 -Z 바라봄)
+ * - 'yz'        : X=avgX 수직 평면 (측면도 — 카메라가 X+ 방향에서 -X 바라봄)
+ */
+function getSnapPlane(viewMode, snapVertices) {
+    if (viewMode === 'xz') {
+        const avgZ = snapVertices.length
+            ? snapVertices.reduce((s, v) => s + v[2], 0) / snapVertices.length : 0;
+        return new THREE.Plane(new THREE.Vector3(0, 0, 1), -avgZ);
+    }
+    if (viewMode === 'yz') {
+        const avgX = snapVertices.length
+            ? snapVertices.reduce((s, v) => s + v[0], 0) / snapVertices.length : 0;
+        return new THREE.Plane(new THREE.Vector3(1, 0, 0), -avgX);
+    }
+    return new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // xy / 3d
+}
+
+/**
+ * viewMode별 2D 거리로 가장 가까운 스냅 꼭짓점 반환
+ * - xy/3d : XZ 거리 (바닥 평면)
+ * - xz    : XY 거리 (정면 — X=동서, Y=높이)
+ * - yz    : ZY 거리 (측면 — Z=남북, Y=높이)
+ */
+function findSnapVertex(wa, wb, verts, viewMode) {
     let best = null, min = SNAP_THRESHOLD;
     for (const v of verts) {
-        const d = Math.hypot(wx - v[0], wz - v[2]);
+        let d;
+        if (viewMode === 'xz')     d = Math.hypot(wa - v[0], wb - v[1]); // X·Y
+        else if (viewMode === 'yz') d = Math.hypot(wa - v[2], wb - v[1]); // Z·Y
+        else                        d = Math.hypot(wa - v[0], wb - v[2]); // X·Z
         if (d < min) { min = d; best = v; }
     }
     return best;
 }
 
 /**
- * 배치 고스트의 스마트 스냅:
- * 센터 + 4 바닥코너 중 가장 가까운 꼭짓점을 찾아
- * 해당 코너가 snap vertex에 맞도록 센터를 이동시킨다.
+ * 배치 고스트의 스마트 스냅 (viewMode 인식)
  */
-function findSmartSnap(mouseX, mouseZ, sizeX, sizeZ, verts) {
+function findSmartSnap(mA, mB, sA, sB, verts, viewMode) {
     if (!verts.length) return null;
-    const hx = sizeX / 2, hz = sizeZ / 2;
-    const checks = [[0,0],[hx,hz],[hx,-hz],[-hx,hz],[-hx,-hz]];
-    let bestX = null, bestZ = null, min = SNAP_THRESHOLD;
-    for (const [ox, oz] of checks) {
+    const ha = sA / 2, hb = sB / 2;
+    const checks = [[0,0],[ha,hb],[ha,-hb],[-ha,hb],[-ha,-hb]];
+    let bestA = null, bestB = null, min = SNAP_THRESHOLD;
+    for (const [oa, ob] of checks) {
         for (const v of verts) {
-            const d = Math.hypot((mouseX + ox) - v[0], (mouseZ + oz) - v[2]);
-            if (d < min) { min = d; bestX = v[0] - ox; bestZ = v[2] - oz; }
+            let d, va, vb;
+            if (viewMode === 'xz')     { va = v[0]; vb = v[1]; }
+            else if (viewMode === 'yz') { va = v[2]; vb = v[1]; }
+            else                        { va = v[0]; vb = v[2]; }
+            d = Math.hypot((mA + oa) - va, (mB + ob) - vb);
+            if (d < min) { min = d; bestA = va - oa; bestB = vb - ob; }
         }
     }
-    return bestX !== null ? [bestX, bestZ] : null;
+    return bestA !== null ? [bestA, bestB] : null;
 }
 
 // ================================================================
@@ -293,9 +323,10 @@ function ElementResizeHandles({
 // ================================================================
 // 꼭짓점 스냅 인디케이터 (항상 표시 — 마우스 근처 꼭짓점 강조)
 // ================================================================
-function VertexSnapIndicator({ snapVertices, snapEnabled }) {
+function VertexSnapIndicator({ snapVertices, snapEnabled, viewMode = '3d' }) {
     const { camera, raycaster, mouse } = useThree();
     const groupRef = useRef();
+    const plane = useMemo(() => getSnapPlane(viewMode, snapVertices), [viewMode, snapVertices]);
 
     useFrame(() => {
         if (!groupRef.current) return;
@@ -305,18 +336,17 @@ function VertexSnapIndicator({ snapVertices, snapEnabled }) {
         }
 
         raycaster.setFromCamera(mouse, camera);
-        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-        const hit   = new THREE.Vector3();
+        const hit = new THREE.Vector3();
         if (!raycaster.ray.intersectPlane(plane, hit)) return;
 
-        const nearest = findSnapVertex(hit.x, hit.z, snapVertices);
+        // viewMode별 스냅 검색 좌표 선택
+        const [wa, wb] = viewMode === 'xz' ? [hit.x, hit.y]
+                       : viewMode === 'yz' ? [hit.z, hit.y]
+                       : [hit.x, hit.z];
+        const nearest = findSnapVertex(wa, wb, snapVertices, viewMode);
         groupRef.current.visible = !!nearest;
         if (nearest) {
-            groupRef.current.position.set(
-                nearest[0],
-                (nearest[1] ?? 0) + 0.03,
-                nearest[2],
-            );
+            groupRef.current.position.set(nearest[0], (nearest[1] ?? 0) + 0.03, nearest[2]);
         }
     });
 
@@ -368,36 +398,39 @@ function VertexSnapIndicator({ snapVertices, snapEnabled }) {
 // ================================================================
 // HoverTracker — 마우스 → 월드 좌표 실시간 추적 (렌더 없음)
 // ================================================================
-function HoverTracker({ drawHeight, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef, lineStart }) {
+function HoverTracker({ drawHeight, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef, lineStart, viewMode = '3d' }) {
     const { camera, raycaster, mouse } = useThree();
-    const floorPlane = useMemo(
-        () => new THREE.Plane(new THREE.Vector3(0, 1, 0), -drawHeight),
-        [drawHeight]
-    );
+    const snapPlane = useMemo(() => getSnapPlane(viewMode, snapVertices), [viewMode, snapVertices]);
     const hitPoint = useMemo(() => new THREE.Vector3(), []);
 
     useFrame(() => {
         raycaster.setFromCamera(mouse, camera);
-        if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return;
-        // Three.js: ex=X=dataX, ey=Y(up)=drawHeight=dataZ, ez=Z(depth)=dataY
+        if (!raycaster.ray.intersectPlane(snapPlane, hitPoint)) return;
+
         let ex = hitPoint.x, ey = drawHeight, ez = hitPoint.z;
+
         if (snapEnabled && snapVertices.length > 0) {
-            const sv = findSnapVertex(hitPoint.x, hitPoint.z, snapVertices);
+            const [wa, wb] = viewMode === 'xz' ? [hitPoint.x, hitPoint.y]
+                           : viewMode === 'yz' ? [hitPoint.z, hitPoint.y]
+                           : [hitPoint.x, hitPoint.z];
+            const sv = findSnapVertex(wa, wb, snapVertices, viewMode);
             if (sv) { ex = sv[0]; ey = sv[1] ?? drawHeight; ez = sv[2]; }
         }
-        // lockedAxes는 data 좌표: x=dataX, y=dataY, z=dataZ
-        if (lockedAxes?.x != null) ex = lockedAxes.x;          // dataX = Three.jsX
-        if (lockedAxes?.y != null) ez = lockedAxes.y;          // dataY = Three.jsZ
-        if (lockedAxes?.z != null) ey = lockedAxes.z;          // dataZ = Three.jsY
-        // Shift 직교: lineStart = [dataX, dataY, dataZ] 기준
+
+        // XZ/YZ 뷰에서는 hit.y = Three.js Y = BIM 높이
+        if (viewMode === 'xz' || viewMode === 'yz') ey = hitPoint.y;
+
+        if (lockedAxes?.x != null) ex = lockedAxes.x;
+        if (lockedAxes?.y != null) ez = lockedAxes.y;
+        if (lockedAxes?.z != null) ey = lockedAxes.z;
+
         if (shiftRef?.current && lineStart) {
-            const dx = ex - lineStart[0], dz = ez - (lineStart[1] ?? 0);  // floor XY
+            const dx = ex - lineStart[0], dz = ez - (lineStart[1] ?? 0);
             if (lockedAxes?.x == null && lockedAxes?.y == null) {
                 if (Math.abs(dx) >= Math.abs(dz)) ez = lineStart[1] ?? 0;
                 else ex = lineStart[0];
             }
         }
-        // data 좌표로 emit: x=dataX, y=dataY, z=dataZ
         onHoverPosition?.({ x: ex, y: ez, z: ey });
     });
 
@@ -407,84 +440,97 @@ function HoverTracker({ drawHeight, snapVertices, snapEnabled, onHoverPosition, 
 // ================================================================
 // 배치 고스트 (스마트 스냅 — 센터 + 코너)
 // ================================================================
-function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef }) {
+function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef, viewMode = '3d' }) {
     const meshRef   = useRef();
     const snapRef   = useRef();
     const { camera, raycaster, mouse } = useThree();
 
-    const floorPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
-    const hitPoint   = useMemo(() => new THREE.Vector3(), []);
-    const snappedPos = useRef([0, 0]); // [x, z]
+    const snapPlane = useMemo(() => getSnapPlane(viewMode, snapVertices), [viewMode, snapVertices]);
+    const hitPoint  = useMemo(() => new THREE.Vector3(), []);
+    const snappedPos = useRef({ x: 0, y: 0, z: 0 }); // BIM data coords
 
-    // 좌표 규칙: sizeX/Y=평면 크기, sizeZ=높이 / Three.js: X=dataX, Y=dataZ+half, Z=dataY
     const sizeX = template.sizeX ?? 1;
-    const sizeY = template.sizeY ?? 1;   // floor Y size → Three.js Z
-    const sizeZ = template.sizeZ ?? 1;   // height       → Three.js Y
+    const sizeY = template.sizeY ?? 1;
+    const sizeZ = template.sizeZ ?? 1;
+
+    // 클릭 평면 rotation — viewMode에 따라 수직/수평 전환
+    const clickPlaneRotation = useMemo(() => {
+        if (viewMode === 'xz') return [0, 0, 0];              // XY 수직 평면 (Z축 기준)
+        if (viewMode === 'yz') return [0, Math.PI / 2, 0];   // ZY 수직 평면 (X축 기준)
+        return [-Math.PI / 2, 0, 0];                          // XZ 수평 평면 (바닥)
+    }, [viewMode]);
 
     useFrame(() => {
         raycaster.setFromCamera(mouse, camera);
-        if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return;
+        if (!raycaster.ray.intersectPlane(snapPlane, hitPoint)) return;
 
-        // px=Three.jsX=dataX, pz=Three.jsZ=dataY
-        let px = hitPoint.x, pz = hitPoint.z;
-        let snapped = false;
+        let px, py, pz; // Three.js coords
+        let snapA, snapB, snapResult;
 
-        if (snapEnabled && snapVertices.length > 0) {
-            const r = findSmartSnap(hitPoint.x, hitPoint.z, sizeX, sizeY, snapVertices);  // floor XY
-            if (r) { [px, pz] = r; snapped = true; }
+        if (viewMode === 'xz') {
+            snapA = hitPoint.x; snapB = hitPoint.y;
+            snapResult = snapEnabled && snapVertices.length
+                ? findSmartSnap(snapA, snapB, sizeX, sizeZ, snapVertices, viewMode) : null;
+            [snapA, snapB] = snapResult ?? [snapA, snapB];
+            px = snapA; py = snapB; pz = hitPoint.z;
+        } else if (viewMode === 'yz') {
+            snapA = hitPoint.z; snapB = hitPoint.y;
+            snapResult = snapEnabled && snapVertices.length
+                ? findSmartSnap(snapA, snapB, sizeY, sizeZ, snapVertices, viewMode) : null;
+            [snapA, snapB] = snapResult ?? [snapA, snapB];
+            px = hitPoint.x; py = snapB; pz = snapA;
+        } else {
+            snapA = hitPoint.x; snapB = hitPoint.z;
+            snapResult = snapEnabled && snapVertices.length
+                ? findSmartSnap(snapA, snapB, sizeX, sizeY, snapVertices, viewMode) : null;
+            [snapA, snapB] = snapResult ?? [snapA, snapB];
+            if (shiftRef?.current) {
+                if (lockedAxes?.x == null) snapA = Math.round(snapA * 2) / 2;
+                if (lockedAxes?.y == null) snapB = Math.round(snapB * 2) / 2;
+            }
+            px = snapA; py = lockedAxes?.z ?? 0; pz = snapB;
         }
 
-        // lockedAxes: x=dataX, y=dataY(floorY), z=dataZ(height)
-        if (lockedAxes?.x != null) px = lockedAxes.x;           // dataX = Three.jsX
-        if (lockedAxes?.y != null) pz = lockedAxes.y;           // dataY = Three.jsZ
-        if (shiftRef?.current) {
-            if (lockedAxes?.x == null) px = Math.round(px * 2) / 2;
-            if (lockedAxes?.y == null) pz = Math.round(pz * 2) / 2;
-        }
+        if (lockedAxes?.x != null) px = lockedAxes.x;
+        if (lockedAxes?.y != null) pz = lockedAxes.y;
+        if (lockedAxes?.z != null) py = lockedAxes.z;
 
-        const ghostZbase = lockedAxes?.z ?? 0;  // data Z (height base) = Three.js Y base
-        snappedPos.current = [px, pz];
-        // data 좌표로 emit: x=dataX, y=dataY(=Three.jsZ), z=dataZ(height)
-        onHoverPosition?.({ x: px, y: pz, z: ghostZbase });
-        const ghostY = ghostZbase + sizeZ / 2;  // Three.js Y center
+        snappedPos.current = { x: px, y: pz, z: py };
+        onHoverPosition?.({ x: px, y: pz, z: py });
+
+        const ghostY = py + sizeZ / 2;
         if (meshRef.current) meshRef.current.position.set(px, ghostY, pz);
-
         if (snapRef.current) {
-            snapRef.current.visible = snapped;
-            if (snapped) snapRef.current.position.set(px, ghostZbase + 0.1, pz);
+            snapRef.current.visible = !!snapResult;
+            if (snapResult) snapRef.current.position.set(px, py + 0.1, pz);
         }
     });
 
     return (
         <>
             <mesh ref={meshRef} position={[0, sizeZ / 2, 0]}>
-                <boxGeometry args={[sizeX, sizeZ, sizeY]} />  {/* Three.js [X, height, depth] */}
-                <meshStandardMaterial
-                    color={getBaseColor(template.elementType)}
-                    opacity={0.45} transparent depthWrite={false}
-                />
+                <boxGeometry args={[sizeX, sizeZ, sizeY]} />
+                <meshStandardMaterial color={getBaseColor(template.elementType)} opacity={0.45} transparent depthWrite={false} />
             </mesh>
-            {/* 와이어프레임 */}
             <mesh position={[0, sizeZ / 2, 0]}>
                 <boxGeometry args={[sizeX + 0.02, sizeZ + 0.02, sizeY + 0.02]} />
                 <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.6} />
             </mesh>
-            {/* 스냅 인디케이터 */}
             <mesh ref={snapRef} visible={false}>
                 <sphereGeometry args={[0.22, 16, 16]} />
                 <meshBasicMaterial color="#fbbf24" transparent opacity={0.85} />
             </mesh>
-            {/* 클릭 평면 */}
+            {/* 클릭 평면 — viewMode에 따라 수평/수직 전환 */}
             <mesh
-                rotation={[-Math.PI / 2, 0, 0]}
+                rotation={clickPlaneRotation}
                 position={[0, 0.001, 0]}
                 onClick={e => {
                     e.stopPropagation();
-                    // data 좌표로 전달: x=dataX, y=dataY(floor), z=dataZ(height)
+                    const s = snappedPos.current;
                     onConfirm({
-                        x: lockedAxes?.x ?? snappedPos.current[0],    // dataX
-                        y: lockedAxes?.y ?? snappedPos.current[1],    // dataY (Three.jsZ)
-                        z: lockedAxes?.z ?? 0,                         // dataZ (height=0)
+                        x: lockedAxes?.x ?? s.x,
+                        y: lockedAxes?.y ?? s.y,
+                        z: lockedAxes?.z ?? s.z,
                     });
                 }}
             >
@@ -498,15 +544,12 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHove
 // ================================================================
 // 선 작도 미리보기 (스냅 + 시작점 마커)
 // ================================================================
-function LinePreview({ lineStart, lineColor, lineWidth, drawHeight, snapVertices, snapEnabled, lockedAxes }) {
+function LinePreview({ lineStart, lineColor, lineWidth, drawHeight, snapVertices, snapEnabled, lockedAxes, viewMode = '3d' }) {
     const { camera, raycaster, mouse } = useThree();
 
-    const floorPlane = useMemo(
-        () => new THREE.Plane(new THREE.Vector3(0, 1, 0), -drawHeight),
-        [drawHeight]
-    );
-    const hitPoint    = useMemo(() => new THREE.Vector3(), []);
-    const snapSphRef  = useRef();
+    const snapPlane = useMemo(() => getSnapPlane(viewMode, snapVertices), [viewMode, snapVertices]);
+    const hitPoint  = useMemo(() => new THREE.Vector3(), []);
+    const snapSphRef = useRef();
 
     const lineObj = useMemo(() => {
         const positions = new Float32Array(6);
@@ -523,32 +566,34 @@ function LinePreview({ lineStart, lineColor, lineWidth, drawHeight, snapVertices
 
     useFrame(() => {
         raycaster.setFromCamera(mouse, camera);
-        if (!raycaster.ray.intersectPlane(floorPlane, hitPoint)) return;
+        if (!raycaster.ray.intersectPlane(snapPlane, hitPoint)) return;
 
         let ex = hitPoint.x, ey = drawHeight, ez = hitPoint.z;
         let snapped = false;
 
         if (snapEnabled && snapVertices.length > 0) {
-            const sv = findSnapVertex(hitPoint.x, hitPoint.z, snapVertices);
+            const [wa, wb] = viewMode === 'xz' ? [hitPoint.x, hitPoint.y]
+                           : viewMode === 'yz' ? [hitPoint.z, hitPoint.y]
+                           : [hitPoint.x, hitPoint.z];
+            const sv = findSnapVertex(wa, wb, snapVertices, viewMode);
             if (sv) { ex = sv[0]; ey = sv[1] ?? drawHeight; ez = sv[2]; snapped = true; }
         }
         if (!snapped && snapSphRef.current) snapSphRef.current.visible = false;
 
-        // lockedAxes: data 좌표 (x=dataX, y=dataY, z=dataZ)
-        if (lockedAxes?.x != null) ex = lockedAxes.x;          // dataX = Three.jsX
-        if (lockedAxes?.y != null) ez = lockedAxes.y;          // dataY = Three.jsZ
-        if (lockedAxes?.z != null) ey = lockedAxes.z;          // dataZ = Three.jsY
+        if (viewMode === 'xz' || viewMode === 'yz') ey = hitPoint.y;
 
-        // 스냅 구는 locked 축 적용 후의 최종 위치에 표시
+        if (lockedAxes?.x != null) ex = lockedAxes.x;
+        if (lockedAxes?.y != null) ez = lockedAxes.y;
+        if (lockedAxes?.z != null) ey = lockedAxes.z;
+
         if (snapped && snapSphRef.current) {
             snapSphRef.current.position.set(ex, ey, ez);
             snapSphRef.current.visible = true;
         }
 
-        // lineStart = [dataX, dataY, dataZ] → Three.js = [X, dataZ, dataY]
         const pos = lineObj.geometry.attributes.position;
         pos.setXYZ(0, lineStart[0], lineStart[2] ?? 0, lineStart[1] ?? 0);
-        pos.setXYZ(1, ex, ey, ez);  // ex=Three.jsX, ey=Three.jsY, ez=Three.jsZ
+        pos.setXYZ(1, ex, ey, ez);
         pos.needsUpdate = true;
         lineObj.geometry.computeBoundingSphere();
     });
@@ -700,6 +745,83 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
 }
 
 // ================================================================
+// 2D 직교 투영 카메라
+// viewMode: 'xy'=평면도(위), 'xz'=정면도(앞), 'yz'=측면도(옆)
+// BIM 좌표 → Three.js 변환 기준: posX→X, posY→Z, posZ→Y
+// ================================================================
+function Ortho2DCamera({ viewMode, modelData, orbitRef }) {
+    const bounds = useMemo(() => {
+        if (!modelData.length) return { cx: 0, cy: 0, cz: 0, spanXZ: 20, spanXY: 10, spanZY: 20 };
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity; // Three.js Y = BIM Z (높이)
+        let minZ = Infinity, maxZ = -Infinity; // Three.js Z = BIM Y (남북)
+        for (const el of modelData) {
+            const px = Number(el.positionX) || 0;
+            const py = Number(el.positionY) || 0;  // BIM Y → Three.js Z
+            const pz = Number(el.positionZ) || 0;  // BIM Z (높이) → Three.js Y
+            const hx = (Number(el.sizeX) || 0.1) / 2;
+            const hy = (Number(el.sizeY) || 0.1) / 2;
+            const sz = Number(el.sizeZ) || 0.1;
+            if (px - hx < minX) minX = px - hx; if (px + hx > maxX) maxX = px + hx;
+            if (pz       < minY) minY = pz;      if (pz + sz  > maxY) maxY = pz + sz;
+            if (py - hy < minZ) minZ = py - hy;  if (py + hy > maxZ) maxZ = py + hy;
+        }
+        return {
+            cx: (minX + maxX) / 2,
+            cy: (minY + maxY) / 2, // Three.js Y center (높이 중심)
+            cz: (minZ + maxZ) / 2, // Three.js Z center (남북 중심)
+            spanXZ: Math.max(maxX - minX, maxZ - minZ, 5), // XY 평면도용 (BIM XY)
+            spanXY: Math.max(maxX - minX, maxY - minY, 5), // XZ 정면도용 (BIM X × 높이)
+            spanZY: Math.max(maxZ - minZ, maxY - minY, 5), // YZ 측면도용 (BIM Y × 높이)
+        };
+    }, [modelData]);
+
+    const { cx, cy, cz } = bounds;
+
+    // 카메라 위치 · 방향 결정
+    const { pos, up, span } = useMemo(() => {
+        const pad = 2.5;
+        if (viewMode === 'xy') {
+            // 평면도: 위에서 아래로 — Three.js Y+ 방향에서 바라봄
+            // 화면: X=BIM X(동서), Z=BIM Y(남북)
+            const d = bounds.spanXZ * pad;
+            return { pos: [cx, cy + d, cz], up: [0, 0, -1], span: bounds.spanXZ };
+        } else if (viewMode === 'xz') {
+            // 정면도: Three.js Z+ 방향에서 바라봄
+            // 화면: X=BIM X(동서), Y=BIM Z(높이)
+            const d = bounds.spanXY * pad;
+            return { pos: [cx, cy, cz + d], up: [0, 1, 0], span: bounds.spanXY };
+        } else {
+            // 측면도(yz): Three.js X+ 방향에서 바라봄
+            // 화면: Z=BIM Y(남북), Y=BIM Z(높이)
+            const d = bounds.spanZY * pad;
+            return { pos: [cx + d, cy, cz], up: [0, 1, 0], span: bounds.spanZY };
+        }
+    }, [viewMode, bounds, cx, cy, cz]);
+
+    // 모델에 맞는 초기 zoom 계산 (canvas 약 800px 기준)
+    const zoom = useMemo(() => Math.max(5, Math.min(300, 600 / (span || 10))), [span]);
+
+    // 카메라 전환 시 orbit target을 모델 중심으로 이동
+    useEffect(() => {
+        if (!orbitRef?.current) return;
+        orbitRef.current.target.set(cx, cy, cz);
+        orbitRef.current.update();
+    }, [viewMode, cx, cy, cz]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return (
+        <OrthographicCamera
+            makeDefault
+            position={pos}
+            up={up}
+            zoom={zoom}
+            near={-5000}
+            far={5000}
+        />
+    );
+}
+
+// ================================================================
 // 메인 Scene
 // ================================================================
 export default function Scene({
@@ -744,6 +866,8 @@ export default function Scene({
     fitCameraTrigger = 0,
     // 표준 뷰 프리셋: 'iso'|'top'|'front'|'right'|'left'|'back' + 타임스탬프
     viewPreset = null,
+    // 2D 투영 뷰 모드: '3d'|'xy'|'xz'|'yz'
+    viewMode = '3d',
 }) {
     const { camera } = useThree();
     const transformRef     = useRef();
@@ -962,6 +1086,15 @@ export default function Scene({
         <>
             <CameraSync cameraRef={cameraRef} />
 
+            {/* 2D 투영 뷰: OrthographicCamera + 회전 잠금 */}
+            {viewMode !== '3d' && (
+                <Ortho2DCamera
+                    viewMode={viewMode}
+                    modelData={modelData}
+                    orbitRef={orbitRef}
+                />
+            )}
+
             {/* IFC 로드 시 카메라 자동 맞춤 */}
             {ifcMeshes && ifcMeshes.length > 0 && (
                 <CameraAutoFit
@@ -972,7 +1105,14 @@ export default function Scene({
                 />
             )}
 
-            <OrbitControls ref={orbitRef} enabled={orbitEnabled} enableZoom makeDefault />
+            <OrbitControls
+                ref={orbitRef}
+                enabled={orbitEnabled}
+                enableZoom
+                enableRotate={viewMode === '3d'}
+                enablePan
+                makeDefault
+            />
 
             {/* CAD 흑백 도면을 위해 전반적 조도를 높이고 그림자 광원을 부드럽게 */}
             <ambientLight intensity={envPreset?.light?.ambientIntensity ?? 1.1} />
@@ -1036,6 +1176,7 @@ export default function Scene({
                 <VertexSnapIndicator
                     snapVertices={snapVertices}
                     snapEnabled={snapEnabled}
+                    viewMode={viewMode}
                 />
             )}
 
@@ -1049,6 +1190,7 @@ export default function Scene({
                     onHoverPosition={onHoverPosition}
                     lockedAxes={placementLockedAxes}
                     shiftRef={shiftRef}
+                    viewMode={viewMode}
                 />
             )}
 
@@ -1063,6 +1205,7 @@ export default function Scene({
                         lockedAxes={lineLockedAxes}
                         shiftRef={shiftRef}
                         lineStart={lineStart}
+                        viewMode={viewMode}
                     />
                     <mesh
                         rotation={[-Math.PI/2, 0, 0]}
@@ -1085,6 +1228,7 @@ export default function Scene({
                     snapVertices={snapVertices}
                     snapEnabled={snapEnabled}
                     lockedAxes={lineLockedAxes}
+                    viewMode={viewMode}
                 />
             )}
 
