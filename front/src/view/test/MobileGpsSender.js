@@ -8,6 +8,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
+import { useT } from '../../i18n/LanguageContext';
 
 // ── WebSocket URL ───────────────────────────────────────────────────────────
 function buildWsUrl() {
@@ -20,13 +21,13 @@ function buildWsUrl() {
   return `${window.location.origin}/ws/sensor`;
 }
 
-const STATUS_LABEL = {
-  idle:       '대기 중',
-  checking:   '권한 확인 중…',
-  requesting: '권한 요청 중…',
-  connecting: '서버 연결 중…',
-  active:     '전송 중',
-  error:      '오류',
+const STATUS_KEYS = {
+  idle:       'statusIdle',
+  checking:   'statusChecking',
+  requesting: 'statusRequesting',
+  connecting: 'statusConnecting',
+  active:     'statusActive',
+  error:      'statusError',
 };
 const STATUS_COLOR = {
   idle:       '#8896a4',
@@ -55,6 +56,7 @@ function accuracyColor(acc) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 export default function MobileGpsSender() {
+  const t = useT('gpsControl');
   const [status,      setStatus]      = useState('idle');
   const [geoData,     setGeoData]     = useState(null);
   const [imuData,     setImuData]     = useState(null);
@@ -131,18 +133,13 @@ export default function MobileGpsSender() {
 
     // ① 보안 컨텍스트 확인 (HTTPS or localhost)
     if (!window.isSecureContext) {
-      failWith(
-        'GPS는 HTTPS 또는 localhost에서만 사용할 수 있습니다.\n' +
-        '현재 HTTP(비보안) 접속 중 — 브라우저가 위치 권한을 자동 차단합니다.\n\n' +
-        '해결: 서버에 HTTPS(SSL)를 적용하거나,\n' +
-        'Chrome → chrome://flags → "Insecure origins treated as secure"에 주소를 추가하세요.'
-      );
+      failWith(t('errInsecureContext'));
       return;
     }
 
     // ② Geolocation 지원 확인
     if (!('geolocation' in navigator)) {
-      failWith('이 브라우저는 Geolocation을 지원하지 않습니다.');
+      failWith(t('errNoGeolocation'));
       return;
     }
 
@@ -152,11 +149,7 @@ export default function MobileGpsSender() {
         const result = await navigator.permissions.query({ name: 'geolocation' });
         setPermState(result.state);
         if (result.state === 'denied') {
-          failWith(
-            '위치 권한이 이전에 거부되어 있습니다.\n\n' +
-            '브라우저 주소창 왼쪽 🔒 아이콘 → 사이트 설정 → 위치 → "허용"으로 변경 후\n' +
-            '페이지를 새로고침하고 다시 눌러주세요.'
-          );
+          failWith(t('errPermDenied'));
           return;
         }
       } catch (_) { /* Permissions API 미지원 시 무시 */ }
@@ -171,11 +164,11 @@ export default function MobileGpsSender() {
         setStatus('requesting');
         const res = await DeviceOrientationEvent.requestPermission();
         if (res !== 'granted') {
-          failWith('기울기 센서 권한이 거부되었습니다. 브라우저 설정에서 허용해 주세요.');
+          failWith(t('errImuDenied'));
           return;
         }
       } catch (e) {
-        failWith('센서 권한 요청 실패: ' + e.message);
+        failWith(t('errImuFail', { msg: e.message }));
         return;
       }
     }
@@ -201,11 +194,11 @@ export default function MobileGpsSender() {
       },
       (err) => {
         const msgs = {
-          1: '위치 권한이 거부되었습니다.\n브라우저 주소창 🔒 → 사이트 설정 → 위치 → "허용" 후 새로고침해 주세요.',
-          2: 'GPS 신호를 받을 수 없습니다. 실외로 이동하거나 잠시 후 다시 시도해 주세요.',
-          3: 'GPS 응답 시간 초과. 실외에서 다시 시도해 주세요.',
+          1: t('errGps1'),
+          2: t('errGps2'),
+          3: t('errGps3'),
         };
-        failWith(msgs[err.code] || `GPS 오류 (코드 ${err.code}): ${err.message}`);
+        failWith(msgs[err.code] || t('errGpsUnknown', { code: err.code, msg: err.message }));
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
@@ -229,13 +222,7 @@ export default function MobileGpsSender() {
     // 15초 내에 연결 안 되면 오류 처리
     wsTimeoutR.current = setTimeout(() => {
       if (stompRef.current && !stompRef.current.connected) {
-        failWith(
-          'WebSocket 서버에 연결할 수 없습니다 (15초 타임아웃).\n\n' +
-          '확인 사항:\n' +
-          '① Spring 서버가 실행 중인지 확인\n' +
-          '② DNS 환경이면 nginx /ws/sensor 프록시 설정 확인\n' +
-          `③ 현재 URL: ${buildWsUrl()}`
-        );
+        failWith(t('errWsTimeout', { url: buildWsUrl() }));
       }
     }, 15000);
 
@@ -270,23 +257,18 @@ export default function MobileGpsSender() {
       onDisconnect: () => {
         clearInterval(sendTimerR.current);
         if (status === 'active') {
-          failWith('WebSocket 연결이 끊어졌습니다. Stop 후 다시 시작해 주세요.');
+          failWith(t('errWsDisconnect'));
         }
       },
 
       onWebSocketError: () => {
         clearTimeout(wsTimeoutR.current);
-        failWith(
-          `WebSocket 연결 실패.\n\n확인 사항:\n` +
-          `① Spring 서버 실행 여부\n` +
-          `② nginx WebSocket 프록시 설정\n` +
-          `③ URL: ${buildWsUrl()}`
-        );
+        failWith(t('errWsFail', { url: buildWsUrl() }));
       },
 
       onStompError: (frame) => {
         clearTimeout(wsTimeoutR.current);
-        failWith(`STOMP 오류: ${frame.headers?.message || '알 수 없는 오류'}`);
+        failWith(t('errStomp', { msg: frame.headers?.message || t('errStompUnknown') }));
       },
     });
 
@@ -305,7 +287,7 @@ export default function MobileGpsSender() {
 
   const sc = '#8896a4', ag = '#4ade80', ar = '#f87171', ab = '#60a5fa', ap = '#a78bfa';
   const stColor = STATUS_COLOR[status];
-  const stLabel = STATUS_LABEL[status];
+  const stLabel = t(STATUS_KEYS[status]);
 
   // 버튼: 실행 중이면(연결 중 포함) Stop 표시 및 활성화, 권한 요청 중만 비활성화
   const showStop  = isRunning || status === 'connecting';
@@ -327,7 +309,7 @@ export default function MobileGpsSender() {
         marginBottom: (isActive || errorMsg) ? '10px' : '0',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ color: ap, fontWeight: 700, fontSize: '13px' }}>📡 모바일 GPS 제어</span>
+          <span style={{ color: ap, fontWeight: 700, fontSize: '13px' }}>{t('title')}</span>
           <span style={{ color: stColor, fontWeight: 600, fontSize: '11px' }}>
             ● {stLabel}{isActive ? ` — ${txHz} Hz` : ''}
           </span>
@@ -353,10 +335,10 @@ export default function MobileGpsSender() {
           }}
         >
           {showStop
-            ? (isActive ? '⏹ Stop' : '⏹ 취소')
+            ? (isActive ? t('btnStop') : t('btnCancel'))
             : btnDisabled
-              ? '확인 중…'
-              : '▶ Start'}
+              ? t('btnChecking')
+              : t('btnStart')}
         </button>
       </div>
 
@@ -373,9 +355,9 @@ export default function MobileGpsSender() {
                : '#facc15',
           border: `1px solid ${permState === 'granted' ? '#4ade8030' : permState === 'denied' ? '#ef444430' : '#facc1530'}`,
         }}>
-          {permState === 'granted' ? '✓ 위치 권한 허용됨'
-          : permState === 'denied'  ? '✗ 위치 권한 거부됨 — 설정에서 허용 필요'
-          : '? 위치 권한 미결정 — Start 시 다이얼로그'}
+          {permState === 'granted' ? t('permGranted')
+          : permState === 'denied'  ? t('permDenied')
+          : t('permPrompt')}
         </div>
       )}
 
@@ -389,16 +371,16 @@ export default function MobileGpsSender() {
           borderRadius: '9px',
           marginBottom: '8px',
         }}>
-          <div style={{ fontWeight: 700, marginBottom: '3px' }}>⚠ 오류</div>
+          <div style={{ fontWeight: 700, marginBottom: '3px' }}>{t('errorTitle')}</div>
           {errorMsg}
           {permState === 'denied' && (
             <div style={{
               marginTop: '8px', padding: '6px 8px', borderRadius: '6px',
               background: 'rgba(255,255,255,0.04)', color: '#facc15', fontSize: '10px',
             }}>
-              💡 권한 설정 경로:<br/>
-              <strong>Android Chrome</strong>: 주소창 왼쪽 🔒 → 사이트 설정 → 위치 → 허용<br/>
-              <strong>iOS Safari</strong>: 설정 앱 → Safari → 위치 → 허용
+              {t('permHintTitle')}<br/>
+              <strong>Android Chrome</strong>: {t('permHintAndroid').replace('Android Chrome: ', '')}<br/>
+              <strong>iOS Safari</strong>: {t('permHintIos').replace('iOS Safari: ', '')}
             </div>
           )}
         </div>
@@ -415,8 +397,8 @@ export default function MobileGpsSender() {
           marginBottom: '8px',
         }}>
           <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block', marginRight: '6px' }}>⏳</span>
-          서버 WebSocket 연결 중 — 15초 내 연결 안 되면 오류 표시됩니다.<br/>
-          <span style={{ fontSize: '10px', color: '#8896a4' }}>연결 URL: {buildWsUrl()}</span>
+          {t('connectingMsg')}<br/>
+          <span style={{ fontSize: '10px', color: '#8896a4' }}>{t('connectingUrl')}{buildWsUrl()}</span>
         </div>
       )}
 
@@ -440,20 +422,20 @@ export default function MobileGpsSender() {
               </div>
               {geoData ? (
                 <>
-                  <DataRow label="위도" value={geoData.lat?.toFixed(7)} color="#e2e8f0" />
-                  <DataRow label="경도" value={geoData.lng?.toFixed(7)} color="#e2e8f0" />
+                  <DataRow label={t('latitude')}  value={geoData.lat?.toFixed(7)} color="#e2e8f0" />
+                  <DataRow label={t('longitude')} value={geoData.lng?.toFixed(7)} color="#e2e8f0" />
                   {geoData.heading != null
-                    ? <DataRow label="방위" value={`${geoData.heading.toFixed(1)}°`} color={ab} />
-                    : <DataRow label="방위" value="(IMU 사용)" color={sc} />
+                    ? <DataRow label={t('heading')} value={`${geoData.heading.toFixed(1)}°`} color={ab} />
+                    : <DataRow label={t('heading')} value={t('headingImu')} color={sc} />
                   }
                   {geoData.speed != null && (
-                    <DataRow label="속도" value={`${(geoData.speed * 3.6).toFixed(1)} km/h`} color={ap} />
+                    <DataRow label={t('speed')} value={`${(geoData.speed * 3.6).toFixed(1)} km/h`} color={ap} />
                   )}
                 </>
               ) : (
                 <div style={{ color: '#facc15', fontSize: '10px', lineHeight: 1.6 }}>
-                  GPS 신호 획득 중…<br/>
-                  <span style={{ color: sc }}>실외로 이동해 주세요.</span>
+                  {t('acquiringGps')}<br/>
+                  <span style={{ color: sc }}>{t('moveOutdoors')}</span>
                 </div>
               )}
             </div>
@@ -462,18 +444,18 @@ export default function MobileGpsSender() {
               flex: 1, background: 'rgba(10,26,46,0.85)',
               border: '1px solid #1a3a5f', borderRadius: '10px', padding: '9px 10px',
             }}>
-              <div style={{ color: ab, fontSize: '10px', fontWeight: 700, marginBottom: '6px' }}>🔄 IMU (기울기)</div>
+              <div style={{ color: ab, fontSize: '10px', fontWeight: 700, marginBottom: '6px' }}>{t('imuTitle')}</div>
               {imuData ? (
                 <>
                   <DataRow label="α Yaw"   value={`${imuData.alpha?.toFixed(1)}°`} color="#e2e8f0" />
                   <DataRow label="β Pitch" value={`${imuData.beta?.toFixed(1)}°`}  color={ab} />
                   <DataRow label="γ Roll"  value={`${imuData.gamma?.toFixed(1)}°`} color={ap} />
                   <div style={{ marginTop: '6px', fontSize: '9px', color: sc }}>
-                    α → 회전 · β → 붐 · γ → 선회
+                    {t('imuHint')}
                   </div>
                 </>
               ) : (
-                <div style={{ color: '#facc15', fontSize: '10px' }}>센서 수신 중…</div>
+                <div style={{ color: '#facc15', fontSize: '10px' }}>{t('imuReceiving')}</div>
               )}
             </div>
           </div>
@@ -483,11 +465,11 @@ export default function MobileGpsSender() {
             borderRadius: '10px', padding: '8px 12px',
             display: 'flex', justifyContent: 'space-around', alignItems: 'center',
           }}>
-            <StatChip label="전송 빈도" value={`${txHz} Hz`}           color={ag} />
+            <StatChip label={t('txRate')}       value={`${txHz} Hz`}           color={ag} />
             <div style={{ width: '1px', height: '28px', background: '#1a3a5f' }} />
-            <StatChip label="총 패킷"   value={txCount.toLocaleString()} color="#e2e8f0" />
+            <StatChip label={t('totalPackets')} value={txCount.toLocaleString()} color="#e2e8f0" />
             <div style={{ width: '1px', height: '28px', background: '#1a3a5f' }} />
-            <StatChip label="경로"      value="/app/excavator/gps"       color={ab} mono />
+            <StatChip label={t('route')}        value="/app/excavator/gps"       color={ab} mono />
           </div>
 
           <div style={{
@@ -495,8 +477,7 @@ export default function MobileGpsSender() {
             padding: '6px 10px', background: 'rgba(26,16,64,0.6)',
             border: '1px solid #7c3aed22', borderRadius: '8px',
           }}>
-            💡 이 기기를 기울이면 굴착기 관절이 반응합니다.
-            이동하면 위치가 실시간으로 변경됩니다.
+            {t('activeHint')}
           </div>
         </div>
       )}
@@ -504,16 +485,15 @@ export default function MobileGpsSender() {
       {/* ── 대기 중 안내 ── */}
       {status === 'idle' && (
         <div style={{ marginTop: '6px', fontSize: '10px', lineHeight: 1.6, color: sc }}>
-          Start를 누르면 GPS · 기울기 센서 권한을 요청하고
-          WebSocket으로 굴착기를 실시간 제어합니다.
+          {t('idleHint')}
           {!window.isSecureContext && (
             <div style={{
               marginTop: '8px', padding: '7px 10px', borderRadius: '8px',
               background: 'rgba(120,40,0,0.35)', border: '1px solid #f59e0b55',
               color: '#fbbf24', lineHeight: 1.7,
             }}>
-              ⚠ <strong>HTTPS 필요</strong> — 현재 HTTP 접속 중.<br/>
-              GPS는 HTTPS 또는 localhost에서만 동작합니다.
+              {t('httpsRequired')}<br/>
+              {t('httpsRequiredDesc')}
             </div>
           )}
         </div>

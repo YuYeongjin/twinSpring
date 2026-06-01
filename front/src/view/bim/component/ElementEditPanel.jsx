@@ -78,7 +78,7 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
     };
 
     return (
-        <div className="fixed right-0 top-0 w-80 h-full bg-space-800/95 border-l border-space-700 p-6 shadow-xl z-50">
+        <div className="fixed right-0 top-0 w-80 h-full bg-space-800/95 border-l border-space-700 p-6 shadow-xl z-50 overflow-y-auto">
             <h3 className="text-xl font-bold mb-4 text-accent-orange">Edit Member Info</h3>
             <p className="text-sm text-gray-400 mb-6">ID: {element.elementId} ({element.elementType})</p>
 
