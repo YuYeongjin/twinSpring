@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>TwinSpring AI Agent — Supervisor Architecture v2</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #060e18;
+  color: #e2e8f0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+  padding: 24px;
+}
+h1 {
+  text-align: center; font-size: 22px; font-weight: 700;
+  color: #60a5fa; margin-bottom: 6px; letter-spacing: 0.04em;
+}
+.subtitle { text-align: center; font-size: 12px; color: #4a6a8a; margin-bottom: 28px; }
+
+/* ── 전체 시스템 흐름 ── */
+.system-flow {
+  max-width: 1100px; margin: 0 auto 28px;
+  display: grid; grid-template-columns: 1fr 44px 1fr 44px 1fr; align-items: center;
+}
+.sys-box { border-radius: 12px; padding: 16px; text-align: center; border: 1px solid; }
+.sys-react    { background:#0a1218; border-color:#38bdf844; }
+.sys-spring   { background:#0d1a0d; border-color:#4ade8044; }
+.sys-python   { background:#0d1b35; border-color:#60a5fa44; }
+.sys-box-title { font-size:13px; font-weight:700; margin-bottom:6px; }
+.sys-box-sub   { font-size:9px; color:#4a6a8a; line-height:1.7; }
+.sys-react  .sys-box-title { color:#38bdf8; }
+.sys-spring .sys-box-title { color:#4ade80; }
+.sys-python .sys-box-title { color:#60a5fa; }
+.sys-arrow { display:flex; flex-direction:column; align-items:center; gap:3px; }
+.sys-arrow-label { font-size:8px; color:#2a4a6a; white-space:nowrap; }
+.sys-arrow-icon  { font-size:16px; color:#1e3a5f; }
+
+/* ── 파이프라인 ── */
+.pipeline { max-width:1100px; margin:0 auto; display:flex; flex-direction:column; align-items:center; }
+
+.p-node { border-radius:10px; padding:12px 28px; text-align:center; position:relative; }
+.p-node-title { font-size:14px; font-weight:700; }
+.p-node-sub   { font-size:10px; color:#4a6a8a; margin-top:3px; }
+.p-start  { background:#0d2a0d; border:2px solid #22c55e; color:#4ade80; min-width:80px; }
+.p-end    { background:#1a0a0a; border:2px solid #ef4444; color:#f87171; min-width:80px; }
+.p-router { background:#0d1535; border:2px solid #818cf8; min-width:380px; }
+.p-router .p-node-title { color:#a5b4fc; }
+.p-rag    { background:#120a1a; border:2px solid #c084fc; min-width:320px; }
+.p-rag    .p-node-title { color:#e879f9; }
+.p-resp   { background:#0d1a0d; border:2px solid #34d399; min-width:380px; }
+.p-resp   .p-node-title { color:#6ee7b7; }
+
+.arrow-down {
+  width:2px; height:24px;
+  background:linear-gradient(to bottom,#3b82f6,#1e3a5f); position:relative;
+}
+.arrow-down::after {
+  content:'▼'; position:absolute; bottom:-5px; left:50%;
+  transform:translateX(-50%); color:#3b82f6; font-size:10px;
+}
+.arrow-dashed {
+  width:2px; height:24px;
+  background:repeating-linear-gradient(to bottom,#c084fc 0,#c084fc 4px,transparent 4px,transparent 8px);
+  position:relative;
+}
+.arrow-dashed::after {
+  content:'▼'; position:absolute; bottom:-5px; left:50%;
+  transform:translateX(-50%); color:#c084fc; font-size:10px;
+}
+
+.branch-label { font-size:9px; color:#4a6a8a; text-align:center; margin:2px 0; }
+.branch-label span { background:#0d1b35; padding:1px 8px; border-radius:10px; border:1px solid #1e3a5f; }
+.branch-rag span   { border-color:#4a1a5a; background:#120a1a; color:#c084fc; }
+
+/* ── domain agents 팬 ── */
+.fan-section { width:100%; max-width:1100px; }
+.fan-label {
+  text-align:center; font-size:10px; color:#2a4a6a;
+  margin-bottom:6px; letter-spacing:0.08em; text-transform:uppercase;
+}
+.fan-bar {
+  display:flex; align-items:flex-start; justify-content:center; gap:5px; position:relative;
+}
+.fan-bar::before {
+  content:''; position:absolute; top:0; left:2%; right:2%; height:2px;
+  background:linear-gradient(to right,transparent,#1e3a5f 10%,#1e3a5f 90%,transparent);
+}
+.agent-col { display:flex; flex-direction:column; align-items:center; flex:1; min-width:0; }
+.agent-tick     { width:2px; height:16px; background:#1e3a5f; }
+.agent-end-tick { width:2px; height:12px; background:#1e2a3e; }
+.agent-card {
+  border-radius:10px; padding:9px 7px 7px; width:100%; font-size:10px; border:1px solid;
+  transition:transform .15s,box-shadow .15s; cursor:pointer;
+}
+.agent-card:hover { transform:translateY(-3px); box-shadow:0 6px 20px rgba(0,0,0,.5); }
+.agent-name { font-size:11px; font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:3px; }
+.no-llm-badge {
+  font-size:7px; padding:1px 5px; border-radius:4px; margin-left:auto; white-space:nowrap;
+  background:#1a2a1a; color:#4ade80; border:1px solid #22c55e44;
+}
+.tool-list { display:flex; flex-direction:column; gap:2px; margin-top:3px; }
+.tool-item {
+  font-size:8.5px; color:#4a6a8a; padding:1px 3px; border-radius:3px;
+  background:rgba(255,255,255,.03); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.keyword-row {
+  margin-top:4px; font-size:7.5px; color:#2a4a3a;
+  border-top:1px solid rgba(255,255,255,.05); padding-top:3px; line-height:1.4;
+}
+
+.c-sensor { background:#0a1a12; border-color:#22c55e44; } .c-sensor .agent-name { color:#4ade80; }
+.c-bim    { background:#0a1020; border-color:#60a5fa44; } .c-bim    .agent-name { color:#60a5fa; }
+.c-sim    { background:#1a1000; border-color:#fb923c44; } .c-sim    .agent-name { color:#fb923c; }
+.c-safe   { background:#1a0a0a; border-color:#f87171aa; } .c-safe   .agent-name { color:#f87171; }
+.c-test   { background:#0a0a1a; border-color:#a78bfa44; } .c-test   .agent-name { color:#a78bfa; }
+.c-wbs    { background:#0a1218; border-color:#38bdf844; } .c-wbs    .agent-name { color:#38bdf8; }
+.c-orch   { background:#101018; border-color:#fbbf2444; } .c-orch   .agent-name { color:#fbbf24; }
+.c-tab    { background:#0e1010; border-color:#67e8f944; } .c-tab    .agent-name { color:#67e8f9; }
+.c-chat   { background:#0a0e0a; border-color:#86efac44; } .c-chat   .agent-name { color:#86efac; }
+
+.collect-bar  { width:100%; max-width:1100px; display:flex; justify-content:center; }
+.collect-line { height:2px; background:linear-gradient(to right,transparent,#2a3a4a 10%,#2a3a4a 90%,transparent); width:100%; }
+
+/* ── 하단 ── */
+.bottom-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; max-width:1100px; margin:28px auto 0; }
+.panel { background:#0d1b2a; border:1px solid #1e3a5f; border-radius:12px; padding:16px; }
+.panel-title { font-size:13px; font-weight:700; color:#60a5fa; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #1e3a5f; }
+
+.ep-list { display:flex; flex-direction:column; gap:4px; }
+.ep-item { display:flex; align-items:flex-start; gap:8px; padding:5px 8px; background:#060e18; border-radius:6px; border-left:3px solid; }
+.ep-method { font-size:9px; font-weight:700; min-width:38px; text-align:center; padding:1px 4px; border-radius:3px; }
+.ep-path { font-size:10px; color:#94a3b8; font-family:monospace; }
+.ep-desc { font-size:9px; color:#4a6a8a; margin-top:1px; }
+.ep-caller { font-size:8px; color:#1e3a5f; margin-top:1px; }
+.m-post { border-color:#22c55e44; } .m-post .ep-method { background:#0d2a10; color:#4ade80; }
+.m-del  { border-color:#f8717144; } .m-del  .ep-method { background:#2a0a0a; color:#f87171; }
+.m-get  { border-color:#60a5fa44; } .m-get  .ep-method { background:#0d1e3a; color:#60a5fa; }
+
+.tools-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.tool-box { background:#060e18; border:1px solid #1e2a3e; border-radius:8px; padding:8px; }
+.tool-box-title  { font-size:10px; font-weight:700; margin-bottom:5px; }
+.tool-box-item   { font-size:8.5px; color:#2a4a5a; margin-bottom:2px; font-family:monospace; }
+.tool-box-target { font-size:8px; color:#1e3a4a; margin-top:5px; border-top:1px solid #0d1b2a; padding-top:4px; }
+
+/* LLM */
+.llm-grid { max-width:1100px; margin:16px auto 0; display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+.llm-box { background:#0d1b2a; border:1px solid; border-radius:10px; padding:12px; }
+.llm-box-title { font-size:11px; font-weight:700; margin-bottom:6px; }
+.llm-box-item  { font-size:9px; color:#4a6a8a; margin-bottom:3px; }
+.llm-router    { border-color:#818cf844; } .llm-router    .llm-box-title { color:#a5b4fc; }
+.llm-responder { border-color:#34d39944; } .llm-responder .llm-box-title { color:#6ee7b7; }
+.llm-precise   { border-color:#fbbf2444; } .llm-precise   .llm-box-title { color:#fbbf24; }
+
+/* legend */
+.legend { max-width:1100px; margin:16px auto 0; background:#0d1b2a; border:1px solid #1e2a3e; border-radius:10px; padding:12px 16px; }
+.legend-title { font-size:11px; font-weight:700; color:#4a6a8a; margin-bottom:8px; text-transform:uppercase; letter-spacing:.06em; }
+.legend-row { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.legend-item { font-size:9px; padding:2px 8px; border-radius:12px; display:flex; align-items:center; gap:4px; }
+.pri-num { font-weight:700; opacity:.5; }
+
+/* state */
+.state-grid { max-width:1100px; margin:16px auto 0; background:#0d1520; border:1px solid #1e3a5f; border-radius:10px; padding:14px 16px; }
+.state-title { font-size:12px; font-weight:700; color:#60a5fa; margin-bottom:10px; }
+.state-cols { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; }
+.state-group-title { font-size:9px; color:#2a4a6a; text-transform:uppercase; letter-spacing:.06em; margin-bottom:5px; border-bottom:1px solid #1e2a3e; padding-bottom:4px; }
+.state-field { font-size:9px; color:#2a4a5a; margin-bottom:2px; font-family:monospace; }
+.state-field span { color:#3a5a7a; font-family:sans-serif; font-size:8px; }
+
+/* env */
+.env-grid { max-width:1100px; margin:16px auto 0; display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+.env-box { background:#060e18; border:1px solid #1e2a3e; border-radius:8px; padding:10px; }
+.env-title { font-size:10px; font-weight:700; margin-bottom:5px; }
+.env-item { font-size:8.5px; color:#2a4a5a; font-family:monospace; margin-bottom:2px; }
+
+footer { text-align:center; font-size:10px; color:#1e2e3e; margin-top:32px; padding-top:16px; border-top:1px solid #0d1b2a; }
+</style>
+</head>
+<body>
+
+<h1>🤖 TwinSpring — AI Agent Architecture v2</h1>
+<div class="subtitle">Supervisor Pattern · llama3.2:1b Router · qwen2.5:3b Responder · Shared RAG · No-LLM Domain Agents</div>
+
+<!-- ── 전체 시스템 흐름 ── -->
+<div class="system-flow">
+  <div class="sys-box sys-react">
+    <div class="sys-box-title">⚛ React Frontend</div>
+    <div class="sys-box-sub">버튼 클릭 → Spring 직접<br>채팅 입력 → Spring 경유<br>포트: 3000</div>
+  </div>
+  <div class="sys-arrow">
+    <div class="sys-arrow-label">버튼/REST</div>
+    <div class="sys-arrow-icon">→</div>
+  </div>
+  <div class="sys-box sys-spring">
+    <div class="sys-box-title">🌿 Spring Gateway</div>
+    <div class="sys-box-sub">비즈니스 로직 처리<br>BIM · WBS · Safe · Simulation<br>포트: 8080 (SPRING_BASE_URL)</div>
+  </div>
+  <div class="sys-arrow">
+    <div class="sys-arrow-label">AI 필요 시</div>
+    <div class="sys-arrow-icon">→</div>
+  </div>
+  <div class="sys-box sys-python">
+    <div class="sys-box-title">🐍 Python FastAPI Agent</div>
+    <div class="sys-box-sub">자연어 채팅 처리<br>LangGraph Supervisor 워크플로우<br>포트: 7070</div>
+  </div>
+</div>
+
+<!-- ── LangGraph 파이프라인 ── -->
+<div class="pipeline">
+
+  <div class="p-node p-start">▶ START</div>
+  <div class="arrow-down"></div>
+
+  <!-- ROUTER -->
+  <div class="p-node p-router">
+    <div class="p-node-title">🧭 router_node &nbsp;<span style="font-size:10px;font-weight:400;border:1px solid #818cf844;padding:1px 8px;border-radius:6px;color:#818cf8;">llama3.2:1b</span></div>
+    <div class="p-node-sub">사용자 메시지 → domain 분류 + need_rag 판단 · JSON 파싱 실패 시 키워드 폴백 자동 전환</div>
+    <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <div style="background:#060e18;border:1px solid #2a2a5a;border-radius:6px;padding:6px;">
+        <div style="font-size:8.5px;color:#818cf8;font-weight:700;margin-bottom:3px;">OUTPUT: domain</div>
+        <div style="font-size:8px;color:#2a4a6a;line-height:1.7;">bim · sensor · simulation · safe<br>wbs · test · orchestrator · tab_guide · chat</div>
+      </div>
+      <div style="background:#060e18;border:1px solid #2a2a5a;border-radius:6px;padding:6px;">
+        <div style="font-size:8.5px;color:#818cf8;font-weight:700;margin-bottom:3px;">OUTPUT: need_rag</div>
+        <div style="font-size:8px;color:#2a4a6a;line-height:1.7;"><span style="color:#c084fc;">true</span> → KCS/KDS/시방서/설계기준 포함 시<br>Shared RAG 노드 경유 후 domain agent</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 분기 -->
+  <div style="display:flex;gap:60px;align-items:flex-start;">
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <div class="arrow-dashed"></div>
+      <div class="branch-label branch-rag"><span>need_rag = true</span></div>
+      <div class="p-node p-rag" style="min-width:240px;padding:10px 16px;">
+        <div class="p-node-title">📚 rag_node <span style="font-size:9px;color:#4a6a8a;">(Shared)</span></div>
+        <div class="p-node-sub">PostgreSQL pgvector → KCS/KDS 시방서 k=4 검색<br>결과를 rag_context 로 state 에 저장</div>
+      </div>
+      <div class="arrow-dashed"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;padding-top:74px;">
+      <div class="arrow-down"></div>
+      <div class="branch-label"><span>need_rag = false</span></div>
+    </div>
+  </div>
+
+  <!-- DOMAIN AGENTS -->
+  <div style="width:2px;height:14px;background:#1e3a5f;"></div>
+  <div class="fan-section">
+    <div class="fan-label">domain agents — No LLM · keyword dispatch · tool 직접 호출</div>
+    <div class="fan-bar">
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-bim">
+          <div class="agent-name">🏗 bim<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">list_bim_projects()</div>
+            <div class="tool-item">create_bim_element()</div>
+            <div class="tool-item">create_composite_structure()</div>
+            <div class="tool-item">delete_bim_element()</div>
+            <div class="tool-item">get_structural_analysis()</div>
+            <div class="tool-item">drone/ifc guide</div>
+          </div>
+          <div class="keyword-row">bim · ifc · 기둥 · 보 · 에펠탑 · 드론</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-sensor">
+          <div class="agent-name">🌡 sensor<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">get_latest_sensor()</div>
+            <div class="tool-item">get_sensor_history(limit)</div>
+          </div>
+          <div class="keyword-row">온도 · 습도 · 센서 · temperature</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-sim">
+          <div class="agent-name">🚜 simulation<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">reset_excavator()</div>
+            <div class="tool-item">set_excavator_preset()</div>
+            <div class="tool-item">set_excavator_angles()</div>
+            <div class="tool-item">move_excavator(x,z)</div>
+            <div class="tool-item">get_earthwork_summary()</div>
+            <div class="tool-item">get_excavator_state()</div>
+          </div>
+          <div class="keyword-row">굴착기 · 붐 · 버킷 · 프리셋 · 토공</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-safe">
+          <div class="agent-name">🛡 safe<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">get_safety_stats()</div>
+            <div class="tool-item">get_recent_detections()</div>
+            <div class="tool-item">get_detection_server_status()</div>
+            <div class="tool-item">list_safe_projects()</div>
+            <div class="tool-item">get_safe_tab_guide()</div>
+          </div>
+          <div class="keyword-row">헬멧 · YOLO · 침입 · 안전모</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-wbs">
+          <div class="agent-name">📋 wbs<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">list/get_wbs_project()</div>
+            <div class="tool-item">create/delete_wbs_project()</div>
+            <div class="tool-item">list/add_wbs_task()</div>
+            <div class="tool-item">update/delete_wbs_task()</div>
+            <div class="tool-item">list_wbs_links()</div>
+          </div>
+          <div class="keyword-row">wbs · 공정 · 태스크 · 현장 · gantt</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-test">
+          <div class="agent-name">🎮 test<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">get_test_tab_guide()</div>
+            <div class="tool-item">get_keyboard_controls()</div>
+            <div class="tool-item">get_collision_log()</div>
+          </div>
+          <div class="keyword-row">충돌테스트 · 키보드 · WASD</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-orch">
+          <div class="agent-name">🔮 orchestrator<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">collect_wbs_overview()</div>
+            <div class="tool-item">collect_bim_overview()</div>
+            <div class="tool-item">collect_safe_overview()</div>
+            <div class="tool-item">collect_project_links()</div>
+          </div>
+          <div class="keyword-row">통합보고서 · 종합현황 · 멀티도메인</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-tab">
+          <div class="agent-name">📖 tab_guide<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">탭별 안내 정보 반환</div>
+            <div class="tool-item">directAgent="tab_guide"</div>
+          </div>
+          <div class="keyword-row">탭 안내 · 대시보드 · 사용법</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+      <div class="agent-col">
+        <div class="agent-tick"></div>
+        <div class="agent-card c-chat">
+          <div class="agent-name">💬 chat<span class="no-llm-badge">No LLM</span></div>
+          <div class="tool-list">
+            <div class="tool-item">tool_results = {} (빈 상태)</div>
+            <div class="tool-item">responder가 직접 답변 생성</div>
+          </div>
+          <div class="keyword-row">미분류 → responder 직행</div>
+        </div>
+        <div class="agent-end-tick"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="collect-bar"><div class="collect-line"></div></div>
+  <div style="width:2px;height:14px;background:#2a3a4a;"></div>
+  <div class="arrow-down"></div>
+
+  <!-- RESPONDER -->
+  <div class="p-node p-resp">
+    <div class="p-node-title">✨ responder_node &nbsp;<span style="font-size:10px;font-weight:400;border:1px solid #34d39944;padding:1px 8px;border-radius:6px;color:#34d399;">qwen2.5:3b</span></div>
+    <div class="p-node-sub">tool_results + rag_context + 대화이력 → 최종 자연어 응답 · ko/en/ja 자동 감지 · None 값은 state 덮어쓰지 않음</div>
+  </div>
+
+  <div class="arrow-down"></div>
+  <div class="p-node p-end">⏹ END</div>
+
+</div>
+
+<!-- ── LLM 구성 ── -->
+<div class="llm-grid">
+  <div class="llm-box llm-router">
+    <div class="llm-box-title">🧭 llm_router</div>
+    <div class="llm-box-item">모델: llama3.2:1b · temperature: 0</div>
+    <div class="llm-box-item">역할: domain 분류 · need_rag 판단</div>
+    <div class="llm-box-item">실패 시 키워드 폴백 자동 전환</div>
+    <div class="llm-box-item" style="color:#2a4a3a;">사용: router_node</div>
+  </div>
+  <div class="llm-box llm-responder">
+    <div class="llm-box-title">✨ llm_responder (= llm_chat)</div>
+    <div class="llm-box-item">모델: qwen2.5:3b · temperature: 0.7</div>
+    <div class="llm-box-item">역할: tool결과 + RAG → 최종 답변 생성</div>
+    <div class="llm-box-item">orchestrator 모드 시 통합 보고서 생성</div>
+    <div class="llm-box-item" style="color:#2a4a3a;">사용: responder_node · /chat-stream chat경로</div>
+  </div>
+  <div class="llm-box llm-precise">
+    <div class="llm-box-title">🔬 llm_precise</div>
+    <div class="llm-box-item">모델: qwen2.5:3b · temperature: 0</div>
+    <div class="llm-box-item">역할: JSON 파싱 · 구조화 필드 추출</div>
+    <div class="llm-box-item" style="color:#2a4a3a;">사용: /wbs-project-chat · /excavation-spec 요약</div>
+  </div>
+</div>
+
+<!-- ── 라우팅 우선순위 ── -->
+<div class="legend">
+  <div class="legend-title">⚡ router_node 키워드 폴백 우선순위 (LLM 실패 시)</div>
+  <div class="legend-row">
+    <span class="legend-item" style="background:#0a0a1a;border:1px solid #a78bfa44;color:#a78bfa"><span class="pri-num">1</span>🎮 test</span>
+    <span class="legend-item" style="background:#1a0a0a;border:1px solid #f8717144;color:#f87171"><span class="pri-num">2</span>🛡 safe</span>
+    <span class="legend-item" style="background:#1a1000;border:1px solid #fb923c44;color:#fb923c"><span class="pri-num">3</span>🚜 simulation</span>
+    <span class="legend-item" style="background:#0a1218;border:1px solid #38bdf844;color:#38bdf8"><span class="pri-num">4</span>📋 wbs</span>
+    <span class="legend-item" style="background:#0a1020;border:1px solid #60a5fa44;color:#60a5fa"><span class="pri-num">5</span>🏗 bim</span>
+    <span class="legend-item" style="background:#0a1a12;border:1px solid #22c55e44;color:#4ade80"><span class="pri-num">6</span>🌡 sensor</span>
+    <span class="legend-item" style="background:#101018;border:1px solid #fbbf2444;color:#fbbf24"><span class="pri-num">7</span>🔮 orchestrator</span>
+    <span class="legend-item" style="background:#120a1a;border:1px solid #c084fc44;color:#c084fc"><span class="pri-num">8</span>📚 RAG (chat+need_rag)</span>
+    <span class="legend-item" style="background:#0a0e0a;border:1px solid #86efac44;color:#86efac"><span class="pri-num">9</span>💬 chat 기본값</span>
+    <span style="font-size:9px;color:#1e3a5a;margin-left:auto;">direct_agent → LLM 스킵, 즉시 라우팅 (0순위)</span>
+  </div>
+</div>
+
+<!-- ── AgentState ── -->
+<div class="state-grid">
+  <div class="state-title">📦 AgentState — LangGraph 공유 상태 (config/state.py)</div>
+  <div class="state-cols">
+    <div>
+      <div class="state-group-title">대화</div>
+      <div class="state-field">messages <span>누적 이력</span></div>
+    </div>
+    <div>
+      <div class="state-group-title">라우터 출력</div>
+      <div class="state-field">domain <span>분류 결과</span></div>
+      <div class="state-field">need_rag <span>RAG 여부</span></div>
+      <div class="state-field">lang <span>ko/en/ja</span></div>
+      <div class="state-field">intent <span>프론트 표시용</span></div>
+    </div>
+    <div>
+      <div class="state-group-title">Agent 출력</div>
+      <div class="state-field">tool_results <span>tool 실행 JSON</span></div>
+      <div class="state-field">rag_context <span>시방서 문서</span></div>
+      <div class="state-field">bim_data <span>차트용</span></div>
+      <div class="state-field">sensor_data <span>차트용</span></div>
+      <div class="state-field">report_data <span>보고서</span></div>
+    </div>
+    <div>
+      <div class="state-group-title">컨텍스트 ID</div>
+      <div class="state-field">bim_project_id</div>
+      <div class="state-field">wbs_project_id</div>
+      <div class="state-field">simulation_project_id</div>
+      <div class="state-field">direct_agent <span>탭 강제라우팅</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 하단 그리드 ── -->
+<div class="bottom-grid">
+
+  <div class="panel">
+    <div class="panel-title">🔧 tools/ — 외부 시스템 직접 호출 (@tool)</div>
+    <div class="tools-grid">
+      <div class="tool-box">
+        <div class="tool-box-title" style="color:#60a5fa;">bim_tools.py</div>
+        <div class="tool-box-item">list_bim_projects()</div>
+        <div class="tool-box-item">create_bim_element()</div>
+        <div class="tool-box-item">delete_bim_element()</div>
+        <div class="tool-box-item">create_composite_structure()</div>
+        <div class="tool-box-item">get_structural_analysis()</div>
+        <div class="tool-box-target">→ Spring /api/bim/...</div>
+      </div>
+      <div class="tool-box">
+        <div class="tool-box-title" style="color:#38bdf8;">wbs_tool.py</div>
+        <div class="tool-box-item">list/get/create_wbs_project()</div>
+        <div class="tool-box-item">update/delete_wbs_project()</div>
+        <div class="tool-box-item">list/add/update_wbs_task()</div>
+        <div class="tool-box-item">list/link/delete_wbs_link()</div>
+        <div class="tool-box-target">→ Spring /api/wbs/...</div>
+      </div>
+      <div class="tool-box">
+        <div class="tool-box-title" style="color:#fb923c;">simulation_tools.py</div>
+        <div class="tool-box-item">get/set_excavator_state()</div>
+        <div class="tool-box-item">set_excavator_preset()</div>
+        <div class="tool-box-item">set_excavator_angles()</div>
+        <div class="tool-box-item">move/reset_excavator()</div>
+        <div class="tool-box-target">→ Spring /api/simulation/...</div>
+      </div>
+      <div class="tool-box">
+        <div class="tool-box-title" style="color:#f87171;">safe_tools.py</div>
+        <div class="tool-box-item">get_safety_stats()</div>
+        <div class="tool-box-item">get_recent_detections()</div>
+        <div class="tool-box-item">get_detection_server_status()</div>
+        <div class="tool-box-target">→ Spring /api/safe/ · detection/</div>
+      </div>
+      <div class="tool-box">
+        <div class="tool-box-title" style="color:#4ade80;">sensor_tools.py</div>
+        <div class="tool-box-item">get_latest_sensor()</div>
+        <div class="tool-box-item">get_sensor_history(limit)</div>
+        <div class="tool-box-target">→ InfluxDB :8086</div>
+      </div>
+      <div class="tool-box">
+        <div class="tool-box-title" style="color:#e879f9;">construction_rag_tool.py</div>
+        <div class="tool-box-item">search_construction_docs()</div>
+        <div class="tool-box-item">format_rag_results()</div>
+        <div class="tool-box-target">→ PostgreSQL pgvector</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">🌐 FastAPI Endpoints — Spring이 호출 (:7070)</div>
+    <div class="ep-list">
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/chat</div><div class="ep-desc">Supervisor 워크플로우 전체 실행 (blocking)</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/chat-stream</div><div class="ep-desc">SSE 스트리밍 · chat=토큰단위 / domain=배치</div><div class="ep-caller">키워드 빠른분류 → graph or llm_responder.stream()</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/chat-simple</div><div class="ep-desc">라우팅 없이 chat_node 직접 (하위호환)</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/chat-multimodal</div><div class="ep-desc">이미지 + 텍스트 비전 분석</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/wbs-project-chat</div><div class="ep-desc">대화형 WBS 프로젝트 필드 수집</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/wbs-rag-suggest</div><div class="ep-desc">이벤트(COLLISION/CRACK/SAFETY) → KCS/KDS 근거</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/structural-spec</div><div class="ep-desc">재료/부재/위험도 → 구조 설계기준 RAG</div></div>
+      </div>
+      <div class="ep-item m-post">
+        <div><div class="ep-method">POST</div></div>
+        <div><div class="ep-path">/excavation-spec</div><div class="ep-desc">토질/날씨/깊이 → 토공 시방서 + LLM 요약</div></div>
+      </div>
+      <div class="ep-item m-del">
+        <div><div class="ep-method">DELETE</div></div>
+        <div><div class="ep-path">/session/{id}</div><div class="ep-desc">세션 초기화</div></div>
+      </div>
+      <div class="ep-item m-get">
+        <div><div class="ep-method">GET</div></div>
+        <div><div class="ep-path">/health</div><div class="ep-desc">서버 + RAG DB 헬스체크</div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── 환경변수 ── -->
+<div class="env-grid">
+  <div class="env-box">
+    <div class="env-title" style="color:#a5b4fc;">🧠 LLM (Ollama)</div>
+    <div class="env-item">OLLAMA_BASE_URL</div>
+    <div class="env-item">LLM_MODEL (qwen2.5:3b)</div>
+    <div class="env-item">EMBEDDING_MODEL</div>
+  </div>
+  <div class="env-box">
+    <div class="env-title" style="color:#60a5fa;">🗄 PostgreSQL</div>
+    <div class="env-item">VECTOR_DB_HOST</div>
+    <div class="env-item">VECTOR_DB_PORT (5432)</div>
+    <div class="env-item">VECTOR_DB_NAME</div>
+    <div class="env-item">VECTOR_DB_USER / PASSWORD</div>
+  </div>
+  <div class="env-box">
+    <div class="env-title" style="color:#fb923c;">📈 InfluxDB</div>
+    <div class="env-item">INFLUX_URL (:8086)</div>
+    <div class="env-item">INFLUX_TOKEN</div>
+    <div class="env-item">INFLUX_ORG · BUCKET</div>
+  </div>
+  <div class="env-box">
+    <div class="env-title" style="color:#4ade80;">🌿 Spring</div>
+    <div class="env-item">SPRING_BASE_URL</div>
+    <div class="env-item">default: localhost:8080</div>
+  </div>
+  <div class="env-box">
+    <div class="env-title" style="color:#f87171;">⚠️ 레거시 (미사용)</div>
+    <div class="env-item" style="text-decoration:line-through;color:#2a2a3a;">agents/ — ReAct 에이전트</div>
+    <div class="env-item" style="text-decoration:line-through;color:#2a2a3a;">nodes/supervisor.py</div>
+    <div class="env-item" style="color:#2a2a3a;">삭제 가능</div>
+  </div>
+</div>
+
+<footer>
+  TwinSpring Digital Twin Platform · Supervisor Architecture v2 · LangGraph + llama3.2:1b + qwen2.5:3b + pgvector
+</footer>
+</body>
+</html>

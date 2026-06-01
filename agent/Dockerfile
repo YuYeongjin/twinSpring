@@ -21,4 +21,6 @@ COPY . .
 
 EXPOSE 7070
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7070"]
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]

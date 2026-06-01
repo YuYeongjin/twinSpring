@@ -6,9 +6,13 @@ TestAgent 가 create_react_agent 를 통해 호출하는 @tool 함수들.
 """
 
 import json
+import logging
 import httpx
 from langchain_core.tools import tool
 from config.settings import SPRING_BASE_URL
+
+logger = logging.getLogger(__name__)
+_ERR = "처리 중 오류가 발생했습니다."
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -116,8 +120,9 @@ def get_collision_log(limit: int = 10) -> str:
         if e.response.status_code == 404:
             return json.dumps({"count": 0, "records": [], "note": "충돌 로그 API 미구현 또는 기록 없음"})
         return json.dumps({"error": f"HTTP {e.response.status_code}"})
-    except Exception as e:
-        return json.dumps({"error": str(e), "records": []})
+    except Exception:
+        logger.error("[test] get_collision_log 실패", exc_info=True)
+        return json.dumps({"error": _ERR, "records": []})
 
 
 # ── 도구 목록 ──────────────────────────────────────────────────────────────────

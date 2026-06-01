@@ -1439,7 +1439,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   useEffect(() => {
     console.log('[MOUNT] SimulationDashboard mounted. selectedProject:', selectedProject?.projectId);
     return () => { console.log('[UNMOUNT] SimulationDashboard unmounted'); };
-  }, []);
+  }, [selectedProject?.projectId]);
 
   // 지형 시스템
   const heightMapRef    = useRef(new Float32Array(GRID_COLS * GRID_ROWS).fill(0));
@@ -2027,7 +2027,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     } finally {
       setExcavSpecLoading(false);
     }
-  }, [excavSpecLoading, weatherMode, hasRandomTerrain, kinematics]);
+  }, [excavSpecLoading, weatherMode, hasRandomTerrain, kinematics, t]);
 
   const handleRandomTerrain = () => {
     generateRandomTerrain(heightMapRef.current, terrainZoneMapRef.current);
@@ -2118,7 +2118,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     });
     client.activate();
     gpsStompRef.current = client;
-  }, [handleGpsData]);
+  }, [handleGpsData, t]);
 
   const disconnectGps = useCallback(() => {
     if (gpsStompRef.current) { gpsStompRef.current.deactivate(); gpsStompRef.current = null; }
@@ -2396,7 +2396,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         gap: '10px', overflowY: 'auto', fontSize: '12px',
       }}>
         <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          🚧 Equipment Status
+          {t('equipStatus')}
           <span style={{ marginLeft: 'auto', fontSize: '10px', color: syncColor }}>
             {syncStatus === 'syncing' ? '⟳' : syncStatus === 'synced' ? '✓' : syncStatus === 'error' ? '✗' : '○'}
           </span>
@@ -2408,16 +2408,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           border: isDigging ? '1px solid #8a5a00' : isDumping ? '1px solid #1a6040' : '1px solid transparent',
           borderRadius: '8px', padding: '9px', transition: 'all 0.3s',
         }}>
-          <div style={{ color: secColor, marginBottom: '4px', fontSize: '10px' }}>Operation Mode</div>
+          <div style={{ color: secColor, marginBottom: '4px', fontSize: '10px' }}>{t('operationMode')}</div>
           <div style={{ color: '#f5a623', fontWeight: 700, fontSize: '13px' }}>● {state.operationMode}</div>
           {isDigging && (
             <div style={{ marginTop: '6px', background: '#3a1a00', borderRadius: '5px', padding: '4px 8px', fontSize: '11px', color: '#fbbf24', fontWeight: 700 }}>
-              ⛏ Digging ({kinematics.depth}m)
+              {t('digging', { depth: kinematics.depth })}
             </div>
           )}
           {isDumping && (
             <div style={{ marginTop: '6px', background: '#0d3020', borderRadius: '5px', padding: '4px 8px', fontSize: '11px', color: '#34d399', fontWeight: 700 }}>
-              🪣 Dumping
+              {t('dumping')}
             </div>
           )}
         </div>
@@ -2425,7 +2425,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 버킷 흙 게이지 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
           <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px', display: 'flex', justifyContent: 'space-between' }}>
-            <span>Bucket Load</span>
+            <span>{t('bucketLoad')}</span>
             <span style={{ color: '#fb923c', fontFamily: 'monospace' }}>{soilDisplay.toFixed(2)} / {MACHINE_CONFIGS[selectedMachineId].bucketCapacity} m³</span>
           </div>
           <div style={{ background: '#1e2e3e', borderRadius: '4px', height: '8px', overflow: 'hidden' }}>
@@ -2442,7 +2442,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 돌 수집 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
           <div style={{ color: secColor, fontSize: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Stones in Bucket</span>
+            <span>{t('stonesInBucket')}</span>
             <span style={{ color: stonesInBucket > 0 ? '#a78bfa' : secColor, fontFamily: 'monospace', fontWeight: 700 }}>
               🪨 {stonesInBucket}
             </span>
@@ -2452,7 +2452,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 토공량 요약 (좌측 패널) */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
           <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>📊 Earthwork</span>
+            <span>{t('earthwork')}</span>
             <button
               onClick={handleExportExcel}
               style={{ background: '#0a2010', border: '1px solid #16a34a', borderRadius: '4px', color: '#4ade80', padding: '1px 6px', fontSize: '9px', cursor: 'pointer', fontWeight: 600 }}
@@ -2462,7 +2462,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </div>
           {/* Bank / Loose / Compacted 헤더 */}
           <div style={{ display: 'grid', gridTemplateColumns: '46px 1fr 1fr 1fr', gap: '3px', marginBottom: '4px' }}>
-            {['', 'Bank', 'Loose', 'Cmpct'].map(h => (
+            {['', t('bankVol'), t('looseVol'), t('cmpctVol')].map(h => (
               <div key={h} style={{ color: '#3a4a5a', fontSize: '7px', textAlign: 'center' }}>{h}</div>
             ))}
           </div>
@@ -2472,9 +2472,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             const lf   = parseFloat((base.lf + wm.swellAdd).toFixed(2));
             const cf   = parseFloat((base.cf - wm.cfSub).toFixed(2));
             return [
-              ['Excav.', totalExcavDisplay, '#fb923c'],
-              ['Fill',   totalFillDisplay,  '#34d399'],
-              ['Net',    parseFloat((totalExcavDisplay - totalFillDisplay).toFixed(3)), '#60a5fa'],
+              [t('excavLabel'), totalExcavDisplay, '#fb923c'],
+              [t('fillLabel'),  totalFillDisplay,  '#34d399'],
+              [t('netLabel'),   parseFloat((totalExcavDisplay - totalFillDisplay).toFixed(3)), '#60a5fa'],
             ].map(([label, bank, color]) => (
               <div key={label} style={{ display: 'grid', gridTemplateColumns: '46px 1fr 1fr 1fr', gap: '3px', marginBottom: '3px' }}>
                 <div style={{ color: secColor, fontSize: '9px', display: 'flex', alignItems: 'center' }}>{label}</div>
@@ -2487,7 +2487,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             ));
           })()}
           <div style={{ color: '#3a4a5a', fontSize: '8px', marginTop: '4px' }}>
-            Soil: {soilType} · Lf {(SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL]).lf} / Cf {(SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL]).cf}
+            {t('soilInfo', { soil: soilType, lf: (SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL]).lf, cf: (SOIL_TYPES[soilType] ?? SOIL_TYPES[DEFAULT_SOIL]).cf })}
           </div>
           {/* 시방서 조회 버튼 */}
           <button
@@ -2543,14 +2543,14 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
                 ))}
               </div>
             ) : (
-              <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '8px' }}>관련 시방서 조문을 찾지 못했습니다.</div>
+              <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '8px' }}>{t('specNoData')}</div>
             )}
           </div>
         )}
 
         {/* 위치 */}
         <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-          <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px' }}>Position (m)</div>
+          <div style={{ color: secColor, marginBottom: '6px', fontSize: '10px' }}>{t('positionLabel')}</div>
           {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
             <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
               <span style={{ color: secColor }}>{l}</span>
@@ -3193,18 +3193,18 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         {/* 버튼 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '8px', color: '#4ade80', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
-            💾 Save State
+            {t('saveState')}
           </button>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
             <button onClick={handleRandomTerrain} style={{ background: '#0a1a2a', border: '1px solid #1e5a7a', borderRadius: '8px', color: '#38bdf8', padding: '8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>
-              🌍 Random
+              {t('randomTerrain')}
             </button>
             <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '8px', color: '#fbbf24', padding: '8px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>
-              🗑 Reset
+              {t('clearTerrain')}
             </button>
           </div>
           <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '8px', color: '#f87171', padding: '8px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
-            ↺ Full Reset
+            {t('fullReset')}
           </button>
         </div>
 
@@ -3537,26 +3537,26 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             onClick={handleExportExcel}
             style={{ width: '100%', marginTop: '6px', background: '#0a2010', border: '1px solid #16a34a', borderRadius: '8px', color: '#4ade80', padding: '10px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}
           >
-            📥 Export Earthwork Excel
+            {t('exportExcel')}
           </button>
         </div>
 
         {/* 액션 버튼 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button onClick={handleSave} style={{ background: '#0d2420', border: '1px solid #1a5040', borderRadius: '10px', color: '#4ade80', padding: '14px', fontSize: '14px', cursor: 'pointer', fontWeight: 600 }}>
-            💾 Save State
+            {t('saveState')}
           </button>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-            <button onClick={handleRandomTerrain} style={{ background: '#0a1a2a', border: '1px solid #1e5a7a', borderRadius: '10px', color: '#38bdf8', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🌍 Random</button>
-            <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '10px', color: '#fbbf24', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>🗑 Reset</button>
-            <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '10px', color: '#f87171', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>↺ Full Reset</button>
+            <button onClick={handleRandomTerrain} style={{ background: '#0a1a2a', border: '1px solid #1e5a7a', borderRadius: '10px', color: '#38bdf8', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>{t('randomTerrain')}</button>
+            <button onClick={handleClearTerrain} style={{ background: '#1a1200', border: '1px solid #4a3000', borderRadius: '10px', color: '#fbbf24', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>{t('clearTerrain')}</button>
+            <button onClick={handleReset} style={{ background: '#2d1010', border: '1px solid #5a2020', borderRadius: '10px', color: '#f87171', padding: '12px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>{t('fullReset')}</button>
           </div>
         </div>
 
         {/* 안내 */}
         <div style={{ background: '#0a1520', border: '1px solid #1a3040', borderRadius: '10px', padding: '12px 14px', fontSize: '11px', color: '#4a6a5a', lineHeight: 1.6 }}>
-          💡 <strong style={{ color: '#6a9a7a' }}>3D Excavation Simulation</strong> is controlled via keyboard on PC.<br/>
-          On mobile, use sliders and presets to control posture and save to server.
+          💡 <strong style={{ color: '#6a9a7a' }}>{t('simGuide')}</strong><br/>
+          {t('simGuideMobile')}
         </div>
       </div>
     )}

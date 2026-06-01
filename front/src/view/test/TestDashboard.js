@@ -639,10 +639,9 @@ export default function TestDashboard() {
             const cos = Math.cos(s.bodyRotation * D2R), sin = Math.sin(s.bodyRotation * D2R);
             if (keys.has('w') || keys.has('W')) { s.positionX += sin*MOVE; s.positionZ += cos*MOVE; }
             if (keys.has('s') || keys.has('S')) { s.positionX -= sin*MOVE; s.positionZ -= cos*MOVE; }
-            // 후진(S) 중에는 A/D 방향 반전 — 이동 방향 기준으로 항상 동일한 조향감
-            const _rev = (keys.has('s') || keys.has('S')) ? -1 : 1;
-            if (keys.has('a') || keys.has('A')) s.bodyRotation -= ROT * _rev;
-            if (keys.has('d') || keys.has('D')) s.bodyRotation += ROT * _rev;
+            // A = 좌회전(직진·후진 동일), D = 우회전 — 기체 기준 고정
+            if (keys.has('a') || keys.has('A')) s.bodyRotation -= ROT;
+            if (keys.has('d') || keys.has('D')) s.bodyRotation += ROT;
             if (keys.has('q') || keys.has('Q')) s.swingAngle -= JOINT * 1.8;
             if (keys.has('e') || keys.has('E')) s.swingAngle += JOINT * 1.8;
             if (keys.has('r') || keys.has('R')) s.boomAngle   = clamp(s.boomAngle   + JOINT, JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);

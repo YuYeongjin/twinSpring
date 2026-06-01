@@ -10,9 +10,13 @@ from __future__ import annotations
 from typing import Optional
 
 import json
+import logging
 import httpx
 from langchain_core.tools import tool
 from config.settings import SPRING_BASE_URL
+
+logger = logging.getLogger(__name__)
+_ERR = "처리 중 오류가 발생했습니다."
 
 
 # ── 프로젝트 도구 ─────────────────────────────────────────────────────────────
@@ -30,8 +34,9 @@ def list_wbs_projects() -> str:
         return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
     except httpx.ConnectError:
         return json.dumps({"error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    except Exception:
+        logger.error("[wbs] 조회 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool
@@ -44,8 +49,9 @@ def get_wbs_project(project_id: str) -> str:
         res = httpx.get(f"{SPRING_BASE_URL}/api/wbs/project/{project_id}", timeout=10)
         res.raise_for_status()
         return json.dumps(res.json(), ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    except Exception:
+        logger.error("[wbs] 조회 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool
@@ -96,8 +102,9 @@ def create_wbs_project(
         }, ensure_ascii=False)
     except httpx.ConnectError:
         return json.dumps({"success": False, "error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[wbs] 처리 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -122,8 +129,9 @@ def update_wbs_project(
         curr_res = httpx.get(f"{SPRING_BASE_URL}/api/wbs/project/{project_id}", timeout=10)
         curr_res.raise_for_status()
         curr = curr_res.json()
-    except Exception as e:
-        return json.dumps({"success": False, "error": f"프로젝트 조회 실패: {e}"})
+    except Exception:
+        logger.error("[wbs] update_wbs_project: 현재값 조회 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
     payload = {
         "projectName":    project_name    if project_name    is not None else curr.get("projectName"),
@@ -140,8 +148,9 @@ def update_wbs_project(
         res = httpx.put(f"{SPRING_BASE_URL}/api/wbs/project/{project_id}", json=payload, timeout=10)
         res.raise_for_status()
         return json.dumps({"success": True, "message": f"프로젝트 '{payload['projectName']}' 수정 완료"}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[wbs] 처리 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -154,8 +163,9 @@ def delete_wbs_project(project_id: str) -> str:
         res = httpx.delete(f"{SPRING_BASE_URL}/api/wbs/project/{project_id}", timeout=10)
         res.raise_for_status()
         return json.dumps({"success": True, "message": f"프로젝트 {project_id} 및 모든 태스크 삭제 완료"}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[wbs] 처리 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 # ── 태스크 도구 ───────────────────────────────────────────────────────────────
@@ -171,8 +181,9 @@ def list_wbs_tasks(project_id: str) -> str:
         res.raise_for_status()
         tasks = res.json()
         return json.dumps({"projectId": project_id, "tasks": tasks, "count": len(tasks)}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    except Exception:
+        logger.error("[wbs] 조회 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool
@@ -232,8 +243,9 @@ def add_wbs_task(
         }, ensure_ascii=False)
     except httpx.ConnectError:
         return json.dumps({"success": False, "error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[wbs] 처리 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -266,8 +278,9 @@ def update_wbs_task(
         curr = next((t for t in tasks if t.get("taskId") == task_id), None)
         if curr is None:
             return json.dumps({"success": False, "error": f"태스크 {task_id} 를 찾을 수 없습니다"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": f"태스크 조회 실패: {e}"})
+    except Exception:
+        logger.error("[wbs] update_wbs_task: 현재값 조회 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
     payload = {
         "wbsCode":        wbs_code        if wbs_code        is not None else curr.get("wbsCode", ""),
@@ -286,8 +299,9 @@ def update_wbs_task(
         res = httpx.put(f"{SPRING_BASE_URL}/api/wbs/task/{task_id}", json=payload, timeout=10)
         res.raise_for_status()
         return json.dumps({"success": True, "message": f"태스크 '{payload['taskName']}' 수정 완료"}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[wbs] 처리 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -300,8 +314,9 @@ def delete_wbs_task(task_id: str) -> str:
         res = httpx.delete(f"{SPRING_BASE_URL}/api/wbs/task/{task_id}", timeout=10)
         res.raise_for_status()
         return json.dumps({"success": True, "message": f"태스크 {task_id} 삭제 완료"}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[wbs] 처리 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 # ── 프로젝트 연결 도구 ────────────────────────────────────────────────────────
@@ -317,8 +332,9 @@ def list_wbs_links(wbs_project_id: str) -> str:
         res.raise_for_status()
         links = res.json()
         return json.dumps({"wbsProjectId": wbs_project_id, "links": links, "count": len(links)}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    except Exception:
+        logger.error("[wbs] 조회 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool
@@ -351,8 +367,9 @@ def link_wbs_project(
             "linkId":  data.get("linkId"),
             "message": f"WBS {wbs_project_id} ↔ {linked_type.upper()} {linked_project_id} 연결 완료",
         }, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[wbs] 처리 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -365,8 +382,9 @@ def delete_wbs_link(link_id: str) -> str:
         res = httpx.delete(f"{SPRING_BASE_URL}/api/project-link/{link_id}", timeout=10)
         res.raise_for_status()
         return json.dumps({"success": True, "message": f"연결 {link_id} 삭제 완료"}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[wbs] 처리 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 # ── 도구 목록 ─────────────────────────────────────────────────────────────────

@@ -10,9 +10,13 @@ from __future__ import annotations
 from typing import Optional
 
 import json
+import logging
 import uuid
 import httpx
 from langchain_core.tools import tool
+
+logger = logging.getLogger(__name__)
+_ERR = "처리 중 오류가 발생했습니다."
 from tools.db_tool import (
     query_bim_projects,
     query_bim_element_stats,
@@ -99,9 +103,11 @@ def create_bim_element(
         return json.dumps({"success": True, "elementId": payload["elementId"],
                            "message": f"{element_type} 부재 생성 완료"}, ensure_ascii=False)
     except httpx.ConnectError:
-        return json.dumps({"success": False, "error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+        logger.error("[bim] create_bim_element: Spring 서버 연결 실패 (%s)", SPRING_BASE_URL, exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+    except Exception:
+        logger.error("[bim] create_bim_element 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -114,8 +120,9 @@ def delete_bim_element(element_id: str) -> str:
         res = httpx.delete(f"{SPRING_BASE_URL}/api/bim/element/{element_id}", timeout=10)
         res.raise_for_status()
         return json.dumps({"success": True, "message": f"부재 {element_id} 삭제 완료"}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[bim] delete_bim_element(%s) 실패", element_id, exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -131,8 +138,9 @@ def create_bim_project(project_name: str, structure_type: str = "Building") -> s
         data = res.json()
         return json.dumps({"success": True, "projectId": data.get("projectId"),
                            "projectName": project_name}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[bim] create_bim_project 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 # ── 복합 구조물 템플릿 ────────────────────────────────────────────────────────
@@ -187,8 +195,9 @@ def create_composite_structure(
             "name":          tmpl.get("name", composite_type),
             "message":       f"{tmpl.get('name', composite_type)} 구조물 생성 완료",
         }, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[bim] create_composite_structure 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -244,9 +253,11 @@ def get_structural_analysis(project_id: str) -> str:
                     "BIM 뷰어에서 '구조 해석' 탭을 열어 계산을 실행하세요."
                 ),
             }, ensure_ascii=False)
-        return json.dumps({"available": False, "error": str(e)})
-    except Exception as e:
-        return json.dumps({"available": False, "error": str(e)})
+        logger.error("[bim] get_structural_analysis HTTP error", exc_info=True)
+        return json.dumps({"available": False, "error": _ERR})
+    except Exception:
+        logger.error("[bim] get_structural_analysis 실패", exc_info=True)
+        return json.dumps({"available": False, "error": _ERR})
 
 
 @tool

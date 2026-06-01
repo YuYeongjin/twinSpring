@@ -6,8 +6,11 @@ PostgreSQL pgvector의 construction_specs 컬렉션에서 유사 문서를 검�
 """
 
 from __future__ import annotations
+import logging
 
 from langchain_postgres.vectorstores import PGVector
+
+logger = logging.getLogger(__name__)
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from langchain_core.tools import tool
@@ -34,10 +37,12 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
 def _get_vectorstore() -> PGVector:
     global _vectorstore
     if _vectorstore is None:
+        conn = get_pgvector_connection()
+        print(f"[construction_rag] Connecting: {conn.split('@')[-1]}")
         _vectorstore = PGVector(
             embeddings=_get_embeddings(),
             collection_name=COLLECTION_NAME,
-            connection=get_pgvector_connection(),
+            connection=conn,
             use_jsonb=True,
         )
     return _vectorstore
@@ -51,9 +56,12 @@ def search_construction_docs(query: str, k: int = 5) -> list[Document]:
     컬렉션이 비어 있으면 빈 리스트 반환.
     """
     try:
-        return _get_vectorstore().similarity_search(query, k=k)
-    except Exception as e:
-        print(f"[construction_rag] 검색 오류: {e}")
+        vs = _get_vectorstore()
+        results = vs.similarity_search(query, k=k)
+        print(f"[construction_rag] '{query[:40]}' → {len(results)} results")
+        return results
+    except Exception:
+        logger.error("[construction_rag] similarity_search 실패", exc_info=True)
         return []
 
 
@@ -119,8 +127,9 @@ def get_source_list() -> str:
             lines.append(f"  • {seen[key]}")
         return "\n".join(lines)
 
-    except Exception as e:
-        return f"문서 목록 조회 실패: {e}"
+    except Exception:
+        logger.error("[rag] get_source_list 실패", exc_info=True)
+        return "문서 목록을 조회하는 중 오류가 발생했습니다."
 
 
 # ── LangChain Tool 정의 ───────────────────────────────────────────────────────

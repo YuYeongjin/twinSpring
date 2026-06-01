@@ -8,9 +8,13 @@ from __future__ import annotations
 from typing import Optional
 
 import json
+import logging
 import httpx
 from langchain_core.tools import tool
 from config.settings import SPRING_BASE_URL
+
+logger = logging.getLogger(__name__)
+_ERR = "처리 중 오류가 발생했습니다."
 
 EXCAVATOR_ID = "EX-001"
 
@@ -53,8 +57,9 @@ def _put_state(payload: dict) -> tuple[bool, str]:
         )
         res.raise_for_status()
         return True, "success"
-    except Exception as e:
-        return False, str(e)
+    except Exception:
+        logger.error("[sim] _put_state 실패", exc_info=True)
+        return False, _ERR
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -190,8 +195,9 @@ def reset_excavator() -> str:
         )
         res.raise_for_status()
         return json.dumps({"success": True, "message": "굴착기 초기화 완료 (IDLE 자세, 위치 0,0,0)"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[sim] reset_excavator 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -240,8 +246,9 @@ def search_excavation_specs(query: str) -> str:
 
     try:
         docs = search_construction_docs(full_query, k=4)
-    except Exception as e:
-        return json.dumps({"error": f"RAG 검색 오류: {e}"}, ensure_ascii=False)
+    except Exception:
+        logger.error("[sim] search_excavation_specs RAG 검색 실패", exc_info=True)
+        return json.dumps({"error": _ERR}, ensure_ascii=False)
 
     results = []
     seen: set[str] = set()
