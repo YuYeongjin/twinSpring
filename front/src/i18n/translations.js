@@ -275,6 +275,11 @@ export const translations = {
       downloadExcel: 'Download Quantity Excel',
       downloadPDF: 'Download BIM Drawing PDF',
       project: 'Project',
+      // Structural spec panel
+      specPanelTitle: '📋 Spec Reference (KCS/KDS)',
+      specSearching: '⏳ Querying specs…',
+      specNoData: 'No related spec found.',
+      specSourceUnknown: 'Unknown source',
     },
     drone: {
       title: 'Drone Photo → 2D Drawing · BIM Conversion',
@@ -641,6 +646,28 @@ export const translations = {
       weatherUnstable: '✗ Unstable (FS < 1.0)',
       weatherSuspendTitle: '⚠ Work Suspension Recommended',
       weatherCautionTitle: '⚠ Proceed with Caution',
+      // Terrain & action buttons
+      saveState: '💾 Save State',
+      randomTerrain: '🌍 Random',
+      clearTerrain: '🗑 Reset',
+      fullReset: '↺ Full Reset',
+      specNoData: 'No related spec found.',
+      // Equipment panel
+      equipStatus: '🚧 Equipment Status',
+      operationMode: 'Operation Mode',
+      digging: '⛏ Digging ({depth}m)',
+      dumping: '🪣 Dumping',
+      bucketLoad: 'Bucket Load',
+      stonesInBucket: 'Stones in Bucket',
+      // Earthwork
+      earthwork: '📊 Earthwork',
+      exportExcel: '📥 Export Earthwork Excel',
+      bankVol: 'Bank', looseVol: 'Loose', cmpctVol: 'Cmpct',
+      excavLabel: 'Excav.', fillLabel: 'Fill', netLabel: 'Net',
+      soilInfo: 'Soil: {soil} · Lf {lf} / Cf {cf}',
+      positionLabel: 'Position (m)',
+      simGuide: '3D Excavation Simulation is controlled via keyboard on PC.',
+      simGuideMobile: 'On mobile, use sliders and presets to control posture and save to server.',
     },
   },
 
@@ -920,6 +947,11 @@ export const translations = {
       downloadExcel: '수량 엑셀 다운로드',
       downloadPDF: 'BIM 도면 PDF 다운로드',
       project: '프로젝트',
+      // 구조해석 시방서 패널
+      specPanelTitle: '📋 시방서 기준 (KCS/KDS)',
+      specSearching: '⏳ 시방서 검색 중…',
+      specNoData: '관련 시방서를 찾지 못했습니다',
+      specSourceUnknown: '출처 불명',
     },
     drone: {
       title: '드론 사진 → 2D 도면 · BIM 변환',
@@ -1281,6 +1313,28 @@ export const translations = {
       weatherUnstable: '✗ 불안정 (FS < 1.0)',
       weatherSuspendTitle: '⚠ 작업 중지 권고',
       weatherCautionTitle: '⚠ 주의하여 진행',
+      // 지형 & 액션 버튼
+      saveState: '💾 상태 저장',
+      randomTerrain: '🌍 랜덤',
+      clearTerrain: '🗑 초기화',
+      fullReset: '↺ 전체 초기화',
+      specNoData: '관련 시방서 조문을 찾지 못했습니다.',
+      // 장비 패널
+      equipStatus: '🚧 장비 상태',
+      operationMode: '작동 모드',
+      digging: '⛏ 굴착 중 ({depth}m)',
+      dumping: '🪣 덤핑 중',
+      bucketLoad: '버킷 적재량',
+      stonesInBucket: '버킷 내 돌',
+      // 토공량
+      earthwork: '📊 토공량',
+      exportExcel: '📥 토공량 Excel 내보내기',
+      bankVol: 'Bank', looseVol: 'Loose', cmpctVol: 'Cmpct',
+      excavLabel: '굴착', fillLabel: '성토', netLabel: '순량',
+      soilInfo: '흙: {soil} · Lf {lf} / Cf {cf}',
+      positionLabel: '위치 (m)',
+      simGuide: '3D 굴착 시뮬레이션은 PC에서 키보드로 조작합니다.',
+      simGuideMobile: '모바일에서는 슬라이더와 프리셋으로 자세를 조작하고 서버에 저장합니다.',
     },
   },
 
@@ -1560,6 +1614,11 @@ export const translations = {
       downloadExcel: '数量Excelダウンロード',
       downloadPDF: 'BIM図面PDFダウンロード',
       project: 'プロジェクト',
+      // 構造解析仕様書パネル
+      specPanelTitle: '📋 仕様書基準 (KCS/KDS)',
+      specSearching: '⏳ 仕様書検索中…',
+      specNoData: '関連する仕様書が見つかりません',
+      specSourceUnknown: '出典不明',
     },
     drone: {
       title: 'ドローン写真 → 2D図面 · BIM変換',
@@ -1921,6 +1980,28 @@ export const translations = {
       weatherUnstable: '✗ 不安定 (FS < 1.0)',
       weatherSuspendTitle: '⚠ 作業中止推奨',
       weatherCautionTitle: '⚠ 注意して続行',
+      // 地形 & アクションボタン
+      saveState: '💾 状態保存',
+      randomTerrain: '🌍 ランダム',
+      clearTerrain: '🗑 リセット',
+      fullReset: '↺ 全リセット',
+      specNoData: '関連する仕様書条文が見つかりませんでした。',
+      // 機器パネル
+      equipStatus: '🚧 機器状態',
+      operationMode: '動作モード',
+      digging: '⛏ 掘削中 ({depth}m)',
+      dumping: '🪣 ダンプ中',
+      bucketLoad: 'バケット積載量',
+      stonesInBucket: 'バケット内の石',
+      // 土工量
+      earthwork: '📊 土工量',
+      exportExcel: '📥 土工量Excel出力',
+      bankVol: 'Bank', looseVol: 'Loose', cmpctVol: 'Cmpct',
+      excavLabel: '掘削', fillLabel: '盛土', netLabel: '正味',
+      soilInfo: '土: {soil} · Lf {lf} / Cf {cf}',
+      positionLabel: '位置 (m)',
+      simGuide: '3D掘削シミュレーションはPCでキーボード操作です。',
+      simGuideMobile: 'モバイルではスライダーとプリセットで姿勢を操作しサーバーに保存します。',
     },
   },
 };
