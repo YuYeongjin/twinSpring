@@ -153,7 +153,20 @@ public class BimServiceImpl implements BimService {
                     log.error("C# 프로젝트 생성 실패: {}", clientResponse.statusCode());
                     return Mono.error(new RuntimeException("C# Project creation failed."));
                 })
-                .bodyToMono(BimProjectDTO.class);
+                .bodyToMono(BimProjectDTO.class)
+                .doOnSuccess(created -> {
+                    // C# 성공 후 PostgreSQL에도 동기화 (에이전트 목록 조회 일관성 보장)
+                    try {
+                        Map<String, Object> params = new HashMap<>();
+                        params.put("projectId",     created != null && created.getProjectId() != null ? created.getProjectId() : projectId);
+                        params.put("projectName",   project.getProjectName());
+                        params.put("structureType", project.getStructureType());
+                        bimDAO.insertProject(params);
+                        log.info("PostgreSQL project 동기화 완료: projectId={}", params.get("projectId"));
+                    } catch (Exception e) {
+                        log.warn("PostgreSQL project 동기화 실패 (무시): {}", e.getMessage());
+                    }
+                });
     }
 
     @Override

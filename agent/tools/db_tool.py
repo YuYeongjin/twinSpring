@@ -165,6 +165,31 @@ def query_bim_total_count(project_id: str) -> int:
         return 0
 
 
+def insert_bim_project(project_id: str, project_name: str, structure_type: str = "Building") -> None:
+    """BIM 프로젝트를 PostgreSQL에 직접 저장."""
+    with _PooledConn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO bim_project (project_id, project_name, structure_type) "
+                "VALUES (%s, %s, %s) ON CONFLICT (project_id) DO NOTHING",
+                (project_id, project_name, structure_type),
+            )
+
+
+def log_agent_query(session_id: str, message: str, domain: str | None = None, project_id: str | None = None) -> None:
+    """사용자 질문을 agent_query_log 테이블에 저장 (실패해도 조용히 무시)."""
+    try:
+        with _PooledConn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO agent_query_log (session_id, message, domain, project_id) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (session_id, message, domain, project_id),
+                )
+    except Exception as e:
+        logger.warning("[DB] agent_query_log 저장 실패: %s", e)
+
+
 # 테이블별 조회 함수 매핑
 TABLE_QUERY_MAP = {
     "sensor": query_sensor_data,

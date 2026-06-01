@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _invoke(tool_fn, args: dict) -> dict:
+    logger.info("[orchestrator] tool 호출: %s args=%s", tool_fn.name, args)
     try:
         raw = tool_fn.invoke(args)
         return json.loads(raw) if isinstance(raw, str) else raw
@@ -24,6 +25,7 @@ def _invoke(tool_fn, args: dict) -> dict:
 
 
 def run_orchestrator_agent(state: AgentState) -> dict:
+    logger.info("[NODE] ▶ orchestrator_agent 진입")
     from tools.report_tool import (
         collect_wbs_overview, collect_bim_overview, collect_safe_overview,
     )

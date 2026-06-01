@@ -7,6 +7,7 @@
  */
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import AxiosCustom from "../axios/AxiosCustom";
+import { useT, useLanguage } from "../i18n/LanguageContext";
 
 const SESSION_ID = "wbs-agent-" + Math.random().toString(36).slice(2, 8);
 
@@ -47,6 +48,9 @@ function Bubble({ msg }) {
 }
 
 export default function WbsAgentChat({ selectedProject, onDataChanged }) {
+  const t = useT("wbsAgent");
+  const { lang } = useLanguage();
+
   const [open, setOpen]         = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput]       = useState("");
@@ -55,24 +59,36 @@ export default function WbsAgentChat({ selectedProject, onDataChanged }) {
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
 
-  const welcomeMsg = selectedProject
-    ? `안녕하세요! 🏗\n현재 프로젝트: ${selectedProject.projectName}\n\n태스크 추가/수정/삭제, 진행률 업데이트, 다른 탭 연결 등을 대화로 도와드립니다.`
-    : "안녕하세요! 🏗 WBS Agent입니다.\n\n현장 프로젝트 생성, 태스크 관리, BIM·Safe 탭 연결 등\n모든 WBS 작업을 대화로 처리해 드립니다.";
+  const getWelcome = useCallback(() =>
+    selectedProject
+      ? t("welcomeWithProject", { projectName: selectedProject.projectName })
+      : t("welcomeWithoutProject"),
+  [selectedProject, t]);
 
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 80);
       if (messages.length === 0) {
-        setMessages([{ role: "assistant", content: welcomeMsg }]);
+        setMessages([{ role: "assistant", content: getWelcome() }]);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // 프로젝트 변경 시 웰컴 메시지 업데이트 (패널이 비어 있을 때만)
+  // 언어 변경 시 환영 메시지 업데이트
+  useEffect(() => {
+    setMessages(prev =>
+      prev.length === 1 && prev[0].role === "assistant"
+        ? [{ role: "assistant", content: getWelcome() }]
+        : prev
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
+  // 프로젝트 변경 시 환영 메시지 업데이트 (패널이 비어 있을 때만)
   useEffect(() => {
     if (messages.length === 1 && messages[0].role === "assistant") {
-      setMessages([{ role: "assistant", content: welcomeMsg }]);
+      setMessages([{ role: "assistant", content: getWelcome() }]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject?.projectId]);
@@ -102,6 +118,7 @@ export default function WbsAgentChat({ selectedProject, onDataChanged }) {
         sessionId:           SESSION_ID,
         message:             text.trim(),
         history,
+        uiLang:              lang,
         directAgent:         "wbs_agent",
         wbsProjectId:        selectedProject?.projectId || null,
         projectId:           null,
@@ -109,23 +126,19 @@ export default function WbsAgentChat({ selectedProject, onDataChanged }) {
       });
 
       const data = res.data;
-      setMessages(prev => [...prev, { role: "assistant", content: data.response || "응답을 받지 못했습니다." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: data.response || t("noResponse") }]);
 
-      // 데이터 변경 가능성 있는 intent → 부모에 알림
       if (data.intent === "wbs_agent" && onDataChanged) {
         onDataChanged();
       }
     } catch (err) {
       console.error("[WbsAgentChat] 오류:", err);
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "죄송합니다, 오류가 발생했습니다. Agent 서버가 실행 중인지 확인해 주세요.",
-      }]);
+      setMessages(prev => [...prev, { role: "assistant", content: t("serverError") }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [messages, loading, selectedProject, onDataChanged]);
+  }, [messages, loading, selectedProject, onDataChanged, t]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -135,15 +148,8 @@ export default function WbsAgentChat({ selectedProject, onDataChanged }) {
   };
 
   const quickActions = selectedProject
-    ? [
-        `태스크 목록 보여줘`,
-        `새 태스크 추가해줘`,
-        `프로젝트 상태 변경`,
-      ]
-    : [
-        `현장 프로젝트 목록`,
-        `새 현장 만들어줘`,
-      ];
+    ? [t("quick1WithProject"), t("quick2WithProject"), t("quick3WithProject")]
+    : [t("quick1WithoutProject"), t("quick2WithoutProject")];
 
   return (
     <>
@@ -180,7 +186,7 @@ export default function WbsAgentChat({ selectedProject, onDataChanged }) {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>WBS Agent</div>
               <div style={{ fontSize: 10, color: "#475569" }}>
-                {selectedProject ? selectedProject.projectName : "공정 관리 AI 어시스턴트"}
+                {selectedProject ? selectedProject.projectName : t("subtitleWithoutProject")}
               </div>
             </div>
             {selectedProject && (
@@ -188,7 +194,7 @@ export default function WbsAgentChat({ selectedProject, onDataChanged }) {
                 fontSize: 10, padding: "2px 7px", borderRadius: 20,
                 background: "#14532d", color: "#4ade80", border: "1px solid #16a34a40",
               }}>
-                프로젝트 선택됨
+                {t("projectSelected")}
               </span>
             )}
             <button
@@ -265,11 +271,7 @@ export default function WbsAgentChat({ selectedProject, onDataChanged }) {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={
-                selectedProject
-                  ? "태스크 추가, 진행률 수정, BIM 연결 등…"
-                  : "현장 등록, 태스크 관리, 연결 설정 등…"
-              }
+              placeholder={selectedProject ? t("placeholderWithProject") : t("placeholderWithoutProject")}
               rows={1}
               disabled={loading}
               style={{

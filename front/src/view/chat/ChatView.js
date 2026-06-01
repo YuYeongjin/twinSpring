@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import AxiosCustom from '../../axios/AxiosCustom';
-import { useT } from '../../i18n/LanguageContext';
+import { useT, useLanguage } from '../../i18n/LanguageContext';
+
+function getLangCode(lang) {
+  if (lang === 'ja') return 'ja-JP';
+  if (lang === 'en') return 'en-US';
+  return 'ko-KR';
+}
 
 const API_BASE = `/api/chat`;
 
@@ -11,14 +17,20 @@ const API_BASE = `/api/chat`;
  */
 export default function ChatView({ selectedProject, onBimUpdate, selectedSimulationProject }) {
   const t = useT('chat');
+  const { lang } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content: t('chatWelcome'),
-      intent: 'chat',
-    },
+  const [messages, setMessages] = useState(() => [
+    { role: 'assistant', content: t('chatWelcome'), intent: 'chat' },
   ]);
+
+  // Update welcome message when language changes (only if conversation hasn't started)
+  useEffect(() => {
+    setMessages(prev =>
+      prev.length === 1 && prev[0].role === 'assistant'
+        ? [{ ...prev[0], content: t('chatWelcome') }]
+        : prev
+    );
+  }, [t]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(() => `session-${Date.now()}`);
@@ -40,7 +52,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
     const rec = new SR();
-    rec.lang = 'ko-KR';
+    rec.lang = getLangCode(lang);
     rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = (e) => {
@@ -50,7 +62,15 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     rec.onend = () => setIsListening(false);
     rec.onerror = () => setIsListening(false);
     recognitionRef.current = rec;
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // init once
+
+  // Sync STT lang when UI language changes
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = getLangCode(lang);
+    }
+  }, [lang]);
 
   useEffect(() => {
     if (isOpen) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -60,10 +80,10 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
     if (!ttsEnabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = 'ko-KR';
+    utt.lang = getLangCode(lang);
     utt.rate = 1.0;
     window.speechSynthesis.speak(utt);
-  }, [ttsEnabled]);
+  }, [ttsEnabled, lang]);
 
   const toggleListening = () => {
     if (!recognitionRef.current) return;
@@ -116,6 +136,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
           sessionId,
           message: userContent,
           imageBase64: capturedImage,
+          uiLang: lang,
         });
         data = res.data;
       } else {
@@ -124,6 +145,7 @@ export default function ChatView({ selectedProject, onBimUpdate, selectedSimulat
           sessionId,
           message: text,
           history,
+          uiLang: lang,
         });
         data = res.data;
       }

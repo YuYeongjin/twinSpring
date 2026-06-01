@@ -19,6 +19,7 @@ _PROJECTS_PAT = re.compile(r"프로젝트|목록|project|list|プロジェクト
 
 
 def _invoke(tool_fn, args: dict) -> dict:
+    logger.info("[safe] tool 호출: %s args=%s", tool_fn.name, args)
     try:
         raw = tool_fn.invoke(args)
         return json.loads(raw) if isinstance(raw, str) else raw
@@ -28,6 +29,7 @@ def _invoke(tool_fn, args: dict) -> dict:
 
 
 def run_safe_agent(state: AgentState) -> dict:
+    logger.info("[NODE] ▶ safe_agent 진입")
     from tools.safe_tools import (
         list_safe_projects, get_detection_server_status,
         get_recent_detections, get_safety_stats, get_safe_tab_guide,
@@ -35,6 +37,7 @@ def run_safe_agent(state: AgentState) -> dict:
 
     messages = state.get("messages", [])
     text     = messages[-1].content if messages and hasattr(messages[-1], "content") else ""
+    logger.info("[safe] 입력 텍스트: %.80s", text)
 
     if _GUIDE_PAT.search(text):
         result = _invoke(get_safe_tab_guide, {})

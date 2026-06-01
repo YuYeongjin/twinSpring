@@ -44,6 +44,8 @@ public interface BimDAO {
     void deleteLinesByProject(@Param("projectId") String projectId);
 
     // ── BIM 통계 / 조회 (MariaDB 직접) ─────────────────────────────
+    void insertProject(Map<String, Object> params);
+
     List<Map<String, Object>> getAllProjects();
 
     Map<String, Object> getProjectById(@Param("projectId") String projectId);

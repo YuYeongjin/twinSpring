@@ -128,6 +128,12 @@
         DELETE FROM bim_line WHERE project_id = #{projectId}
     </delete>
 
+    <insert id="insertProject" parameterType="map">
+        INSERT INTO bim_project (project_id, project_name, structure_type)
+        VALUES (#{projectId}, #{projectName}, #{structureType})
+        ON CONFLICT (project_id) DO NOTHING
+    </insert>
+
     <select id="getAllProjects" resultType="map">
         SELECT project_id     AS "projectId",
                project_name   AS "projectName",
