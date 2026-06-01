@@ -8,12 +8,15 @@ WBS Agent — WBS 현장 프로젝트 관리 전문 에이전트
   - 건설 시방서(KCS/KDS) 기반 공정 추천
 """
 from __future__ import annotations
+import logging
 
 from langchain_core.messages import SystemMessage, AIMessage
+
+logger = logging.getLogger(__name__)
 from langgraph.prebuilt import create_react_agent
 
 from config.llm_config import llm_chat
-from config.lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction, error_msg
 from tools.wbs_tool import WBS_TOOLS
 from tools.construction_rag_tool import CONSTRUCTION_RAG_TOOLS
 
@@ -99,8 +102,9 @@ def run_wbs_agent(state: dict) -> dict:
         result = _get_agent().invoke({"messages": agent_messages})
         last = result["messages"][-1]
         content = last.content if hasattr(last, "content") else str(last)
-    except Exception as e:
-        content = f"WBS 처리 중 오류가 발생했습니다: {e}"
+    except Exception:
+        logger.error("[wbs_agent] WBS 처리 실패", exc_info=True)
+        content = error_msg(lang)
 
     return {
         "messages": [AIMessage(content=content)],

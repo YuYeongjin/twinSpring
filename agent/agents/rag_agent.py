@@ -8,12 +8,16 @@ Construction RAG Agent — 건설 공정서·시방서 전문 에이전트
   - 인덱싱된 문서 목록 안내
 """
 
+import logging
+
 from langchain_core.messages import SystemMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 
+logger = logging.getLogger(__name__)
+
 from config.llm_config import llm_chat
 from tools.construction_rag_tool import CONSTRUCTION_RAG_TOOLS
-from config.lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction, error_msg
 
 
 # ── 시스템 프롬프트 ────────────────────────────────────────────────────────────
@@ -80,12 +84,9 @@ def run_rag_agent(state: dict) -> dict:
         result = _get_agent().invoke({"messages": agent_messages})
         last    = result["messages"][-1]
         content = last.content if hasattr(last, "content") else str(last)
-    except Exception as e:
-        content = (
-            f"공정서/시방서 검색 중 오류가 발생했습니다: {e}\n\n"
-            "build_rag_index.py 스크립트를 먼저 실행하여 문서를 인덱싱해 주세요.\n"
-            "  python scripts/build_rag_index.py"
-        )
+    except Exception:
+        logger.error("[rag_agent] 시방서 검색 실패", exc_info=True)
+        content = error_msg(lang)
 
     return {
         "messages": [AIMessage(content=content)],

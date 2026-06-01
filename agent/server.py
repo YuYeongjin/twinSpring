@@ -6,8 +6,11 @@ Run: uvicorn server:app --host 0.0.0.0 --port 7070 --reload
 from __future__ import annotations   # Python 3.9 호환: X | Y union 타입 허용
 
 import json
+import logging
 import traceback
 from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -448,8 +451,8 @@ def wbs_rag_suggest(req: WbsRagRequest):
 
     try:
         docs = search_construction_docs(query, k=4)
-    except Exception as e:
-        print(f"[wbs_rag_suggest] RAG 검색 오류: {e}")
+    except Exception:
+        logger.error("[wbs_rag_suggest] RAG 검색 실패", exc_info=True)
         docs = []
 
     evidence: list[WbsRagEvidence] = []
@@ -562,8 +565,8 @@ def structural_spec(req: StructuralSpecRequest):
     # ── RAG 검색 ───────────────────────────────────────────────────────────────
     try:
         docs = search_construction_docs(full_query, k=5)
-    except Exception as e:
-        print(f"[structural_spec] RAG 검색 오류: {e}")
+    except Exception:
+        logger.error("[structural_spec] RAG 검색 실패", exc_info=True)
         docs = []
 
     citations: list[SpecCitation] = []
@@ -672,8 +675,8 @@ def excavation_spec(req: ExcavationSpecRequest):
     # ── 2. RAG 검색 ───────────────────────────────────────────────────────────
     try:
         docs = search_construction_docs(full_query, k=5)
-    except Exception as e:
-        print(f"[excavation_spec] RAG 검색 오류: {e}")
+    except Exception:
+        logger.error("[excavation_spec] RAG 검색 실패", exc_info=True)
         docs = []
 
     citations: list[ExcavationCitation] = []
@@ -736,7 +739,20 @@ def clear_session(session_id: str):
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    """서버 + RAG DB 상태 헬스체크."""
+    import logging as _log
+    _logger = _log.getLogger("health")
+    from tools.construction_rag_tool import search_construction_docs
+    rag_ok = False
+    try:
+        results = search_construction_docs("건설 기준", k=1)
+        rag_ok = bool(results)
+        if not rag_ok:
+            _logger.warning("[health] RAG collection is empty — run build_rag_index.py")
+    except Exception:
+        _logger.error("[health] RAG connection failed", exc_info=True)
+
+    return {"status": "ok", "rag": rag_ok}
 
 
 if __name__ == "__main__":

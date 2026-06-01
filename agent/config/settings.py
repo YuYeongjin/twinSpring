@@ -25,9 +25,9 @@ INFLUX_BUCKET = os.getenv("INFLUX_BUCKET", "iot_data")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 
 def get_pgvector_connection() -> str:
-    """psycopg2 연결 문자열 반환 (langchain-postgres PGVector 용)"""
+    """psycopg v3 연결 문자열 반환 (langchain-postgres>=0.0.12 는 psycopg v3 필요)"""
     return (
-        f"postgresql+psycopg2://{VECTOR_DB_USER}:{VECTOR_DB_PASSWORD}"
+        f"postgresql+psycopg://{VECTOR_DB_USER}:{VECTOR_DB_PASSWORD}"
         f"@{VECTOR_DB_HOST}:{VECTOR_DB_PORT}/{VECTOR_DB_NAME}"
     )
 

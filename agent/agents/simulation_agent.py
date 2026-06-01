@@ -223,8 +223,10 @@ def _react_fallback(content: str, agent_messages: list, lang: str) -> str:
         if fn:
             try:
                 results.append((tc["name"], fn.invoke(tc["args"])))
-            except Exception as e:
-                results.append((tc["name"], json.dumps({"success": False, "error": str(e)})))
+            except Exception:
+                import logging as _log
+                _log.getLogger(__name__).error("[sim] direct dispatch tool 실패: %s", tc["name"], exc_info=True)
+                results.append((tc["name"], json.dumps({"success": False, "error": "처리 중 오류가 발생했습니다."})))
     if not results:
         return content
     # 첫 번째 주요 tool 결과를 포맷
