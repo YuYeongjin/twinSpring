@@ -12,13 +12,16 @@ Orchestrator Agent — 최상위 멀티도메인 통합 에이전트
   "WBS·BIM·안전 종합 분석 해줘"
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 import json
 from langchain_core.messages import SystemMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 
 from config.llm_config import llm_precise          # 문서 생성은 정확도 우선
-from config.lang_util import detect_lang, lang_instruction
+from config.lang_util import detect_lang, lang_instruction, error_msg
 from tools.report_tool import REPORT_TOOLS
 
 
@@ -94,8 +97,9 @@ def run_orchestrator_agent(state: dict) -> dict:
         last        = result["messages"][-1]
         content     = last.content if hasattr(last, "content") else str(last)
         report_data = _extract_report_data(result["messages"])
-    except Exception as e:
-        content     = f"보고서 생성 중 오류가 발생했습니다: {e}"
+    except Exception:
+        logger.error("[orchestrator] 보고서 생성 실패", exc_info=True)
+        content     = error_msg(lang)
         report_data = None
 
     return {

@@ -20,7 +20,8 @@ uvicorn[standard]>=0.32.0        # ASGI server (includes websockets, httptools)
 pydantic>=2.0.0
 
 # ── Database ───────────────────────────────────────────────────
-psycopg2-binary>=2.9.0           # PostgreSQL driver (binary, no build tools needed)
+psycopg2-binary>=2.9.0           # PostgreSQL driver (legacy, kept for direct psycopg2 usage)
+psycopg[binary]>=3.1.0           # PostgreSQL driver v3 (required by langchain-postgres>=0.0.12)
 
 # ── IoT / Time-series ──────────────────────────────────────────
 influxdb-client>=1.44.0          # InfluxDB 2.x client

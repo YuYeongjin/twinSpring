@@ -56,6 +56,18 @@ def lang_instruction(lang: str) -> str:
     return instructions.get(lang, '')
 
 
+_ERROR_MESSAGES: dict[str, str] = {
+    'ko': "요청을 처리하는 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+    'en': "An error occurred while processing your request. Please try again.",
+    'ja': "リクエストの処理中にエラーが発生しました。しばらくしてから再試行してください。",
+}
+
+
+def error_msg(lang: str) -> str:
+    """언어에 맞는 사용자용 에러 메시지를 반환합니다."""
+    return _ERROR_MESSAGES.get(lang, _ERROR_MESSAGES['en'])
+
+
 def translate_reply(text: str, lang: str) -> str:
     """
     Translate an English reply to the target language using the LLM.

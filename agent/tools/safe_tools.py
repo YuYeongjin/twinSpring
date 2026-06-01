@@ -6,9 +6,13 @@ Spring Boot /api/detection, /api/sensor 엔드포인트와 통신합니다.
 """
 
 import json
+import logging
 import httpx
 from langchain_core.tools import tool
 from config.settings import SPRING_BASE_URL
+
+logger = logging.getLogger(__name__)
+_ERR = "처리 중 오류가 발생했습니다."
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -25,9 +29,11 @@ def list_safe_projects() -> str:
         projects = res.json()
         return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
     except httpx.ConnectError:
-        return json.dumps({"error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        logger.error("[safe] list_safe_projects: Spring 연결 실패 (%s)", SPRING_BASE_URL, exc_info=True)
+        return json.dumps({"error": _ERR})
+    except Exception:
+        logger.error("[safe] list_safe_projects 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool
@@ -78,8 +84,9 @@ def get_recent_detections(limit: int = 10) -> str:
         if e.response.status_code == 404:
             return json.dumps({"count": 0, "records": [], "note": "감지 로그 API 미구현"})
         return json.dumps({"error": f"HTTP {e.response.status_code}"})
-    except Exception as e:
-        return json.dumps({"error": str(e), "records": []})
+    except Exception:
+        logger.error("[safe] get_recent_detections 실패", exc_info=True)
+        return json.dumps({"error": _ERR, "records": []})
 
 
 @tool
@@ -102,8 +109,9 @@ def get_safety_stats() -> str:
                 "areaViolations":   0,
             })
         return json.dumps({"error": f"HTTP {e.response.status_code}"})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    except Exception:
+        logger.error("[safe] get_safety_stats 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool

@@ -5,10 +5,14 @@ Orchestrator Agent 전용
 from __future__ import annotations
 
 import json
+import logging
 import datetime
 import httpx
 from langchain_core.tools import tool
 from config.settings import SPRING_BASE_URL
+
+logger = logging.getLogger(__name__)
+_ERR = "처리 중 오류가 발생했습니다."
 
 
 # ── 데이터 수집 도구 ──────────────────────────────────────────────────────────
@@ -60,9 +64,11 @@ def collect_wbs_overview() -> str:
             ensure_ascii=False,
         )
     except httpx.ConnectError:
-        return json.dumps({"error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        logger.error("[report] collect_wbs_overview: Spring 연결 실패 (%s)", SPRING_BASE_URL, exc_info=True)
+        return json.dumps({"error": _ERR})
+    except Exception:
+        logger.error("[report] collect_wbs_overview 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool
@@ -102,9 +108,11 @@ def collect_bim_overview() -> str:
             ensure_ascii=False,
         )
     except httpx.ConnectError:
-        return json.dumps({"error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        logger.error("[report] collect_bim_overview: Spring 연결 실패 (%s)", SPRING_BASE_URL, exc_info=True)
+        return json.dumps({"error": _ERR})
+    except Exception:
+        logger.error("[report] collect_bim_overview 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool
@@ -136,9 +144,11 @@ def collect_safe_overview() -> str:
             default=str,
         )
     except httpx.ConnectError:
-        return json.dumps({"error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+        logger.error("[report] collect_safe_overview: Spring 연결 실패 (%s)", SPRING_BASE_URL, exc_info=True)
+        return json.dumps({"error": _ERR})
+    except Exception:
+        logger.error("[report] collect_safe_overview 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 @tool
@@ -158,8 +168,9 @@ def collect_project_links(wbs_project_id: str) -> str:
             {"wbsProjectId": wbs_project_id, "links": links, "count": len(links)},
             ensure_ascii=False,
         )
-    except Exception as e:
-        return json.dumps({"error": str(e)})
+    except Exception:
+        logger.error("[report] collect_project_links 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
 
 
 # ── 보고서 조립 도구 ──────────────────────────────────────────────────────────
