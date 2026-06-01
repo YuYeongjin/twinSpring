@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def rag_node(state: AgentState) -> dict:
+    logger.info("[NODE] ▶ rag_node 진입")
     messages  = state.get("messages", [])
     last      = messages[-1]
     user_text = last.content if hasattr(last, "content") else str(last)
@@ -32,7 +33,7 @@ def rag_node(state: AgentState) -> dict:
             parts.append(f"[{src}]\n{doc.page_content[:400]}")
 
         context = "\n\n".join(parts)
-        logger.debug("[rag_node] %d docs retrieved", len(docs))
+        logger.info("[rag_node] %d 건 문서 검색 완료", len(docs))
         return {"rag_context": context}
     except Exception:
         logger.error("[rag_node] RAG 검색 실패", exc_info=True)

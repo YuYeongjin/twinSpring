@@ -224,3 +224,39 @@ CREATE TABLE IF NOT EXISTS project_link
 );
 CREATE INDEX IF NOT EXISTS idx_project_link_wbs    ON project_link (wbs_project_id);
 CREATE INDEX IF NOT EXISTS idx_project_link_linked ON project_link (linked_type, linked_project_id);
+
+-- ================================================================
+-- 에이전트 질문 이력 테이블 (절대 삭제 불가 — immutable audit log)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS agent_query_log
+(
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    session_id VARCHAR(200) NOT NULL,
+    message    TEXT         NOT NULL,
+    domain     VARCHAR(50)  NULL,
+    project_id VARCHAR(200) NULL,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_agent_query_log_session ON agent_query_log (session_id);
+CREATE INDEX IF NOT EXISTS idx_agent_query_log_time    ON agent_query_log (created_at DESC);
+
+-- DELETE를 시도하면 예외 발생 (행 단위)
+-- ※ Spring Boot ScriptUtils는 $$ dollar-quote를 파싱하지 못하므로 단일 따옴표 + '' 이스케이프 사용
+CREATE OR REPLACE FUNCTION _prevent_agent_query_log_delete()
+    RETURNS TRIGGER LANGUAGE plpgsql AS
+    'BEGIN RAISE EXCEPTION ''에이전트 질문 이력(agent_query_log)은 삭제할 수 없습니다.''; END;';
+
+DROP TRIGGER IF EXISTS trg_no_delete_agent_query_log ON agent_query_log;
+CREATE TRIGGER trg_no_delete_agent_query_log
+    BEFORE DELETE ON agent_query_log
+    FOR EACH ROW EXECUTE FUNCTION _prevent_agent_query_log_delete();
+
+-- TRUNCATE도 차단
+CREATE OR REPLACE FUNCTION _prevent_agent_query_log_truncate()
+    RETURNS TRIGGER LANGUAGE plpgsql AS
+    'BEGIN RAISE EXCEPTION ''에이전트 질문 이력(agent_query_log)은 TRUNCATE할 수 없습니다.''; END;';
+
+DROP TRIGGER IF EXISTS trg_no_truncate_agent_query_log ON agent_query_log;
+CREATE TRIGGER trg_no_truncate_agent_query_log
+    BEFORE TRUNCATE ON agent_query_log
+    FOR EACH STATEMENT EXECUTE FUNCTION _prevent_agent_query_log_truncate();

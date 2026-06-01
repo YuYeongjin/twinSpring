@@ -6,99 +6,31 @@
  */
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import AxiosCustom from "../axios/AxiosCustom";
+import { useT, useLanguage } from "../i18n/LanguageContext";
 
 const API_BASE = `/api/chat`;
 
-// ── 탭별 설정 ─────────────────────────────────────────────────────
-const TAB_CONFIGS = {
-  bim: {
-    title: "BIM Agent",
-    subtitle: "부재 생성·조회·삭제 · IFC 분석",
-    icon: "🏗",
-    btnGradient: "linear-gradient(135deg,#1d4ed8,#7c3aed)",
-    btnBorder: "#4f46e5",
-    welcome:
-      "안녕하세요! 🏗 BIM Agent입니다.\n부재 생성/삭제/조회, IFC 분석, 드론 사진 변환, 구조 해석을 도와드립니다.\n현재 프로젝트 기준으로 작업합니다.",
-    quickPrompts: ["프로젝트 목록 보여줘", "기둥 추가해줘", "부재 통계 알려줘"],
-    agentName: "bim_agent",
-  },
-  "bim-projects": {
-    title: "BIM Agent",
-    subtitle: "BIM 프로젝트 관리 · IFC 업로드",
-    icon: "📁",
-    btnGradient: "linear-gradient(135deg,#1d4ed8,#7c3aed)",
-    btnBorder: "#4f46e5",
-    welcome:
-      "안녕하세요! 📁 BIM Agent입니다.\n프로젝트 생성, IFC 파일 업로드, 드론 데이터 변환을 도와드립니다.",
-    quickPrompts: ["BIM 프로젝트 목록", "새 프로젝트 만들어줘", "IFC 파일 업로드 방법"],
-    agentName: "bim_agent",
-  },
-  simulation: {
-    title: "시뮬레이션 Agent",
-    subtitle: "굴착기 각도 제어 · 자세 프리셋",
-    icon: "🦾",
-    btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
-    btnBorder: "#10b981",
-    welcome:
-      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n개발 중으로 기능 추가 중입니다.",
-    quickPrompts: [],
-    agentName: "simulation_agent",
-  },
-  "simulation-projects": {
-    title: "시뮬레이션 Agent",
-    subtitle: "시뮬레이션 프로젝트 관리",
-    icon: "🦾",
-    btnGradient: "linear-gradient(135deg,#059669,#0891b2)",
-    btnBorder: "#10b981",
-    welcome:
-      "안녕하세요! 🦾 시뮬레이션 Agent입니다.\n프로젝트에 대해 정보를 제공합니다.",
-    quickPrompts: [],
-    agentName: "simulation_agent",
-  },
-  safe: {
-    title: "안전 Agent",
-    subtitle: "헬멧 감지 · 침입 감지 · YOLO",
-    icon: "⛑️",
-    btnGradient: "linear-gradient(135deg,#dc2626,#9f1239)",
-    btnBorder: "#ef4444",
-    welcome:
-      "안녕하세요! ⛑️ 안전 Agent입니다.\n헬멧 미착용 감지, 침입 이벤트, 안전 통계를 도와드립니다.",
-    quickPrompts: ["최근 헬멧 위반 현황", "침입 감지 이벤트 조회", "안전 통계 보여줘"],
-    agentName: "safe_agent",
-  },
-  "safe-projects": {
-    title: "안전 Agent",
-    subtitle: "안전 프로젝트 · 카메라 관리",
-    icon: "⛑️",
-    btnGradient: "linear-gradient(135deg,#dc2626,#9f1239)",
-    btnBorder: "#ef4444",
-    welcome:
-      "안녕하세요! ⛑️ 안전 Agent입니다.\n안전 모니터링 기능, 카메라 설정, 감지 이벤트를 안내해드립니다.",
-    quickPrompts: ["안전 모니터링 사용법", "감지 서버 상태 확인", "안전 이벤트 통계"],
-    agentName: "safe_agent",
-  },
-  test: {
-    title: "충돌 테스트 Agent",
-    subtitle: "3D 충돌 감지 · 키보드 조작",
-    icon: "⚠️",
-    btnGradient: "linear-gradient(135deg,#b45309,#92400e)",
-    btnBorder: "#f59e0b",
-    welcome:
-      "안녕하세요! ⚠️ 충돌 테스트 Agent입니다.\n키보드 조작법, 충돌 로그 조회, 충돌 해결 방법을 안내해드립니다.",
-    quickPrompts: ["키보드 조작법 알려줘", "충돌 로그 확인", "충돌 해결 방법"],
-    agentName: "test_agent",
-  },
+function getLangCode(lang) {
+  if (lang === "ja") return "ja-JP";
+  if (lang === "en") return "en-US";
+  return "ko-KR";
+}
+
+// ── 탭별 고정 설정 (번역 불필요한 값만) ───────────────────────────
+const TAB_STYLE = {
+  bim:                  { icon: "🏗",  btnGradient: "linear-gradient(135deg,#1d4ed8,#7c3aed)", btnBorder: "#4f46e5", agentName: "bim_agent" },
+  "bim-projects":       { icon: "📁",  btnGradient: "linear-gradient(135deg,#1d4ed8,#7c3aed)", btnBorder: "#4f46e5", agentName: "bim_agent" },
+  simulation:           { icon: "🦾",  btnGradient: "linear-gradient(135deg,#059669,#0891b2)", btnBorder: "#10b981", agentName: "simulation_agent" },
+  "simulation-projects":{ icon: "🦾",  btnGradient: "linear-gradient(135deg,#059669,#0891b2)", btnBorder: "#10b981", agentName: "simulation_agent" },
+  safe:                 { icon: "⛑️", btnGradient: "linear-gradient(135deg,#dc2626,#9f1239)", btnBorder: "#ef4444", agentName: "safe_agent" },
+  "safe-projects":      { icon: "⛑️", btnGradient: "linear-gradient(135deg,#dc2626,#9f1239)", btnBorder: "#ef4444", agentName: "safe_agent" },
+  test:                 { icon: "⚠️", btnGradient: "linear-gradient(135deg,#b45309,#92400e)", btnBorder: "#f59e0b", agentName: "test_agent" },
 };
 
-const DEFAULT_CONFIG = {
-  title: "AI 현장 도우미",
-  subtitle: "건설 현장 AI 분석",
+const DEFAULT_STYLE = {
   icon: "🤖",
   btnGradient: "linear-gradient(135deg,#1d4ed8,#7c3aed)",
   btnBorder: "#4f46e5",
-  welcome:
-    "안녕하세요! 🤖\n건설 현장 관련 무엇이든 질문해주세요.\n프로젝트 분석, 일정 관리, 현장 지원을 도와드립니다.",
-  quickPrompts: ["현장 현황 분석", "일정 조회", "안전 점검 항목"],
   agentName: null,
 };
 
@@ -157,22 +89,53 @@ function LoadingBubble() {
   );
 }
 
+// ── 탭별 번역 키 맵 ────────────────────────────────────────────
+function getTabKeys(viewComponent) {
+  switch (viewComponent) {
+    case "bim":
+      return { title: "bimTitle", subtitle: "bimSubtitle", welcome: "bimWelcome", quicks: ["bimQuick1","bimQuick2","bimQuick3"] };
+    case "bim-projects":
+      return { title: "bimTitle", subtitle: "bimProjectsSubtitle", welcome: "bimProjectsWelcome", quicks: ["bimProjectsQuick1","bimProjectsQuick2","bimProjectsQuick3"] };
+    case "simulation":
+      return { title: "simulationTitle", subtitle: "simulationSubtitle", welcome: "simulationWelcome", quicks: [] };
+    case "simulation-projects":
+      return { title: "simulationTitle", subtitle: "simulationProjectsSubtitle", welcome: "simulationProjectsWelcome", quicks: [] };
+    case "safe":
+      return { title: "safeTitle", subtitle: "safeSubtitle", welcome: "safeWelcome", quicks: ["safeQuick1","safeQuick2","safeQuick3"] };
+    case "safe-projects":
+      return { title: "safeTitle", subtitle: "safeProjectsSubtitle", welcome: "safeProjectsWelcome", quicks: ["safeProjectsQuick1","safeProjectsQuick2","safeProjectsQuick3"] };
+    case "test":
+      return { title: "testTitle", subtitle: "testSubtitle", welcome: "testWelcome", quicks: ["testQuick1","testQuick2","testQuick3"] };
+    default:
+      return { title: "defaultTitle", subtitle: "defaultSubtitle", welcome: "defaultWelcome", quicks: ["defaultQuick1","defaultQuick2","defaultQuick3"] };
+  }
+}
+
 // ── 메인 컴포넌트 ───────────────────────────────────────────────
 export default function FloatingAgent({ viewComponent, selectedProject, selectedSimulationProject, selectedSafeProject }) {
-  const config = TAB_CONFIGS[viewComponent] || DEFAULT_CONFIG;
+  const t = useT("floatingAgent");
+  const { lang } = useLanguage();
 
-  // 현재 탭에 해당하는 프로젝트만 표시 · 전송 (다른 탭 프로젝트가 섞이지 않도록)
+  const style = TAB_STYLE[viewComponent] || DEFAULT_STYLE;
+  const keys  = getTabKeys(viewComponent);
+
+  const title    = t(keys.title);
+  const subtitle = t(keys.subtitle);
+  const welcome  = t(keys.welcome);
+  const quicks   = keys.quicks.map(k => t(k));
+
+  // 현재 탭에 해당하는 프로젝트만 표시
   const contextProject =
     viewComponent?.startsWith("bim")        ? selectedProject :
     viewComponent?.startsWith("simulation") ? selectedSimulationProject :
     viewComponent?.startsWith("safe")       ? selectedSafeProject :
     null;
 
-  const [open, setOpen]       = useState(false);
+  const [open, setOpen]         = useState(false);
   const [messages, setMessages] = useState([]);
-  const [input, setInput]     = useState("");
-  const [loading, setLoading] = useState(false);
-  const [hasStt, setHasStt]   = useState(false);
+  const [input, setInput]       = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [hasStt, setHasStt]     = useState(false);
   const [isListening, setIsListening] = useState(false);
 
   const [sessionId] = useState(() => `agent-${Date.now()}`);
@@ -180,11 +143,13 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
   const bottomRef    = useRef(null);
   const inputRef     = useRef(null);
   const recognitionRef = useRef(null);
-  // configRef: 비동기 콜백에서 항상 최신 config를 참조
-  const configRef    = useRef(config);
-  useEffect(() => { configRef.current = config; });
-  // messagesRef: sendMessage 클로저 내에서 최신 메시지 참조
-  const messagesRef  = useRef(messages);
+
+  // 비동기 콜백에서 항상 최신 값 참조
+  const welcomeRef  = useRef(welcome);
+  const quicksRef   = useRef(quicks);
+  const messagesRef = useRef(messages);
+  useEffect(() => { welcomeRef.current  = welcome; });
+  useEffect(() => { quicksRef.current   = quicks; });
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   // ── STT 초기화 ────────────────────────────────────────────────
@@ -192,7 +157,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
     const rec = new SR();
-    rec.lang = "ko-KR";
+    rec.lang = getLangCode(lang);
     rec.continuous = false;
     rec.interimResults = false;
     rec.onresult = (e) => { setInput(e.results[0][0].transcript); setIsListening(false); };
@@ -200,7 +165,15 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
     rec.onerror = () => setIsListening(false);
     recognitionRef.current = rec;
     setHasStt(true);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // init once
+
+  // ── STT 언어 동기화 ───────────────────────────────────────────
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = getLangCode(lang);
+    }
+  }, [lang]);
 
   // ── 탭 전환 시 채팅 초기화 ────────────────────────────────────
   useEffect(() => {
@@ -208,13 +181,23 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
     setInput("");
   }, [viewComponent]);
 
+  // ── 언어 변경 시 환영 메시지 업데이트 ────────────────────────
+  useEffect(() => {
+    setMessages(prev =>
+      prev.length === 1 && prev[0].role === "assistant"
+        ? [{ role: "assistant", content: welcomeRef.current }]
+        : prev
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
   // ── 패널 열 때 환영 메시지 + 포커스 ──────────────────────────
   useEffect(() => {
     if (!open) return;
     setTimeout(() => inputRef.current?.focus(), 80);
     setMessages(prev =>
       prev.length === 0
-        ? [{ role: "assistant", content: configRef.current.welcome }]
+        ? [{ role: "assistant", content: welcomeRef.current }]
         : prev
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,8 +212,12 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) return;
     if (isListening) { recognitionRef.current.stop(); }
-    else { recognitionRef.current.start(); setIsListening(true); }
-  }, [isListening]);
+    else {
+      recognitionRef.current.lang = getLangCode(lang);
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  }, [isListening, lang]);
 
   // ── 메시지 전송 ───────────────────────────────────────────────
   const sendMessage = useCallback(async (text) => {
@@ -241,34 +228,31 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
     setInput("");
     setLoading(true);
 
-    const history = messagesRef.current.map(m => ({ role: m.role, content: m.content }));
-    const agentName = configRef.current.agentName || null;
+    const history   = messagesRef.current.map(m => ({ role: m.role, content: m.content }));
+    const agentName = style.agentName;
 
     try {
-      // 탭에 해당하는 프로젝트 ID만 전송 (다른 탭 ID 오염 방지)
-      const isBim  = viewComponent?.startsWith("bim");
-      const isSim  = viewComponent?.startsWith("simulation");
+      const isBim = viewComponent?.startsWith("bim");
+      const isSim = viewComponent?.startsWith("simulation");
 
       const res = await AxiosCustom.post(`${API_BASE}/message`, {
         sessionId,
         message: trimmed,
         history,
+        uiLang:              lang,
         directAgent:         agentName,
-        projectId:           isBim  ? (selectedProject?.projectId          || null) : null,
-        simulationProjectId: isSim  ? (selectedSimulationProject?.projectId || null) : null,
+        projectId:           isBim ? (selectedProject?.projectId           || null) : null,
+        simulationProjectId: isSim ? (selectedSimulationProject?.projectId || null) : null,
         wbsProjectId:        null,
       });
-      setMessages(prev => [...prev, { role: "assistant", content: res.data.response || "응답을 받지 못했습니다." }]);
+      setMessages(prev => [...prev, { role: "assistant", content: res.data.response || t("noResponse") }]);
     } catch {
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "죄송합니다, 오류가 발생했습니다. Agent 서버가 실행 중인지 확인해 주세요.",
-      }]);
+      setMessages(prev => [...prev, { role: "assistant", content: t("serverError") }]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [loading, sessionId, viewComponent, selectedProject, selectedSimulationProject]);
+  }, [loading, sessionId, viewComponent, selectedProject, selectedSimulationProject, style.agentName, t]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
@@ -294,12 +278,12 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
           }}>
             <div style={{
               width: 28, height: 28, borderRadius: "50%",
-              background: config.btnGradient,
+              background: style.btnGradient,
               display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15,
-            }}>{config.icon}</div>
+            }}>{style.icon}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>{config.title}</div>
-              <div style={{ fontSize: 10, color: "#475569" }}>{config.subtitle}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>{title}</div>
+              <div style={{ fontSize: 10, color: "#475569" }}>{subtitle}</div>
             </div>
             {contextProject && (
               <span style={{
@@ -322,7 +306,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
             display: "flex", gap: 5, padding: "8px 10px 4px",
             overflowX: "auto", flexShrink: 0, scrollbarWidth: "none",
           }}>
-            {config.quickPrompts.map((p, i) => (
+            {quicks.map((p, i) => (
               <button
                 key={i}
                 onClick={() => sendMessage(p)}
@@ -352,7 +336,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
             {hasStt && (
               <button
                 onClick={toggleListening}
-                title={isListening ? "녹음 중지" : "음성 입력"}
+                title={isListening ? t("stopRecording") : t("voiceInput")}
                 style={{
                   background: "none", border: "none", cursor: "pointer",
                   fontSize: 16, padding: "4px 2px", flexShrink: 0,
@@ -364,7 +348,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isListening ? "듣는 중…" : `${config.title}에게 질문하세요…`}
+              placeholder={isListening ? t("listening") : t("placeholder", { title })}
               rows={1}
               disabled={loading}
               style={{
@@ -380,7 +364,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
               disabled={!input.trim() || loading}
               style={{
                 width: 34, height: 34, borderRadius: 10, border: "none", flexShrink: 0,
-                background: !input.trim() || loading ? "#1c2a3a" : config.btnGradient,
+                background: !input.trim() || loading ? "#1c2a3a" : style.btnGradient,
                 color: !input.trim() || loading ? "#334155" : "#93c5fd",
                 cursor: !input.trim() || loading ? "not-allowed" : "pointer",
                 fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center",
@@ -392,7 +376,7 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
       {/* ── 플로팅 버튼 ── */}
       <button
         onClick={() => setOpen(v => !v)}
-        title={config.title}
+        title={title}
         style={{
           position: "fixed", bottom: 20, right: 20,
           width: 48, height: 48, borderRadius: "50%",
@@ -401,13 +385,13 @@ export default function FloatingAgent({ viewComponent, selectedProject, selected
           cursor: "pointer", transition: "all 0.2s ease",
           background: open
             ? "linear-gradient(135deg,#0f2d1a,#0a1521)"
-            : config.btnGradient,
-          border: `2px solid ${open ? "#22c55e" : config.btnBorder}`,
+            : style.btnGradient,
+          border: `2px solid ${open ? "#22c55e" : style.btnBorder}`,
           boxShadow: open
             ? "0 0 0 3px #22c55e30, 0 4px 20px #00000060"
             : "0 0 0 3px rgba(79,70,229,0.18), 0 4px 20px #00000060",
         }}>
-        {open ? "✕" : config.icon}
+        {open ? "✕" : style.icon}
       </button>
 
       <style>{`

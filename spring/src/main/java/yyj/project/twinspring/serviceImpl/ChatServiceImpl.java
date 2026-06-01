@@ -109,6 +109,11 @@ public class ChatServiceImpl implements ChatService {
         } else {
             context.putNull("directAgent");
         }
+        if (request.getUiLang() != null) {
+            context.put("uiLang", request.getUiLang());
+        } else {
+            context.putNull("uiLang");
+        }
 
         // Python Agent 호출
         String agentResponse;
@@ -185,8 +190,10 @@ public class ChatServiceImpl implements ChatService {
             msgNode.put("content", msg.getContent());
         }
 
-        // context 빈 객체 전달 (스키마 호환)
-        body.putObject("context");
+        // context — uiLang 포함
+        ObjectNode simpleContext = body.putObject("context");
+        if (request.getUiLang() != null) simpleContext.put("uiLang", request.getUiLang());
+        else simpleContext.putNull("uiLang");
 
         String agentResponse;
         try {
@@ -291,6 +298,8 @@ public class ChatServiceImpl implements ChatService {
         else context.putNull("wbsProjectId");
         if (request.getDirectAgent() != null) context.put("directAgent", request.getDirectAgent());
         else context.putNull("directAgent");
+        if (request.getUiLang() != null) context.put("uiLang", request.getUiLang());
+        else context.putNull("uiLang");
 
         /*
          * SSE 프록시 방식:

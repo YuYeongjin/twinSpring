@@ -13,6 +13,12 @@ import logging
 import traceback
 from typing import Dict, List, Optional
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    datefmt="%H:%M:%S",
+)
+
 logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
@@ -23,6 +29,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from graph import graph
 from config.llm_config import llm_responder, llm_precise
+from tools.db_tool import log_agent_query
 from config.lang_util import detect_lang, lang_instruction
 from nodes.router import _keyword_route          # 스트리밍 빠른 분류용
 from nodes.chat import chat_node, _SYSTEM_BASE   # /chat-simple 하위호환
@@ -50,6 +57,7 @@ class ChatContext(BaseModel):
     simulationProjectId: Optional[str] = None
     wbsProjectId: Optional[str] = None
     directAgent: Optional[str] = None
+    uiLang: Optional[str] = None          # UI에서 전달한 언어 설정 (ko|en|ja)
 
 class ChatRequest(BaseModel):
     message: str
@@ -76,7 +84,7 @@ def _build_initial_state(req: ChatRequest, messages: list) -> dict:
         "messages":              messages,
         "domain":                None,
         "need_rag":              False,
-        "lang":                  None,
+        "lang":                  req.context.uiLang or None,  # UI 언어 설정 우선 사용
         "rag_context":           None,
         "tool_results":          None,
         "bim_project_id":        req.context.projectId,
@@ -107,6 +115,8 @@ def chat(req: ChatRequest):
     """자연어 요청 → Supervisor Workflow (LangGraph)."""
     messages = _history_to_messages(req.history) + [HumanMessage(content=req.message)]
     initial_state = _build_initial_state(req, messages)
+
+    log_agent_query(req.session_id, req.message, project_id=req.context.projectId)
 
     try:
         result = graph.invoke(initial_state)
@@ -143,6 +153,8 @@ def chat_stream(req: ChatRequest):
     messages = _history_to_messages(req.history) + [HumanMessage(content=req.message)]
     initial_state = _build_initial_state(req, messages)
 
+    log_agent_query(req.session_id, req.message, project_id=req.context.projectId)
+
     def generate():
         try:
             yield f"data: {json.dumps({'step': 'classifying'}, ensure_ascii=False)}\n\n"
@@ -175,7 +187,7 @@ def chat_stream(req: ChatRequest):
             yield f"data: {json.dumps({'step': 'generating'}, ensure_ascii=False)}\n\n"
 
             recent = " ".join(m.content for m in messages[-5:] if hasattr(m, "content"))
-            lang   = detect_lang(recent)
+            lang   = initial_state.get("lang") or detect_lang(recent)
             note   = lang_instruction(lang)
             system_content = _SYSTEM_BASE + (f"\n\n{note}" if note else "")
             final_messages = [SystemMessage(content=system_content)] + list(messages)
@@ -206,6 +218,7 @@ def chat_stream(req: ChatRequest):
 @app.post("/chat-simple", response_model=ChatResponse)
 def chat_simple(req: ChatRequest):
     """LangGraph 라우팅 없이 직접 chat_node 호출 (하위호환)."""
+    log_agent_query(req.session_id, req.message, domain="chat", project_id=req.context.projectId)
     messages = _history_to_messages(req.history) + [HumanMessage(content=req.message)]
     state = {
         "messages":              messages,
@@ -238,6 +251,7 @@ def chat_simple(req: ChatRequest):
 @app.post("/chat-multimodal", response_model=ChatResponse)
 def chat_multimodal(req: MultimodalRequest):
     """이미지 + 텍스트 분석 (Ollama vision 모델)."""
+    log_agent_query(req.session_id, req.message, domain="vision")
     try:
         img_b64 = req.image_base64
         if "," in img_b64:

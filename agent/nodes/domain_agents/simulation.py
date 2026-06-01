@@ -34,6 +34,7 @@ _NUM_PAT   = re.compile(r"-?\d+(?:\.\d+)?")
 
 
 def _invoke(tool_fn, args: dict) -> dict:
+    logger.info("[simulation] tool 호출: %s args=%s", tool_fn.name, args)
     try:
         raw = tool_fn.invoke(args)
         return json.loads(raw) if isinstance(raw, str) else raw
@@ -43,6 +44,7 @@ def _invoke(tool_fn, args: dict) -> dict:
 
 
 def run_simulation_agent(state: AgentState) -> dict:
+    logger.info("[NODE] ▶ simulation_agent 진입")
     from tools.simulation_tools import (
         get_excavator_state, set_excavator_preset, set_excavator_angles,
         move_excavator, reset_excavator, get_earthwork_summary,
@@ -50,6 +52,7 @@ def run_simulation_agent(state: AgentState) -> dict:
 
     messages = state.get("messages", [])
     text     = messages[-1].content if messages and hasattr(messages[-1], "content") else ""
+    logger.info("[simulation] 입력 텍스트: %.80s", text)
 
     if _RESET_PAT.search(text):
         result = _invoke(reset_excavator, {})

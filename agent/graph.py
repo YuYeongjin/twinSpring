@@ -13,9 +13,13 @@ Supervisor 기반 LangGraph 워크플로우
 """
 from __future__ import annotations
 
+import logging
+
 from langgraph.graph import StateGraph, START, END
 
 from config.state    import AgentState
+
+logger = logging.getLogger(__name__)
 from nodes.router    import router_node
 from nodes.rag       import rag_node
 from nodes.responder import responder_node
@@ -41,15 +45,20 @@ _DOMAIN_TO_NODE: dict[str, str] = {
 def _after_router(state: AgentState) -> str:
     """router → RAG 또는 domain agent 또는 responder(chat)."""
     if state.get("need_rag"):
+        logger.info("[GRAPH] router → rag_node (need_rag=True, domain=%s)", state.get("domain"))
         return "rag_node"
     domain = state.get("domain", "chat")
-    return _DOMAIN_TO_NODE.get(domain, "responder_node")
+    next_node = _DOMAIN_TO_NODE.get(domain, "responder_node")
+    logger.info("[GRAPH] router → %s", next_node)
+    return next_node
 
 
 def _after_rag(state: AgentState) -> str:
     """rag → domain agent 또는 responder(chat)."""
     domain = state.get("domain", "chat")
-    return _DOMAIN_TO_NODE.get(domain, "responder_node")
+    next_node = _DOMAIN_TO_NODE.get(domain, "responder_node")
+    logger.info("[GRAPH] rag → %s", next_node)
+    return next_node
 
 
 def build_graph():

@@ -87,17 +87,23 @@ def _keyword_route(text: str) -> dict:
 
 
 def router_node(state: AgentState) -> dict:
+    logger.info("[NODE] ▶ router_node 진입")
     # 탭 전용 직접 라우팅 (LLM 스킵)
     direct = state.get("direct_agent")
     if direct:
-        return {"domain": direct, "need_rag": False, "intent": direct, "lang": "ko"}
+        logger.info("[router] direct_agent=%s → 바로 라우팅 (LLM 스킵)", direct)
+        domain = direct.removesuffix("_agent")
+        lang   = state.get("lang") or detect_lang(
+            " ".join(m.content or "" for m in state.get("messages", [])[-5:] if hasattr(m, "content"))
+        )
+        return {"domain": domain, "need_rag": False, "intent": domain, "lang": lang}
 
     messages  = state.get("messages", [])
     last      = messages[-1]
     user_text = last.content if hasattr(last, "content") else str(last)
 
     recent = " ".join(m.content or "" for m in messages[-5:] if hasattr(m, "content"))
-    lang   = detect_lang(recent)
+    lang   = state.get("lang") or detect_lang(recent)
 
     # llama3.2:1b 분류 시도
     try:
@@ -120,12 +126,12 @@ def router_node(state: AgentState) -> dict:
             need_rag = bool(parsed.get("need_rag", False))
             if domain not in _VALID_DOMAINS:
                 domain = "chat"
-            logger.debug("[router] LLM → domain=%s need_rag=%s", domain, need_rag)
+            logger.info("[router] LLM 분류 → domain=%s need_rag=%s", domain, need_rag)
             return {"domain": domain, "need_rag": need_rag, "lang": lang, "intent": domain}
     except Exception:
         logger.warning("[router] LLM 분류 실패 — 키워드 폴백", exc_info=True)
 
     # 키워드 폴백
     routed = _keyword_route(user_text)
-    logger.debug("[router] keyword → %s", routed)
+    logger.info("[router] 키워드 폴백 → %s", routed)
     return {**routed, "lang": lang, "intent": routed["domain"]}

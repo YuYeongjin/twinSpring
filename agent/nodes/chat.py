@@ -60,7 +60,7 @@ def chat_node(state: AgentState) -> dict:
         msg.content for msg in state["messages"][-5:]
         if hasattr(msg, "content")
     )
-    lang = detect_lang(recent_text)
+    lang = state.get("lang") or detect_lang(recent_text)
     note = lang_instruction(lang)
 
     # Build dynamic system message with language instruction

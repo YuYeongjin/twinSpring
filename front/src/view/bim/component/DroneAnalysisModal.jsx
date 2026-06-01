@@ -171,12 +171,12 @@ function padBorder(grid,pad=4){
 // ── 내부 BIM 선 추가 헬퍼 ─────────────────────────────────────────────────────
 function _appendLine(lines,pts,sx,sy,scaleW,scaleH,color='#93c5fd',lineWidth=1){
   if(pts.length<2)return;
-  // 캔버스 Y(아래=+) → BIM Z(위=+) 변환: cy*sy를 반전
+  // 캔버스 XY → BIM XY(바닥 평면): data[0]=X, data[1]=Y(floor), data[2]=0(높이 없음)
   const wpts=pts.map(([cx,cy])=>[
-    +((cx*sx-scaleW/2).toFixed(3)),0,+((scaleH/2-cy*sy).toFixed(3))]);
+    +((cx*sx-scaleW/2).toFixed(3)),+((scaleH/2-cy*sy).toFixed(3)),0]);
   const first=wpts[0],last=wpts[wpts.length-1];
-  lines.push({startX:first[0],startY:0,startZ:first[2],
-    endX:last[0],endY:0,endZ:last[2],
+  lines.push({startX:first[0],startY:first[1],startZ:0,
+    endX:last[0],endY:last[1],endZ:0,
     color,lineWidth,
     pointsJson:JSON.stringify(wpts),closed:false,shapeHeight:0});
 }

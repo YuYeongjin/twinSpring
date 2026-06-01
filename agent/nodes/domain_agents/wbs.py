@@ -19,6 +19,7 @@ _DELETE_PAT = re.compile(r"삭제|제거|delete|remove|削除", re.I)
 
 
 def _invoke(tool_fn, args: dict) -> dict:
+    logger.info("[wbs] tool 호출: %s args=%s", tool_fn.name, args)
     try:
         raw = tool_fn.invoke(args)
         return json.loads(raw) if isinstance(raw, str) else raw
@@ -33,6 +34,7 @@ def _extract_quoted(text: str, fallback: str) -> str:
 
 
 def run_wbs_agent(state: AgentState) -> dict:
+    logger.info("[NODE] ▶ wbs_agent 진입")
     from tools.wbs_tool import (
         list_wbs_projects, get_wbs_project, create_wbs_project,
         delete_wbs_project, list_wbs_tasks, add_wbs_task,
@@ -42,6 +44,7 @@ def run_wbs_agent(state: AgentState) -> dict:
     messages = state.get("messages", [])
     text     = messages[-1].content if messages and hasattr(messages[-1], "content") else ""
     proj_id  = state.get("wbs_project_id")
+    logger.info("[wbs] 입력 텍스트: %.80s", text)
 
     if _TASK_PAT.search(text):
         if _CREATE_PAT.search(text):

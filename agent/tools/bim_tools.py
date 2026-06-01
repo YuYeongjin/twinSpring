@@ -21,6 +21,7 @@ from tools.db_tool import (
     query_bim_projects,
     query_bim_element_stats,
     query_bim_total_count,
+    insert_bim_project,
 )
 from config.settings import SPRING_BASE_URL
 
@@ -38,13 +39,20 @@ _DEFAULT_SIZES = {
 @tool
 def list_bim_projects() -> str:
     """
-    DB에 저장된 BIM 프로젝트 목록을 반환합니다.
+    BIM 프로젝트 목록을 반환합니다.
     각 프로젝트의 ID, 이름, 구조 유형을 포함합니다.
     """
-    projects = query_bim_projects()
-    if not projects:
-        return json.dumps({"projects": [], "count": 0})
-    return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
+    try:
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/projects", timeout=10)
+        res.raise_for_status()
+        projects = res.json() or []
+        return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
+    except Exception:
+        logger.warning("[bim] list_bim_projects Spring 조회 실패, DB 폴백", exc_info=True)
+        projects = query_bim_projects()
+        if not projects:
+            return json.dumps({"projects": [], "count": 0})
+        return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
 
 
 @tool
@@ -53,8 +61,19 @@ def get_bim_stats(project_id: str) -> str:
     특정 BIM 프로젝트의 부재 타입별 통계를 반환합니다.
     project_id 는 list_bim_projects 로 확인한 ID 를 사용합니다.
     """
-    stats = query_bim_element_stats(project_id)
-    total = query_bim_total_count(project_id)
+    try:
+        # 부재 데이터는 C# 서버에만 저장되므로 Spring Boot 프록시 엔드포인트를 사용
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/project/{project_id}", timeout=10)
+        res.raise_for_status()
+        elements: list = res.json() or []
+        from collections import Counter
+        counts = Counter(e.get("elementType", "Unknown") for e in elements)
+        stats = [{"elementType": k, "elementCount": v} for k, v in counts.most_common()]
+        total = len(elements)
+    except Exception:
+        logger.warning("[bim] get_bim_stats Spring 조회 실패, DB 폴백", exc_info=True)
+        stats = query_bim_element_stats(project_id)
+        total = query_bim_total_count(project_id)
     return json.dumps({
         "projectId": project_id,
         "stats":     stats,
@@ -136,11 +155,28 @@ def create_bim_project(project_name: str, structure_type: str = "Building") -> s
         res = httpx.post(f"{SPRING_BASE_URL}/api/bim/project", json=payload, timeout=10)
         res.raise_for_status()
         data = res.json()
-        return json.dumps({"success": True, "projectId": data.get("projectId"),
+        project_id = data.get("projectId")
+        # Spring/C# 성공 후 PostgreSQL에도 동기화 (목록 조회 일관성 보장)
+        if project_id:
+            try:
+                insert_bim_project(project_id, project_name, structure_type)
+            except Exception:
+                logger.warning("[bim] PostgreSQL project 동기화 실패 (무시)", exc_info=True)
+        return json.dumps({"success": True, "projectId": project_id,
                            "projectName": project_name}, ensure_ascii=False)
     except Exception:
-        logger.error("[bim] create_bim_project 실패", exc_info=True)
-        return json.dumps({"success": False, "error": _ERR})
+        logger.warning("[bim] Spring/C# project 생성 실패 — PostgreSQL 직접 저장 시도", exc_info=True)
+        # C# 서버 장애 시 PostgreSQL에 직접 저장하여 에이전트 운영 지속
+        try:
+            fallback_id = "P-" + uuid.uuid4().hex[:8].upper()
+            insert_bim_project(fallback_id, project_name, structure_type)
+            logger.info("[bim] PostgreSQL 직접 저장 성공: projectId=%s", fallback_id)
+            return json.dumps({"success": True, "projectId": fallback_id,
+                               "projectName": project_name,
+                               "note": "C# 서버 없이 DB에 저장됨"}, ensure_ascii=False)
+        except Exception:
+            logger.error("[bim] create_bim_project PostgreSQL 폴백도 실패", exc_info=True)
+            return json.dumps({"success": False, "error": _ERR})
 
 
 # ── 복합 구조물 템플릿 ────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ import logging
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from config.state import AgentState
 from config.llm_config import llm_responder
-from config.lang_util import lang_instruction, error_msg
+from config.lang_util import detect_lang, lang_instruction, error_msg
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +31,22 @@ _ORCHESTRATOR_SYSTEM = (
 
 
 def responder_node(state: AgentState) -> dict:
+    logger.info("[NODE] ▶ responder_node 진입 — domain=%s", state.get("domain", "chat"))
     messages     = state.get("messages", [])
     tool_results = state.get("tool_results") or {}
     rag_context  = state.get("rag_context") or ""
-    lang         = state.get("lang") or "ko"
+    lang         = state.get("lang") or detect_lang(user_text)
     domain       = state.get("domain") or "chat"
 
     last      = messages[-1]
     user_text = last.content if hasattr(last, "content") else ""
+
+    # 프로젝트 이름 요청 — LLM 없이 바로 반환
+    if tool_results.get("need_project_name"):
+        return {
+            "messages": [AIMessage(content="프로젝트 이름을 뭐로 할까요?")],
+            "intent": domain,
+        }
 
     # 도메인별 시스템 프롬프트
     base = _ORCHESTRATOR_SYSTEM if domain == "orchestrator" else _BASE_SYSTEM

@@ -76,13 +76,17 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   const { lang } = useLanguage();
   // ── Chat state ──
   const [messages, setMessages] = useState(() => [
-    {
-      role: 'assistant',
-      // t is resolved at component mount; greeting matches the active language
-      content: t('greeting'),
-      intent: 'chat',
-    },
+    { role: 'assistant', content: t('greeting'), intent: 'chat' },
   ]);
+
+  // Update greeting when language changes (only if conversation hasn't started)
+  useEffect(() => {
+    setMessages(prev =>
+      prev.length === 1 && prev[0].role === 'assistant'
+        ? [{ ...prev[0], content: t('greeting') }]
+        : prev
+    );
+  }, [t]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(() => `agent-${Date.now()}`);
@@ -290,6 +294,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
         body: JSON.stringify({
           sessionId,
           message: text,
+          uiLang: lang,
           projectId: selectedProject?.projectId || null,
           simulationProjectId: selectedSimulationProject?.projectId || null,
           history,
@@ -592,7 +597,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             {[
               { id: 'data',   label: t('dataTab') },
               { id: 'bim',    label: t('bimTab')  },
-              { id: 'report', label: t('reportTab') || '보고서' },
+              { id: 'report', label: t('reportTab') },
               { id: 'caps',   label: t('capsTab')  },
               { id: 'export', label: t('exportTab') },
             ].map(tab => (
@@ -1035,7 +1040,7 @@ function AgentMessageBubble({ msg }) {
     simulation_agent: { label: t('intentSimulation'),      color: 'text-indigo-400 bg-indigo-900/40 border-indigo-800/50'  },
     safe_agent:       { label: t('intentSafety'),          color: 'text-red-400 bg-red-900/40 border-red-800/50'           },
     test_agent:       { label: t('intentCollisionTest'),   color: 'text-orange-400 bg-orange-900/40 border-orange-800/50'  },
-    orchestrator:     { label: t('intentReport') || '통합 보고서', color: 'text-teal-400 bg-teal-900/40 border-teal-800/50' },
+    orchestrator:     { label: t('intentReport'),                  color: 'text-teal-400 bg-teal-900/40 border-teal-800/50' },
     chat: null,
   };
   const isUser = msg.role === 'user';
@@ -1247,20 +1252,19 @@ function AgentTypingIndicator() {
 // Report panel (orchestrator output)
 // ────────────────────────────────────────────────────
 function ReportPanel({ reportData }) {
+  const t = useT('agent');
   if (!reportData) {
     return (
       <div className="p-4 flex flex-col items-center justify-center text-center gap-3 py-12">
         <span className="text-4xl opacity-30">📄</span>
-        <p className="text-xs text-gray-500">통합 보고서가 없습니다.</p>
-        <p className="text-xs text-gray-600 opacity-60">
-          "통합 보고서 만들어줘" 또는 "전체 현황 분석해줘" 라고 입력하세요.
-        </p>
+        <p className="text-xs text-gray-500">{t('reportNoData')}</p>
+        <p className="text-xs text-gray-600 opacity-60">{t('reportNoDataHint')}</p>
       </div>
     );
   }
 
   const handleDownload = () => {
-    const content = `# ${reportData.title}\n생성일시: ${reportData.generatedAt}\n\n${reportData.content}`;
+    const content = `# ${reportData.title}\n${t('reportGeneratedAt')} ${reportData.generatedAt}\n\n${reportData.content}`;
     downloadBlob(new Blob([content], { type: 'text/markdown;charset=utf-8' }), `report-${reportData.generatedAt?.slice(0, 10) || today()}.md`);
   };
 
@@ -1269,7 +1273,7 @@ function ReportPanel({ reportData }) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold text-teal-400">{reportData.title}</p>
-          <p className="text-xs text-gray-500 mt-0.5">생성: {reportData.generatedAt}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('reportGeneratedAt')} {reportData.generatedAt}</p>
         </div>
         <button
           onClick={handleDownload}
