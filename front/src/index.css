@@ -50,3 +50,15 @@ html, body {
 /* WBS 칩/탭 가로 스크롤 영역 — 스크롤바 노출 안 함 */
 .wbs-hscroll::-webkit-scrollbar { display: none; }
 .wbs-hscroll { scrollbar-width: none; -ms-overflow-style: none; }
+
+/* date / datetime-local 인풋의 캘린더 아이콘을 밝은 색으로 */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.65);
+  cursor: pointer;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  filter: invert(1) opacity(1);
+}
