@@ -7,6 +7,7 @@ import { Client } from '@stomp/stompjs';
 import AxiosCustom from '../../axios/AxiosCustom';
 import MobileGpsSender from './MobileGpsSender';
 import { pushWbsSuggest } from '../../utils/alertStore';
+import { useT } from '../../i18n/LanguageContext';
 
 const D2R = Math.PI / 180;
 
@@ -336,6 +337,7 @@ function Ground() {
 
 // ── Main TestDashboard ─────────────────────────────────────────────────────
 export default function TestDashboard() {
+  const t = useT('gpsControl');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
 
   useEffect(() => {
@@ -844,7 +846,7 @@ export default function TestDashboard() {
             {/* ── GPS 실시간 제어 섹션 ─────────────────────────────────── */}
             <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
               <div style={{ color: '#a78bfa', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>
-                📡 GPS 실시간 제어
+                {t('sectionTitle')}
               </div>
 
               {/* 연결 상태 표시 */}
@@ -854,19 +856,19 @@ export default function TestDashboard() {
                 borderRadius: '8px', padding: '8px', marginBottom: '6px',
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: secColor, fontSize: '10px' }}>상태</span>
+                  <span style={{ color: secColor, fontSize: '10px' }}>{t('statusLabel')}</span>
                   <span style={{ color: gpsColor, fontWeight: 700, fontSize: '11px' }}>
-                    {gpsConnected ? '● 연결됨' : '○ 대기 중'}
+                    {gpsConnected ? t('connected') : t('standby')}
                   </span>
                 </div>
                 {gpsConnected && (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                      <span style={{ color: secColor, fontSize: '10px' }}>수신 주파수</span>
+                      <span style={{ color: secColor, fontSize: '10px' }}>{t('rxFreq')}</span>
                       <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                      <span style={{ color: secColor, fontSize: '10px' }}>총 패킷</span>
+                      <span style={{ color: secColor, fontSize: '10px' }}>{t('totalPackets')}</span>
                       <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
                     </div>
                   </>
@@ -886,7 +888,7 @@ export default function TestDashboard() {
                     color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
                   }}
                 >
-                  📡 GPS 연결
+                  {t('connectBtn')}
                 </button>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -898,7 +900,7 @@ export default function TestDashboard() {
                       color: accentGreen, fontWeight: 700, fontSize: '11px', cursor: 'pointer',
                     }}
                   >
-                    ⌖ 원점 초기화
+                    {t('resetOrigin')}
                   </button>
                   <button
                     onClick={disconnectGps}
@@ -908,7 +910,7 @@ export default function TestDashboard() {
                       color: accentRed, fontWeight: 700, fontSize: '11px', cursor: 'pointer',
                     }}
                   >
-                    ✕ 연결 해제
+                    {t('disconnect')}
                   </button>
                 </div>
               )}
@@ -920,7 +922,7 @@ export default function TestDashboard() {
                   borderRadius: '6px', padding: '7px', marginTop: '6px', fontSize: '10px',
                   color: '#a78bfa', lineHeight: 1.5,
                 }}>
-                  ⚠ GPS 연결 중에는 키보드 제어가 비활성화됩니다.
+                  {t('kbLocked')}
                 </div>
               )}
             </div>
@@ -1296,7 +1298,7 @@ export default function TestDashboard() {
             borderRadius: '10px', padding: '10px 12px',
           }}>
             <div style={{ color: '#a78bfa', fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>
-              📡 GPS 실시간 제어
+              {t('sectionTitle')}
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               {!gpsConnected ? (
@@ -1308,7 +1310,7 @@ export default function TestDashboard() {
                     color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
                   }}
                 >
-                  📡 GPS 연결
+                  {t('connectBtn')}
                 </button>
               ) : (
                 <>
@@ -1320,7 +1322,7 @@ export default function TestDashboard() {
                       color: accentGreen, fontWeight: 700, fontSize: '12px', cursor: 'pointer',
                     }}
                   >
-                    ⌖ 원점 초기화
+                    {t('resetOrigin')}
                   </button>
                   <button
                     onClick={disconnectGps}
@@ -1330,12 +1332,12 @@ export default function TestDashboard() {
                       color: accentRed, fontWeight: 700, fontSize: '12px', cursor: 'pointer',
                     }}
                   >
-                    ✕ 해제
+                    {t('disconnectShort')}
                   </button>
                 </>
               )}
               <div style={{ fontSize: '11px', color: gpsColor }}>
-                {gpsConnected ? `● 연결됨 ${gpsHz}Hz · ${gpsPacketCount}개` : '○ 대기 중'}
+                {gpsConnected ? t('connectedHz', { hz: gpsHz, count: gpsPacketCount }) : t('standby')}
               </div>
             </div>
           </div>

@@ -1406,7 +1406,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     {/* ── 좌측 편집 패널 ── */}
                     {showLeftPanel && (
                         <div
-                            className="w-full min-h-0 shrink-0 flex flex-col gap-3 px-0 md:pr-1.5 overflow-y-auto"
+                            className="w-full min-h-0 md:shrink-0 flex flex-col gap-3 px-0 md:pr-1.5 overflow-y-auto max-h-[45vh] md:max-h-none"
                             style={isDesktop ? { width: `${leftPanelPct}%`, minWidth: 120 } : undefined}
                         >
                             <Card title={t('editTools')}>
