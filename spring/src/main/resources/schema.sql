@@ -226,6 +226,62 @@ CREATE INDEX IF NOT EXISTS idx_project_link_wbs    ON project_link (wbs_project_
 CREATE INDEX IF NOT EXISTS idx_project_link_linked ON project_link (linked_type, linked_project_id);
 
 -- ================================================================
+-- 모니터링 카메라 테이블 (프로젝트당 다중 카메라)
+-- RTSP(rtsp://), HTTP 스냅샷(http://), MJPEG 스트림 URL 모두 지원
+-- ================================================================
+CREATE TABLE IF NOT EXISTS monitoring_camera
+(
+    camera_id    VARCHAR(64)   NOT NULL PRIMARY KEY,
+    project_id   VARCHAR(64)   NOT NULL,
+    camera_name  VARCHAR(255)  NOT NULL DEFAULT '카메라',
+    camera_url   VARCHAR(1024) NOT NULL,
+    enabled      BOOLEAN       NOT NULL DEFAULT TRUE,
+    sort_order   INT           NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_monitoring_camera_project ON monitoring_camera (project_id);
+
+-- ================================================================
+-- 모니터링 스케줄 설정 테이블 (프로젝트별 상시 촬영 설정)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS monitoring_schedule
+(
+    schedule_id          VARCHAR(64)  NOT NULL PRIMARY KEY,
+    project_id           VARCHAR(64)  NOT NULL,
+    enabled              BOOLEAN      NOT NULL DEFAULT FALSE,
+    capture_interval_sec INT          NOT NULL DEFAULT 1800,
+    retention_sec        INT          NOT NULL DEFAULT 3600,
+    last_captured_at     TIMESTAMPTZ  NULL,
+    created_at           TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_monitoring_schedule_project ON monitoring_schedule (project_id);
+
+-- ================================================================
+-- 모니터링 스냅샷 테이블 (캡처된 이미지)
+-- SAFETY 모드: is_problem=true 인 것만 저장, 프로젝트당 최대 10개 (순환)
+-- CRACK  모드: 모든 캡처 저장, expires_at 이후 스케줄러가 자동 삭제
+-- ================================================================
+CREATE TABLE IF NOT EXISTS monitoring_snapshot
+(
+    snapshot_id      VARCHAR(64)  NOT NULL PRIMARY KEY,
+    project_id       VARCHAR(64)  NOT NULL,
+    schedule_id      VARCHAR(64)  NOT NULL,
+    mode             VARCHAR(16)  NOT NULL,
+    image_data       BYTEA        NULL,
+    is_problem       BOOLEAN      NOT NULL DEFAULT FALSE,
+    detection_json   TEXT         NULL,
+    captured_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at       TIMESTAMPTZ  NULL
+);
+CREATE INDEX IF NOT EXISTS idx_monitoring_snapshot_project ON monitoring_snapshot (project_id);
+CREATE INDEX IF NOT EXISTS idx_monitoring_snapshot_expires ON monitoring_snapshot (expires_at);
+
+-- monitoring_snapshot 에 카메라 참조 컬럼 추가 (기존 행은 NULL 허용)
+ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_id   VARCHAR(64)  NULL;
+ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_name VARCHAR(255) NULL;
+
+-- ================================================================
 -- 에이전트 질문 이력 테이블 (절대 삭제 불가 — immutable audit log)
 -- ================================================================
 CREATE TABLE IF NOT EXISTS agent_query_log
