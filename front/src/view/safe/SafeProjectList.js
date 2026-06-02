@@ -11,8 +11,9 @@ const TB = {
 
 // ── 모드 정의 (tKey는 safeProjectList 네임스페이스 키) ─────────────
 const MODE_META = {
-  SAFETY: { icon: "🛡", tKeyLabel: "modeSafetyLabel", tKeyDesc: "modeSafetyDesc", color: "#4ade80", bg: "#14532d", border: "#4ade80" },
-  CRACK:  { icon: "🔍", tKeyLabel: "modeCrackLabel",  tKeyDesc: "modeCrackDesc",  color: "#60a5fa", bg: "#1e3a5f", border: "#60a5fa" },
+  SAFETY:   { icon: "🛡", tKeyLabel: "modeSafetyLabel",   tKeyDesc: "modeSafetyDesc",   color: "#4ade80", bg: "#14532d", border: "#4ade80" },
+  CRACK:    { icon: "🔍", tKeyLabel: "modeCrackLabel",    tKeyDesc: "modeCrackDesc",    color: "#60a5fa", bg: "#1e3a5f", border: "#60a5fa" },
+  PROGRESS: { icon: "📐", tKeyLabel: "modeProgressLabel", tKeyDesc: "modeProgressDesc", color: "#c4b5fd", bg: "#1a1040", border: "#a78bfa" },
 };
 
 // ── 상태 정의 (tKey는 safeProjectList 네임스페이스 키) ─────────────

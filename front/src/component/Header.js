@@ -8,6 +8,7 @@ const NAV_IDS = [
   { id: "safe-projects",       key: "safe",       icon: "🦺" },
   { id: "test",                key: "test",       icon: "🧪" },
   { id: "agent",               key: "agent",      icon: "🤖" },
+  { id: "settings",            key: "settings",   icon: "⚙️" },
 ];
 
 const LANGS = ['en', 'ko', 'ja'];
@@ -19,6 +20,26 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
   const [time, setTime] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const iconRef = useRef(null);
+
+  useEffect(() => {
+    let frame;
+    let startTime;
+    const animate = (ts) => {
+      if (!startTime) startTime = ts;
+      const hue = ((ts - startTime) / 1000 * 28) % 360;
+      if (iconRef.current) {
+        const h = (n) => `hsl(${((hue + n) % 360).toFixed(0)},82%,62%)`;
+        iconRef.current.style.background =
+          `conic-gradient(${h(0)},${h(55)},${h(110)},${h(165)},${h(220)},${h(275)},${h(0)})`;
+        iconRef.current.style.boxShadow =
+          `0 0 12px ${h(0)}, 0 0 4px rgba(255,255,255,0.25)`;
+      }
+      frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const NAV_ITEMS = NAV_IDS.map(({ id, key, icon }) => ({ id, label: t(key), icon }));
 
@@ -70,7 +91,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
         {/* Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-accent-blue to-accent-green shadow-glow" />
+          <div ref={iconRef} className="h-7 w-7 rounded-full flex-shrink-0" style={{ willChange: 'background, box-shadow' }} />
           <h1 className="text-base sm:text-xl font-semibold tracking-wide whitespace-nowrap">
             Digital Twin <span className="text-accent-blue">YJ-01</span>
           </h1>

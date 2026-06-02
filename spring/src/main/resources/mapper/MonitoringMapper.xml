@@ -186,4 +186,11 @@
         DELETE FROM monitoring_snapshot WHERE snapshot_id = #{snapshotId}
     </delete>
 
+    <update id="updateSnapshotDetection">
+        UPDATE monitoring_snapshot
+        SET detection_json = #{detectionJson},
+            is_problem     = #{isProblem}
+        WHERE snapshot_id  = #{snapshotId}
+    </update>
+
 </mapper>

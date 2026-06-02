@@ -16,6 +16,15 @@ const TB = {
   border: "#253347",
 };
 
+// startDate(YYYY-MM-DD) 오름차순 정렬 — null/undefined 는 맨 뒤
+const sortByStartDate = (arr) =>
+  [...arr].sort((a, b) => {
+    if (!a.startDate && !b.startDate) return 0;
+    if (!a.startDate) return 1;
+    if (!b.startDate) return -1;
+    return a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0;
+  });
+
 const STATUS_META = {
   PLANNED: { tKey: "statusPlanned", color: "#94a3b8", bg: "#1e293b", icon: "📋" },
   IN_PROGRESS: { tKey: "statusInProgress", color: "#60a5fa", bg: "#1e3a5f", icon: "🔨" },
@@ -374,7 +383,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
         // 6. WBS 대상 프로젝트 선택 + 태스크 새로고침
         const refreshed = await AxiosCustom.get(`/api/wbs/project/${target.projectId}/tasks`);
         setSelected(target);
-        setTasks(refreshed.data);
+        setTasks(sortByStartDate(refreshed.data));
         setDetailTab('gantt');
         await loadProjects();
         await loadAllTasks();
@@ -403,7 +412,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
     setTaskLoading(true);
     try {
       const r = await AxiosCustom.get(`/api/wbs/project/${project.projectId}/tasks`);
-      setTasks(r.data);
+      setTasks(sortByStartDate(r.data));
     } finally {
       setTaskLoading(false);
     }
@@ -437,7 +446,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
 
   const handleAddTask = useCallback(async (taskData) => {
     const r = await AxiosCustom.post(`/api/wbs/project/${selectedProject.projectId}/task`, taskData);
-    setTasks(prev => [...prev, r.data]);
+    setTasks(prev => sortByStartDate([...prev, r.data]));
     setProjects(prev => prev.map(p =>
       p.projectId === selectedProject.projectId
         ? { ...p, taskCount: (p.taskCount || 0) + 1 } : p
@@ -447,7 +456,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
 
   const handleUpdateTask = useCallback(async (taskId, taskData) => {
     await AxiosCustom.put(`/api/wbs/task/${taskId}`, taskData);
-    setTasks(prev => prev.map(t => t.taskId === taskId ? { ...t, ...taskData } : t));
+    setTasks(prev => sortByStartDate(prev.map(t => t.taskId === taskId ? { ...t, ...taskData } : t)));
     await loadAllTasks();
   }, [loadAllTasks]);
 
