@@ -124,6 +124,45 @@ public class MqttServiceImpl implements MqttService {
     }
 
     @Override
+    public List<Map<String, Object>> getRecentLogs(String location, Integer hours, int limit) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("location", location);
+        p.put("hours",    hours);
+        p.put("limit",    limit);
+        return spotDAO.getRecentLogs(p);
+    }
+
+    @Override
+    public List<Map<String, Object>> getTrend(String location, int hours, String bucket) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("location", location);
+        p.put("hours",    hours);
+        p.put("bucket",   bucket);
+        return spotDAO.getTrend(p);
+    }
+
+    @Override
+    public List<Map<String, Object>> getHourlyAvg(String location, int hours) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("location", location);
+        p.put("hours",    hours);
+        return spotDAO.getHourlyAvg(p);
+    }
+
+    @Override
+    public List<Map<String, Object>> getDailyAvg(String location, int days) {
+        Map<String, Object> p = new HashMap<>();
+        p.put("location", location);
+        p.put("days",     days);
+        return spotDAO.getDailyAvg(p);
+    }
+
+    @Override
+    public List<String> getLocations() {
+        return spotDAO.getLocations();
+    }
+
+    @Override
     public Object test() {
         return getLogs();
     }

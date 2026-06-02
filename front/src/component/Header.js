@@ -8,6 +8,7 @@ const NAV_IDS = [
   { id: "safe-projects",       key: "safe",       icon: "🦺" },
   { id: "test",                key: "test",       icon: "🧪" },
   { id: "agent",               key: "agent",      icon: "🤖" },
+  { id: "settings",            key: "settings",   icon: "⚙️" },
 ];
 
 const LANGS = ['en', 'ko', 'ja'];
@@ -19,19 +20,42 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
   const [time, setTime] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const iconRef = useRef(null);
+
+  useEffect(() => {
+    let frame;
+    let startTime;
+    const animate = (ts) => {
+      if (!startTime) startTime = ts;
+      const hue = ((ts - startTime) / 1000 * 28) % 360;
+      if (iconRef.current) {
+        const h = (n) => `hsl(${((hue + n) % 360).toFixed(0)},82%,62%)`;
+        iconRef.current.style.background =
+          `conic-gradient(${h(0)},${h(55)},${h(110)},${h(165)},${h(220)},${h(275)},${h(0)})`;
+        iconRef.current.style.boxShadow =
+          `0 0 12px ${h(0)}, 0 0 4px rgba(255,255,255,0.25)`;
+      }
+      frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const NAV_ITEMS = NAV_IDS.map(({ id, key, icon }) => ({ id, label: t(key), icon }));
+
+  const TZ_MAP = { ko: { label: "KST", offset: 9 }, ja: { label: "JST", offset: 9 }, en: { label: "UST", offset: 0 } };
+  const { label: tzLabel, offset: tzOffset } = TZ_MAP[lang] ?? TZ_MAP.ko;
 
   useEffect(() => {
     const update = () => {
       const now = new Date();
-      const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-      setTime(kst.toISOString().replace("T", " ").slice(0, 19));
+      const local = new Date(now.getTime() + tzOffset * 60 * 60 * 1000);
+      setTime(local.toISOString().replace("T", " ").slice(0, 19));
     };
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [tzOffset]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -70,7 +94,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
         {/* Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="h-7 w-7 rounded-full bg-gradient-to-br from-accent-blue to-accent-green shadow-glow" />
+          <div ref={iconRef} className="h-7 w-7 rounded-full flex-shrink-0" style={{ willChange: 'background, box-shadow' }} />
           <h1 className="text-base sm:text-xl font-semibold tracking-wide whitespace-nowrap">
             Digital Twin <span className="text-accent-blue">YJ-01</span>
           </h1>
@@ -139,7 +163,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
           {/* Clock — desktop only */}
           <div className="hidden sm:block text-xs sm:text-sm text-gray-400 whitespace-nowrap">
-            KST {time}
+            {tzLabel} {time}
           </div>
 
           {/* Hamburger button — mobile only */}
@@ -204,7 +228,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
             ))}
           </div>
           <div className="px-6 py-3 text-xs text-gray-500 border-t border-[#1a2a3a]">
-            KST {time}
+            {tzLabel} {time}
           </div>
         </nav>
       )}

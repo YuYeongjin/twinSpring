@@ -18,4 +18,14 @@ public interface SafeDAO {
     void updateSafeProject(Map<String, Object> params);
 
     void deleteSafeProject(@Param("projectId") String projectId);
+
+    // ── IoT 센서 매핑 ─────────────────────────────────────────────
+
+    List<Map<String, Object>> getAllIotMappings();
+
+    List<Map<String, Object>> getIotMappingsByProject(@Param("projectId") String projectId);
+
+    void insertIotMapping(Map<String, Object> params);
+
+    void deleteIotMapping(@Param("mappingId") String mappingId);
 }

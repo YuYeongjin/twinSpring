@@ -163,18 +163,33 @@ def chat_stream(req: ChatRequest):
             quick   = _keyword_route(req.message)
             domain  = quick["domain"]
 
+            # domain → agent node name 매핑 (프론트 intent 조건과 일치시킴)
+            _DOMAIN_TO_INTENT = {
+                "sensor":     "sensor_agent",
+                "bim":        "bim_agent",
+                "simulation": "simulation_agent",
+                "safe":       "safe_agent",
+                "wbs":        "wbs_agent",
+                "test":       "test_agent",
+            }
+
             if domain != "chat":
                 # ── 도메인 Agent: graph.invoke (LLM router + tool + responder)
-                yield f"data: {json.dumps({'step': domain}, ensure_ascii=False)}\n\n"
+                agent_name = _DOMAIN_TO_INTENT.get(domain, domain)
+                yield f"data: {json.dumps({'step': agent_name}, ensure_ascii=False)}\n\n"
 
                 result      = graph.invoke(initial_state)
                 result_msgs = result.get("messages", [])
                 last_content = result_msgs[-1].content if result_msgs else ""
 
+                intent = _DOMAIN_TO_INTENT.get(
+                    result.get("intent") or result.get("domain") or domain,
+                    result.get("intent") or result.get("domain") or domain,
+                )
                 done_event = {
                     "done":       True,
                     "response":   last_content,
-                    "intent":     result.get("intent") or result.get("domain") or domain,
+                    "intent":     intent,
                     "nextAgent":  result.get("domain") or domain,
                     "bimData":    result.get("bim_data"),
                     "sensorData": result.get("sensor_data"),
@@ -581,6 +596,134 @@ def excavation_spec(req: ExcavationSpecRequest):
     except Exception:
         summary = f"{req.soilZone} 구역 굴착 중. 누계 굴착량 {req.totalExcav:.2f}m³, 성토량 {req.totalFill:.2f}m³."
     return ExcavationSpecResponse(citations=citations, summary=summary, hasData=len(citations) > 0, query=full_query)
+
+
+# ── 진도 분석 (양방향 동기화: 카메라 → AI 분석 → WBS 자동 업데이트) ─────────────
+
+class ProgressAnalysisRequest(BaseModel):
+    image_base64: str
+    wbs_task_id: str
+    wbs_task_name: str
+    wbs_project_id: str
+    current_progress: int = 0
+    project_context: str = ""
+
+class RagEvidence(BaseModel):
+    source: str
+    content: str
+
+class ProgressAnalysisResponse(BaseModel):
+    estimated_progress: int
+    confidence: float
+    analysis_notes: str
+    rag_evidence: List[RagEvidence]
+    rag_query: str
+
+_PROGRESS_VISION_PROMPT = """당신은 건설현장 공정 진도 분석 전문가입니다.
+이 건설현장 사진을 보고 다음 작업의 완료 비율을 추정해주세요.
+
+작업명: {task_name}
+현재 등록된 진도: {current_progress}%
+프로젝트 맥락: {project_context}
+
+다음 형식으로 정확히 답변하세요:
+PROGRESS: [0-100 사이의 숫자]
+CONFIDENCE: [0.0-1.0 사이의 숫자]
+NOTES: [분석 근거 2-3줄]
+
+예시:
+PROGRESS: 65
+CONFIDENCE: 0.75
+NOTES: 골조 공사가 약 65% 완료된 것으로 보입니다. 기둥과 보의 배근이 상층부까지 진행되었으며, 슬래브 거푸집 작업이 진행 중입니다."""
+
+
+def _parse_progress_vision(text: str, current: int) -> tuple[int, float, str]:
+    """비전 모델 응답에서 progress, confidence, notes 파싱"""
+    import re
+    progress   = current
+    confidence = 0.5
+    notes      = text.strip()
+
+    m = re.search(r'PROGRESS:\s*(\d+)', text, re.IGNORECASE)
+    if m:
+        progress = max(0, min(100, int(m.group(1))))
+
+    m = re.search(r'CONFIDENCE:\s*([\d.]+)', text, re.IGNORECASE)
+    if m:
+        confidence = max(0.0, min(1.0, float(m.group(1))))
+
+    m = re.search(r'NOTES:\s*(.+?)(?=PROGRESS:|CONFIDENCE:|$)', text, re.IGNORECASE | re.DOTALL)
+    if m:
+        notes = m.group(1).strip()
+
+    return progress, confidence, notes
+
+
+@app.post("/analyze-progress", response_model=ProgressAnalysisResponse)
+def analyze_progress(req: ProgressAnalysisRequest):
+    """
+    건설현장 사진을 분석하여 WBS 태스크 진도(%)를 추정하고
+    관련 시방서(RAG) 증빙을 첨부합니다.
+
+    Flow:
+      1. Ollama vision 모델로 이미지 분석 → 진도% 추정
+      2. 태스크명으로 RAG 검색 → 시방서 증빙 조회
+      3. 결과 반환 (Spring이 WBS 태스크 progress 업데이트)
+    """
+    from tools.construction_rag_tool import search_construction_docs
+
+    # 1) 이미지 base64 정리
+    img_b64 = req.image_base64
+    if "," in img_b64:
+        img_b64 = img_b64.split(",", 1)[1]
+
+    # 2) 비전 분석
+    estimated_progress = req.current_progress
+    confidence         = 0.5
+    analysis_notes     = "이미지 분석 실패"
+
+    try:
+        prompt = _PROGRESS_VISION_PROMPT.format(
+            task_name       = req.wbs_task_name,
+            current_progress= req.current_progress,
+            project_context = req.project_context or "건설 현장",
+        )
+        vision_msg = HumanMessage(content=[
+            {"type": "text",      "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+        ])
+        response = llm_responder.invoke([vision_msg])
+        estimated_progress, confidence, analysis_notes = _parse_progress_vision(
+            response.content, req.current_progress
+        )
+    except Exception:
+        traceback.print_exc()
+        analysis_notes = f"비전 분석 오류 — 현재 진도 {req.current_progress}% 유지"
+
+    # 3) RAG 시방서 검색
+    rag_query = f"{req.wbs_task_name} 공정 진도 측정 완료 기준 시공 품질 KCS KDS"
+    rag_evidence: List[RagEvidence] = []
+    try:
+        docs = search_construction_docs(rag_query, k=3)
+        seen: set[str] = set()
+        for doc in docs:
+            text = doc.page_content.strip()[:400]
+            if text and text not in seen:
+                seen.add(text)
+                meta   = doc.metadata
+                source = f"{meta.get('code', '')} {meta.get('title', '')}".strip() \
+                         or meta.get("source", "시방서")
+                rag_evidence.append(RagEvidence(source=source, content=text))
+    except Exception:
+        logger.warning("[analyze-progress] RAG 검색 실패", exc_info=True)
+
+    return ProgressAnalysisResponse(
+        estimated_progress = estimated_progress,
+        confidence         = confidence,
+        analysis_notes     = analysis_notes,
+        rag_evidence       = rag_evidence,
+        rag_query          = rag_query,
+    )
 
 
 # ── 유틸 ──────────────────────────────────────────────────────────────────────

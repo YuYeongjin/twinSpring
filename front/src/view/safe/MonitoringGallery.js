@@ -18,6 +18,10 @@ const RETENTION_OPTIONS = [
   { sec: 604800, label: '1주일' },
 ];
 
+async function safeJson(res) {
+  try { return await res.json(); } catch { return null; }
+}
+
 function fmtDate(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -64,21 +68,26 @@ export default function MonitoringGallery({ selectedProject }) {
 
   const loadCameras = useCallback(async () => {
     if (!projectId) return;
-    const res = await fetch(`/api/monitoring/cameras/${projectId}`);
-    if (res.ok) setCameras(await res.json());
+    try {
+      const res = await fetch(`/api/monitoring/cameras/${projectId}`);
+      if (res.ok) { const d = await safeJson(res); if (d) setCameras(d); }
+    } catch {}
   }, [projectId]);
 
   const loadSchedule = useCallback(async () => {
     if (!projectId) return;
-    const res = await fetch(`/api/monitoring/schedule/${projectId}`);
-    if (res.ok) {
-      const d = await res.json();
-      setSchedule(d);
-      setEnabled(d.enabled);
-      // 저장된 주기가 있으면 사용, 없으면 모드별 기본값
-      setCaptureInterval(d.captureIntervalSec || (isCrackMode ? 1800 : 10));
-      setRetentionSec(d.retentionSec || 3600);
-    }
+    try {
+      const res = await fetch(`/api/monitoring/schedule/${projectId}`);
+      if (res.ok) {
+        const d = await safeJson(res);
+        if (d) {
+          setSchedule(d);
+          setEnabled(d.enabled);
+          setCaptureInterval(d.captureIntervalSec || (isCrackMode ? 1800 : 10));
+          setRetentionSec(d.retentionSec || 3600);
+        }
+      }
+    } catch {}
   }, [projectId, isCrackMode]);
 
   const loadSnapshots = useCallback(async () => {
@@ -86,8 +95,8 @@ export default function MonitoringGallery({ selectedProject }) {
     setLoading(true);
     try {
       const res = await fetch(`/api/monitoring/snapshots/${projectId}`);
-      if (res.ok) setSnapshots(await res.json());
-    } finally { setLoading(false); }
+      if (res.ok) { const d = await safeJson(res); if (d) setSnapshots(d); }
+    } catch {} finally { setLoading(false); }
   }, [projectId]);
 
   useEffect(() => {

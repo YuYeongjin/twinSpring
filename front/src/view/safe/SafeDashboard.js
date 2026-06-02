@@ -8,6 +8,9 @@ import { useT } from '../../i18n/LanguageContext';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import { useCrackMonitor } from '../../context/CrackMonitorContext';
 import MonitoringGallery from './MonitoringGallery';
+import ProgressMonitoringPanel from './ProgressMonitoringPanel';
+import WeatherWidget from '../../component/WeatherWidget';
+import SensorPanel from '../../component/SensorPanel';
 
 const DETECT_SERVER_URL = process.env.REACT_APP_API_URL
   || (process.env.NODE_ENV === 'development'
@@ -33,6 +36,14 @@ const RESTRICTED_CLASSES = new Set(['restricted', 'prohibited', 'danger-zone', '
 const PERSON_CLASSES = new Set(['person', 'people', 'man', 'woman', 'child', 'worker']);
 const CAM_MIN_H = 200;
 const CAM_MAX_H = 720;
+const CAM_STORAGE_KEY = 'safe_webcam_state';
+function camKey(projectId) { return projectId ? `${CAM_STORAGE_KEY}_${projectId}` : CAM_STORAGE_KEY; }
+function loadCamState(projectId) {
+  try { return JSON.parse(localStorage.getItem(camKey(projectId)) || 'null'); } catch { return null; }
+}
+function saveCamState(s, projectId) {
+  try { localStorage.setItem(camKey(projectId), JSON.stringify(s)); } catch {}
+}
 
 function analyzeDetections(detections = []) {
   const noHelmet = detections.some(d => NO_HELMET_CLASSES.has((d.class ?? '').toLowerCase()));
@@ -225,34 +236,58 @@ function ZoneChecker({ persons, zones, onViolationChange }) {
 // ── 웹캠 패널 (컨테이너 없음 — 부모가 관리) ─────────────────────────
 
 function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onError,
-  makeCaptureRef, onStreamingChange, stopDetectRef }) {
+  makeCaptureRef, onStreamingChange, stopDetectRef, projectId }) {
   const t = useT('safe');
   const videoRef = useRef(null);
   const [streaming, setStreaming] = useState(false);
   const [liveDetecting, setLiveDetecting] = useState(false);
   const [camError, setCamError] = useState('');
   const liveDetectingRef = useRef(false);
+  const [showSourceModal, setShowSourceModal] = useState(false);
+  const [urlInput, setUrlInput] = useState(() => loadCamState(projectId)?.url || '');
+  const [camMode, setCamMode] = useState(() => loadCamState(projectId)?.mode || 'local');
 
-  // t를 ref로 보관 — startCamera가 언어 변경 때마다 재생성되어
-  // useEffect 무한루프가 발생하는 것을 완전히 차단
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
 
-  const startCamera = useCallback(async () => {
+  // saveStop=true: 사용자가 명시적으로 끈 경우 (wasStreaming: false 저장)
+  // saveStop=false: 언마운트 클린업 (localStorage 그대로 유지 → 복귀 시 자동 재시작 가능)
+  const stopCamera = useCallback((saveStop = true) => {
+    liveDetectingRef.current = false;
+    setLiveDetecting(false);
+    if (videoRef.current) {
+      if (videoRef.current.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(tr => tr.stop());
+        videoRef.current.srcObject = null;
+      }
+      if (videoRef.current.src) {
+        videoRef.current.pause();
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      }
+    }
+    setStreaming(false);
+    setCamError('');
+    if (saveStop) {
+      const prev = loadCamState(projectId);
+      if (prev) saveCamState({ ...prev, wasStreaming: false }, projectId);
+    }
+  }, [projectId]);
+
+  const startWithLocal = useCallback(async () => {
     const tr = tRef.current;
+    setShowSourceModal(false);
+    setCamMode('local');
     setCamError('');
 
-    // 1) Secure Context 체크
     if (!window.isSecureContext) {
       setCamError('[K8s] 페이지가 Secure Context가 아닙니다. HTTPS 인증서를 확인하거나 브라우저 주소창에서 직접 https://를 확인하세요.');
       return;
     }
-    // 2) mediaDevices API 가용성 체크
     if (!navigator.mediaDevices?.getUserMedia) {
       setCamError('[브라우저] navigator.mediaDevices.getUserMedia 를 지원하지 않습니다. — ' + tr('cameraHttpsRequired'));
       return;
     }
-    // 3) Permissions-Policy 체크 (K8s ingress가 camera=() 헤더를 내려보낼 경우)
     if (navigator.permissions) {
       try {
         const perm = await navigator.permissions.query({ name: 'camera' });
@@ -260,23 +295,21 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
           setCamError('[권한 거부] 브라우저가 이 사이트의 카메라를 차단했습니다. 브라우저 설정 → 사이트 권한에서 카메라를 허용해 주세요.');
           return;
         }
-      } catch (_) { /* permissions API 미지원 브라우저는 무시 */ }
+      } catch (_) {}
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {}); // iOS Safari: srcObject 동적 할당 후 명시적 play 필요
+        videoRef.current.play().catch(() => {});
         setStreaming(true);
+        saveCamState({ mode: 'local', wasStreaming: true }, projectId);
       }
     } catch (e) {
-      // NotAllowedError: 사용자 거부 또는 Permissions-Policy 차단
-      // NotFoundError: 카메라 없음
-      // NotReadableError: 카메라가 다른 앱에서 사용 중
       const name = e.name ?? '';
       if (name === 'NotAllowedError') {
-        setCamError('[권한 거부] 카메라 접근이 차단되었습니다. K8s Ingress의 Permissions-Policy 헤더를 확인하거나 브라우저 주소창 자물쇠 → 카메라를 "허용"으로 설정하세요.');
+        setCamError('[권한 거부] 카메라 접근이 차단되었습니다. 브라우저 주소창 자물쇠 → 카메라를 "허용"으로 설정하거나, URL 스트림을 대신 사용하세요.');
       } else if (name === 'NotFoundError') {
         setCamError('[장치 없음] 연결된 카메라를 찾을 수 없습니다.');
       } else if (name === 'NotReadableError') {
@@ -285,20 +318,48 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
         setCamError(tr('cameraError') + e.message);
       }
     }
-  }, []); // ← 의존성 없음: tRef를 통해 최신 t를 참조하므로 안전
-
-  const stopCamera = useCallback(() => {
-    liveDetectingRef.current = false;
-    setLiveDetecting(false);
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-      videoRef.current.srcObject = null;
-    }
-    setStreaming(false);
   }, []);
 
-  useEffect(() => { startCamera(); return () => stopCamera(); }, [startCamera, stopCamera]);
+  const startWithUrl = useCallback((url) => {
+    const trimmed = url.trim();
+    if (!trimmed) { setCamError(tRef.current('camUrlRequired')); return; }
+    setShowSourceModal(false);
+    setCamMode('url');
+    setCamError('');
+    saveCamState({ mode: 'url', url: trimmed, wasStreaming: true }, projectId);
+    if (!videoRef.current) return;
+    if (videoRef.current.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(tr => tr.stop());
+      videoRef.current.srcObject = null;
+    }
+    videoRef.current.removeAttribute('crossorigin');
+    videoRef.current.src = trimmed;
+    videoRef.current.load();
+    const onPlay = () => { setStreaming(true); };
+    const onErr = () => { setCamError(tRef.current('camUrlFailed')); setStreaming(false); };
+    videoRef.current.addEventListener('playing', onPlay, { once: true });
+    videoRef.current.addEventListener('error', onErr, { once: true });
+    videoRef.current.play().catch(() => {});
+  }, []);
+
+  // 언마운트 시 정리 — localStorage 유지 (탭 복귀 시 자동 재시작 위해)
+  useEffect(() => { return () => stopCamera(false); }, [stopCamera]);
   useEffect(() => { onStreamingChange?.(streaming); }, [streaming, onStreamingChange]);
+
+  // 마운트 시 이전 카메라 상태 복원 (프로젝트별)
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    const s = loadCamState(projectId);
+    if (!s?.wasStreaming) return;
+    if (s.mode === 'local') {
+      startWithLocal();
+    } else if (s.mode === 'url' && s.url) {
+      setUrlInput(s.url);
+      startWithUrl(s.url);
+    }
+  }, [projectId, startWithLocal, startWithUrl]);
   useEffect(() => {
     if (!streaming) { liveDetectingRef.current = false; setLiveDetecting(false); }
   }, [streaming]);
@@ -309,13 +370,20 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     const imgH = videoRef.current.videoHeight;
     const canvas = document.createElement('canvas');
     canvas.width = imgW; canvas.height = imgH;
-    canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    try {
+      canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    } catch (e) {
+      // CORS 없는 URL 스트림은 canvas에 그릴 수 없음 (보안 제한)
+      throw new Error('이 URL 스트림은 캡처가 차단됩니다. 서버에 CORS 헤더가 필요합니다.');
+    }
     const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
     const form = new FormData();
     form.append('file', blob, 'capture.jpg');
     const res = await fetch(`${DETECT_SERVER_URL}/api/detection/detect`, { method: 'POST', body: form });
     if (!res.ok) throw new Error(`${res.status}`);
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('detect server returned non-JSON response'); }
     return { ...data, _imgW: imgW, _imgH: imgH };
   }, []);
 
@@ -359,6 +427,12 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
         <span className="text-xs" style={{ color: streaming ? '#22c55e' : '#6b7280' }}>
           {streaming ? t('on') : t('off')}
         </span>
+        {streaming && camMode === 'url' && (
+          <span className="text-xs px-2 py-0.5 rounded-full"
+            style={{ background: '#0d1b2a', border: '1px solid #60a5fa40', color: '#60a5fa' }}>
+            🌐 URL
+          </span>
+        )}
         {liveDetecting && (
           <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
             style={{ background: '#3a1a0a', border: '1px solid #f97316', color: '#f97316' }}>
@@ -374,10 +448,10 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
         )}
         <div className="ml-auto flex gap-2">
           {!streaming
-            ? <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg"
-              style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>{t('startCamera')}</button>
+            ? <button onClick={() => setShowSourceModal(true)} className="text-xs px-3 py-1 rounded-lg"
+                style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>{t('startCamera')}</button>
             : <button onClick={stopCamera} className="text-xs px-3 py-1 rounded-lg"
-              style={{ background: '#2a1010', border: '1px solid #ef4444', color: '#ef4444' }}>{t('stopCamera')}</button>
+                style={{ background: '#2a1010', border: '1px solid #ef4444', color: '#ef4444' }}>{t('stopCamera')}</button>
           }
           <button onClick={toggleLiveDetect} disabled={!canDetect}
             className="text-xs px-3 py-1 rounded-lg transition"
@@ -393,23 +467,106 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
       </div>
 
       {/* 비디오 영역 */}
-      <div className="flex-1 relative bg-black flex items-center justify-center">
+      <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
         <video ref={videoRef} autoPlay playsInline muted
           style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        {!streaming && !camError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <span className="text-4xl opacity-30">📷</span>
-            <p className="text-sm text-gray-600">{t('cameraOff')}</p>
+
+        {/* 꺼진 상태 — 켜기 버튼 표시 */}
+        {!streaming && !camError && !showSourceModal && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <span className="text-5xl opacity-20">📷</span>
+            <p className="text-sm" style={{ color: '#4b6280' }}>{t('cameraOff')}</p>
+            <button
+              onClick={() => setShowSourceModal(true)}
+              className="text-xs px-4 py-1.5 rounded-lg"
+              style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}
+            >{t('startCamera')}</button>
           </div>
         )}
-        {camError && (
+
+        {/* 에러 상태 */}
+        {camError && !showSourceModal && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
             <span className="text-4xl opacity-40">🚫</span>
-            <p className="text-xs text-red-400">{camError}</p>
-            <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg mt-1"
+            <p className="text-xs text-red-400 max-w-xs">{camError}</p>
+            <button onClick={() => setShowSourceModal(true)} className="text-xs px-3 py-1 rounded-lg mt-1"
               style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>
               {t('tryAgain')}
             </button>
+          </div>
+        )}
+
+        {/* ── 소스 선택 모달 ── */}
+        {showSourceModal && (
+          <div className="fixed inset-0 flex items-center justify-center p-4 z-50"
+            style={{ background: 'rgba(0,0,0,0.82)' }}
+            onClick={e => e.target === e.currentTarget && setShowSourceModal(false)}>
+            <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
+              style={{ background: '#1c2a3a', border: '1px solid #2d4060' }}>
+
+              {/* 모달 헤더 */}
+              <div className="flex items-center justify-between px-4 py-3 border-b"
+                style={{ borderColor: '#253347' }}>
+                <span className="text-sm font-semibold text-gray-200">📹 {t('camSourceTitle')}</span>
+                <button onClick={() => setShowSourceModal(false)}
+                  className="w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition text-base">✕</button>
+              </div>
+
+              <div className="p-4 space-y-3">
+                {/* 옵션 1: 로컬 카메라 */}
+                <button
+                  onClick={startWithLocal}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                  style={{ border: '1px solid #253347', background: '#162032' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#22c55e'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = '#253347'}
+                >
+                  <span className="text-2xl shrink-0">📷</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-200">{t('localCamera')}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#4b6280' }}>{t('localCameraDesc')}</p>
+                  </div>
+                  <span className="text-green-400 text-sm shrink-0">→</span>
+                </button>
+
+                {/* 구분선 */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px" style={{ background: '#253347' }} />
+                  <span className="text-xs" style={{ color: '#374a5f' }}>{t('or')}</span>
+                  <div className="flex-1 h-px" style={{ background: '#253347' }} />
+                </div>
+
+                {/* 옵션 2: URL 스트림 */}
+                <div className="rounded-xl p-3 space-y-2.5"
+                  style={{ border: '1px solid #253347', background: '#162032' }}>
+                  <div className="flex items-start gap-2">
+                    <span className="text-xl shrink-0 mt-0.5">🌐</span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-200">{t('urlStream')}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#4b6280' }}>{t('urlStreamDesc')}</p>
+                    </div>
+                  </div>
+                  <input
+                    type="url"
+                    value={urlInput}
+                    onChange={e => setUrlInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && startWithUrl(urlInput)}
+                    placeholder={t('urlPlaceholder')}
+                    className="w-full rounded-lg px-3 py-2 text-xs text-gray-200 outline-none focus:ring-1 focus:ring-blue-500/50"
+                    style={{ background: '#0d1b2a', border: '1px solid #2d4060' }}
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <p className="text-xs leading-relaxed" style={{ color: '#374a5f' }}>{t('urlStreamTip')}</p>
+                  <button
+                    onClick={() => startWithUrl(urlInput)}
+                    disabled={!urlInput.trim()}
+                    className="w-full py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-30"
+                    style={{ background: '#0d2040', border: '1px solid #3b82f6', color: '#93c5fd' }}
+                  >{t('urlConnect')}</button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1029,8 +1186,8 @@ function CrackMonitorPanel({ selectedProject }) {
   // BIM 프로젝트 목록 로드
   useEffect(() => {
     fetch('/api/bim/db-projects')
-      .then(r => r.ok ? r.json() : [])
-      .then(list => setBimProjects(list || []))
+      .then(r => r.ok ? r.text() : '[]')
+      .then(t => { try { setBimProjects(JSON.parse(t) || []); } catch { setBimProjects([]); } })
       .catch(() => setBimProjects([]));
   }, []);
 
@@ -1388,6 +1545,15 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   const [madeFallback, setMadeFallback] = useState(false);
   const [devNoticeDismissed, setDevNoticeDismissed]         = useState(false);
   const [offlineNoticeDismissed, setOfflineNoticeDismissed] = useState(false);
+  const [iotMappings, setIotMappings] = useState([]);
+
+  useEffect(() => {
+    if (!selectedProject?.projectId) { setIotMappings([]); return; }
+    fetch(`/api/safe/iot/mappings/${selectedProject.projectId}`)
+      .then(r => r.ok ? r.text() : '[]')
+      .then(t => { try { setIotMappings(JSON.parse(t) || []); } catch { setIotMappings([]); } })
+      .catch(() => setIotMappings([]));
+  }, [selectedProject?.projectId]);
 
   // ── 안전구역 상태 ──────────────────────────────────────────────────
   const [zones, setZones]               = useState([]);          // {id, cx, cz, w, d}[]
@@ -1484,7 +1650,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
     const client = new Client({
       webSocketFactory: () => new SockJS(wsUrl),
       reconnectDelay: 5000,
-      onConnect: () => client.subscribe('/topic/safe', msg => setSafeEvent(JSON.parse(msg.body))),
+      onConnect: () => client.subscribe('/topic/safe', msg => { try { setSafeEvent(JSON.parse(msg.body)); } catch {} }),
       onStompError: () => { /* 재접속은 reconnectDelay가 처리 — 콘솔 오류 억제 */ },
     });
     client.activate();
@@ -1520,14 +1686,23 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   }, [making, makeCooldown, lastResult]);
 
   const dangerous = safeEvent?.dangerous ?? false;
-  const isCrackMode = (selectedProject?.mode || 'SAFETY') === 'CRACK';
-  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'monitoring'
+  const mode = selectedProject?.mode || 'SAFETY';
+  const isCrackMode     = mode === 'CRACK';
+  const isProgressMode  = mode === 'PROGRESS';
+  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'monitoring' | 'progress'
 
   // 프로젝트가 바뀌면 실시간 탭으로 초기화
   useEffect(() => { setActiveTab('live'); }, [selectedProject?.projectId]);
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* ── 외부 날씨 (좌) + 현장 IoT 센서 (우, 매핑된 경우만) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: iotMappings.length > 0 ? '1fr 2fr' : '1fr', gap: 12 }}
+           className="flex-col md:grid">
+        <WeatherWidget />
+        {iotMappings.length > 0 && <SensorPanel />}
+      </div>
 
       {/* 현장 정보 헤더 바 */}
       {selectedProject && (
@@ -1541,18 +1716,18 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
             </button>
           )}
           <span className="text-base font-bold text-white">
-            {isCrackMode ? "🔍" : "🛡"} {selectedProject.projectName}
+            {isProgressMode ? "📐" : isCrackMode ? "🔍" : "🛡"} {selectedProject.projectName}
           </span>
           {selectedProject.location && (
             <span className="text-xs text-gray-400">📍 {selectedProject.location}</span>
           )}
           <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
                 style={{
-                  backgroundColor: isCrackMode ? "#1e3a5f" : "#14532d",
-                  border: `1px solid ${isCrackMode ? "#60a5fa" : "#4ade80"}`,
-                  color: isCrackMode ? "#93c5fd" : "#4ade80",
+                  backgroundColor: isProgressMode ? "#1a1040" : isCrackMode ? "#1e3a5f" : "#14532d",
+                  border: `1px solid ${isProgressMode ? "#a78bfa" : isCrackMode ? "#60a5fa" : "#4ade80"}`,
+                  color: isProgressMode ? "#c4b5fd" : isCrackMode ? "#93c5fd" : "#4ade80",
                 }}>
-            {isCrackMode ? tP('modeCrackBadge') : tP('modeSafetyBadge')}
+            {isProgressMode ? "📐 진도 모니터링" : isCrackMode ? tP('modeCrackBadge') : tP('modeSafetyBadge')}
           </span>
           {!isCrackMode && selectedProject.cameraUrl && (
             <span className="text-xs px-2 py-0.5 rounded-full"
@@ -1586,7 +1761,24 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
             }}>
             {t('monTab')}
           </button>
+          {isProgressMode && (
+            <button
+              onClick={() => setActiveTab('progress')}
+              className="text-xs px-4 py-1.5 rounded-lg"
+              style={{
+                background: activeTab === 'progress' ? '#1a1040' : '#0d1b2a',
+                border: `1px solid ${activeTab === 'progress' ? '#a78bfa' : '#253347'}`,
+                color: activeTab === 'progress' ? '#c4b5fd' : '#6b7280',
+              }}>
+              📐 진도 분석
+            </button>
+          )}
         </div>
+      )}
+
+      {/* ── 진도 분석 탭 (PROGRESS 모드) ── */}
+      {selectedProject && activeTab === 'progress' && (
+        <ProgressMonitoringPanel selectedProject={selectedProject} />
       )}
 
       {/* ── 모니터링 기록 탭 ── */}
@@ -1682,6 +1874,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                 makeCaptureRef={makeCaptureRef}
                 stopDetectRef={stopDetectRef}
                 onStreamingChange={setCamStreaming}
+                projectId={selectedProject?.projectId}
               />
             </div>
 
