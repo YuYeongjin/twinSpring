@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import AxiosCustom from "../../axios/AxiosCustom";
+import { useT } from "../../i18n/LanguageContext";
 
 const TB = {
   card:  "bg-[#1c2a3a] border border-[#253347] rounded-xl shadow-lg",
@@ -8,7 +9,7 @@ const TB = {
 };
 
 // ── 프로젝트 선택 드롭다운 (센서 카드에서 프로젝트를 연결할 때) ──
-function ProjectPicker({ projectList, mappedProjectIds, onAdd, onRemove }) {
+function ProjectPicker({ projectList, mappedProjectIds, onAdd, onRemove, t }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -19,7 +20,7 @@ function ProjectPicker({ projectList, mappedProjectIds, onAdd, onRemove }) {
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
         style={{ backgroundColor: "#0d2040", border: "1px solid #3b82f6", color: "#93c5fd" }}
       >
-        <span>＋</span> 프로젝트 연결
+        <span>＋</span> {t('addProjectLink')}
       </button>
 
       {open && (
@@ -29,11 +30,11 @@ function ProjectPicker({ projectList, mappedProjectIds, onAdd, onRemove }) {
           onClick={e => e.stopPropagation()}
         >
           <div className="text-xs font-semibold mb-1" style={{ color: TB.text2 }}>
-            프로젝트 연결/해제
+            {t('projectPickerTitle')}
           </div>
           {projectList.length === 0 ? (
             <div className="text-xs py-2 text-center" style={{ color: "#4b5563" }}>
-              안전 프로젝트 없음
+              {t('noProjects')}
             </div>
           ) : (
             projectList.map(proj => {
@@ -56,7 +57,7 @@ function ProjectPicker({ projectList, mappedProjectIds, onAdd, onRemove }) {
                   </span>
                   <span className="shrink-0 ml-2"
                         style={{ color: linked ? "#f87171" : "#4ade80" }}>
-                    {linked ? "해제" : "연결"}
+                    {linked ? t('unlink') : t('link')}
                   </span>
                 </button>
               );
@@ -65,7 +66,7 @@ function ProjectPicker({ projectList, mappedProjectIds, onAdd, onRemove }) {
           <button type="button" onClick={() => setOpen(false)}
                   className="mt-1 w-full py-1.5 rounded-lg text-xs"
                   style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}>
-            닫기
+            {t('close')}
           </button>
         </div>
       )}
@@ -76,7 +77,7 @@ function ProjectPicker({ projectList, mappedProjectIds, onAdd, onRemove }) {
 }
 
 // ── 전체 센서 카드 ────────────────────────────────────────────
-function SensorStatusCard({ location, data, mappedProjects, projectList, onAddMapping, onRemoveMapping }) {
+function SensorStatusCard({ location, data, mappedProjects, projectList, onAddMapping, onRemoveMapping, t }) {
   const hasData = !!data;
 
   const isOnline = hasData && (() => {
@@ -107,7 +108,7 @@ function SensorStatusCard({ location, data, mappedProjects, projectList, onAddMa
           <div>
             <div className="text-sm font-bold" style={{ color: TB.text1 }}>{location}</div>
             <div className="text-xs" style={{ color: TB.text2 }}>
-              {isOnline ? "온라인" : hasData ? "오프라인" : "데이터 없음"}
+              {isOnline ? t('online') : hasData ? t('offline') : t('noData')}
             </div>
           </div>
         </div>
@@ -126,14 +127,14 @@ function SensorStatusCard({ location, data, mappedProjects, projectList, onAddMa
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-lg p-2 text-center"
                style={{ backgroundColor: "#0a1521", border: "1px solid #1a2a3a" }}>
-            <div className="text-xs mb-0.5" style={{ color: TB.text2 }}>온도</div>
+            <div className="text-xs mb-0.5" style={{ color: TB.text2 }}>{t('tempLabel')}</div>
             <div className="text-xl font-bold" style={{ color: tempColor }}>
               {data.temperature?.toFixed(1)}°C
             </div>
           </div>
           <div className="rounded-lg p-2 text-center"
                style={{ backgroundColor: "#0a1521", border: "1px solid #1a2a3a" }}>
-            <div className="text-xs mb-0.5" style={{ color: TB.text2 }}>습도</div>
+            <div className="text-xs mb-0.5" style={{ color: TB.text2 }}>{t('humLabel')}</div>
             <div className="text-xl font-bold" style={{ color: "#60a5fa" }}>
               {data.humidity?.toFixed(1)}%
             </div>
@@ -142,13 +143,13 @@ function SensorStatusCard({ location, data, mappedProjects, projectList, onAddMa
       ) : (
         <div className="text-xs text-center py-3 rounded-lg"
              style={{ backgroundColor: "#0a1521", color: "#4b5563" }}>
-          아직 수신된 데이터 없음
+          {t('noData')}
         </div>
       )}
 
       {data?.timestamp && (
         <div className="text-xs" style={{ color: "#374151" }}>
-          최근 수신: {new Date(data.timestamp).toLocaleString("ko-KR")}
+          {t('lastReceived')} {new Date(data.timestamp).toLocaleString()}
         </div>
       )}
 
@@ -156,13 +157,14 @@ function SensorStatusCard({ location, data, mappedProjects, projectList, onAddMa
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold" style={{ color: TB.text2 }}>
-            연결 프로젝트 ({mappedProjects.length})
+            {t('connectedProjects')} ({mappedProjects.length})
           </span>
           <ProjectPicker
             projectList={projectList}
             mappedProjectIds={mappedProjectIds}
             onAdd={projectId => onAddMapping(projectId, location)}
             onRemove={projectId => onRemoveMapping(projectId, location)}
+            t={t}
           />
         </div>
         {mappedProjects.length > 0 ? (
@@ -176,7 +178,7 @@ function SensorStatusCard({ location, data, mappedProjects, projectList, onAddMa
             ))}
           </div>
         ) : (
-          <div className="text-xs" style={{ color: "#374151" }}>연결된 프로젝트 없음</div>
+          <div className="text-xs" style={{ color: "#374151" }}>{t('noProjectLinked')}</div>
         )}
       </div>
     </div>
@@ -184,7 +186,7 @@ function SensorStatusCard({ location, data, mappedProjects, projectList, onAddMa
 }
 
 // ── 센서 선택 드롭다운 (프로젝트 섹션에서 센서를 연결할 때) ──
-function SensorLocationPicker({ locations, mappedLocations, onAdd }) {
+function SensorLocationPicker({ locations, mappedLocations, onAdd, t }) {
   const [open, setOpen] = useState(false);
   const [alias, setAlias] = useState("");
   const [selectedLoc, setSelectedLoc] = useState("");
@@ -207,7 +209,7 @@ function SensorLocationPicker({ locations, mappedLocations, onAdd }) {
         className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition"
         style={{ backgroundColor: "#0d2040", border: "1px solid #3b82f6", color: "#93c5fd" }}
       >
-        <span>＋</span> 센서 연결
+        <span>＋</span> {t('addSensorLink')}
       </button>
 
       {open && (
@@ -216,10 +218,10 @@ function SensorLocationPicker({ locations, mappedLocations, onAdd }) {
           style={{ backgroundColor: "#0a1521", border: "1px solid #1e3a5f", minWidth: "260px" }}
           onClick={e => e.stopPropagation()}
         >
-          <div className="text-xs font-semibold" style={{ color: TB.text2 }}>연결할 센서 위치 선택</div>
+          <div className="text-xs font-semibold" style={{ color: TB.text2 }}>{t('pickSensorTitle')}</div>
           {available.length === 0 ? (
             <div className="text-xs text-center py-2" style={{ color: "#4b5563" }}>
-              연결 가능한 센서가 없습니다
+              {t('noAvailableSensors')}
             </div>
           ) : (
             <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
@@ -239,9 +241,9 @@ function SensorLocationPicker({ locations, mappedLocations, onAdd }) {
 
           {selectedLoc && (
             <div>
-              <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>표시 이름 (선택)</label>
+              <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('aliasLabel')}</label>
               <input value={alias} onChange={e => setAlias(e.target.value)}
-                     placeholder="예: A교 온습도"
+                     placeholder={t('aliasPlaceholder')}
                      className="w-full bg-[#0d1b2a] border border-[#253347] rounded-lg px-3 py-2 text-sm text-gray-200 outline-none focus:border-blue-500" />
             </div>
           )}
@@ -251,7 +253,7 @@ function SensorLocationPicker({ locations, mappedLocations, onAdd }) {
                     onClick={() => { setOpen(false); setSelectedLoc(""); setAlias(""); }}
                     className="flex-1 py-2 rounded-lg text-xs"
                     style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}>
-              취소
+              {t('cancel')}
             </button>
             <button type="button" disabled={!selectedLoc} onClick={handleConfirm}
                     className="flex-[2] py-2 rounded-lg text-xs font-semibold text-white"
@@ -259,7 +261,7 @@ function SensorLocationPicker({ locations, mappedLocations, onAdd }) {
                       background: selectedLoc ? "linear-gradient(135deg,#1d4ed8,#2563eb)" : "#1c2a3a",
                       border: `1px solid ${selectedLoc ? "#3b82f6" : "#253347"}`,
                     }}>
-              연결
+              {t('confirm')}
             </button>
           </div>
         </div>
@@ -272,7 +274,7 @@ function SensorLocationPicker({ locations, mappedLocations, onAdd }) {
 }
 
 // ── 프로젝트별 매핑 행 ────────────────────────────────────────
-function SensorMappingChip({ mapping, onRemove, latestData }) {
+function SensorMappingChip({ mapping, onRemove, latestData, t }) {
   const data = latestData[mapping.sensorLocation];
   const displayName = mapping.sensorAlias || mapping.sensorLocation;
 
@@ -291,14 +293,14 @@ function SensorMappingChip({ mapping, onRemove, latestData }) {
       <button onClick={() => onRemove(mapping.mappingId)}
               className="text-xs px-2 py-0.5 rounded shrink-0"
               style={{ color: "#f87171", border: "1px solid #450a0a" }}>
-        해제
+        {t('unlink')}
       </button>
     </div>
   );
 }
 
 // ── 프로젝트별 IoT 매핑 섹션 ─────────────────────────────────
-function ProjectIotSection({ project, allLocations, mappings, latestData, onAdd, onRemove }) {
+function ProjectIotSection({ project, allLocations, mappings, latestData, onAdd, onRemove, t }) {
   const [collapsed, setCollapsed] = useState(false);
   const mappedLocations = mappings.map(m => m.sensorLocation);
 
@@ -311,7 +313,7 @@ function ProjectIotSection({ project, allLocations, mappings, latestData, onAdd,
           <div>
             <div className="text-sm font-bold" style={{ color: TB.text1 }}>{project.projectName}</div>
             <div className="text-xs" style={{ color: TB.text2 }}>
-              📍 {project.location || "위치 미설정"} · 센서 {mappings.length}개 연결
+              📍 {project.location || t('locationUnset')} · {t('sensorCount', { n: mappings.length })}
             </div>
           </div>
         </div>
@@ -320,6 +322,7 @@ function ProjectIotSection({ project, allLocations, mappings, latestData, onAdd,
             locations={allLocations}
             mappedLocations={mappedLocations}
             onAdd={(loc, alias) => onAdd(project.projectId, loc, alias)}
+            t={t}
           />
           <span className="text-sm" style={{ color: TB.text2 }}>{collapsed ? "▶" : "▼"}</span>
         </div>
@@ -331,12 +334,12 @@ function ProjectIotSection({ project, allLocations, mappings, latestData, onAdd,
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {mappings.map(m => (
                 <SensorMappingChip key={m.mappingId} mapping={m}
-                                   onRemove={onRemove} latestData={latestData} />
+                                   onRemove={onRemove} latestData={latestData} t={t} />
               ))}
             </div>
           ) : (
             <div className="text-xs text-center py-3" style={{ color: "#4b5563" }}>
-              연결된 센서가 없습니다. "센서 연결" 버튼으로 추가하세요.
+              {t('noSensorLinked')}
             </div>
           )}
         </div>
@@ -347,6 +350,7 @@ function ProjectIotSection({ project, allLocations, mappings, latestData, onAdd,
 
 // ── 메인 IoT 탭 ──────────────────────────────────────────────
 export default function IotTab({ projectList }) {
+  const t = useT('iotTab');
   const [allMappings,  setAllMappings]  = useState([]);
   const [allLocations, setAllLocations] = useState([]);
   const [latestData,   setLatestData]   = useState({});
@@ -396,15 +400,13 @@ export default function IotTab({ projectList }) {
     return () => clearInterval(id);
   }, [allLocations, loadLatestData]);
 
-  // ── 매핑 인덱스 ───────────────────────────────────────────
-  // projectId → [mapping]
+  // ── 매핑 인덱스 ──────────────────────────────────────────
   const mappingsByProject = {};
   allMappings.forEach(m => {
     if (!mappingsByProject[m.projectId]) mappingsByProject[m.projectId] = [];
     mappingsByProject[m.projectId].push(m);
   });
 
-  // sensorLocation → [project]  (M:M 반대 방향)
   const projectsByLocation = {};
   allMappings.forEach(m => {
     if (!projectsByLocation[m.sensorLocation]) projectsByLocation[m.sensorLocation] = [];
@@ -418,22 +420,22 @@ export default function IotTab({ projectList }) {
       await AxiosCustom.post("/api/safe/iot/mapping", { projectId, sensorLocation, sensorAlias });
       await loadMappings();
     } catch {
-      alert("이미 연결된 조합이거나 오류가 발생했습니다.");
+      alert(t('noAvailableSensors'));
     }
   }
 
-  // mappingId로 해제 (프로젝트 섹션에서 사용)
   async function handleRemoveById(mappingId) {
+    if (!window.confirm(t('confirmUnlink'))) return;
     await AxiosCustom.delete(`/api/safe/iot/mapping/${mappingId}`);
     setAllMappings(prev => prev.filter(m => m.mappingId !== mappingId));
   }
 
-  // (projectId, sensorLocation) 쌍으로 해제 (센서 카드에서 사용)
   async function handleRemoveByPair(projectId, sensorLocation) {
     const mapping = allMappings.find(
       m => m.projectId === projectId && m.sensorLocation === sensorLocation
     );
     if (!mapping) return;
+    if (!window.confirm(t('confirmUnlink'))) return;
     await AxiosCustom.delete(`/api/safe/iot/mapping/${mapping.mappingId}`);
     setAllMappings(prev => prev.filter(m => m.mappingId !== mapping.mappingId));
   }
@@ -446,7 +448,7 @@ export default function IotTab({ projectList }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-sm" style={{ color: TB.text2 }}>로딩 중...</div>
+        <div className="text-sm" style={{ color: TB.text2 }}>Loading…</div>
       </div>
     );
   }
@@ -457,26 +459,22 @@ export default function IotTab({ projectList }) {
       {/* 헤더 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            📡 IoT 센서 현황
-          </h2>
-          <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-            MQTT 수신 센서 자동 감지 · 센서↔프로젝트 다대다 매핑 · 30초 갱신
-          </p>
+          <h2 className="text-2xl font-bold text-white">{t('title')}</h2>
+          <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>{t('subtitle')}</p>
         </div>
         <button onClick={() => { loadMappings(); loadLatestData(allLocations); }}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm"
                 style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}>
-          🔄 새로고침
+          {t('refresh')}
         </button>
       </div>
 
       {/* 통계 */}
       <div className="grid grid-cols-3 gap-3 mb-8">
         {[
-          { label: "감지된 센서",   value: allLocations.length, color: "#60a5fa", icon: "📡" },
-          { label: "온라인",        value: onlineCount,         color: "#4ade80", icon: "🟢" },
-          { label: "매핑 수",       value: allMappings.length,  color: "#c4b5fd", icon: "🔗" },
+          { label: t('statSensors'), value: allLocations.length, color: "#60a5fa", icon: "📡" },
+          { label: t('statOnline'),  value: onlineCount,         color: "#4ade80", icon: "🟢" },
+          { label: t('statMappings'),value: allMappings.length,  color: "#c4b5fd", icon: "🔗" },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-3 text-center"
                style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
@@ -487,13 +485,13 @@ export default function IotTab({ projectList }) {
         ))}
       </div>
 
-      {/* ══ 섹션 1: 전체 IoT 센서 (센서 → 프로젝트 방향 관리) ══ */}
+      {/* ══ 섹션 1: 전체 IoT 센서 ══ */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-bold" style={{ color: TB.text1 }}>전체 IoT 센서</h3>
+          <h3 className="text-sm font-bold" style={{ color: TB.text1 }}>{t('sectionSensors')}</h3>
           <span className="text-xs px-2 py-0.5 rounded-full"
                 style={{ backgroundColor: "#1c2a3a", color: TB.text2, border: "1px solid #253347" }}>
-            MQTT 자동 감지 · 카드에서 직접 프로젝트 연결/해제 가능
+            {t('sectionSensorsBadge')}
           </span>
         </div>
 
@@ -502,11 +500,9 @@ export default function IotTab({ projectList }) {
                style={{ backgroundColor: "#1c2a3a", border: "1px dashed #253347" }}>
             <div className="text-4xl mb-3">📡</div>
             <div className="text-sm font-semibold mb-1" style={{ color: TB.text1 }}>
-              감지된 센서 없음
+              {t('noSensors')}
             </div>
-            <div className="text-xs" style={{ color: TB.text2 }}>
-              IoT 기기가 MQTT 메시지를 전송하면 자동으로 여기에 나타납니다
-            </div>
+            <div className="text-xs" style={{ color: TB.text2 }}>{t('noSensorsHint')}</div>
             <div className="text-xs mt-2 font-mono px-3 py-1 rounded inline-block"
                  style={{ backgroundColor: "#0d1b2a", color: "#60a5fa", border: "1px solid #1e3a5f" }}>
               &#123; "location": "bridgeA", "temperature": 25.0, ... &#125;
@@ -521,25 +517,22 @@ export default function IotTab({ projectList }) {
                 data={latestData[loc] ?? null}
                 mappedProjects={projectsByLocation[loc] ?? []}
                 projectList={projectList}
-                onAddMapping={(projectId, sensorLocation) =>
-                  handleAdd(projectId, sensorLocation)
-                }
-                onRemoveMapping={(projectId, sensorLocation) =>
-                  handleRemoveByPair(projectId, sensorLocation)
-                }
+                onAddMapping={(projectId, sensorLocation) => handleAdd(projectId, sensorLocation)}
+                onRemoveMapping={(projectId, sensorLocation) => handleRemoveByPair(projectId, sensorLocation)}
+                t={t}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* ══ 섹션 2: 프로젝트별 센서 매핑 (프로젝트 → 센서 방향 관리) ══ */}
+      {/* ══ 섹션 2: 프로젝트별 센서 매핑 ══ */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-bold" style={{ color: TB.text1 }}>프로젝트별 센서 매핑</h3>
+          <h3 className="text-sm font-bold" style={{ color: TB.text1 }}>{t('sectionMappings')}</h3>
           <span className="text-xs px-2 py-0.5 rounded-full"
                 style={{ backgroundColor: "#1c2a3a", color: TB.text2, border: "1px solid #253347" }}>
-            프로젝트 기준으로 연결된 센서 관리
+            {t('sectionMappingsBadge')}
           </span>
         </div>
 
@@ -547,9 +540,7 @@ export default function IotTab({ projectList }) {
           <div className="rounded-xl p-8 text-center"
                style={{ backgroundColor: "#1c2a3a", border: "1px dashed #253347" }}>
             <div className="text-4xl mb-3">🛡</div>
-            <div className="text-sm" style={{ color: TB.text2 }}>
-              안전 프로젝트를 먼저 생성하면 센서를 프로젝트에 매핑할 수 있습니다
-            </div>
+            <div className="text-sm" style={{ color: TB.text2 }}>{t('noProjectsForMapping')}</div>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
@@ -562,6 +553,7 @@ export default function IotTab({ projectList }) {
                 latestData={latestData}
                 onAdd={handleAdd}
                 onRemove={handleRemoveById}
+                t={t}
               />
             ))}
           </div>

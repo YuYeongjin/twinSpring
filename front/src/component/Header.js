@@ -43,16 +43,19 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
   const NAV_ITEMS = NAV_IDS.map(({ id, key, icon }) => ({ id, label: t(key), icon }));
 
+  const TZ_MAP = { ko: { label: "KST", offset: 9 }, ja: { label: "JST", offset: 9 }, en: { label: "UST", offset: 0 } };
+  const { label: tzLabel, offset: tzOffset } = TZ_MAP[lang] ?? TZ_MAP.ko;
+
   useEffect(() => {
     const update = () => {
       const now = new Date();
-      const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-      setTime(kst.toISOString().replace("T", " ").slice(0, 19));
+      const local = new Date(now.getTime() + tzOffset * 60 * 60 * 1000);
+      setTime(local.toISOString().replace("T", " ").slice(0, 19));
     };
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [tzOffset]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -160,7 +163,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
           {/* Clock — desktop only */}
           <div className="hidden sm:block text-xs sm:text-sm text-gray-400 whitespace-nowrap">
-            KST {time}
+            {tzLabel} {time}
           </div>
 
           {/* Hamburger button — mobile only */}
@@ -225,7 +228,7 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
             ))}
           </div>
           <div className="px-6 py-3 text-xs text-gray-500 border-t border-[#1a2a3a]">
-            KST {time}
+            {tzLabel} {time}
           </div>
         </nav>
       )}
