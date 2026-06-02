@@ -328,12 +328,6 @@ function ProjectCard({ project, onSelect, onEdit, onDelete, t }) {
   );
 }
 
-// ── 탭 정의 ─────────────────────────────────────────────────
-const SAFE_TABS = [
-  { key: "projects", label: "🛡 프로젝트" },
-  { key: "iot",      label: "📡 IoT 센서" },
-];
-
 // ── 메인 컴포넌트 ─────────────────────────────────────────────
 export default function SafeProjectList({
   setViceComponent,
@@ -344,6 +338,11 @@ export default function SafeProjectList({
   onDeleteProject,
 }) {
   const t = useT('safeProjectList');
+
+  const SAFE_TABS = [
+    { key: "projects", label: t('tabProjects') },
+    { key: "iot",      label: t('tabIot') },
+  ];
   const [activeTab,      setActiveTab]      = useState("projects");
   const [showModal,      setShowModal]      = useState(false);
   const [editingProject, setEditingProject] = useState(null);
