@@ -10,14 +10,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import yyj.project.twinspring.dao.MonitoringDAO;
+import yyj.project.twinspring.dao.ProgressAnalysisDAO;
+import yyj.project.twinspring.dao.ProjectLinkDAO;
 import yyj.project.twinspring.dao.SafeDAO;
+import yyj.project.twinspring.dao.WbsDAO;
 
 import jakarta.annotation.PostConstruct;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -45,18 +50,30 @@ public class MonitoringSchedulerService {
     private static final int SAFETY_MAX_SNAPSHOTS = 10;
     private static final int FFMPEG_TIMEOUT_SEC   = 15;
 
-    private final MonitoringDAO monitoringDAO;
-    private final SafeDAO       safeDAO;
-    private final RestTemplate  restTemplate;
-    private boolean             ffmpegAvailable;
+    private final MonitoringDAO       monitoringDAO;
+    private final SafeDAO             safeDAO;
+    private final ProgressAnalysisDAO progressAnalysisDAO;
+    private final ProjectLinkDAO      projectLinkDAO;
+    private final WbsDAO              wbsDAO;
+    private final RestTemplate        restTemplate;
+    private final ObjectMapper        objectMapper = new ObjectMapper();
+    private boolean                   ffmpegAvailable;
 
     @Value("${detect.server.url:http://localhost:5001}")
     private String detectServerUrl;
 
-    public MonitoringSchedulerService(MonitoringDAO monitoringDAO, SafeDAO safeDAO) {
-        this.monitoringDAO = monitoringDAO;
-        this.safeDAO       = safeDAO;
-        this.restTemplate  = new RestTemplate();
+    @Value("${agent.url:http://localhost:7070}")
+    private String agentUrl;
+
+    public MonitoringSchedulerService(MonitoringDAO monitoringDAO, SafeDAO safeDAO,
+                                      ProgressAnalysisDAO progressAnalysisDAO,
+                                      ProjectLinkDAO projectLinkDAO, WbsDAO wbsDAO) {
+        this.monitoringDAO       = monitoringDAO;
+        this.safeDAO             = safeDAO;
+        this.progressAnalysisDAO = progressAnalysisDAO;
+        this.projectLinkDAO      = projectLinkDAO;
+        this.wbsDAO              = wbsDAO;
+        this.restTemplate        = new RestTemplate();
     }
 
     /** 서버 기동 시 FFmpeg 설치 여부를 한 번만 확인 */
@@ -151,6 +168,39 @@ public class MonitoringSchedulerService {
             save(scheduleId, projectId, cameraId, cameraName, "CRACK",
                     imageBytes, false, null, expiresAt);
             log.info("CRACK 저장 [{}]", cameraName);
+
+        } else if ("PROGRESS".equalsIgnoreCase(mode)) {
+            // PROGRESS 모드: 모든 프레임 저장 후 AI 진도 분석 → WBS 자동 업데이트
+            Timestamp expiresAt = Timestamp.from(Instant.now().plusSeconds(
+                    retentionSec > 0 ? retentionSec : 7 * 24 * 3600));
+            String snapshotId = UUID.randomUUID().toString();
+            Map<String, Object> snap = new HashMap<>();
+            snap.put("snapshotId",    snapshotId);
+            snap.put("projectId",     projectId);
+            snap.put("scheduleId",    scheduleId);
+            snap.put("cameraId",      cameraId);
+            snap.put("cameraName",    cameraName);
+            snap.put("mode",          "PROGRESS");
+            snap.put("imageData",     imageBytes);
+            snap.put("isProblem",     false);
+            snap.put("detectionJson", null);
+            snap.put("expiresAt",     expiresAt);
+            monitoringDAO.insertSnapshot(snap);
+            log.info("PROGRESS 스냅샷 저장 [{}] snapshotId={}", cameraName, snapshotId);
+
+            // 비동기적으로 AI 진도 분석 실행 (별도 스레드)
+            final String finalSnapshotId = snapshotId;
+            final String finalProjectId  = projectId;
+            Thread analyzeThread = new Thread(() -> {
+                try {
+                    runProgressAnalysis(finalSnapshotId, finalProjectId, imageBytes);
+                } catch (Exception e) {
+                    log.warn("PROGRESS 분석 오류 [snapshotId={}]: {}", finalSnapshotId, e.getMessage());
+                }
+            });
+            analyzeThread.setDaemon(true);
+            analyzeThread.start();
+
         } else {
             String detectionJson = callDetectServer(imageBytes);
             boolean isProblem    = isDangerous(detectionJson);
@@ -280,6 +330,113 @@ public class MonitoringSchedulerService {
         } catch (Exception e) {
             log.warn("HTTP 캡처 실패 [{}]: {}", url, e.getMessage());
             return null;
+        }
+    }
+
+    // ── PROGRESS 모드: AI 진도 분석 → WBS 자동 업데이트 ────────────────
+
+    @SuppressWarnings("unchecked")
+    private void runProgressAnalysis(String snapshotId, String safeProjectId, byte[] imageBytes) {
+        // 1) 이 Safe 프로젝트와 연결된 WBS 프로젝트 찾기
+        List<Map<String, Object>> links = projectLinkDAO.getWbsByLinkedProject("SAFE", safeProjectId);
+        if (links == null || links.isEmpty()) {
+            log.info("PROGRESS 분석 스킵 — WBS 연결 없음 [safeProjectId={}]", safeProjectId);
+            return;
+        }
+        String wbsProjectId = (String) links.get(0).get("wbsProjectId");
+
+        // 2) WBS 프로젝트의 IN_PROGRESS 또는 첫 번째 태스크 조회
+        List<Map<String, Object>> tasks = wbsDAO.getTasksByProject(wbsProjectId);
+        if (tasks == null || tasks.isEmpty()) {
+            log.info("PROGRESS 분석 스킵 — WBS 태스크 없음 [wbsProjectId={}]", wbsProjectId);
+            return;
+        }
+
+        Map<String, Object> targetTask = tasks.stream()
+                .filter(t -> "IN_PROGRESS".equalsIgnoreCase((String) t.getOrDefault("status", "")))
+                .findFirst()
+                .orElse(tasks.stream()
+                        .filter(t -> "NOT_STARTED".equalsIgnoreCase((String) t.getOrDefault("status", "")))
+                        .findFirst()
+                        .orElse(tasks.get(0)));
+
+        String taskId       = (String) targetTask.get("taskId");
+        String taskName     = (String) targetTask.getOrDefault("taskName", "작업");
+        int currentProgress = targetTask.get("progress") instanceof Number
+                ? ((Number) targetTask.get("progress")).intValue() : 0;
+
+        // 3) Python /analyze-progress 호출
+        String imageB64 = Base64.getEncoder().encodeToString(imageBytes);
+        Map<String, Object> reqBody = new HashMap<>();
+        reqBody.put("image_base64",      imageB64);
+        reqBody.put("wbs_task_id",       taskId);
+        reqBody.put("wbs_task_name",     taskName);
+        reqBody.put("wbs_project_id",    wbsProjectId);
+        reqBody.put("current_progress",  currentProgress);
+        reqBody.put("project_context",   "건설 현장 진도 모니터링");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<Map> resp = restTemplate.postForEntity(
+                agentUrl + "/analyze-progress",
+                new HttpEntity<>(reqBody, headers), Map.class);
+
+        if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+            log.warn("PROGRESS 분석 API 실패 [taskId={}]", taskId);
+            return;
+        }
+        Map<String, Object> result = resp.getBody();
+        int estimatedProgress = result.get("estimated_progress") instanceof Number
+                ? ((Number) result.get("estimated_progress")).intValue() : currentProgress;
+        double confidence = result.get("confidence") instanceof Number
+                ? ((Number) result.get("confidence")).doubleValue() : 0.5;
+        String notes      = (String) result.getOrDefault("analysis_notes", "");
+        String ragQuery   = (String) result.getOrDefault("rag_query", "");
+
+        // RAG 증빙 JSON 직렬화
+        String ragJson = "[]";
+        try {
+            Object evidence = result.get("rag_evidence");
+            ragJson = objectMapper.writeValueAsString(evidence != null ? evidence : List.of());
+        } catch (Exception ignored) {}
+
+        // 4) WBS 태스크 progress 업데이트 (진도 상승만 허용 — 역행 방지)
+        if (estimatedProgress > currentProgress) {
+            Map<String, Object> taskUpdate = new HashMap<>(targetTask);
+            taskUpdate.put("taskId",   taskId);
+            taskUpdate.put("progress", estimatedProgress);
+            if (estimatedProgress >= 100) taskUpdate.put("status", "COMPLETED");
+            else if (currentProgress == 0) taskUpdate.put("status", "IN_PROGRESS");
+            wbsDAO.updateTask(taskUpdate);
+            log.info("PROGRESS WBS 업데이트 [taskId={}, {} → {}%]",
+                    taskId, currentProgress, estimatedProgress);
+        }
+
+        // 5) 분석 로그 저장
+        String analysisId = UUID.randomUUID().toString();
+        Map<String, Object> logEntry = new HashMap<>();
+        logEntry.put("analysisId",      analysisId);
+        logEntry.put("snapshotId",      snapshotId);
+        logEntry.put("wbsTaskId",       taskId);
+        logEntry.put("wbsProjectId",    wbsProjectId);
+        logEntry.put("beforeProgress",  currentProgress);
+        logEntry.put("afterProgress",   estimatedProgress);
+        logEntry.put("confidence",      confidence);
+        logEntry.put("analysisNotes",   notes);
+        logEntry.put("ragEvidence",     ragJson);
+        progressAnalysisDAO.insertAnalysis(logEntry);
+
+        // 6) 스냅샷에 분석 ID 연결
+        try {
+            Map<String, Object> snapUpdate = new HashMap<>();
+            snapUpdate.put("snapshotId",    snapshotId);
+            snapUpdate.put("detectionJson", "{\"analysisId\":\"" + analysisId
+                    + "\",\"estimatedProgress\":" + estimatedProgress
+                    + ",\"ragQuery\":\"" + ragQuery + "\"}");
+            snapUpdate.put("isProblem",     estimatedProgress > currentProgress);
+            monitoringDAO.updateSnapshotDetection(snapUpdate);
+        } catch (Exception e) {
+            log.warn("스냅샷 메타 업데이트 실패: {}", e.getMessage());
         }
     }
 

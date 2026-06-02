@@ -33,4 +33,7 @@ public interface MonitoringDAO {
     void deleteOldestProblemSnapshot(@Param("projectId") String projectId);
     void deleteExpiredSnapshots();
     void deleteSnapshot(@Param("snapshotId") String snapshotId);
+
+    /** PROGRESS 분석 후 detectionJson / isProblem 업데이트 */
+    void updateSnapshotDetection(Map<String, Object> params);
 }

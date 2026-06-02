@@ -3,19 +3,117 @@
 
 <mapper namespace="yyj.project.twinspring.dao.SpotDAO">
 
+    <!-- ── INSERT ──────────────────────────────────────────────── -->
+
     <insert id="insertData" parameterType="yyj.project.twinspring.dto.SensorDTO">
         INSERT INTO sensor_data (location, temperature, timestamp, humidity)
         VALUES (
             #{location},
             #{temperature},
-            CAST(#{timestamp} AS timestamp with time zone),
+            CAST(#{timestamp} AS timestamptz),
             #{humidity}
-            )
+        )
     </insert>
 
-    <select id="getAll">
-        SELECT * FROM sensor_data LIMIT 100
+    <!-- ── 최근 로그 (location 필터 + limit) ───────────────────── -->
+
+    <select id="getRecentLogs" resultType="map">
+        SELECT id,
+               location,
+               temperature,
+               humidity,
+               timestamp
+        FROM sensor_data
+        <where>
+            <if test="location != null and location != ''">
+                location = #{location}
+            </if>
+            <if test="hours != null">
+                AND timestamp >= NOW() - (#{hours}::int * INTERVAL '1 hour')
+            </if>
+        </where>
+        ORDER BY timestamp DESC
+        LIMIT #{limit}
     </select>
+
+    <!-- ── 하위호환 전체 조회 ────────────────────────────────────── -->
+
+    <select id="getAll" resultType="map">
+        SELECT id, location, temperature, humidity, timestamp
+        FROM sensor_data
+        ORDER BY timestamp DESC
+        LIMIT 100
+    </select>
+
+    <!-- ── TimescaleDB time_bucket 트렌드 ───────────────────────── -->
+    <!--
+        bucket: '1 minute' | '5 minutes' | '30 minutes' | '1 hour' | '1 day'
+        hours:  조회 범위 (최근 N시간)
+        location: 위치 필터 (null 이면 전체)
+    -->
+    <select id="getTrend" resultType="map">
+        SELECT
+            time_bucket(#{bucket}::interval, timestamp) AS bucket,
+            location,
+            ROUND(AVG(temperature)::numeric, 2)  AS avg_temp,
+            ROUND(MIN(temperature)::numeric, 2)  AS min_temp,
+            ROUND(MAX(temperature)::numeric, 2)  AS max_temp,
+            ROUND(AVG(humidity)::numeric, 2)     AS avg_humidity,
+            COUNT(*)                             AS sample_count
+        FROM sensor_data
+        WHERE timestamp >= NOW() - (#{hours}::int * INTERVAL '1 hour')
+        <if test="location != null and location != ''">
+            AND location = #{location}
+        </if>
+        GROUP BY bucket, location
+        ORDER BY bucket ASC
+    </select>
+
+    <!-- ── Continuous Aggregate: 시간별 평균 ────────────────────── -->
+
+    <select id="getHourlyAvg" resultType="map">
+        SELECT
+            bucket,
+            location,
+            ROUND(avg_temp::numeric, 2)      AS avg_temp,
+            ROUND(min_temp::numeric, 2)      AS min_temp,
+            ROUND(max_temp::numeric, 2)      AS max_temp,
+            ROUND(avg_humidity::numeric, 2)  AS avg_humidity,
+            sample_count
+        FROM sensor_hourly_avg
+        WHERE bucket >= NOW() - (#{hours}::int * INTERVAL '1 hour')
+        <if test="location != null and location != ''">
+            AND location = #{location}
+        </if>
+        ORDER BY bucket ASC
+    </select>
+
+    <!-- ── Continuous Aggregate: 일별 평균 ──────────────────────── -->
+
+    <select id="getDailyAvg" resultType="map">
+        SELECT
+            bucket,
+            location,
+            ROUND(avg_temp::numeric, 2)      AS avg_temp,
+            ROUND(min_temp::numeric, 2)      AS min_temp,
+            ROUND(max_temp::numeric, 2)      AS max_temp,
+            ROUND(avg_humidity::numeric, 2)  AS avg_humidity,
+            sample_count
+        FROM sensor_daily_avg
+        WHERE bucket >= NOW() - (#{days}::int * INTERVAL '1 day')
+        <if test="location != null and location != ''">
+            AND location = #{location}
+        </if>
+        ORDER BY bucket ASC
+    </select>
+
+    <!-- ── 위치 목록 ──────────────────────────────────────────────── -->
+
+    <select id="getLocations" resultType="string">
+        SELECT DISTINCT location FROM sensor_data ORDER BY location
+    </select>
+
+    <!-- ── 기간 평균 (하위호환) ───────────────────────────────────── -->
 
     <select id="getAvgData" parameterType="map" resultType="map">
         SELECT
@@ -23,7 +121,7 @@
             COALESCE(AVG(humidity))    AS humidity
         FROM sensor_data
         WHERE location = #{location}
-          AND "timestamp" >= #{start_time}::timestamptz
+          AND timestamp >= #{start_time}::timestamptz
     </select>
 
 </mapper>

@@ -18,6 +18,7 @@ import WbsDashboard from './view/wbs/WbsDashboard';
 import AgentWbsPopup from './component/AgentWbsPopup';
 import WbsProjectSelectModal from './component/WbsProjectSelectModal';
 import { CrackMonitorProvider } from './context/CrackMonitorContext';
+import SettingsPanel from './view/settings/SettingsPanel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 function App() {
@@ -526,6 +527,9 @@ function App() {
           onBack={() => setViceComponent('safe-projects')}
         />
       );
+    }
+    if (viewComponent === 'settings') {
+      return <SettingsPanel />;
     }
     if (viewComponent === 'test') {
       return <TestDashboard />;

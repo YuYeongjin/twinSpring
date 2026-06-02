@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.ProgressAnalysisDAO">
+
+    <insert id="insertAnalysis">
+        INSERT INTO progress_analysis_log
+            (analysis_id, snapshot_id, wbs_task_id, wbs_project_id,
+             before_progress, after_progress, confidence,
+             analysis_notes, rag_evidence)
+        VALUES
+            (#{analysisId}, #{snapshotId}, #{wbsTaskId}, #{wbsProjectId},
+             #{beforeProgress}, #{afterProgress}, #{confidence},
+             #{analysisNotes}, #{ragEvidence})
+    </insert>
+
+    <select id="getAnalysisByProject" resultType="map">
+        SELECT analysis_id     AS "analysisId",
+               snapshot_id     AS "snapshotId",
+               wbs_task_id     AS "wbsTaskId",
+               wbs_project_id  AS "wbsProjectId",
+               before_progress AS "beforeProgress",
+               after_progress  AS "afterProgress",
+               confidence,
+               analysis_notes  AS "analysisNotes",
+               rag_evidence    AS "ragEvidence",
+               analyzed_at     AS "analyzedAt"
+        FROM progress_analysis_log
+        WHERE wbs_project_id = #{wbsProjectId}
+        ORDER BY analyzed_at DESC
+        LIMIT 50
+    </select>
+
+    <select id="getAnalysisByTask" resultType="map">
+        SELECT analysis_id     AS "analysisId",
+               snapshot_id     AS "snapshotId",
+               wbs_task_id     AS "wbsTaskId",
+               before_progress AS "beforeProgress",
+               after_progress  AS "afterProgress",
+               confidence,
+               analysis_notes  AS "analysisNotes",
+               rag_evidence    AS "ragEvidence",
+               analyzed_at     AS "analyzedAt"
+        FROM progress_analysis_log
+        WHERE wbs_task_id = #{wbsTaskId}
+        ORDER BY analyzed_at DESC
+    </select>
+
+    <select id="getLatestAnalysisByTask" resultType="map">
+        SELECT analysis_id     AS "analysisId",
+               snapshot_id     AS "snapshotId",
+               after_progress  AS "afterProgress",
+               confidence,
+               analysis_notes  AS "analysisNotes",
+               analyzed_at     AS "analyzedAt"
+        FROM progress_analysis_log
+        WHERE wbs_task_id = #{wbsTaskId}
+        ORDER BY analyzed_at DESC
+        LIMIT 1
+    </select>
+
+</mapper>

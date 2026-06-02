@@ -15,12 +15,6 @@ VECTOR_DB_NAME     = os.getenv("VECTOR_DB_NAME")     or os.getenv("DB_NAME",    
 VECTOR_DB_USER     = os.getenv("VECTOR_DB_USER")     or os.getenv("DB_USER",     "postgres")
 VECTOR_DB_PASSWORD = os.getenv("VECTOR_DB_PASSWORD") or os.getenv("DB_PASSWORD", "Abcd1234")
 
-# InfluxDB (IoT 시계열 데이터)
-INFLUX_URL = os.getenv("INFLUX_URL", "http://localhost:8086")
-INFLUX_TOKEN = os.getenv("INFLUX_TOKEN", "twinspring-influx-admin-token")
-INFLUX_ORG = os.getenv("INFLUX_ORG", "twinspring")
-INFLUX_BUCKET = os.getenv("INFLUX_BUCKET", "iot_data")
-
 # RAG (pgvector — PostgreSQL vector extension)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 
