@@ -94,6 +94,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 
   // ── Voice state ──
   const [isListening, setIsListening] = useState(false);
+  const [sttError, setSttError] = useState('');
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const recognitionRef = useRef(null);
 
@@ -126,30 +127,8 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   // ── Right panel tab ──
   const [activeTab, setActiveTab] = useState('data');
 
-  // ── STT initialization ──
-  useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    const rec = new SR();
-    rec.lang = getLangCode(lang);   // set from current language at mount
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onresult = (e) => {
-      setInput(e.results[0][0].transcript);
-      setIsListening(false);
-    };
-    rec.onend = () => setIsListening(false);
-    rec.onerror = () => setIsListening(false);
-    recognitionRef.current = rec;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // init once; lang synced in the effect below
-
-  // ── Sync STT lang when UI language changes ──
-  useEffect(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.lang = getLangCode(lang);
-    }
-  }, [lang]);
+  // STT: 인스턴스를 미리 만들지 않음 — toggleListening 호출 시마다 생성
+  // (iOS Safari / Android: 동일 인스턴스 재사용 시 두 번째 호출부터 무응답)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -216,16 +195,58 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     window.speechSynthesis.speak(utt);
   }, [ttsEnabled, lang]);
 
-  const toggleListening = () => {
-    if (!recognitionRef.current) { alert(t('speechNotSupported')); return; }
-    if (isListening) { recognitionRef.current.stop(); }
-    else {
-      // Re-apply language right before starting in case it changed
-      recognitionRef.current.lang = getLangCode(lang);
-      recognitionRef.current.start();
-      setIsListening(true);
+  const toggleListening = useCallback(() => {
+    // 중지 요청
+    if (isListening) {
+      try { recognitionRef.current?.stop(); } catch (_) {}
+      setIsListening(false);
+      return;
     }
-  };
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setSttError(t('speechNotSupported'));
+      return;
+    }
+
+    setSttError('');
+
+    // 매번 새 인스턴스 생성 — iOS Safari / Android 재사용 불가 문제 해결
+    const rec = new SR();
+    rec.lang = getLangCode(lang);
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .map(r => r[0].transcript)
+        .join('');
+      setInput(prev => prev ? `${prev} ${transcript}` : transcript);
+      setIsListening(false);
+    };
+
+    rec.onend = () => setIsListening(false);
+
+    rec.onerror = (e) => {
+      setIsListening(false);
+      if (e.error === 'not-allowed') {
+        setSttError(t('sttNotAllowed'));
+      } else if (e.error === 'no-speech') {
+        setSttError(t('sttNoSpeech'));
+      } else if (e.error !== 'aborted') {
+        setSttError(`${t('sttError')}${e.error}`);
+      }
+    };
+
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+      setIsListening(true);
+    } catch (err) {
+      setSttError(`${t('sttError')}${err.message}`);
+    }
+  }, [isListening, lang, t]);
 
   // ── Image ──
   const handleImageSelect = (e) => {
@@ -254,10 +275,11 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   }, [lang]);
 
   // ── Send message (SSE streaming) ──
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (overrideText) => {
+    const text = (typeof overrideText === 'string' ? overrideText : input).trim();
     if ((!text && !imageBase64) || loading) return;
 
+    setSttError('');
     const userContent = text || t('imageAnalyze');
     setMessages(prev => [...prev, { role: 'user', content: userContent, intent: null, image: imagePreview }]);
     setInput('');
@@ -536,8 +558,8 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           )}
 
           {/* Quick prompts — context-aware */}
-          <div className="px-4 pt-3 bg-[#162032] border-t border-[#253347]">
-            <div className="flex flex-wrap gap-1.5">
+          <div className="px-3 sm:px-4 pt-2 pb-1 bg-[#162032] border-t border-[#253347]">
+            <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               {(selectedProject
                 ? [t('quickShowTemp'), t('quickMemberCount'), t('quickAddColumn'), t('quickTabGuide')]
                 : selectedSimulationProject
@@ -546,8 +568,8 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
               ).map(q => (
                 <button
                   key={q}
-                  onClick={() => setInput(q)}
-                  className="text-xs bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 px-3 py-1 rounded-full transition-colors"
+                  onClick={() => sendMessage(q)}
+                  className="text-xs bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 px-3 py-1 rounded-full transition-colors whitespace-nowrap shrink-0"
                 >
                   {q}
                 </button>
@@ -556,37 +578,50 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           </div>
 
           {/* Input area */}
-          <div className="px-4 py-3 bg-[#162032]">
-            <div className="flex items-center gap-2">
+          <div className="px-3 sm:px-4 py-2.5 sm:py-3 bg-[#162032]">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
               <button
                 onClick={() => imageInputRef.current?.click()}
                 title="Attach image"
-                className="w-9 h-9 flex items-center justify-center rounded-lg bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 transition-colors text-base shrink-0"
+                className="hidden sm:flex w-9 h-9 items-center justify-center rounded-lg bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 transition-colors text-base shrink-0"
               >📎</button>
               <button
                 onClick={toggleListening}
                 title={isListening ? t('stopRecording') : t('voiceInput')}
-                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all text-base shrink-0 ${
+                className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg transition-all text-sm sm:text-base shrink-0 ${
                   isListening
                     ? 'bg-red-600/30 text-red-400 border border-red-600/50 animate-pulse'
-                    : 'bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200'
+                    : sttError
+                      ? 'bg-yellow-900/30 text-yellow-500 border border-yellow-600/40'
+                      : 'bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200'
                 }`}
               >🎤</button>
               <input
                 type="text"
                 value={input}
-                onChange={e => setInput(e.target.value)}
+                onChange={e => { setInput(e.target.value); setSttError(''); }}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
                 placeholder={isListening ? t('listening') : t('typeOrSpeak')}
-                className="flex-1 bg-[#253347] text-gray-200 text-sm rounded-xl px-4 py-2.5 outline-none placeholder-gray-500 focus:ring-2 focus:ring-accent-blue/50"
+                className="flex-1 min-w-0 bg-[#253347] text-gray-200 text-sm rounded-xl px-3 sm:px-4 py-2.5 outline-none placeholder-gray-500 focus:ring-2 focus:ring-accent-blue/50"
               />
               <button
                 onClick={sendMessage}
                 disabled={loading || (!input.trim() && !imageBase64)}
-                className="px-5 py-2.5 rounded-xl bg-accent-blue text-white text-sm font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors shrink-0"
-              >{t('send')}</button>
+                className="flex items-center justify-center gap-1 sm:px-5 px-3 py-2.5 rounded-xl bg-accent-blue text-white text-sm font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors shrink-0"
+              >
+                <span className="hidden sm:inline">{t('send')}</span>
+                <svg className="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12zm0 0h7.5" />
+                </svg>
+              </button>
             </div>
+            {/* STT 오류 메시지 */}
+            {sttError && (
+              <p className="text-xs text-yellow-500 mt-1.5 px-1 flex items-center gap-1">
+                <span>⚠</span>{sttError}
+              </p>
+            )}
           </div>
         </div>
 

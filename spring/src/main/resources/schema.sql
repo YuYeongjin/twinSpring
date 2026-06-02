@@ -1,5 +1,12 @@
 -- ================================================================
+-- TimescaleDB 확장 활성화 (시계열 데이터 최적화)
+-- timescale/timescaledb-ha:pg16 이미지에서 자동 로드됨
+-- ================================================================
+CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+
+-- ================================================================
 -- pgvector 확장 활성화 (RAG 벡터 검색용)
+-- timescaledb-ha 이미지에 pgvector 내장
 -- ================================================================
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -45,6 +52,79 @@ CREATE TABLE IF NOT EXISTS sensor_data
     temperature DOUBLE PRECISION NOT NULL,
     humidity    DOUBLE PRECISION,
     timestamp   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ================================================================
+-- sensor_data → TimescaleDB Hypertable 변환
+--
+-- create_hypertable: timestamp 컬럼 기준으로 7일 단위 청크 파티셔닝
+--   if_not_exists   => TRUE : 이미 hypertable이면 건너뜀
+--   migrate_data    => TRUE : 기존 데이터 그대로 마이그레이션
+-- ================================================================
+SELECT create_hypertable(
+    'sensor_data',
+    'timestamp',
+    chunk_time_interval => INTERVAL '7 days',
+    if_not_exists  => TRUE,
+    migrate_data   => TRUE
+);
+
+-- ── 청크 압축 정책 (7일 이후 columnar 압축, ~93% 압축률) ──────────
+ALTER TABLE sensor_data SET (
+    timescaledb.compress,
+    timescaledb.compress_orderby = 'timestamp DESC',
+    timescaledb.compress_segmentby = 'location'
+);
+SELECT add_compression_policy('sensor_data', INTERVAL '7 days', if_not_exists => TRUE);
+
+-- ── 데이터 보존 정책 (90일 초과 자동 삭제) ─────────────────────────
+-- 필요 시 주석 해제. 기본값은 무제한 보존.
+-- SELECT add_retention_policy('sensor_data', INTERVAL '90 days', if_not_exists => TRUE);
+
+-- ── Continuous Aggregate: 1시간 평균 (자동 갱신) ───────────────────
+CREATE MATERIALIZED VIEW IF NOT EXISTS sensor_hourly_avg
+    WITH (timescaledb.continuous) AS
+SELECT
+    time_bucket('1 hour', timestamp)  AS bucket,
+    location,
+    AVG(temperature)                  AS avg_temp,
+    MIN(temperature)                  AS min_temp,
+    MAX(temperature)                  AS max_temp,
+    AVG(humidity)                     AS avg_humidity,
+    COUNT(*)                          AS sample_count
+FROM sensor_data
+GROUP BY bucket, location
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy(
+    'sensor_hourly_avg',
+    start_offset  => INTERVAL '3 days',
+    end_offset    => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '1 hour',
+    if_not_exists => TRUE
+);
+
+-- ── Continuous Aggregate: 1일 평균 ────────────────────────────────
+CREATE MATERIALIZED VIEW IF NOT EXISTS sensor_daily_avg
+    WITH (timescaledb.continuous) AS
+SELECT
+    time_bucket('1 day', timestamp)   AS bucket,
+    location,
+    AVG(temperature)                  AS avg_temp,
+    MIN(temperature)                  AS min_temp,
+    MAX(temperature)                  AS max_temp,
+    AVG(humidity)                     AS avg_humidity,
+    COUNT(*)                          AS sample_count
+FROM sensor_data
+GROUP BY bucket, location
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy(
+    'sensor_daily_avg',
+    start_offset  => INTERVAL '30 days',
+    end_offset    => INTERVAL '1 day',
+    schedule_interval => INTERVAL '1 day',
+    if_not_exists => TRUE
 );
 
 -- ================================================================
@@ -280,6 +360,70 @@ CREATE INDEX IF NOT EXISTS idx_monitoring_snapshot_expires ON monitoring_snapsho
 -- monitoring_snapshot 에 카메라 참조 컬럼 추가 (기존 행은 NULL 허용)
 ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_id   VARCHAR(64)  NULL;
 ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_name VARCHAR(255) NULL;
+
+-- ================================================================
+-- 대화 히스토리 테이블 (채팅 세션 대화 내역 영구 보존)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS chat_history
+(
+    id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    session_id VARCHAR(200) NOT NULL,
+    role       VARCHAR(20)  NOT NULL,
+    content    TEXT         NOT NULL,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history (session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_history_time    ON chat_history (created_at DESC);
+
+-- ================================================================
+-- 사용자 설정 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS user_settings
+(
+    setting_key   VARCHAR(100) NOT NULL PRIMARY KEY,
+    setting_value TEXT         NOT NULL DEFAULT '',
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 기본 설정값 삽입 (없으면)
+INSERT INTO user_settings (setting_key, setting_value)
+  VALUES ('chat_history_retention_days', '30')
+  ON CONFLICT (setting_key) DO NOTHING;
+
+INSERT INTO user_settings (setting_key, setting_value)
+  VALUES ('weather_lat', '37.5665')
+  ON CONFLICT (setting_key) DO NOTHING;
+
+INSERT INTO user_settings (setting_key, setting_value)
+  VALUES ('weather_lon', '126.9780')
+  ON CONFLICT (setting_key) DO NOTHING;
+
+INSERT INTO user_settings (setting_key, setting_value)
+  VALUES ('weather_city', '')
+  ON CONFLICT (setting_key) DO NOTHING;
+
+-- ================================================================
+-- 진도 분석 로그 테이블 (PROGRESS 모드 양방향 동기화)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS progress_analysis_log
+(
+    analysis_id     VARCHAR(64)      NOT NULL PRIMARY KEY,
+    snapshot_id     VARCHAR(64)      NOT NULL,
+    wbs_task_id     VARCHAR(64)      NOT NULL,
+    wbs_project_id  VARCHAR(64)      NOT NULL,
+    before_progress INTEGER          NOT NULL DEFAULT 0,
+    after_progress  INTEGER          NOT NULL DEFAULT 0,
+    confidence      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    analysis_notes  TEXT,
+    rag_evidence    TEXT,
+    analyzed_at     TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_progress_analysis_task    ON progress_analysis_log (wbs_task_id);
+CREATE INDEX IF NOT EXISTS idx_progress_analysis_project ON progress_analysis_log (wbs_project_id);
+CREATE INDEX IF NOT EXISTS idx_progress_analysis_time    ON progress_analysis_log (analyzed_at DESC);
+
+-- safe_project 에 PROGRESS 모드 지원 (기존 CHECK 없으면 그냥 사용)
+ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(64) NULL;
 
 -- ================================================================
 -- 에이전트 질문 이력 테이블 (절대 삭제 불가 — immutable audit log)
