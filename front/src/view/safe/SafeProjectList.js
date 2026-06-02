@@ -339,6 +339,7 @@ export default function SafeProjectList({
   const [showModal,      setShowModal]      = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [search,         setSearch]         = useState("");
+  const [showAllCameras, setShowAllCameras] = useState(false);
 
   const filtered = projectList.filter(p =>
     p.projectName?.toLowerCase().includes(search.toLowerCase()) ||
@@ -356,6 +357,17 @@ export default function SafeProjectList({
     await onDeleteProject(projectId);
   }
 
+  // 전체 카메라 조회 화면
+  if (showAllCameras) {
+    return (
+      <AllCameraView
+        projectList={projectList}
+        onSelectProject={proj => { onProjectSelect(proj); setViceComponent("safe"); }}
+        onBack={() => setShowAllCameras(false)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-6">
 
@@ -370,6 +382,11 @@ export default function SafeProjectList({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setShowAllCameras(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{ backgroundColor: "#1e1a3a", border: "1px solid #818cf8", color: "#c4b5fd" }}>
+            📹 전체 카메라 조회
+          </button>
           <div className="relative">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm"
                   style={{ color: TB.text2 }}>🔍</span>
@@ -438,6 +455,219 @@ export default function SafeProjectList({
             : onCreateProject}
         />
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// 전체 카메라 조회 화면
+// 모든 safe 프로젝트의 카메라를 그리드로 표시.
+// 각 카드 클릭 → 해당 프로젝트로 이동.
+// ══════════════════════════════════════════════════════════════
+function AllCameraView({ projectList, onSelectProject, onBack }) {
+  const [camerasByProject, setCamerasByProject] = useState({});
+  const [latestSnapByProject, setLatestSnapByProject] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (projectList.length === 0) { setLoading(false); return; }
+
+    // 모든 프로젝트의 카메라 목록 + 최신 스냅샷 병렬 로드
+    Promise.all(
+      projectList.map(async proj => {
+        const [camRes, snapRes] = await Promise.all([
+          fetch(`/api/monitoring/cameras/${proj.projectId}`).catch(() => null),
+          fetch(`/api/monitoring/snapshots/${proj.projectId}`).catch(() => null),
+        ]);
+        const cameras   = camRes?.ok  ? await camRes.json()  : [];
+        const snapshots = snapRes?.ok ? await snapRes.json() : [];
+        return { projectId: proj.projectId, cameras, latestSnap: snapshots[0] ?? null };
+      })
+    ).then(results => {
+      const camMap  = {};
+      const snapMap = {};
+      results.forEach(({ projectId, cameras, latestSnap }) => {
+        camMap[projectId]  = cameras;
+        snapMap[projectId] = latestSnap;
+      });
+      setCamerasByProject(camMap);
+      setLatestSnapByProject(snapMap);
+      setLoading(false);
+    });
+  }, [projectList]);
+
+  // 표시할 카드 목록 생성
+  // 카메라가 등록된 경우 → 카메라별 1장,  미등록인 경우 → 프로젝트 cameraUrl로 1장
+  const cards = projectList.flatMap(proj => {
+    const cameras = camerasByProject[proj.projectId] ?? [];
+    const snap    = latestSnapByProject[proj.projectId] ?? null;
+    if (cameras.length > 0) {
+      return cameras.map(cam => ({
+        key:        `${proj.projectId}-${cam.cameraId}`,
+        project:    proj,
+        cameraName: cam.cameraName,
+        cameraUrl:  cam.cameraUrl,
+        snap,
+      }));
+    }
+    // 카메라 미등록: 프로젝트 cameraUrl이 있으면 1장, 없으면 빈 카드 1장
+    return [{
+      key:        proj.projectId,
+      project:    proj,
+      cameraName: proj.cameraUrl ? '기본 카메라' : '카메라 미등록',
+      cameraUrl:  proj.cameraUrl ?? null,
+      snap,
+    }];
+  });
+
+  const isCrack = proj => (proj.mode || 'SAFETY') === 'CRACK';
+
+  return (
+    <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-6">
+
+      {/* 헤더 */}
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack}
+          className="text-sm px-3 py-1.5 rounded-lg"
+          style={{ background: '#1c2a3a', border: '1px solid #253347', color: '#8896a4' }}>
+          ← 프로젝트 목록
+        </button>
+        <h2 className="text-xl font-bold text-white">📹 전체 카메라 조회</h2>
+        <span className="text-sm text-gray-500">
+          {cards.length}개 카메라 · {projectList.length}개 프로젝트
+        </span>
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-32 text-gray-500">
+          카메라 목록 로딩 중…
+        </div>
+      )}
+
+      {!loading && cards.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-32 text-center">
+          <div className="text-6xl mb-4">📷</div>
+          <p className="text-gray-400">등록된 프로젝트가 없습니다.</p>
+        </div>
+      )}
+
+      {/* 카메라 카드 그리드 */}
+      {!loading && cards.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {cards.map(card => (
+            <CameraCard
+              key={card.key}
+              card={card}
+              isCrack={isCrack(card.project)}
+              onClick={() => onSelectProject(card.project)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 카메라 카드 ────────────────────────────────────────────────
+function CameraCard({ card, isCrack, onClick }) {
+  const { project, cameraName, cameraUrl, snap } = card;
+  const hasSnap   = !!snap?.snapshotId;
+  const imgUrl    = hasSnap ? `/api/monitoring/snapshot/${snap.snapshotId}/image` : null;
+  const isRtsp    = cameraUrl?.toLowerCase().startsWith('rtsp://');
+  const noCamera  = !cameraUrl;
+
+  const modeColor  = isCrack ? '#60a5fa' : '#4ade80';
+  const modeBg     = isCrack ? '#1e3a5f' : '#14532d';
+  const modeBorder = isCrack ? '#3b82f6' : '#22c55e';
+
+  function fmtAgo(iso) {
+    if (!iso) return null;
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1)  return '방금 전';
+    if (m < 60) return `${m}분 전`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}시간 전`;
+    return `${Math.floor(h / 24)}일 전`;
+  }
+
+  return (
+    <div
+      onClick={onClick}
+      className="rounded-xl border overflow-hidden flex flex-col cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-xl"
+      style={{ borderColor: '#253347', background: '#0a1525' }}
+      title={`${project.projectName} 프로젝트로 이동`}>
+
+      {/* 썸네일 영역 */}
+      <div className="relative bg-black" style={{ height: '140px' }}>
+        {imgUrl ? (
+          <img src={imgUrl} alt="snap"
+            className="w-full h-full object-cover"
+            onError={e => { e.target.style.display = 'none'; }} />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2"
+            style={{ background: '#060f1c' }}>
+            <span className="text-4xl opacity-30">
+              {noCamera ? '📵' : isRtsp ? '📡' : '📷'}
+            </span>
+            <span className="text-xs text-gray-600">
+              {noCamera ? '카메라 미등록' : isRtsp ? 'RTSP 스트림' : '스냅샷 없음'}
+            </span>
+          </div>
+        )}
+
+        {/* 상태 오버레이 */}
+        <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
+          {/* 모드 배지 */}
+          <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
+            style={{ background: modeBg, border: `1px solid ${modeBorder}`, color: modeColor, fontSize: '10px' }}>
+            {isCrack ? '🔍 균열' : '🛡 안전'}
+          </span>
+          {/* 프로젝트 상태 배지 */}
+          {project.status !== 'ACTIVE' && (
+            <span className="text-xs px-1.5 py-0.5 rounded"
+              style={{ background: '#1e293b', border: '1px solid #475569', color: '#94a3b8', fontSize: '10px' }}>
+              {project.status === 'INACTIVE' ? '🟡 비활성' : '⚫ 보관'}
+            </span>
+          )}
+        </div>
+
+        {/* 카메라 URL 타입 */}
+        {cameraUrl && (
+          <span className="absolute top-2 right-2 text-xs px-1.5 py-0.5 rounded"
+            style={{ background: isRtsp ? '#1e1a3a' : '#0d2233',
+                     border: `1px solid ${isRtsp ? '#818cf8' : '#0ea5e9'}`,
+                     color:  isRtsp ? '#c4b5fd' : '#7dd3fc', fontSize: '10px' }}>
+            {isRtsp ? 'RTSP' : 'HTTP'}
+          </span>
+        )}
+
+        {/* 스냅샷 촬영 시간 */}
+        {hasSnap && (
+          <div className="absolute bottom-0 left-0 right-0 px-2 py-1"
+            style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.75))' }}>
+            <span className="text-xs text-gray-300">{fmtAgo(snap.capturedAt)}</span>
+            {snap.isProblem && (
+              <span className="ml-2 text-xs text-red-400">⚠ 위험 감지</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 카드 정보 */}
+      <div className="px-3 py-2.5 flex flex-col gap-1">
+        <p className="text-sm font-semibold text-white truncate" title={cameraName}>
+          {cameraName}
+        </p>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-gray-500 truncate flex-1" title={project.projectName}>
+            📍 {project.projectName}
+          </span>
+        </div>
+        {project.location && (
+          <span className="text-xs text-gray-600 truncate">{project.location}</span>
+        )}
+      </div>
     </div>
   );
 }
