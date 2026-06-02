@@ -431,9 +431,14 @@ function App() {
   }, [refreshProjectList, refreshSimulationProjectList, refreshSafeProjectList]);
 
   useEffect(() => {
-    AxiosCustom.get('/api/chat/status')
-      .then(() => setAgentAvailable(true))
-      .catch(() => setAgentAvailable(false));
+    const check = () =>
+      AxiosCustom.get('/api/chat/status')
+        .then(() => setAgentAvailable(true))
+        .catch(() => setAgentAvailable(false));
+
+    check(); // 최초 즉시 체크
+    const id = setInterval(check, 30_000); // 30초마다 재확인
+    return () => clearInterval(id);
   }, []);
 
   if (loading) {

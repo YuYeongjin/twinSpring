@@ -7,6 +7,7 @@ import { Client } from '@stomp/stompjs';
 import { useT } from '../../i18n/LanguageContext';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import { useCrackMonitor } from '../../context/CrackMonitorContext';
+import MonitoringGallery from './MonitoringGallery';
 
 const DETECT_SERVER_URL = process.env.REACT_APP_API_URL
   || (process.env.NODE_ENV === 'development'
@@ -1520,6 +1521,10 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
 
   const dangerous = safeEvent?.dangerous ?? false;
   const isCrackMode = (selectedProject?.mode || 'SAFETY') === 'CRACK';
+  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'monitoring'
+
+  // 프로젝트가 바뀌면 실시간 탭으로 초기화
+  useEffect(() => { setActiveTab('live'); }, [selectedProject?.projectId]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -1558,10 +1563,41 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
         </div>
       )}
 
-      {/* ── 균열 감지 모드 ── */}
-      {isCrackMode ? (
+      {/* ── 탭 버튼 ── */}
+      {selectedProject && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('live')}
+            className="text-xs px-4 py-1.5 rounded-lg"
+            style={{
+              background: activeTab === 'live' ? '#1e3a5f' : '#0d1b2a',
+              border: `1px solid ${activeTab === 'live' ? '#3b82f6' : '#253347'}`,
+              color: activeTab === 'live' ? '#93c5fd' : '#6b7280',
+            }}>
+            {isCrackMode ? '🔍 실시간 감지' : '🛡 실시간 모니터링'}
+          </button>
+          <button
+            onClick={() => setActiveTab('monitoring')}
+            className="text-xs px-4 py-1.5 rounded-lg"
+            style={{
+              background: activeTab === 'monitoring' ? '#1e3a5f' : '#0d1b2a',
+              border: `1px solid ${activeTab === 'monitoring' ? '#3b82f6' : '#253347'}`,
+              color: activeTab === 'monitoring' ? '#93c5fd' : '#6b7280',
+            }}>
+            {t('monTab')}
+          </button>
+        </div>
+      )}
+
+      {/* ── 모니터링 기록 탭 ── */}
+      {selectedProject && activeTab === 'monitoring' && (
+        <MonitoringGallery selectedProject={selectedProject} />
+      )}
+
+      {/* ── 실시간 탭 (균열 감지 모드) ── */}
+      {(!selectedProject || activeTab === 'live') && isCrackMode ? (
         <CrackMonitorPanel selectedProject={selectedProject} />
-      ) : (
+      ) : (!selectedProject || activeTab === 'live') && !isCrackMode ? (
         <>
           {/* 위험 배너 (감지 서버) */}
           {dangerous && (
@@ -1684,7 +1720,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
           {/* ── 하단: 탐지 로그 ── */}
           <LogPanel detectionHistory={detectionHistory} />
         </>
-      )}
+      ) : null}
 
     </div>
   );

@@ -346,7 +346,7 @@ public class ChatServiceImpl implements ChatService {
             agentClient.get()
                     .uri("/health")
                     .exchangeToMono(cr -> Mono.just(cr.statusCode()))
-                    .block(Duration.ofSeconds(3));
+                    .block(Duration.ofSeconds(5));
             return true;
         } catch (Exception e) {
             return false;
