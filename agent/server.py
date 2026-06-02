@@ -593,6 +593,14 @@ def clear_session(session_id: str):
 
 @app.get("/health")
 def health():
+    # 서버 생존 여부만 확인 — RAG/DB 쿼리 없이 즉시 응답
+    # (이전 구현에서 RAG 검색을 수행해 3초 타임아웃을 초과, 오프라인 오판 발생)
+    return {"status": "ok"}
+
+
+@app.get("/health/detail")
+def health_detail():
+    # RAG/DB 상태까지 확인하는 상세 헬스체크 (별도 모니터링용)
     from tools.construction_rag_tool import search_construction_docs
     rag_ok = False
     try:
