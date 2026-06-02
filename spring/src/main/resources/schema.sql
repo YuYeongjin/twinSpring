@@ -426,6 +426,21 @@ CREATE INDEX IF NOT EXISTS idx_progress_analysis_time    ON progress_analysis_lo
 ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(64) NULL;
 
 -- ================================================================
+-- Safe 프로젝트 ↔ IoT 센서 매핑 테이블
+-- sensor_location: sensor_data.location 값 (예: "bridgeA")
+-- ================================================================
+CREATE TABLE IF NOT EXISTS safe_iot_mapping
+(
+    mapping_id      VARCHAR(64)  NOT NULL PRIMARY KEY,
+    project_id      VARCHAR(64)  NOT NULL REFERENCES safe_project (project_id) ON DELETE CASCADE,
+    sensor_location VARCHAR(100) NOT NULL,
+    sensor_alias    VARCHAR(255) NULL,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (project_id, sensor_location)
+);
+CREATE INDEX IF NOT EXISTS idx_safe_iot_mapping_project ON safe_iot_mapping (project_id);
+
+-- ================================================================
 -- 에이전트 질문 이력 테이블 (절대 삭제 불가 — immutable audit log)
 -- ================================================================
 CREATE TABLE IF NOT EXISTS agent_query_log

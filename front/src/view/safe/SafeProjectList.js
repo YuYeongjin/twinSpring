@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useT } from "../../i18n/LanguageContext";
 import WbsLinkWidget from "../wbs/component/WbsLinkWidget";
 import AxiosCustom from "../../axios/AxiosCustom";
+import IotTab from "./IotTab";
 
 const TB = {
   card:  "bg-[#1c2a3a] border border-[#253347] rounded-xl shadow-lg",
@@ -327,6 +328,12 @@ function ProjectCard({ project, onSelect, onEdit, onDelete, t }) {
   );
 }
 
+// ── 탭 정의 ─────────────────────────────────────────────────
+const SAFE_TABS = [
+  { key: "projects", label: "🛡 프로젝트" },
+  { key: "iot",      label: "📡 IoT 센서" },
+];
+
 // ── 메인 컴포넌트 ─────────────────────────────────────────────
 export default function SafeProjectList({
   setViceComponent,
@@ -337,6 +344,7 @@ export default function SafeProjectList({
   onDeleteProject,
 }) {
   const t = useT('safeProjectList');
+  const [activeTab,      setActiveTab]      = useState("projects");
   const [showModal,      setShowModal]      = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [search,         setSearch]         = useState("");
@@ -370,80 +378,111 @@ export default function SafeProjectList({
   }
 
   return (
-    <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-6">
+    <div className="min-h-screen bg-[#0d1b2a] text-gray-200">
 
-      {/* 헤더 */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            {t('title')}
-          </h2>
-          <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-            {t('subtitle')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setShowAllCameras(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-                  style={{ backgroundColor: "#1e1a3a", border: "1px solid #818cf8", color: "#c4b5fd" }}>
-            📹 전체 카메라 조회
+      {/* 탭 네비게이션 */}
+      <div className="flex items-center gap-1 px-6 pt-5 pb-0 border-b border-[#1a2a3a]">
+        {SAFE_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="px-5 py-2.5 text-sm font-semibold rounded-t-lg transition"
+            style={{
+              backgroundColor: activeTab === tab.key ? "#0d1b2a" : "transparent",
+              borderTop:    activeTab === tab.key ? "2px solid #4ade80" : "2px solid transparent",
+              borderLeft:   activeTab === tab.key ? "1px solid #1a2a3a" : "1px solid transparent",
+              borderRight:  activeTab === tab.key ? "1px solid #1a2a3a" : "1px solid transparent",
+              color: activeTab === tab.key ? "#4ade80" : "#8896a4",
+              marginBottom: "-1px",
+            }}
+          >
+            {tab.label}
           </button>
-          <div className="relative">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm"
-                  style={{ color: TB.text2 }}>🔍</span>
-            <input type="text" value={search}
-                   onChange={e => setSearch(e.target.value)}
-                   placeholder={t('searchPlaceholder')}
-                   className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
-                   style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text1 }} />
-          </div>
-          <button onClick={() => setShowModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-                  style={{ backgroundColor: "#065f46", border: "1px solid #4ade80" }}>
-            {t('addProject')}
-          </button>
-        </div>
-      </div>
-
-      {/* 통계 */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          { label: t('total'),    value: stats.total,    color: "#60a5fa", icon: "🛡" },
-          { label: t('active'),   value: stats.active,   color: "#4ade80", icon: "🟢" },
-          { label: t('inactive'), value: stats.inactive, color: "#f59e0b", icon: "🟡" },
-        ].map(s => (
-          <div key={s.label} className="rounded-xl p-3 text-center"
-               style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
-            <div className="text-2xl mb-1">{s.icon}</div>
-            <div className="text-lg font-bold" style={{ color: s.color }}>{s.value}</div>
-            <div className="text-xs mt-0.5" style={{ color: TB.text2 }}>{s.label}</div>
-          </div>
         ))}
       </div>
 
-      {/* 카드 그리드 */}
-      {filtered.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(p => (
-            <ProjectCard
-              key={p.projectId}
-              project={p}
-              t={t}
-              onSelect={(proj) => { onProjectSelect(proj); setViceComponent("safe"); }}
-              onEdit={(proj) => { setEditingProject(proj); setShowModal(true); }}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-32 text-center">
-          <div className="text-7xl mb-5">{search ? "🔍" : "🛡"}</div>
-          <div className="text-lg font-semibold text-gray-400 mb-2">
-            {search ? t('noResults', { search }) : t('noSites')}
+      {/* IoT 탭 */}
+      {activeTab === "iot" && (
+        <IotTab projectList={projectList} />
+      )}
+
+      {/* 프로젝트 탭 */}
+      {activeTab === "projects" && (
+        <div className="p-6">
+          {/* 헤더 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                {t('title')}
+              </h2>
+              <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
+                {t('subtitle')}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => setShowAllCameras(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+                      style={{ backgroundColor: "#1e1a3a", border: "1px solid #818cf8", color: "#c4b5fd" }}>
+                📹 전체 카메라 조회
+              </button>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm"
+                      style={{ color: TB.text2 }}>🔍</span>
+                <input type="text" value={search}
+                       onChange={e => setSearch(e.target.value)}
+                       placeholder={t('searchPlaceholder')}
+                       className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
+                       style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text1 }} />
+              </div>
+              <button onClick={() => setShowModal(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
+                      style={{ backgroundColor: "#065f46", border: "1px solid #4ade80" }}>
+                {t('addProject')}
+              </button>
+            </div>
           </div>
-          <div className="text-sm" style={{ color: TB.text2 }}>
-            {search ? t('searchPlaceholder') : t('noSitesHint')}
+
+          {/* 통계 */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {[
+              { label: t('total'),    value: stats.total,    color: "#60a5fa", icon: "🛡" },
+              { label: t('active'),   value: stats.active,   color: "#4ade80", icon: "🟢" },
+              { label: t('inactive'), value: stats.inactive, color: "#f59e0b", icon: "🟡" },
+            ].map(s => (
+              <div key={s.label} className="rounded-xl p-3 text-center"
+                   style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
+                <div className="text-2xl mb-1">{s.icon}</div>
+                <div className="text-lg font-bold" style={{ color: s.color }}>{s.value}</div>
+                <div className="text-xs mt-0.5" style={{ color: TB.text2 }}>{s.label}</div>
+              </div>
+            ))}
           </div>
+
+          {/* 카드 그리드 */}
+          {filtered.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filtered.map(p => (
+                <ProjectCard
+                  key={p.projectId}
+                  project={p}
+                  t={t}
+                  onSelect={(proj) => { onProjectSelect(proj); setViceComponent("safe"); }}
+                  onEdit={(proj) => { setEditingProject(proj); setShowModal(true); }}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-32 text-center">
+              <div className="text-7xl mb-5">{search ? "🔍" : "🛡"}</div>
+              <div className="text-lg font-semibold text-gray-400 mb-2">
+                {search ? t('noResults', { search }) : t('noSites')}
+              </div>
+              <div className="text-sm" style={{ color: TB.text2 }}>
+                {search ? t('searchPlaceholder') : t('noSitesHint')}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
