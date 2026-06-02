@@ -14,6 +14,8 @@ import yyj.project.twinspring.dao.MonitoringDAO;
 import yyj.project.twinspring.dao.SafeDAO;
 
 import jakarta.annotation.PostConstruct;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
@@ -240,11 +242,24 @@ public class MonitoringSchedulerService {
             pb.redirectError(ProcessBuilder.Redirect.DISCARD); // stderr 버림
             Process proc = pb.start();
 
-            byte[] bytes = proc.getInputStream().readAllBytes();
-            boolean done = proc.waitFor(FFMPEG_TIMEOUT_SEC, TimeUnit.SECONDS);
-            if (!done) proc.destroyForcibly();
+            // stdout 읽기를 별도 데몬 스레드로 분리.
+            // readAllBytes()를 waitFor() 앞에 두면 FFmpeg이 hang 시
+            // 파이프 버퍼가 꽉 차 데드락이 발생하고 타임아웃이 동작하지 않는다.
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            Thread reader = new Thread(() -> {
+                try { proc.getInputStream().transferTo(baos); }
+                catch (IOException ignored) {}
+            });
+            reader.setDaemon(true);
+            reader.start();
 
-            // JPEG 최소 크기 확인 (SOI 마커 0xFFD8 으로 시작하는지)
+            boolean done = proc.waitFor(FFMPEG_TIMEOUT_SEC, TimeUnit.SECONDS);
+            if (!done) proc.destroyForcibly(); // 타임아웃 → 강제 종료 → reader가 EOF 받아 종료
+
+            reader.join(2000); // 잔여 데이터 최대 2초 대기
+
+            byte[] bytes = baos.toByteArray();
+            // JPEG SOI 마커(0xFFD8) 로 시작하는지 확인
             if (bytes.length > 2 && bytes[0] == (byte)0xFF && bytes[1] == (byte)0xD8) {
                 return bytes;
             }

@@ -1523,6 +1523,9 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   const isCrackMode = (selectedProject?.mode || 'SAFETY') === 'CRACK';
   const [activeTab, setActiveTab] = useState('live'); // 'live' | 'monitoring'
 
+  // 프로젝트가 바뀌면 실시간 탭으로 초기화
+  useEffect(() => { setActiveTab('live'); }, [selectedProject?.projectId]);
+
   return (
     <div className="flex flex-col gap-4">
 

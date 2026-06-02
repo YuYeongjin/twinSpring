@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useT } from '../../i18n/useT';
+import { useT } from '../../i18n/LanguageContext';
 
 // CRACK 모드 전용 촬영 주기 (버튼 선택)
 const CRACK_INTERVALS = [
