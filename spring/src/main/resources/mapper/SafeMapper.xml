@@ -52,4 +52,43 @@
         DELETE FROM safe_project WHERE project_id = #{projectId}
     </delete>
 
+    <!-- ── IoT 센서 매핑 ──────────────────────────────────────── -->
+
+    <select id="getAllIotMappings" resultType="map">
+        SELECT
+            m.mapping_id      AS "mappingId",
+            m.project_id      AS "projectId",
+            p.project_name    AS "projectName",
+            m.sensor_location AS "sensorLocation",
+            m.sensor_alias    AS "sensorAlias",
+            TO_CHAR(m.created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM safe_iot_mapping m
+        JOIN safe_project p ON p.project_id = m.project_id
+        ORDER BY p.project_name ASC, m.sensor_location ASC
+    </select>
+
+    <select id="getIotMappingsByProject" parameterType="string" resultType="map">
+        SELECT
+            m.mapping_id      AS "mappingId",
+            m.project_id      AS "projectId",
+            p.project_name    AS "projectName",
+            m.sensor_location AS "sensorLocation",
+            m.sensor_alias    AS "sensorAlias",
+            TO_CHAR(m.created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM safe_iot_mapping m
+        JOIN safe_project p ON p.project_id = m.project_id
+        WHERE m.project_id = #{projectId}
+        ORDER BY m.sensor_location ASC
+    </select>
+
+    <insert id="insertIotMapping" parameterType="map">
+        INSERT INTO safe_iot_mapping (mapping_id, project_id, sensor_location, sensor_alias)
+        VALUES (#{mappingId}, #{projectId}, #{sensorLocation}, #{sensorAlias})
+        ON CONFLICT (project_id, sensor_location) DO NOTHING
+    </insert>
+
+    <delete id="deleteIotMapping" parameterType="string">
+        DELETE FROM safe_iot_mapping WHERE mapping_id = #{mappingId}
+    </delete>
+
 </mapper>
