@@ -339,11 +339,13 @@ function CoordCommandBar({
                              onCloseChain,
                              onFinish,
                          }) {
+    const allAxes = lockZ ? ['x', 'y'] : ['x', 'y', 'z'];
     const initLocked = () => ({ x: null, y: null, z: lockZ ? 0 : null });
-    const [phase, setPhase]       = React.useState('x');
-    const [lockedVals, setLocked] = React.useState(initLocked);
-    const [inputVal, setInputVal] = React.useState('');
-    const [livePos, setLivePos]   = React.useState({ x: 0, y: 0, z: 0 });
+    const [phase, setPhase]         = React.useState('x');
+    const [lockedVals, setLocked]   = React.useState(initLocked);
+    const [lockOrder, setLockOrder] = React.useState([]);
+    const [inputVal, setInputVal]   = React.useState('');
+    const [livePos, setLivePos]     = React.useState({ x: 0, y: 0, z: 0 });
     const inputRef = React.useRef();
 
     React.useEffect(() => {
@@ -351,8 +353,9 @@ function CoordCommandBar({
         function tick() {
             if (hoverPosRef?.current) {
                 const p = hoverPosRef.current;
+                // Y축도 체크해야 X 고정 후 Y가 변할 때 livePos가 업데이트됨
                 setLivePos(prev =>
-                    Math.abs(prev.x - p.x) > 0.005 || Math.abs(prev.z - p.z) > 0.005
+                    Math.abs(prev.x - p.x) > 0.005 || Math.abs(prev.y - p.y) > 0.005 || Math.abs(prev.z - p.z) > 0.005
                         ? { x: p.x, y: p.y, z: p.z } : prev
                 );
             }
@@ -365,11 +368,12 @@ function CoordCommandBar({
     React.useEffect(() => {
         setPhase('x');
         setLocked(initLocked());
+        setLockOrder([]);
         setInputVal('');
         if (lockZ) onAxisLocked?.('z', 0);
         const t = setTimeout(() => inputRef.current?.focus(), 60);
         return () => clearTimeout(t);
-    }, [label, lockZ]);
+    }, [label, lockZ]); // eslint-disable-line react-hooks/exhaustive-deps
 
     function advance() {
         const raw = inputVal.trim();
@@ -377,23 +381,44 @@ function CoordCommandBar({
         if (isNaN(num)) return;
 
         const newLocked = { ...lockedVals, [phase]: num };
+        const newOrder  = [...lockOrder, phase];
         onAxisLocked?.(phase, num);
 
-        const nextPhase = phase === 'x' ? 'y' : phase === 'y' ? (lockZ ? null : 'z') : null;
+        // 현재 축 제외한 다음 미잠금 축 탐색 (x→y→z 순서 유지)
+        const nextPhase = allAxes.find(a => a !== phase && newLocked[a] === null) ?? null;
 
         if (nextPhase === null) {
             onConfirm({
                 x: newLocked.x ?? livePos.x,
                 y: newLocked.y ?? livePos.y,
-                z: lockZ ? 0 : num,
+                z: lockZ ? 0 : (newLocked.z ?? livePos.z),
             });
-            setPhase('x');
+            setPhase(allAxes[0]);
             setLocked(initLocked());
+            setLockOrder([]);
             setInputVal('');
             onAxisLocked?.('__reset__', null);
         } else {
             setLocked(newLocked);
+            setLockOrder(newOrder);
             setPhase(nextPhase);
+            setInputVal('');
+        }
+        setTimeout(() => inputRef.current?.focus(), 30);
+    }
+
+    function handleAxisClick(axis) {
+        if (lockZ && axis === 'z') return;
+        if (lockedVals[axis] !== null) {
+            // 잠금 축 클릭 → 잠금 해제하고 해당 축 활성화
+            setLocked(prev => ({ ...prev, [axis]: null }));
+            setLockOrder(prev => prev.filter(a => a !== axis));
+            onAxisLocked?.(axis, null);
+            setPhase(axis);
+            setInputVal('');
+        } else {
+            // 미잠금 축 클릭 → 해당 축 입력 활성화
+            setPhase(axis);
             setInputVal('');
         }
         setTimeout(() => inputRef.current?.focus(), 30);
@@ -404,13 +429,13 @@ function CoordCommandBar({
         if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); advance(); }
         if (e.key === 'Escape') {
             e.preventDefault();
-            const orderedAxes = lockZ ? ['x', 'y'] : ['x', 'y', 'z'];
-            const idx = orderedAxes.indexOf(phase);
-            if (idx > 0) {
-                const prevAxis = orderedAxes[idx - 1];
-                setLocked(prev => ({ ...prev, [prevAxis]: null }));
-                onAxisLocked?.(prevAxis, null);
-                setPhase(prevAxis);
+            if (lockOrder.length > 0) {
+                // 마지막으로 잠근 축을 해제하고 해당 축으로 돌아감
+                const lastLocked = lockOrder[lockOrder.length - 1];
+                setLocked(prev => ({ ...prev, [lastLocked]: null }));
+                setLockOrder(prev => prev.slice(0, -1));
+                onAxisLocked?.(lastLocked, null);
+                setPhase(lastLocked);
                 setInputVal('');
                 setTimeout(() => inputRef.current?.focus(), 30);
             } else {
@@ -444,16 +469,20 @@ function CoordCommandBar({
                             : (livePos[axis]?.toFixed(2) ?? '0.00');
                     return (
                         <React.Fragment key={axis}>
-                            <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 border ${
-                                isZFixed  ? 'bg-space-800/60 border-space-600/40 opacity-50' :
-                                    isLocked  ? 'bg-green-900/30 border-green-700/50' :
-                                        isActive  ? 'bg-space-700/80 border-blue-500/60' :
-                                            'bg-space-800/40 border-space-600/30'
-                            }`}>
+                            <div
+                                className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 border ${
+                                    isZFixed  ? 'bg-space-800/60 border-space-600/40 opacity-50' :
+                                        isLocked  ? 'bg-green-900/30 border-green-700/50 cursor-pointer hover:bg-green-900/50' :
+                                            isActive  ? 'bg-space-700/80 border-blue-500/60' :
+                                                'bg-space-800/40 border-space-600/30 cursor-pointer hover:border-space-500/60'
+                                }`}
+                                onClick={() => handleAxisClick(axis)}
+                                title={isLocked ? `${axis.toUpperCase()} 잠금 해제` : `${axis.toUpperCase()} 입력`}
+                            >
                                 <span className={`font-semibold text-[11px] ${
                                     isZFixed  ? 'text-gray-600' :
                                         isLocked  ? 'text-green-400' :
-                                            isActive  ? 'text-blue-300' : 'text-gray-600'
+                                            isActive  ? 'text-blue-300' : 'text-gray-500'
                                 }`}>{axis.toUpperCase()}</span>
                                 {isActive ? (
                                     <input
@@ -472,7 +501,7 @@ function CoordCommandBar({
                                 )}
                                 {isLocked && !isZFixed && <span className="text-green-500 text-[9px]">✓</span>}
                             </div>
-                            {i < 2 && <span className="text-gray-700 px-0.5">›</span>}
+                            {i < 2 && <span className="text-gray-700 px-0.5">·</span>}
                         </React.Fragment>
                     );
                 })}

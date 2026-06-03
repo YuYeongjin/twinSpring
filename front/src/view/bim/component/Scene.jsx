@@ -441,8 +441,9 @@ function HoverTracker({ drawHeight, snapVertices, snapEnabled, onHoverPosition, 
 // 배치 고스트 (스마트 스냅 — 센터 + 코너)
 // ================================================================
 function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef, viewMode = '3d' }) {
-    const meshRef   = useRef();
-    const snapRef   = useRef();
+    const meshRef    = useRef();
+    const wireRef    = useRef();
+    const snapRef    = useRef();
     const { camera, raycaster, mouse } = useThree();
 
     const snapPlane = useMemo(() => getSnapPlane(viewMode, snapVertices), [viewMode, snapVertices]);
@@ -499,7 +500,8 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHove
         onHoverPosition?.({ x: px, y: pz, z: py });
 
         const ghostY = py + sizeZ / 2;
-        if (meshRef.current) meshRef.current.position.set(px, ghostY, pz);
+        if (meshRef.current)  meshRef.current.position.set(px, ghostY, pz);
+        if (wireRef.current)  wireRef.current.position.set(px, ghostY, pz);
         if (snapRef.current) {
             snapRef.current.visible = !!snapResult;
             if (snapResult) snapRef.current.position.set(px, py + 0.1, pz);
@@ -512,7 +514,7 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHove
                 <boxGeometry args={[sizeX, sizeZ, sizeY]} />
                 <meshStandardMaterial color={getBaseColor(template.elementType)} opacity={0.45} transparent depthWrite={false} />
             </mesh>
-            <mesh position={[0, sizeZ / 2, 0]}>
+            <mesh ref={wireRef} position={[0, sizeZ / 2, 0]}>
                 <boxGeometry args={[sizeX + 0.02, sizeZ + 0.02, sizeY + 0.02]} />
                 <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.6} />
             </mesh>
