@@ -21,6 +21,40 @@ import { CrackMonitorProvider } from './context/CrackMonitorContext';
 import SettingsPanel from './view/settings/SettingsPanel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+// ── 모바일 가로 회전 차단 오버레이 ──────────────────────────────
+function OrientationLockOverlay() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      const landscape = window.innerWidth > window.innerHeight;
+      const mobile = window.innerWidth <= 1024 && ('ontouchstart' in window);
+      setShow(landscape && mobile);
+    };
+    check();
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+    return () => {
+      window.removeEventListener('resize', check);
+      window.removeEventListener('orientationchange', check);
+    };
+  }, []);
+  if (!show) return null;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 99999,
+      backgroundColor: '#060f18',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 20,
+    }}>
+      <div style={{ fontSize: 56, transform: 'rotate(90deg)' }}>📱</div>
+      <p style={{ color: '#93c5fd', fontSize: 17, fontWeight: 700, letterSpacing: '0.02em' }}>
+        세로 방향으로 사용해주세요
+      </p>
+      <p style={{ color: '#4b5563', fontSize: 13 }}>Please rotate to portrait</p>
+    </div>
+  );
+}
+
 function App() {
   const t = useT('app');
 
@@ -28,13 +62,28 @@ function App() {
     document.documentElement.classList.add("dark");
   }, []);
 
-  // 모바일 세로 방향 고정 (Android Chrome PWA 설치 환경에서 API 레벨 잠금)
+  // 모바일 세로 방향 고정 (Screen Orientation API — PWA/fullscreen 환경)
   useEffect(() => {
     const lock = window.screen.orientation?.lock;
     if (typeof lock === 'function') {
       window.screen.orientation.lock('portrait').catch(() => {});
     }
   }, []);
+
+  // 캔버스 전체화면 상태 (BIM / TEST 탭)
+  const [canvasFullscreen, setCanvasFullscreen] = useState(false);
+  const toggleCanvasFullscreen = useCallback(() => setCanvasFullscreen(v => !v), []);
+
+  // BIM 부재 배치/선 작도 모드 — 활성 중 FloatingAgent 숨김
+  const [bimPlacementMode, setBimPlacementMode] = useState(false);
+
+  // ESC 키로 전체화면 해제
+  useEffect(() => {
+    if (!canvasFullscreen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setCanvasFullscreen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canvasFullscreen]);
 
   const [viewComponent, setViceComponent] = useState('wbs');
 
@@ -532,7 +581,7 @@ function App() {
       return <SettingsPanel />;
     }
     if (viewComponent === 'test') {
-      return <TestDashboard />;
+      return <TestDashboard canvasFullscreen={canvasFullscreen} onToggleCanvasFullscreen={toggleCanvasFullscreen} />;
     }
     if (viewComponent === 'agent') {
       return (
@@ -559,6 +608,9 @@ function App() {
           selectedProject={selectedProject}
           onConvertDrone={convertDroneProject}
           ifcMeshes={currentIfcMeshes}
+          canvasFullscreen={canvasFullscreen}
+          onToggleCanvasFullscreen={toggleCanvasFullscreen}
+          onPlacementModeChange={setBimPlacementMode}
         />
       );
     }
@@ -596,53 +648,64 @@ function App() {
     );
   };
 
+  const isWbs = viewComponent === 'wbs';
+
   return (
     <CrackMonitorProvider>
-    <div className={
-      viewComponent === 'wbs'
-        ? "h-screen flex flex-col bg-space-900 text-gray-200 overflow-hidden"
-        : "min-h-screen bg-space-900 text-gray-200"
-    }>
-      <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} />
+      {/* 모바일 가로 회전 차단 */}
+      <OrientationLockOverlay />
 
-      <main className={
-        viewComponent === 'wbs'
-          ? "flex-1 min-h-0 flex flex-col overflow-hidden"
-          : "w-full px-2 sm:px-4 py-4 sm:py-6 pb-24 sm:pb-6 overflow-x-hidden"
+      <div className={
+        canvasFullscreen
+          ? "fixed inset-0 z-40 bg-space-900 text-gray-200 flex flex-col"
+          : isWbs
+            ? "h-screen flex flex-col bg-space-900 text-gray-200 overflow-hidden"
+            : "min-h-screen bg-space-900 text-gray-200"
       }>
-        {renderView()}
-      </main>
+        {/* 캔버스 전체화면 모드에서는 헤더 숨김 */}
+        {!canvasFullscreen && (
+          <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} />
+        )}
 
-      {viewComponent !== 'wbs' && <Footer />}
+        <main className={
+          canvasFullscreen
+            ? "flex-1 min-h-0 flex flex-col overflow-hidden"
+            : isWbs
+              ? "flex-1 min-h-0 flex flex-col overflow-hidden"
+              : "w-full px-2 sm:px-4 py-4 sm:py-6 pb-4 sm:pb-6 overflow-x-hidden"
+        }>
+          {renderView()}
+        </main>
 
-      {viewComponent !== 'agent' && viewComponent !== 'wbs' && (
-        <FloatingAgent
-          viewComponent={viewComponent}
-          selectedProject={selectedProject}
-          selectedSimulationProject={selectedSimulationProject}
-          selectedSafeProject={selectedSafeProject}
-        />
-      )}
+        {!canvasFullscreen && viewComponent !== 'wbs' && viewComponent !== 'bim' && <Footer />}
 
-      {/* Agent WBS 수정 제안 팝업 — 전 탭에서 항상 표시 (ChatView 위) */}
-      <AgentWbsPopup onApprove={handleWbsApprove} />
+        {/* 에이전트: 전체화면·배치모드·agent·wbs 탭에서는 숨김 */}
+        {!canvasFullscreen && !bimPlacementMode && viewComponent !== 'agent' && viewComponent !== 'wbs' && (
+          <FloatingAgent
+            viewComponent={viewComponent}
+            selectedProject={selectedProject}
+            selectedSimulationProject={selectedSimulationProject}
+            selectedSafeProject={selectedSafeProject}
+          />
+        )}
 
-      {/* WBS 현장 선택 모달 — 연결된 WBS 프로젝트가 없을 때 */}
-      {showWbsProjectSelect && pendingWbsEvent && (
-        <WbsProjectSelectModal
-          eventItem={pendingWbsEvent}
-          onSelect={(project) => {
-            setShowWbsProjectSelect(false);
-            applyWbsApprove(pendingWbsEvent, project.projectId);
-            setPendingWbsEvent(null);
-          }}
-          onClose={() => {
-            setShowWbsProjectSelect(false);
-            setPendingWbsEvent(null);
-          }}
-        />
-      )}
-    </div>
+        <AgentWbsPopup onApprove={handleWbsApprove} />
+
+        {showWbsProjectSelect && pendingWbsEvent && (
+          <WbsProjectSelectModal
+            eventItem={pendingWbsEvent}
+            onSelect={(project) => {
+              setShowWbsProjectSelect(false);
+              applyWbsApprove(pendingWbsEvent, project.projectId);
+              setPendingWbsEvent(null);
+            }}
+            onClose={() => {
+              setShowWbsProjectSelect(false);
+              setPendingWbsEvent(null);
+            }}
+          />
+        )}
+      </div>
     </CrackMonitorProvider>
   );
 }
