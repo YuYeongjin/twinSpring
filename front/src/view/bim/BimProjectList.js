@@ -27,9 +27,9 @@ function isInvalidName(name) {
   if (!name) return true;
   const trimmed = name.trim();
   return (
-    trimmed === "" ||
-    trimmed.toLowerCase() === "null" ||
-    /^\?+$/.test(trimmed)
+      trimmed === "" ||
+      trimmed.toLowerCase() === "null" ||
+      /^\?+$/.test(trimmed)
   );
 }
 
@@ -58,54 +58,54 @@ function InlineNameEditor({ projectId, currentName, onSave, onCancel }) {
   }
 
   return (
-    <div
-      className="flex items-center gap-1.5 mt-1"
-      onClick={e => e.stopPropagation()}
-    >
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={e => setValue(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === "Enter") handleSave();
-          if (e.key === "Escape") onCancel();
-        }}
-        placeholder={t('enterProjectName')}
-        className="flex-1 px-2 py-1 rounded text-xs outline-none min-w-0"
-        style={{
-          backgroundColor: "#0d1b2a",
-          border: "1px solid #3b82f6",
-          color: TB.text1,
-        }}
-      />
-      <button
-        onClick={handleSave}
-        disabled={!value.trim() || saving}
-        title="Save (Enter)"
-        className="flex-shrink-0 px-2 py-1 rounded text-xs font-medium transition"
-        style={{
-          backgroundColor: value.trim() && !saving ? "#1d4ed8" : "#1c2a3a",
-          color: value.trim() && !saving ? "#fff" : TB.text2,
-          border: "1px solid #3b82f6",
-          cursor: !value.trim() || saving ? "not-allowed" : "pointer",
-        }}
+      <div
+          className="flex items-center gap-1.5 mt-1"
+          onClick={e => e.stopPropagation()}
       >
-        {saving ? "…" : "✓"}
-      </button>
-      <button
-        onClick={onCancel}
-        title="Cancel (Esc)"
-        className="flex-shrink-0 px-2 py-1 rounded text-xs transition"
-        style={{
-          backgroundColor: "#1c2a3a",
-          border: "1px solid #253347",
-          color: TB.text2,
-        }}
-      >
-        ✕
-      </button>
-    </div>
+        <input
+            ref={inputRef}
+            type="text"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") handleSave();
+              if (e.key === "Escape") onCancel();
+            }}
+            placeholder={t('enterProjectName')}
+            className="flex-1 px-2 py-1 rounded text-xs outline-none min-w-0"
+            style={{
+              backgroundColor: "#0d1b2a",
+              border: "1px solid #3b82f6",
+              color: TB.text1,
+            }}
+        />
+        <button
+            onClick={handleSave}
+            disabled={!value.trim() || saving}
+            title="Save (Enter)"
+            className="flex-shrink-0 px-2 py-1 rounded text-xs font-medium transition"
+            style={{
+              backgroundColor: value.trim() && !saving ? "#1d4ed8" : "#1c2a3a",
+              color: value.trim() && !saving ? "#fff" : TB.text2,
+              border: "1px solid #3b82f6",
+              cursor: !value.trim() || saving ? "not-allowed" : "pointer",
+            }}
+        >
+          {saving ? "…" : "✓"}
+        </button>
+        <button
+            onClick={onCancel}
+            title="Cancel (Esc)"
+            className="flex-shrink-0 px-2 py-1 rounded text-xs transition"
+            style={{
+              backgroundColor: "#1c2a3a",
+              border: "1px solid #253347",
+              color: TB.text2,
+            }}
+        >
+          ✕
+        </button>
+      </div>
   );
 }
 
@@ -134,132 +134,132 @@ function ProjectCard({ item, onOpen, onRename, onDelete }) {
   }
 
   return (
-    <div
-      className="text-left rounded-xl p-2 transition-all duration-200 w-full relative cursor-pointer select-none"
-      style={{
-        backgroundColor: "#1c2a3a",
-        border: invalid ? `1px solid ${TB.warning}` : `1px solid ${active ? '#3b82f6' : '#253347'}`,
-        borderTop: `3px solid ${invalid ? TB.warning : typeInfo.color}`,
-        boxShadow: active ? '0 0 0 2px #3b82f640, 0 4px 20px rgba(59,130,246,0.15)'
-                 : hovered ? '0 4px 16px rgba(0,0,0,0.45)' : undefined,
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={handleCardClick}
-    >
-      {/* 아이콘 */}
-      <div className="text-4xl mb-3">{typeInfo.icon}</div>
+      <div
+          className="text-left rounded-xl p-2 transition-all duration-200 w-full relative cursor-pointer select-none"
+          style={{
+            backgroundColor: "#1c2a3a",
+            border: invalid ? `1px solid ${TB.warning}` : `1px solid ${active ? '#3b82f6' : '#253347'}`,
+            borderTop: `3px solid ${invalid ? TB.warning : typeInfo.color}`,
+            boxShadow: active ? '0 0 0 2px #3b82f640, 0 4px 20px rgba(59,130,246,0.15)'
+                : hovered ? '0 4px 16px rgba(0,0,0,0.45)' : undefined,
+          }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onClick={handleCardClick}
+      >
+        {/* 아이콘 */}
+        <div className="text-4xl mb-3">{typeInfo.icon}</div>
 
-      {/* 프로젝트 이름 */}
-      {editing ? (
-        <>
-          {invalid && (
-            <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: TB.warning }}>
-              {t('pleaseEnterName')}
+        {/* 프로젝트 이름 */}
+        {editing ? (
+            <>
+              {invalid && (
+                  <div className="text-xs mb-1.5 flex items-center gap-1" style={{ color: TB.warning }}>
+                    {t('pleaseEnterName')}
+                  </div>
+              )}
+              <InlineNameEditor
+                  projectId={item.projectId}
+                  currentName={item.projectName}
+                  onSave={onRename}
+                  onCancel={() => !invalid && setEditing(false)}
+              />
+            </>
+        ) : (
+            <div className="font-semibold text-white text-sm truncate" title={item.projectName}>
+              {item.projectName}
             </div>
-          )}
-          <InlineNameEditor
-            projectId={item.projectId}
-            currentName={item.projectName}
-            onSave={onRename}
-            onCancel={() => !invalid && setEditing(false)}
-          />
-        </>
-      ) : (
-        <div className="font-semibold text-white text-sm truncate" title={item.projectName}>
-          {item.projectName}
-        </div>
-      )}
+        )}
 
-      {/* 타입 배지 (액션 없을 때) */}
-      {!editing && !showActions && (
-        <div className="flex items-center mt-4">
+        {/* 타입 배지 (액션 없을 때) */}
+        {!editing && !showActions && (
+            <div className="flex items-center mt-4">
           <span
-            className="text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{
-              backgroundColor: typeInfo.bg,
-              color: typeInfo.color,
-              border: `1px solid ${typeInfo.color}40`,
-            }}
+              className="text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{
+                backgroundColor: typeInfo.bg,
+                color: typeInfo.color,
+                border: `1px solid ${typeInfo.color}40`,
+              }}
           >
             {item.structureType}
           </span>
-        </div>
-      )}
+            </div>
+        )}
 
-      {/* 액션 버튼 — 열기 / 수정 / 삭제 */}
-      {!editing && showActions && !confirmDelete && (
-        <div className="flex gap-1 mt-4" onClick={e => e.stopPropagation()}>
-          <button
-            onClick={e => { e.stopPropagation(); onOpen(); }}
-            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
-            style={{ backgroundColor: '#1d4ed8', border: '1px solid #3b82f6', color: '#fff' }}
-          >
-            {t('open')}
-          </button>
-          <button
-            onClick={e => { e.stopPropagation(); setEditing(true); setActive(false); }}
-            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
-            style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
-          >
-            {t('rename')}
-          </button>
-          <button
-            onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
-            className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
-            style={{ backgroundColor: '#450a0a', border: `1px solid ${TB.danger}`, color: TB.danger }}
-          >
-            {t('delete')}
-          </button>
-        </div>
-      )}
+        {/* 액션 버튼 — 열기 / 수정 / 삭제 */}
+        {!editing && showActions && !confirmDelete && (
+            <div className="flex gap-1 mt-4" onClick={e => e.stopPropagation()}>
+              <button
+                  onClick={e => { e.stopPropagation(); onOpen(); }}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+                  style={{ backgroundColor: '#1d4ed8', border: '1px solid #3b82f6', color: '#fff' }}
+              >
+                {t('open')}
+              </button>
+              <button
+                  onClick={e => { e.stopPropagation(); setEditing(true); setActive(false); }}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+                  style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
+              >
+                {t('rename')}
+              </button>
+              <button
+                  onClick={e => { e.stopPropagation(); setConfirmDelete(true); }}
+                  className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+                  style={{ backgroundColor: '#450a0a', border: `1px solid ${TB.danger}`, color: TB.danger }}
+              >
+                {t('delete')}
+              </button>
+            </div>
+        )}
 
-      {/* 삭제 확인 */}
-      {!editing && showActions && confirmDelete && (
-        <div onClick={e => e.stopPropagation()}>
-          <p className="text-xs mt-3 mb-2" style={{ color: TB.warning }}>{t('really')}</p>
-          <div className="flex gap-1.5">
-            <button
-              onClick={e => { e.stopPropagation(); onDelete(item.projectId); }}
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
-              style={{ backgroundColor: '#7f1d1d', border: `1px solid ${TB.danger}`, color: '#fff' }}
+        {/* 삭제 확인 */}
+        {!editing && showActions && confirmDelete && (
+            <div onClick={e => e.stopPropagation()}>
+              <p className="text-xs mt-3 mb-2" style={{ color: TB.warning }}>{t('really')}</p>
+              <div className="flex gap-1.5">
+                <button
+                    onClick={e => { e.stopPropagation(); onDelete(item.projectId); }}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+                    style={{ backgroundColor: '#7f1d1d', border: `1px solid ${TB.danger}`, color: '#fff' }}
+                >
+                  {t('yes')}
+                </button>
+                <button
+                    onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
+                    style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
+                >
+                  {t('no')}
+                </button>
+              </div>
+            </div>
+        )}
+
+        {/* 유효하지 않은 이름 배지 */}
+        {invalid && !editing && (
+            <div
+                className="mt-3 text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1"
+                style={{
+                  backgroundColor: `${TB.warning}20`,
+                  color: TB.warning,
+                  border: `1px solid ${TB.warning}50`,
+                }}
             >
-              {t('yes')}
-            </button>
-            <button
-              onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
-              className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition"
-              style={{ backgroundColor: '#1c2a3a', border: '1px solid #475569', color: TB.text1 }}
-            >
-              {t('no')}
-            </button>
-          </div>
-        </div>
-      )}
+              {t('noNameBadge')}
+            </div>
+        )}
 
-      {/* 유효하지 않은 이름 배지 */}
-      {invalid && !editing && (
-        <div
-          className="mt-3 text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1"
-          style={{
-            backgroundColor: `${TB.warning}20`,
-            color: TB.warning,
-            border: `1px solid ${TB.warning}50`,
-          }}
-        >
-          {t('noNameBadge')}
-        </div>
-      )}
-
-      {/* WBS 연결 위젯 */}
-      {!invalid && item.projectId && (
-        <WbsLinkWidget
-          linkedType="BIM"
-          linkedProjectId={item.projectId}
-          compact
-        />
-      )}
-    </div>
+        {/* WBS 연결 위젯 */}
+        {!invalid && item.projectId && (
+            <WbsLinkWidget
+                linkedType="BIM"
+                linkedProjectId={item.projectId}
+                compact
+            />
+        )}
+      </div>
   );
 }
 
@@ -283,88 +283,88 @@ function CreateProjectForm({ onClose, onCreate }) {
   };
 
   return (
-    <div
-      className={`${TB.card} p-6 mb-6`}
-      style={{ borderLeft: "3px solid #8b5cf6" }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          {t('createNewProject')}
-        </h3>
-        <button
-          onClick={onClose}
-          className="text-gray-500 hover:text-gray-300 transition text-lg leading-none"
-        >
-          ✕
-        </button>
-      </div>
+      <div
+          className={`${TB.card} p-6 mb-6`}
+          style={{ borderLeft: "3px solid #8b5cf6" }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
+            {t('createNewProject')}
+          </h3>
+          <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-300 transition text-lg leading-none"
+          >
+            ✕
+          </button>
+        </div>
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-end">
-        {/* 프로젝트 유형 선택 */}
-        <div className="flex-1">
-          <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
-            {t('projectType')}
-          </label>
-          <div className="flex gap-2">
-            {PROJECT_TYPES.map(({ type, icon, label, color, bg }) => (
-              <button
-                key={type}
-                onClick={() => setProjectType(type)}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition"
-                style={{
-                  backgroundColor: projectType === type ? bg : "#152030",
-                  border: `1px solid ${projectType === type ? color : "#253347"}`,
-                  color: projectType === type ? color : TB.text2,
-                }}
-              >
-                {icon} {label}
-              </button>
-            ))}
+        <div className="flex flex-col gap-4 md:flex-row md:items-end">
+          {/* 프로젝트 유형 선택 */}
+          <div className="flex-1">
+            <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
+              {t('projectType')}
+            </label>
+            <div className="flex gap-2">
+              {PROJECT_TYPES.map(({ type, icon, label, color, bg }) => (
+                  <button
+                      key={type}
+                      onClick={() => setProjectType(type)}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition"
+                      style={{
+                        backgroundColor: projectType === type ? bg : "#152030",
+                        border: `1px solid ${projectType === type ? color : "#253347"}`,
+                        color: projectType === type ? color : TB.text2,
+                      }}
+                  >
+                    {icon} {label}
+                  </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* 프로젝트 이름 입력 */}
-        <div className="flex-1">
-          <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
-            {t('projectNameLabel')}
-          </label>
-          <input
-            type="text"
-            value={projectName}
-            onChange={e => setProjectName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && handleSubmit()}
-            placeholder={t('projectNamePlaceholder')}
-            autoFocus
-            className="w-full px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2"
-            style={{
-              backgroundColor: "#152030",
-              border: "1px solid #253347",
-              color: TB.text1,
-              "--tw-ring-color": "#8b5cf6",
-            }}
-          />
-        </div>
+          {/* 프로젝트 이름 입력 */}
+          <div className="flex-1">
+            <label className="text-xs mb-2 block" style={{ color: TB.text2 }}>
+              {t('projectNameLabel')}
+            </label>
+            <input
+                type="text"
+                value={projectName}
+                onChange={e => setProjectName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                placeholder={t('projectNamePlaceholder')}
+                autoFocus
+                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none focus:ring-2"
+                style={{
+                  backgroundColor: "#152030",
+                  border: "1px solid #253347",
+                  color: TB.text1,
+                  "--tw-ring-color": "#8b5cf6",
+                }}
+            />
+          </div>
 
-        {/* 생성 버튼 */}
-        <button
-          onClick={handleSubmit}
-          disabled={!projectName.trim() || creating}
-          className="px-6 py-2.5 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
-          style={{
-            backgroundColor: projectName.trim() && !creating ? "#4c1d95" : "#1c2a3a",
-            border: `1px solid ${projectName.trim() ? "#8b5cf6" : "#253347"}`,
-            cursor: !projectName.trim() || creating ? "not-allowed" : "pointer",
-          }}
-        >
-          {creating ? t('creating') : t('createProject')}
-        </button>
+          {/* 생성 버튼 */}
+          <button
+              onClick={handleSubmit}
+              disabled={!projectName.trim() || creating}
+              className="px-6 py-2.5 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
+              style={{
+                backgroundColor: projectName.trim() && !creating ? "#4c1d95" : "#1c2a3a",
+                border: `1px solid ${projectName.trim() ? "#8b5cf6" : "#253347"}`,
+                cursor: !projectName.trim() || creating ? "not-allowed" : "pointer",
+              }}
+          >
+            {creating ? t('creating') : t('createProject')}
+          </button>
+        </div>
       </div>
-    </div>
   );
 }
 
 // ================================================================
-// IFC 가져오기 모달
+// IFC 가져오기 모달 (모바일 h-screen 및 스크롤 개선 완료)
 // ================================================================
 function IfcImportModal({ onClose, onImport }) {
   const t = useT('bimProjectList');
@@ -431,239 +431,255 @@ function IfcImportModal({ onClose, onImport }) {
 
   const parsedElements = parsedData?.elements ?? null;
   const typeStats = parsedElements
-    ? parsedElements.reduce((acc, el) => {
+      ? parsedElements.reduce((acc, el) => {
         acc[el.elementType] = (acc[el.elementType] || 0) + 1;
         return acc;
       }, {})
-    : null;
+      : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center"
-         style={{ backgroundColor: "rgba(0,0,0,0.65)" }}>
-      <div className="relative w-full max-w-lg rounded-2xl p-6 shadow-2xl"
-           style={{ backgroundColor: "#0f1e2d", border: "1px solid #253347" }}>
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+           style={{ backgroundColor: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
 
-        {/* 헤더 */}
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-bold text-white flex items-center gap-2">
-            {t('importIFC')}
-          </h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 text-xl leading-none">✕</button>
-        </div>
+        {/* ─── [모바일 최대화 가이드 변경] 모바일 일 때는 h-screen / rounded-none으로 스케일 확장 ─── */}
+        <div className="relative w-full sm:max-w-lg h-screen sm:h-auto sm:max-h-[92vh] rounded-none sm:rounded-2xl shadow-2xl flex flex-col"
+             style={{
+               backgroundColor: "#0f1e2d",
+               border: "1px solid #253347",
+             }}>
 
-        {/* 파일 드롭존 */}
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          className="flex flex-col items-center justify-center rounded-xl cursor-pointer transition mb-4"
-          style={{
-            border: `2px dashed ${dragging ? "#0ea5e9" : selectedFile ? "#22c55e" : "#253347"}`,
-            backgroundColor: dragging ? "#0c2a3a" : "#0d1b2a",
-            minHeight: 110,
-            padding: "1.5rem",
-          }}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".ifc"
-            className="hidden"
-            onChange={e => handleFile(e.target.files[0])}
-          />
-          {selectedFile ? (
-            <>
-              <span className="text-2xl mb-1">✅</span>
-              <p className="text-sm font-medium text-green-400">{selectedFile.name}</p>
-              <p className="text-xs mt-0.5" style={{ color: TB.text2 }}>
-                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-              </p>
-            </>
-          ) : (
-            <>
-              <span className="text-3xl mb-2">📂</span>
-              <p className="text-sm" style={{ color: TB.text2 }}>
-                {t('dragOrClick')} <span className="text-blue-400 underline">{t('clickToSelect')}</span>
-              </p>
-              <p className="text-xs mt-1 text-gray-600">{t('ifcSupport')}</p>
-            </>
-          )}
-        </div>
+          {/* 헤더 */}
+          <div className="flex items-center justify-between px-5 py-4 shrink-0 border-b border-[#1e3050]">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              {t('importIFC')}
+            </h3>
+            <button onClick={onClose}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition">
+              ✕
+            </button>
+          </div>
 
-        {/* 프로젝트 유형 + 이름 */}
-        <div className="flex gap-3 mb-4">
-          <div className="flex-1">
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('type')}</label>
-            <div className="flex gap-2">
-              {PROJECT_TYPES.map(({ type, icon, color, bg }) => (
-                <button
-                  key={type}
-                  onClick={() => setProjectType(type)}
-                  className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium transition"
+          {/* 본문 스크롤 컨테이너 (세로 터치 잠금 해제 스펙 적용) */}
+          <div className="flex-1 overflow-y-auto modal-scroll px-5 py-4 space-y-4"
+               style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+
+            {/* 파일 드롭존 */}
+            <div
+                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={handleDrop}
+                style={{
+                  position: "relative",
+                  border: `2px dashed ${dragging ? "#0ea5e9" : selectedFile ? "#22c55e" : "#253347"}`,
+                  backgroundColor: dragging ? "#0c2a3a" : "#0d1b2a",
+                  borderRadius: 12,
+                  minHeight: 100,
+                  overflow: "hidden",
+                }}
+            >
+              <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".ifc"
+                  onChange={e => handleFile(e.target.files[0])}
                   style={{
-                    backgroundColor: projectType === type ? bg : "#152030",
-                    border: `1px solid ${projectType === type ? color : "#253347"}`,
-                    color: projectType === type ? color : TB.text2,
+                    position: "absolute", inset: 0,
+                    width: "100%", height: "100%",
+                    opacity: 0, cursor: "pointer", zIndex: 10,
+                    touchAction: "manipulation",
                   }}
-                >
-                  {icon} {type}
-                </button>
-              ))}
+              />
+              <div className="flex flex-col items-center justify-center py-5 px-4 text-center"
+                   style={{ position: "relative", zIndex: 1, pointerEvents: "none" }}>
+                {selectedFile ? (
+                    <>
+                      <span className="text-2xl mb-1">✅</span>
+                      <p className="text-sm font-medium text-green-400 break-all">{selectedFile.name}</p>
+                      <p className="text-xs mt-0.5" style={{ color: TB.text2 }}>
+                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </>
+                ) : (
+                    <>
+                      <span className="text-3xl mb-2">📂</span>
+                      <p className="text-sm hidden sm:block" style={{ color: TB.text2 }}>
+                        {t('dragOrClick')} <span className="text-blue-400 underline">{t('clickToSelect')}</span>
+                      </p>
+                      <p className="text-xs mt-1 text-gray-600">{t('ifcSupport')}</p>
+                    </>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="flex-[1.5]">
-            <label className="text-xs mb-1 block" style={{ color: TB.text2 }}>{t('projectNameLabel2')}</label>
-            <input
-              type="text"
-              value={projectName}
-              onChange={e => setProjectName(e.target.value)}
-              placeholder={t('enterProjectName')}
-              className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-              style={{
-                backgroundColor: "#152030",
-                border: "1px solid #253347",
-                color: TB.text1,
-              }}
-            />
-          </div>
-        </div>
 
-        {/* 스케일 설정 */}
-        <div className="mb-4">
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium" style={{ color: TB.text2 }}>
-              Scale Factor
-            </label>
-            {parsedData?.detectedScale != null && parsedData.detectedScale !== 1 && (
-              <span className="text-xs px-2 py-0.5 rounded"
-                    style={{ backgroundColor: "#1c2a3a", color: "#f59e0b" }}>
-                단위 감지: {parsedData.detectedScale === 0.001 ? 'mm' : parsedData.detectedScale === 0.01 ? 'cm' : parsedData.detectedScale === 0.1 ? 'dm' : 'm'}
-                → 권장 ×{Math.round(1 / parsedData.detectedScale)}
-              </span>
+            {/* 프로젝트 유형 + 이름 */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="shrink-0">
+                <label className="text-xs mb-1.5 block" style={{ color: TB.text2 }}>{t('type')}</label>
+                <div className="flex gap-2">
+                  {PROJECT_TYPES.map(({ type, icon, color, bg }) => (
+                      <button
+                          key={type}
+                          onClick={() => setProjectType(type)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium transition"
+                          style={{
+                            backgroundColor: projectType === type ? bg : "#152030",
+                            border: `1px solid ${projectType === type ? color : "#253347"}`,
+                            color: projectType === type ? color : TB.text2,
+                            minWidth: 95,
+                          }}
+                      >
+                        {icon} {type}
+                      </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1">
+                <label className="text-xs mb-1.5 block" style={{ color: TB.text2 }}>{t('projectNameLabel2')}</label>
+                <input
+                    type="text"
+                    value={projectName}
+                    onChange={e => setProjectName(e.target.value)}
+                    placeholder={t('enterProjectName')}
+                    className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
+                    style={{
+                      backgroundColor: "#152030",
+                      border: "1px solid #253347",
+                      color: TB.text1,
+                      fontSize: 16,
+                    }}
+                />
+              </div>
+            </div>
+
+            {/* 스케일 설정 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium" style={{ color: TB.text2 }}>Scale Factor</label>
+                {parsedData?.detectedScale != null && parsedData.detectedScale !== 1 && (
+                    <span className="text-xs px-2 py-0.5 rounded"
+                          style={{ backgroundColor: "#1c2a3a", color: "#f59e0b" }}>
+                  감지: {parsedData.detectedScale === 0.001 ? 'mm' : parsedData.detectedScale === 0.01 ? 'cm' : parsedData.detectedScale === 0.1 ? 'dm' : 'm'}
+                      → ×{Math.round(1 / parsedData.detectedScale)} 권장
+                </span>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0.001" max="10000" step="any"
+                      value={userScale}
+                      onChange={e => { setUserScale(parseFloat(e.target.value) || 1); if (phase === 'done') setPhase('idle'); }}
+                      className="w-28 px-3 py-2 rounded-lg text-sm outline-none text-right"
+                      style={{ backgroundColor: "#152030", border: "1px solid #253347", color: TB.text1, fontSize: 16 }}
+                  />
+                  <span className="text-xs" style={{ color: TB.text2 }}>× multiplier</span>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {[1, 10, 100, 1000].map(v => (
+                      <button
+                          key={v}
+                          onClick={() => { setUserScale(v); if (phase === 'done') setPhase('idle'); }}
+                          className="flex-1 py-2 rounded-lg text-sm font-semibold transition"
+                          style={{
+                            backgroundColor: userScale === v ? "#0ea5e9" : "#152030",
+                            border: `1px solid ${userScale === v ? "#0ea5e9" : "#253347"}`,
+                            color: userScale === v ? "#fff" : TB.text2,
+                            minWidth: 56,
+                          }}
+                      >×{v}</button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs mt-1.5" style={{ color: "#475569" }}>
+                mm 단위 IFC는 ×1000, cm 단위는 ×100 권장
+              </p>
+            </div>
+
+            {/* 파싱 진행바 */}
+            {(phase === "parsing" || phase === "importing") && (
+                <div>
+                  <div className="flex justify-between text-xs mb-1" style={{ color: TB.text2 }}>
+                    <span>{phase === "parsing" ? t('analyzing') : t('creating2')}</span>
+                    <span>{progress}%</span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-[#1c2a3a] overflow-hidden">
+                    <div className="h-full rounded-full transition-all"
+                         style={{ width: `${progress}%`, background: "linear-gradient(90deg,#0ea5e9,#8b5cf6)" }}/>
+                  </div>
+                </div>
+            )}
+
+            {/* 파싱 결과 요약 */}
+            {phase === "done" && typeStats && (
+                <div className="rounded-xl p-3 text-xs"
+                     style={{ backgroundColor: "#0c2a1a", border: "1px solid #22c55e40" }}>
+                  <p className="text-green-400 font-semibold mb-2">
+                    {t('totalDetected', { count: parsedElements.length })}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.entries(typeStats).map(([type, count]) => (
+                        <span key={type} className="px-2 py-0.5 rounded-full"
+                              style={{ backgroundColor: "#152030", color: TB.text2, border: "1px solid #253347" }}>
+                    {type} {count}
+                  </span>
+                    ))}
+                  </div>
+                </div>
+            )}
+
+            {/* 에러 메시지 */}
+            {errorMsg && (
+                <p className="text-xs px-3 py-2 rounded-lg"
+                   style={{ backgroundColor: "#2a1010", color: TB.danger, border: `1px solid ${TB.danger}30` }}>
+                  ⚠ {errorMsg}
+                </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min="0.001"
-              max="10000"
-              step="any"
-              value={userScale}
-              onChange={e => { setUserScale(parseFloat(e.target.value) || 1); if (phase === 'done') setPhase('idle'); }}
-              className="w-24 px-2 py-1.5 rounded-lg text-sm outline-none text-right"
-              style={{ backgroundColor: "#152030", border: "1px solid #253347", color: TB.text1 }}
-            />
-            <span className="text-xs" style={{ color: TB.text2 }}>× multiplier</span>
-            <div className="flex gap-1 ml-auto">
-              {[1, 10, 100, 1000].map(v => (
+
+          {/* 액션 버튼 바 — 세이프 에어리어 자동 정렬 */}
+          <div className="flex gap-3 px-5 py-4 shrink-0 border-t border-[#1e3050] bg-[#0f1e2d]"
+               style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
+            <button
+                onClick={onClose}
+                className="flex-1 py-3 rounded-xl text-sm font-medium transition"
+                style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
+            >
+              {t('cancel')}
+            </button>
+
+            {phase !== "done" ? (
                 <button
-                  key={v}
-                  onClick={() => { setUserScale(v); if (phase === 'done') setPhase('idle'); }}
-                  className="px-2 py-1 rounded text-xs font-medium transition"
-                  style={{
-                    backgroundColor: userScale === v ? "#0ea5e9" : "#152030",
-                    border: `1px solid ${userScale === v ? "#0ea5e9" : "#253347"}`,
-                    color: userScale === v ? "#fff" : TB.text2,
-                  }}
-                >×{v}</button>
-              ))}
-            </div>
+                    onClick={handleParse}
+                    disabled={!selectedFile || phase === "parsing"}
+                    className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
+                    style={{
+                      background: selectedFile && phase === "idle"
+                          ? "linear-gradient(135deg,#0ea5e9,#0284c7)" : "#1c2a3a",
+                      border: `1px solid ${selectedFile ? "#0ea5e9" : "#253347"}`,
+                      cursor: !selectedFile || phase === "parsing" ? "not-allowed" : "pointer",
+                    }}
+                >
+                  {phase === "parsing" ? t('analyzing') : t('fileAnalysis')}
+                </button>
+            ) : (
+                <button
+                    onClick={handleImport}
+                    disabled={!projectName.trim() || phase === "importing"}
+                    className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
+                    style={{
+                      background: projectName.trim() ? "linear-gradient(135deg,#7c3aed,#5b21b6)" : "#1c2a3a",
+                      border: `1px solid ${projectName.trim() ? "#8b5cf6" : "#253347"}`,
+                      cursor: !projectName.trim() ? "not-allowed" : "pointer",
+                    }}
+                >
+                  {phase === "importing" ? t('creating2') : t('importProject', { count: parsedElements?.length ?? 0 })}
+                </button>
+            )}
           </div>
-          <p className="text-xs mt-1" style={{ color: "#475569" }}>
-            mm 단위 IFC는 ×1000, cm 단위는 ×100 을 권장합니다.
-          </p>
-        </div>
-
-        {/* 파싱 진행바 */}
-        {(phase === "parsing" || phase === "importing") && (
-          <div className="mb-4">
-            <div className="flex justify-between text-xs mb-1" style={{ color: TB.text2 }}>
-              <span>{phase === "parsing" ? t('analyzing') : t('creating2')}</span>
-              <span>{progress}%</span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-[#1c2a3a] overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${progress}%`,
-                  background: "linear-gradient(90deg, #0ea5e9, #8b5cf6)",
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* 파싱 결과 요약 */}
-        {phase === "done" && typeStats && (
-          <div className="rounded-xl p-3 mb-4 text-xs"
-               style={{ backgroundColor: "#0c2a1a", border: "1px solid #22c55e40" }}>
-            <p className="text-green-400 font-semibold mb-2">
-              {t('totalDetected', { count: parsedElements.length })}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(typeStats).map(([type, count]) => (
-                <span key={type} className="px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: "#152030", color: TB.text2, border: "1px solid #253347" }}>
-                  {type} {count}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 에러 메시지 */}
-        {errorMsg && (
-          <p className="text-xs mb-3 px-3 py-2 rounded-lg"
-             style={{ backgroundColor: "#2a1010", color: TB.danger, border: `1px solid ${TB.danger}30` }}>
-            ⚠ {errorMsg}
-          </p>
-        )}
-
-        {/* 액션 버튼 */}
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-lg text-sm transition"
-            style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
-          >
-            {t('cancel')}
-          </button>
-
-          {phase !== "done" ? (
-            <button
-              onClick={handleParse}
-              disabled={!selectedFile || phase === "parsing"}
-              className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white transition"
-              style={{
-                background: selectedFile && phase === "idle"
-                  ? "linear-gradient(135deg, #0ea5e9, #0284c7)"
-                  : "#1c2a3a",
-                border: `1px solid ${selectedFile ? "#0ea5e9" : "#253347"}`,
-                cursor: !selectedFile || phase === "parsing" ? "not-allowed" : "pointer",
-              }}
-            >
-              {phase === "parsing" ? t('analyzing') : t('fileAnalysis')}
-            </button>
-          ) : (
-            <button
-              onClick={handleImport}
-              disabled={!projectName.trim() || phase === "importing"}
-              className="flex-[2] py-2.5 rounded-lg text-sm font-semibold text-white transition"
-              style={{
-                background: projectName.trim()
-                  ? "linear-gradient(135deg, #7c3aed, #5b21b6)"
-                  : "#1c2a3a",
-                border: `1px solid ${projectName.trim() ? "#8b5cf6" : "#253347"}`,
-                cursor: !projectName.trim() ? "not-allowed" : "pointer",
-              }}
-            >
-              {phase === "importing" ? t('creating2') : t('importProject', { count: parsedElements?.length ?? 0 })}
-            </button>
-          )}
         </div>
       </div>
-    </div>
   );
 }
 
@@ -671,15 +687,15 @@ function IfcImportModal({ onClose, onImport }) {
 // BIM 프로젝트 목록 페이지 (메인)
 // ================================================================
 export default function BimProjectList({
-  setViceComponent,
-  projectList,
-  onProjectSelect,
-  onCreateProject,
-  onRenameProject,
-  onImportIFC,
-  onConvertDrone,
-  onDeleteProject,
-}) {
+                                         setViceComponent,
+                                         projectList,
+                                         onProjectSelect,
+                                         onCreateProject,
+                                         onRenameProject,
+                                         onImportIFC,
+                                         onConvertDrone,
+                                         onDeleteProject,
+                                       }) {
   const t = useT('bimProjectList');
   const [showCreate, setShowCreate]         = useState(false);
   const [showIFCImport, setShowIFCImport]   = useState(false);
@@ -689,228 +705,218 @@ export default function BimProjectList({
   const invalidCount = (projectList ?? []).filter(p => isInvalidName(p.projectName)).length;
 
   const filtered = (projectList ?? []).filter(p =>
-    p.projectName?.toLowerCase().includes(search.toLowerCase()) ||
-    p.structureType?.toLowerCase().includes(search.toLowerCase()) ||
-    (isInvalidName(p.projectName) && "이름없음이름 없음null?".includes(search.toLowerCase()))
+      p.projectName?.toLowerCase().includes(search.toLowerCase()) ||
+      p.structureType?.toLowerCase().includes(search.toLowerCase()) ||
+      (isInvalidName(p.projectName) && "이름없음이름 없음null?".includes(search.toLowerCase()))
   );
 
   return (
-    <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-6">
+      <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-6">
 
-      {/* ============================================================
-          페이지 헤더
-          ============================================================ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-              {t('pageTitle')}
-            </h2>
-            <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-              {t('project')} : <span className="text-white font-semibold">{projectList?.length ?? 0}</span>
-              {invalidCount > 0 && (
-                <span
-                  className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium"
-                  style={{
-                    backgroundColor: `${TB.warning}20`,
-                    color: TB.warning,
-                    border: `1px solid ${TB.warning}50`,
-                  }}
-                >
+        {/* 헤더 */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                {t('pageTitle')}
+              </h2>
+              <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
+                {t('project')} : <span className="text-white font-semibold">{projectList?.length ?? 0}</span>
+                {invalidCount > 0 && (
+                    <span
+                        className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium"
+                        style={{
+                          backgroundColor: `${TB.warning}20`,
+                          color: TB.warning,
+                          border: `1px solid ${TB.warning}50`,
+                        }}
+                    >
                   {t('noNameEA', { count: invalidCount })}
                 </span>
-              )}
-            </p>
+                )}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* 검색 */}
-          <div className="relative">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 검색 */}
+            <div className="relative">
             <span
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm"
-              style={{ color: TB.text2 }}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm"
+                style={{ color: TB.text2 }}
             >
               🔍
             </span>
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder={t('searchPlaceholder')}
-              className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
-              style={{
-                backgroundColor: "#1c2a3a",
-                border: "1px solid #253347",
-                color: TB.text1,
-              }}
-            />
+              <input
+                  type="text"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder={t('searchPlaceholder')}
+                  className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
+                  style={{
+                    backgroundColor: "#1c2a3a",
+                    border: "1px solid #253347",
+                    color: TB.text1,
+                  }}
+              />
+            </div>
+
+            {/* 드론 사진 분석 버튼 */}
+            <button
+                onClick={() => setShowDroneModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
+                style={{
+                  backgroundColor: "#0d2a1a",
+                  border: "1px solid #22c55e",
+                }}
+            >
+              {t('droneAnalysis')}
+            </button>
+
+            {/* IFC 가져오기 버튼 */}
+            {onImportIFC && (
+                <button
+                    onClick={() => setShowIFCImport(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
+                    style={{
+                      backgroundColor: "#0c2233",
+                      border: "1px solid #0ea5e9",
+                    }}
+                >
+                  {t('addIfc')}
+                </button>
+            )}
+
+            {/* 신규 프로젝트 버튼 */}
+            <button
+                onClick={() => setShowCreate(v => !v)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
+                style={{
+                  backgroundColor: showCreate ? "#2d1a4a" : "#1e1040",
+                  border: "1px solid #8b5cf6",
+                }}
+            >
+              {showCreate ? t('cancelNewProject') : t('newProject')}
+            </button>
           </div>
+        </div>
 
-          {/* 드론 사진 분석 버튼 */}
-          <button
-            onClick={() => setShowDroneModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
-            style={{
-              backgroundColor: "#0d2a1a",
-              border: "1px solid #22c55e",
-            }}
-          >
-            {t('droneAnalysis')}
-          </button>
+        {/* 드론 사진 분석 모달 */}
+        {showDroneModal && (
+            <DroneAnalysisModal
+                onClose={() => setShowDroneModal(false)}
+                onConvertToBIM={onConvertDrone}
+                onProjectSelect={(project) => {
+                  setShowDroneModal(false);
+                  onProjectSelect(project);
+                  setViceComponent('bim');
+                }}
+            />
+        )}
 
-          {/* IFC 가져오기 버튼 */}
-          {onImportIFC && (
-            <button
-              onClick={() => setShowIFCImport(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
-              style={{
-                backgroundColor: "#0c2233",
-                border: "1px solid #0ea5e9",
-              }}
+        {/* IFC 가져오기 모달 */}
+        {showIFCImport && (
+            <IfcImportModal
+                onClose={() => setShowIFCImport(false)}
+                onImport={onImportIFC}
+            />
+        )}
+
+        {/* 프로젝트 생성 폼 */}
+        {showCreate && (
+            <CreateProjectForm
+                onClose={() => setShowCreate(false)}
+                onCreate={onCreateProject}
+            />
+        )}
+
+        {/* 이름 없는 프로젝트 알림 배너 */}
+        {invalidCount > 0 && (
+            <div
+                className="flex items-center gap-3 px-4 py-3 rounded-xl mb-5 text-sm"
+                style={{
+                  backgroundColor: `${TB.warning}15`,
+                  border: `1px solid ${TB.warning}40`,
+                  color: TB.warning,
+                }}
             >
-              {t('addIfc')}
-            </button>
+              <span className="text-lg">⚠</span>
+              <span dangerouslySetInnerHTML={{ __html: t('noNameWarning', { count: `<strong>${invalidCount}</strong>` }) }} />
+            </div>
+        )}
+
+        {/* 프로젝트 유형 필터 칩 */}
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <span className="text-xs" style={{ color: TB.text2 }}>{t('filter')}</span>
+          {PROJECT_TYPES.map(({ type, icon, color }) => {
+            const count = (projectList ?? []).filter(p => p.structureType === type).length;
+            return (
+                <button
+                    key={type}
+                    onClick={() => setSearch(prev => prev === type ? "" : type)}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition"
+                    style={{
+                      backgroundColor: search === type ? `${color}20` : "#1c2a3a",
+                      border: `1px solid ${search === type ? color : "#253347"}`,
+                      color: search === type ? color : TB.text2,
+                    }}
+                >
+                  {icon} {type} ({count})
+                </button>
+            );
+          })}
+          {search && !PROJECT_TYPES.find(t => t.type === search) && (
+              <button
+                  onClick={() => setSearch("")}
+                  className="flex items-center gap-1 px-2 py-1 rounded-full text-xs transition"
+                  style={{ border: "1px solid #253347", color: TB.text2 }}
+              >
+                {t('resetFilter')}
+              </button>
           )}
-
-          {/* 신규 프로젝트 버튼 */}
-          <button
-            onClick={() => setShowCreate(v => !v)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition text-white whitespace-nowrap"
-            style={{
-              backgroundColor: showCreate ? "#2d1a4a" : "#1e1040",
-              border: "1px solid #8b5cf6",
-            }}
-          >
-            {showCreate ? t('cancelNewProject') : t('newProject')}
-          </button>
         </div>
-      </div>
 
-      {/* 드론 사진 분석 모달 */}
-      {showDroneModal && (
-        <DroneAnalysisModal
-          onClose={() => setShowDroneModal(false)}
-          onConvertToBIM={onConvertDrone}
-          onProjectSelect={(project) => {
-            setShowDroneModal(false);
-            onProjectSelect(project);
-            setViceComponent('bim');
-          }}
-        />
-      )}
-
-      {/* IFC 가져오기 모달 */}
-      {showIFCImport && (
-        <IfcImportModal
-          onClose={() => setShowIFCImport(false)}
-          onImport={onImportIFC}
-        />
-      )}
-
-      {/* ============================================================
-          프로젝트 생성 폼
-          ============================================================ */}
-      {showCreate && (
-        <CreateProjectForm
-          onClose={() => setShowCreate(false)}
-          onCreate={onCreateProject}
-        />
-      )}
-
-      {/* ============================================================
-          이름 없는 프로젝트 알림 배너
-          ============================================================ */}
-      {invalidCount > 0 && (
-        <div
-          className="flex items-center gap-3 px-4 py-3 rounded-xl mb-5 text-sm"
-          style={{
-            backgroundColor: `${TB.warning}15`,
-            border: `1px solid ${TB.warning}40`,
-            color: TB.warning,
-          }}
-        >
-          <span className="text-lg">⚠</span>
-          <span dangerouslySetInnerHTML={{ __html: t('noNameWarning', { count: `<strong>${invalidCount}</strong>` }) }} />
-        </div>
-      )}
-
-      {/* ============================================================
-          프로젝트 유형 필터 칩
-          ============================================================ */}
-      <div className="flex items-center gap-2 mb-5 flex-wrap">
-        <span className="text-xs" style={{ color: TB.text2 }}>{t('filter')}</span>
-        {PROJECT_TYPES.map(({ type, icon, color }) => {
-          const count = (projectList ?? []).filter(p => p.structureType === type).length;
-          return (
-            <button
-              key={type}
-              onClick={() => setSearch(prev => prev === type ? "" : type)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition"
-              style={{
-                backgroundColor: search === type ? `${color}20` : "#1c2a3a",
-                border: `1px solid ${search === type ? color : "#253347"}`,
-                color: search === type ? color : TB.text2,
-              }}
-            >
-              {icon} {type} ({count})
-            </button>
-          );
-        })}
-        {search && !PROJECT_TYPES.find(t => t.type === search) && (
-          <button
-            onClick={() => setSearch("")}
-            className="flex items-center gap-1 px-2 py-1 rounded-full text-xs transition"
-            style={{ border: "1px solid #253347", color: TB.text2 }}
-          >
-            {t('resetFilter')}
-          </button>
+        {/* 프로젝트 카드 그리드 */}
+        {filtered.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {filtered.map((item, i) => (
+                  <ProjectCard
+                      key={item.projectId ?? i}
+                      item={item}
+                      onOpen={() => { onProjectSelect(item); setViceComponent("bim"); }}
+                      onRename={onRenameProject}
+                      onDelete={onDeleteProject}
+                  />
+              ))}
+            </div>
+        ) : (
+            <div className="flex flex-col items-center justify-center py-32 text-center">
+              <div className="text-7xl mb-5">
+                {search ? "🔍" : "🏗"}
+              </div>
+              <div className="text-lg font-semibold text-gray-400 mb-2">
+                {search ? t('searchEmpty', { search }) : t('noProjects')}
+              </div>
+              <div className="text-sm" style={{ color: TB.text2 }}>
+                {search
+                    ? t('searchEmptyHint')
+                    : <>
+                      {t('noProjectsHint')} <br />
+                      <span className="opacity-60">{t('bridgeOrBuilding')}</span>
+                    </>
+                }
+              </div>
+              {search && (
+                  <button
+                      onClick={() => setSearch("")}
+                      className="mt-4 px-4 py-2 rounded-lg text-sm transition"
+                      style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
+                  >
+                    {t('resetFilterBtn')}
+                  </button>
+              )}
+            </div>
         )}
       </div>
-
-      {/* ============================================================
-          프로젝트 카드 그리드
-          ============================================================ */}
-      {filtered.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {filtered.map((item, i) => (
-            <ProjectCard
-              key={item.projectId ?? i}
-              item={item}
-              onOpen={() => { onProjectSelect(item); setViceComponent("bim"); }}
-              onRename={onRenameProject}
-              onDelete={onDeleteProject}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-32 text-center">
-          <div className="text-7xl mb-5">
-            {search ? "🔍" : "🏗"}
-          </div>
-          <div className="text-lg font-semibold text-gray-400 mb-2">
-            {search ? t('searchEmpty', { search }) : t('noProjects')}
-          </div>
-          <div className="text-sm" style={{ color: TB.text2 }}>
-            {search
-              ? t('searchEmptyHint')
-              : <>
-                  {t('noProjectsHint')} <br />
-                  <span className="opacity-60">{t('bridgeOrBuilding')}</span>
-                </>
-            }
-          </div>
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="mt-4 px-4 py-2 rounded-lg text-sm transition"
-              style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
-            >
-              {t('resetFilterBtn')}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
