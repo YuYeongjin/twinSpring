@@ -138,7 +138,6 @@ function drawChain(ctx,chain,sx,sy){
 }
 
 // ── Ramer-Douglas-Peucker 선 단순화 ─────────────────────────────────────────
-// 폴리라인 포인트 수를 줄이면서 형태는 유지 (epsilon 단위: 그리드 셀)
 function rdpSimplify(pts,eps){
   if(pts.length<=2)return pts;
   const[x1,y1]=pts[0],[x2,y2]=pts[pts.length-1];
@@ -147,17 +146,15 @@ function rdpSimplify(pts,eps){
   for(let i=1;i<pts.length-1;i++){
     const[px,py]=pts[i];
     const dist=d2<1e-12?(px-x1)*(px-x1)+(py-y1)*(py-y1)
-      :(dy*px-dx*py+x2*y1-y2*x1)**2/d2;
+        :(dy*px-dx*py+x2*y1-y2*x1)**2/d2;
     if(dist>maxD){maxD=dist;maxI=i;}
   }
   if(maxD<=eps*eps)return[pts[0],pts[pts.length-1]];
   return[...rdpSimplify(pts.slice(0,maxI+1),eps).slice(0,-1),
-         ...rdpSimplify(pts.slice(maxI),eps)];
+    ...rdpSimplify(pts.slice(maxI),eps)];
 }
 
 // ── 외곽 테두리 평탄화 ────────────────────────────────────────────────────────
-// 테두리 pad 셀을 인접 내부 행/열 값으로 복제
-// → Marching Squares가 테두리에서 경계선을 생성하지 않도록 억제
 function padBorder(grid,pad=4){
   const R=grid.length,C=grid[0].length;
   const g=grid.map(r=>new Float32Array(r));
@@ -171,7 +168,6 @@ function padBorder(grid,pad=4){
 // ── 내부 BIM 선 추가 헬퍼 ─────────────────────────────────────────────────────
 function _appendLine(lines,pts,sx,sy,scaleW,scaleH,color='#93c5fd',lineWidth=1){
   if(pts.length<2)return;
-  // 캔버스 XY → BIM XY(바닥 평면): data[0]=X, data[1]=Y(floor), data[2]=0(높이 없음)
   const wpts=pts.map(([cx,cy])=>[
     +((cx*sx-scaleW/2).toFixed(3)),+((scaleH/2-cy*sy).toFixed(3)),0]);
   const first=wpts[0],last=wpts[wpts.length-1];
@@ -182,13 +178,6 @@ function _appendLine(lines,pts,sx,sy,scaleW,scaleH,color='#93c5fd',lineWidth=1){
 }
 
 // ── 구역 경계선 추출 ──────────────────────────────────────────────────────────
-// smooth 고도 그리드를 nZones 구역으로 나눠 구역 경계를 폴리라인으로 변환
-//
-// [동작]
-//  1) padBorder: 테두리 PAD 셀을 내부값으로 복제 → 외곽 윤곽선(테두리 선) 억제
-//  2) 각 zone 경계 threshold 에서 Marching Squares 실행
-//  3) 체인에서 테두리 영역(PAD 이내) 포인트 제거 → 내부 서브체인 분리
-//  4) RDP 단순화로 포인트 수 축약 후 BIM 선 포맷으로 변환
 function buildZoneBoundaryLines(smooth,cols,rows,scaleW,scaleH,nZones=6,rdpEps=1.2){
   const sx=scaleW/cols,sy=scaleH/rows,PAD=4;
   const padded=padBorder(smooth,PAD);
@@ -205,7 +194,6 @@ function buildZoneBoundaryLines(smooth,cols,rows,scaleW,scaleH,nZones=6,rdpEps=1
         sub=[];
       };
       for(const[x,y]of chain){
-        // 테두리 PAD 이내 포인트는 서브체인에서 제외 (외곽 테두리 선 방지)
         if(x>PAD&&x<cols-PAD&&y>PAD&&y<rows-PAD) sub.push([x,y]);
         else flush();
       }
@@ -216,8 +204,6 @@ function buildZoneBoundaryLines(smooth,cols,rows,scaleW,scaleH,nZones=6,rdpEps=1
 }
 
 // ── 절토/성토 색상 등고선 생성 ───────────────────────────────────────────────
-// refT(기준 고도, 0~1) 위 = 절토(빨강), 아래 = 성토(초록), 기준선 = 노란색
-// Slab 블록 대신 선으로 절토/성토 구역을 표현
 function buildCutFillLines(smooth,cols,rows,scaleW,scaleH,refT,nZones=4,rdpEps=1.2){
   const sx=scaleW/cols,sy=scaleH/rows,PAD=4;
   const padded=padBorder(smooth,PAD);
@@ -239,16 +225,13 @@ function buildCutFillLines(smooth,cols,rows,scaleW,scaleH,refT,nZones=4,rdpEps=1
     }
   };
 
-  // 기준선 (절토/성토 경계) — 노란색 굵은 선
   addThreshold(refT,'#facc15',3);
 
-  // 절토 구역 (refT 이상) 등고선 — 빨강
   for(let i=1;i<=nZones;i++){
     const t=refT+(1-refT)*i/(nZones+1);
     if(t<0.99)addThreshold(t,'#ef4444',1.5);
   }
 
-  // 성토 구역 (refT 미만) 등고선 — 초록
   for(let i=1;i<=nZones;i++){
     const t=refT*(1-i/(nZones+1));
     if(t>0.01)addThreshold(t,'#22c55e',1.5);
@@ -280,7 +263,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
   const[tab,setTab]=useState('upload');
 
   const[cvName,setCvName]=useState('');
-  const[cvZones,setCvZones]=useState(6); // 구역 수 (4~12: smooth 고도 그리드를 몇 개 구역으로 나눌지)
+  const[cvZones,setCvZones]=useState(6);
   const[cvBusy,setCvBusy]=useState(false);
   const[cvDone,setCvDone]=useState(null);
 
@@ -329,7 +312,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
       }
       setResult({contours,refChains,smooth,shade,cols,rows,img,refT,raw,
         stats:{cut:Math.round(cut),fill:Math.round(fill),net:Math.round(cut-fill),
-               area:Math.round(scaleW*scaleH),cols,rows,pa:pa.toFixed(4)}});
+          area:Math.round(scaleW*scaleH),cols,rows,pa:pa.toFixed(4)}});
       setTab('result');setBusy(false);
     };
     img.onerror=()=>{alert(t('imageLoadFailed'));setBusy(false);};
@@ -348,7 +331,6 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     if(showPhoto&&img){
       ctx.globalAlpha=0.55;ctx.drawImage(img,0,0,cw,ch);ctx.globalAlpha=1;
     } else {
-      // pixel-level hypsometric + hillshade
       const id=ctx.createImageData(cw,ch);
       for(let py=0;py<ch;py++)for(let px=0;px<cw;px++){
         const gc=Math.min(cols-1,px/sx|0),gr=Math.min(rows-1,py/sy|0);
@@ -360,14 +342,12 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
       ctx.putImageData(id,0,0);
     }
 
-    // cut/fill tint
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
       const t=smooth[r][c];
       if(t>refT+0.01){ctx.fillStyle='rgba(239,68,68,0.15)';ctx.fillRect(c*sx,r*sy,sx+1,sy+1);}
       else if(t<refT-0.01){ctx.fillStyle='rgba(34,197,94,0.1)';ctx.fillRect(c*sx,r*sy,sx+1,sy+1);}
     }
 
-    // minor contours
     ctx.save();ctx.globalAlpha=0.5;
     for(const{chains,t,major}of contours){
       if(major)continue;
@@ -375,7 +355,6 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
       for(const ch of chains)drawChain(ctx,ch,sx,sy);
     }ctx.restore();
 
-    // major contours + labels
     ctx.save();ctx.globalAlpha=0.92;
     for(const{chains,t,major,elev}of contours){
       if(!major)continue;
@@ -390,13 +369,11 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
       }
     }ctx.restore();
 
-    // reference line
     ctx.save();ctx.strokeStyle='#facc15';ctx.lineWidth=2.2;
     ctx.setLineDash([10,5]);ctx.globalAlpha=0.95;
     for(const ch of refChains)drawChain(ctx,ch,sx,sy);
     ctx.restore();
 
-    // right color bar
     ctx.save();
     const bh=ch*0.45,by=(ch-bh)/2,bx=cw-14;
     const grad=ctx.createLinearGradient(0,by+bh,0,by);
@@ -408,7 +385,6 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     ctx.fillText(`${elevMax}m`,bx-3,by+5);ctx.fillText(`${elevMin}m`,bx-3,by+bh+5);
     ctx.restore();
 
-    // scale bar
     const bm=Math.pow(10,Math.floor(Math.log10(scaleW/4)));
     const bp=(bm/scaleW)*cw;
     ctx.save();ctx.fillStyle='#fff';
@@ -417,7 +393,6 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText(`${bm}m`,16,ch-30);
     ctx.restore();
 
-    // N arrow
     ctx.save();ctx.translate(cw-26,30);
     ctx.beginPath();ctx.moveTo(0,-15);ctx.lineTo(5,8);ctx.lineTo(0,3);ctx.lineTo(-5,8);ctx.closePath();
     ctx.fillStyle='#60a5fa';ctx.fill();
@@ -425,7 +400,6 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText('N',0,-20);
     ctx.restore();
 
-    // legend box
     ctx.save();
     ctx.fillStyle='rgba(8,17,26,0.82)';ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=1;
     ctx.beginPath();
@@ -458,13 +432,9 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     const{smooth,cols,rows,refT}=result;
     setCvBusy(true);setCvDone(null);
 
-    // 고도 구역 경계선 추출 (smooth 그리드 → cvZones 구역 분할 → 폴리라인)
     const drawingLines=buildZoneBoundaryLines(smooth,cols,rows,scaleW,scaleH,cvZones);
-
-    // 절토/성토 색상 등고선 (Slab 대신 선으로 구분: 빨강=절토, 초록=성토, 노랑=기준선)
     const cutFillLines=buildCutFillLines(smooth,cols,rows,scaleW,scaleH,refT);
 
-    // DRONE 타입으로 생성 → BIM 뷰어에서 2D 전용으로 처리됨
     onConvertToBIM('DRONE',cvName.trim(),[],[],[...drawingLines,...cutFillLines],proj=>{
       setCvBusy(false);
       if(proj){setCvDone('ok');setTimeout(()=>{if(onProjectSelect)onProjectSelect(proj);},1200);}
@@ -472,7 +442,6 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     });
   },[result,onConvertToBIM,onProjectSelect,cvName,cvZones,scaleW,scaleH]);
 
-  // 현재 구역 수에서 예상 경계선 수 (테두리 제외, 사전 계산)
   const lineCount=useMemo(()=>{
     if(!result)return 0;
     const{smooth,cols,rows}=result;
@@ -482,7 +451,6 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     for(let i=1;i<cvZones;i++){
       const chains=chainSegments(marchingSquares(padded,i/cvZones));
       for(const chain of chains){
-        // 내부 서브체인 수 카운트
         let sub=0;
         for(const[x,y]of chain){
           if(x>PAD&&x<cols-PAD&&y>PAD&&y<rows-PAD)sub++;
@@ -494,343 +462,358 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     return count;
   },[result,cvZones]);
 
-  // 경고 표시 조건: 선이 400개 초과
   const showLineWarning = lineCount > 400;
-
   const T2='#8896a4';
 
   return(
-    <div className="fixed inset-0 z-50 flex items-center justify-center"
-         style={{backgroundColor:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)'}}>
-      <div className="relative w-full max-w-5xl max-h-[95vh] flex flex-col rounded-2xl overflow-hidden"
-           style={{backgroundColor:'#06101a',border:'1px solid #1a3350',boxShadow:'0 25px 80px rgba(0,0,0,0.7)'}}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center"
+           style={{backgroundColor:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)'}}>
+        <div className="relative w-full max-w-5xl max-h-[100vh] flex flex-col rounded-2xl overflow-enabled"
+             style={{backgroundColor:'#06101a',border:'1px solid #1a3350',boxShadow:'0 25px 80px rgba(0,0,0,0.7)'}}>
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 shrink-0"
-             style={{background:'linear-gradient(90deg,#071420,#0a1e34)',borderBottom:'1px solid #1a3350'}}>
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xl"
-                 style={{background:'linear-gradient(135deg,#0d2a1a,#0a3520)',border:'1px solid #22c55e50'}}>
-              🛸
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 shrink-0"
+               style={{background:'linear-gradient(90deg,#071420,#0a1e34)',borderBottom:'1px solid #1a3350'}}>
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-lg sm:text-xl flex-shrink-0"
+                   style={{background:'linear-gradient(135deg,#0d2a1a,#0a3520)',border:'1px solid #22c55e50'}}>
+                🛸
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs sm:text-sm font-bold text-white tracking-wide truncate">{t('title')}</h3>
+                <p className="text-xs mt-0.5 hidden sm:block truncate" style={{color:T2}}>{t('subtitle')}</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-white tracking-wide">{t('title')}</h3>
-              <p className="text-xs mt-0.5" style={{color:T2}}>{t('subtitle')}</p>
-            </div>
-          </div>
-          <button onClick={onClose}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition">
-            ✕
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex shrink-0" style={{backgroundColor:'#07121e',borderBottom:'1px solid #1a3350'}}>
-          {[['upload','📤',t('uploadTab')],['result','📊',t('resultTab')]].map(([id,ic,lb])=>(
-            <button key={id} onClick={()=>result&&setTab(id)}
-                    disabled={id==='result'&&!result}
-                    className="flex items-center gap-2 px-6 py-3 text-xs font-semibold transition"
-                    style={{color:tab===id?'#60a5fa':T2,
-                      borderBottom:tab===id?'2px solid #60a5fa':'2px solid transparent',
-                      opacity:id==='result'&&!result?0.3:1,
-                      cursor:id==='result'&&!result?'not-allowed':'pointer'}}>
-              <span>{ic}</span><span>{lb}</span>
+            <button onClick={onClose}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 transition flex-shrink-0">
+              ✕
             </button>
-          ))}
-          {result&&(
-            <div className="ml-auto flex items-center pr-5 gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-400"/>
-              <span className="text-xs text-green-400">{t('analysisComplete', { rows: result.stats.rows, cols: result.stats.cols })}</span>
-            </div>
-          )}
-        </div>
+          </div>
 
-        <canvas ref={hidRef} className="hidden"/>
-
-        <div className="flex-1 overflow-hidden min-h-0">
-
-          {/* ─── UPLOAD TAB ─── */}
-          {tab==='upload'&&(
-            <div className="h-full overflow-y-auto p-6">
-              <div className="max-w-2xl mx-auto space-y-5">
-
-                {/* Dropzone */}
-                <div onClick={()=>fileRef.current?.click()}
-                     onDragOver={e=>{e.preventDefault();setDrag(true);}}
-                     onDragLeave={()=>setDrag(false)} onDrop={e=>{e.preventDefault();setDrag(false);loadFile(e.dataTransfer.files[0]);}}
-                     className="flex flex-col items-center justify-center rounded-2xl cursor-pointer transition-all"
-                     style={{border:`2px dashed ${drag?'#60a5fa':file?'#22c55e':'#1a3350'}`,
-                       backgroundColor:drag?'#0c1e30':'#07121e',minHeight:148,
-                       boxShadow:drag?'0 0 24px #60a5fa25':'none'}}>
-                  <input ref={fileRef} type="file" accept="image/*" className="hidden"
-                         onChange={e=>loadFile(e.target.files[0])}/>
-                  {file?(
-                    <div className="flex items-center gap-5 p-5">
-                      {imgUrl&&<img src={imgUrl} alt="" className="w-20 h-20 object-cover rounded-xl"
-                                    style={{border:'2px solid #22c55e50'}}/>}
-                      <div>
-                        <p className="text-sm font-semibold text-green-400">{file.name}</p>
-                        <p className="text-xs mt-1" style={{color:T2}}>{(file.size/1024/1024).toFixed(2)} MB</p>
-                        <p className="text-xs mt-2 text-blue-400 underline">{t('replaceFile')}</p>
-                      </div>
-                    </div>
-                  ):(
-                    <div className="text-center p-6">
-                      <div className="text-5xl mb-3 opacity-80">🛸</div>
-                      <p className="text-sm font-medium text-gray-300">
-                        {t('dragOrClick')} <span className="text-blue-400 underline">{t('clickToSelect')}</span>
-                      </p>
-                      <p className="text-xs mt-2 text-gray-600">
-                        {t('fileSupport')}
-                      </p>
-                    </div>
-                  )}
+          {/* Tabs */}
+          <div className="flex shrink-0" style={{backgroundColor:'#07121e',borderBottom:'1px solid #1a3350'}}>
+            {[['upload','📤',t('uploadTab')],['result','📊',t('resultTab')]].map(([id,ic,lb])=>(
+                <button key={id} onClick={()=>result&&setTab(id)}
+                        disabled={id==='result'&&!result}
+                        className="flex items-center gap-1.5 px-4 sm:px-6 py-3 text-xs font-semibold transition"
+                        style={{color:tab===id?'#60a5fa':T2,
+                          borderBottom:tab===id?'2px solid #60a5fa':'2px solid transparent',
+                          opacity:id==='result'&&!result?0.3:1,
+                          cursor:id==='result'&&!result?'not-allowed':'pointer'}}>
+                  <span>{ic}</span><span>{lb}</span>
+                </button>
+            ))}
+            {result&&(
+                <div className="ml-auto flex items-center pr-3 sm:pr-5 gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0"/>
+                  <span className="text-xs text-green-400 hidden sm:inline">
+                {t('analysisComplete', { rows: result.stats.rows, cols: result.stats.cols })}
+              </span>
+                  <span className="text-xs text-green-400 sm:hidden">✓</span>
                 </div>
+            )}
+          </div>
 
-                {/* Parameters grid */}
-                <div className="grid grid-cols-2 gap-4">
+          <canvas ref={hidRef} className="hidden"/>
 
-                  <div className="rounded-xl p-4 space-y-3"
-                       style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{color:'#60a5fa'}}>{t('realWorldSize')}</p>
-                    {[[t('width'),scaleW,setScaleW],[t('height'),scaleH,setScaleH]].map(([l,v,s])=>(
-                      <label key={l} className="flex items-center justify-between">
-                        <span className="text-xs" style={{color:T2}}>{l}</span>
-                        <input type="number" min={1} value={v} onChange={e=>s(+e.target.value)}
-                               className="w-24 px-2 py-1.5 rounded-lg text-xs text-white outline-none text-right"
-                               style={{backgroundColor:'#060f18',border:'1px solid #1a3350'}}/>
-                      </label>
-                    ))}
-                  </div>
+          <div className="flex-1 overflow-hidden min-h-0">
 
-                  <div className="rounded-xl p-4 space-y-3"
-                       style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{color:'#4ade80'}}>{t('altitudeSetting')}</p>
-                    {[[t('minAlt'),elevMin,setElevMin],[t('maxAlt'),elevMax,setElevMax],
-                      [t('refAlt'),refElev,setRefElev]].map(([l,v,s])=>(
-                      <label key={l} className="flex items-center justify-between">
-                        <span className="text-xs" style={{color:T2}}>{l}</span>
-                        <input type="number" step={0.5} value={v} onChange={e=>s(+e.target.value)}
-                               className="w-24 px-2 py-1.5 rounded-lg text-xs text-white outline-none text-right"
-                               style={{backgroundColor:'#060f18',border:'1px solid #1a3350'}}/>
-                      </label>
-                    ))}
-                  </div>
+            {/* ─── UPLOAD TAB (스크롤 락 해제 반영) ─── */}
+            {tab==='upload'&&(
+                <div className="h-full overflow-y-auto modal-scroll p-4 sm:p-6"
+                     style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+                  <div className="max-w-2xl mx-auto space-y-4 sm:space-y-5">
 
-                  <div className="rounded-xl p-4 space-y-3"
-                       style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{color:'#facc15'}}>{t('contour')}</p>
-                    <label className="flex items-center justify-between">
-                      <span className="text-xs" style={{color:T2}}>{t('interval')}</span>
-                      <input type="number" min={0.1} step={0.5} value={contourInt}
-                             onChange={e=>setContourInt(Math.max(0.1,+e.target.value))}
-                             className="w-24 px-2 py-1.5 rounded-lg text-xs text-white outline-none text-right"
-                             style={{backgroundColor:'#060f18',border:'1px solid #1a3350'}}/>
-                    </label>
-                    <p className="text-xs" style={{color:T2}}>{t('majorContour', { n: contourInt*5 })}</p>
-                  </div>
+                    <div onDragOver={e=>{e.preventDefault();setDrag(true);}}
+                         onDragLeave={()=>setDrag(false)}
+                         onDrop={e=>{e.preventDefault();setDrag(false);loadFile(e.dataTransfer.files[0]);}}
+                         style={{
+                           position:'relative',
+                           border:`2px dashed ${drag?'#60a5fa':file?'#22c55e':'#1a3350'}`,
+                           backgroundColor:drag?'#0c1e30':'#07121e',
+                           borderRadius:16, minHeight:148,
+                           boxShadow:drag?'0 0 24px #60a5fa25':'none',
+                           overflow:'hidden',
+                         }}>
 
-                  <div className="rounded-xl p-4 space-y-3"
-                       style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{color:'#c084fc'}}>{t('resolution')}</p>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span style={{color:T2}}>{t('samplingStep')}</span>
-                      <span className="text-purple-300">
+                      <input ref={fileRef} type="file" accept="image/*"
+                             onChange={e=>loadFile(e.target.files[0])}
+                             style={{
+                               position:'absolute', inset:0,
+                               width:'100%', height:'100%',
+                               opacity:0, cursor:'pointer', zIndex:10,
+                             }}/>
+
+                      {file?(
+                          <div className="flex items-center gap-4 p-5 w-full" style={{position:'relative',zIndex:1}}>
+                            {imgUrl&&<img src={imgUrl} alt="" className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-xl flex-shrink-0"
+                                          style={{border:'2px solid #22c55e50'}}/>}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-green-400 truncate">{file.name}</p>
+                              <p className="text-xs mt-1" style={{color:T2}}>{(file.size/1024/1024).toFixed(2)} MB</p>
+                              <p className="text-xs mt-2 text-blue-400">{t('replaceFile')}</p>
+                            </div>
+                          </div>
+                      ):(
+                          <div className="flex flex-col items-center justify-center text-center p-6 w-full"
+                               style={{position:'relative',zIndex:1,minHeight:148,pointerEvents:'none'}}>
+                            <div className="text-4xl mb-3 opacity-80">🛸</div>
+                            <p className="text-sm font-medium text-gray-300 hidden sm:block">
+                              {t('dragOrClick')} <span className="text-blue-400 underline">{t('clickToSelect')}</span>
+                            </p>
+                            <p className="text-sm font-medium text-blue-400 sm:hidden">📂 탭하여 사진 선택</p>
+                            <p className="text-xs mt-2 text-gray-600">{t('fileSupport')}</p>
+                          </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="rounded-xl p-4 space-y-3"
+                           style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
+                        <p className="text-xs font-bold uppercase tracking-wider" style={{color:'#60a5fa'}}>{t('realWorldSize')}</p>
+                        {[[t('width'),scaleW,setScaleW],[t('height'),scaleH,setScaleH]].map(([l,v,s])=>(
+                            <label key={l} className="flex items-center justify-between">
+                              <span className="text-xs" style={{color:T2}}>{l}</span>
+                              <input type="number" inputMode="decimal" min={1} value={v} onChange={e=>s(+e.target.value)}
+                                     className="w-24 px-2 py-2 rounded-lg text-xs text-white outline-none text-right"
+                                     style={{backgroundColor:'#060f18',border:'1px solid #1a3350'}}/>
+                            </label>
+                        ))}
+                      </div>
+
+                      <div className="rounded-xl p-4 space-y-3"
+                           style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
+                        <p className="text-xs font-bold uppercase tracking-wider" style={{color:'#4ade80'}}>{t('altitudeSetting')}</p>
+                        {[[t('minAlt'),elevMin,setElevMin],[t('maxAlt'),elevMax,setElevMax],
+                          [t('refAlt'),refElev,setRefElev]].map(([l,v,s])=>(
+                            <label key={l} className="flex items-center justify-between">
+                              <span className="text-xs" style={{color:T2}}>{l}</span>
+                              <input type="number" inputMode="decimal" step={0.5} value={v} onChange={e=>s(+e.target.value)}
+                                     className="w-24 px-2 py-2 rounded-lg text-xs text-white outline-none text-right"
+                                     style={{backgroundColor:'#060f18',border:'1px solid #1a3350'}}/>
+                            </label>
+                        ))}
+                      </div>
+
+                      <div className="rounded-xl p-4 space-y-3"
+                           style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
+                        <p className="text-xs font-bold uppercase tracking-wider" style={{color:'#facc15'}}>{t('contour')}</p>
+                        <label className="flex items-center justify-between">
+                          <span className="text-xs" style={{color:T2}}>{t('interval')}</span>
+                          <input type="number" inputMode="decimal" min={0.1} step={0.5} value={contourInt}
+                                 onChange={e=>setContourInt(Math.max(0.1,+e.target.value))}
+                                 className="w-24 px-2 py-2 rounded-lg text-xs text-white outline-none text-right"
+                                 style={{backgroundColor:'#060f18',border:'1px solid #1a3350'}}/>
+                        </label>
+                        <p className="text-xs" style={{color:T2}}>{t('majorContour', { n: contourInt*5 })}</p>
+                      </div>
+
+                      <div className="rounded-xl p-4 space-y-3"
+                           style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
+                        <p className="text-xs font-bold uppercase tracking-wider" style={{color:'#c084fc'}}>{t('resolution')}</p>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span style={{color:T2}}>{t('samplingStep')}</span>
+                          <span className="text-purple-300">
                         {step===2?t('highQuality'):step===4?t('standard'):step===8?t('fast'):t('stepPx',{n:step})}
                       </span>
+                        </div>
+                        <input type="range" min={2} max={12} step={2} value={step}
+                               onChange={e=>setStep(+e.target.value)} className="w-full accent-purple-500"
+                               style={{touchAction:'none'}}/>
+                        <p className="text-xs" style={{color:T2}}>{t('lowerIsMoreDetailed')}</p>
+                      </div>
                     </div>
-                    <input type="range" min={2} max={12} step={2} value={step}
-                           onChange={e=>setStep(+e.target.value)} className="w-full accent-purple-500"/>
-                    <p className="text-xs" style={{color:T2}}>{t('lowerIsMoreDetailed')}</p>
-                  </div>
-                </div>
 
-                <button onClick={analyse} disabled={!file||busy}
-                        className="w-full py-4 rounded-xl text-sm font-bold text-white transition-all"
-                        style={{
-                          background:file&&!busy?'linear-gradient(135deg,#0ea5e9,#7c3aed)':'#091624',
-                          border:`1px solid ${file?'#0ea5e9':'#1a3350'}`,
-                          cursor:!file||busy?'not-allowed':'pointer',
-                          boxShadow:file&&!busy?'0 0 24px #0ea5e935':'none',
-                        }}>
-                  {busy?(
-                    <span className="flex items-center justify-center gap-2">
+                    <button onClick={analyse} disabled={!file||busy}
+                            className="w-full py-4 sm:py-4 rounded-xl text-sm font-bold text-white transition-all"
+                            style={{
+                              minHeight:52,
+                              background:file&&!busy?'linear-gradient(135deg,#0ea5e9,#7c3aed)':'#091624',
+                              border:`1px solid ${file?'#0ea5e9':'#1a3350'}`,
+                              cursor:!file||busy?'not-allowed':'pointer',
+                              boxShadow:file&&!busy?'0 0 24px #0ea5e935':'none',
+                            }}>
+                      {busy?(
+                          <span className="flex items-center justify-center gap-2">
                       <span className="animate-spin inline-block">⏳</span> {t('analyzing')}
                     </span>
-                  ):t('startAnalysis')}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ─── RESULT TAB ─── */}
-          {tab==='result'&&result&&(
-            <div className="flex h-full min-h-0">
-
-              {/* Canvas */}
-              <div className="flex-1 relative min-h-0" style={{backgroundColor:'#040b11'}}>
-                <canvas ref={canvasRef} width={800} height={580}
-                        className="w-full h-full" style={{display:'block'}}/>
-                <div className="absolute bottom-3 left-3 flex gap-2">
-                  <button onClick={()=>setShowPhoto(v=>!v)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium transition"
-                          style={{backgroundColor:showPhoto?'#1d4ed8':'rgba(6,16,26,0.9)',
-                            border:'1px solid '+(showPhoto?'#3b82f6':'#1a3350'),
-                            color:'#e2e8f0',backdropFilter:'blur(4px)'}}>
-                    {showPhoto?t('photo'):t('elevMap')}
-                  </button>
-                  <button onClick={()=>setTab('upload')}
-                          className="px-3 py-1.5 rounded-lg text-xs transition"
-                          style={{backgroundColor:'rgba(6,16,26,0.9)',border:'1px solid #1a3350',
-                            color:T2,backdropFilter:'blur(4px)'}}>
-                    {t('reset')}
-                  </button>
+                      ):t('startAnalysis')}
+                    </button>
+                  </div>
                 </div>
-              </div>
+            )}
 
-              {/* Side panel */}
-              <div className="w-[268px] shrink-0 flex flex-col border-l border-[#1a3350] overflow-y-auto"
-                   style={{backgroundColor:'#060f18'}}>
+            {/* ─── RESULT TAB ─── */}
+            {tab==='result'&&result&&(
+                <div className="flex flex-col sm:flex-row h-full min-h-0 overflow-y-auto sm:overflow-hidden">
 
-                {/* Stats */}
-                <div className="p-4 space-y-2">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">{t('earthworkAnalysis')}</p>
-                  {[
-                    {lb:t('cut'),v:result.stats.cut,c:'#ef4444',ic:'⛏️'},
-                    {lb:t('fill'),v:result.stats.fill,c:'#22c55e',ic:'🚛'},
-                    {lb:t('netEarthwork'),v:Math.abs(result.stats.net),c:'#facc15',ic:'⚖️',
-                     sub:result.stats.net>=0?t('cutDominant'):t('fillDominant')},
-                  ].map(({lb,v,c,ic,sub})=>(
-                    <div key={lb} className="rounded-xl p-3"
-                         style={{backgroundColor:'#091624',border:`1px solid ${c}25`}}>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-xs">{ic}</span>
-                        <span className="text-xs" style={{color:T2}}>{lb}</span>
-                      </div>
-                      <div className="text-xl font-bold" style={{color:c}}>
-                        {v.toLocaleString()} <span className="text-sm font-normal text-gray-500">m³</span>
-                      </div>
-                      {sub&&<div className="text-xs mt-0.5" style={{color:T2}}>{sub}</div>}
+                  <div className="relative w-full flex-shrink-0 sm:flex-1 sm:min-h-0"
+                       style={{backgroundColor:'#040b11',height:'clamp(200px,42vw,420px)'}}>
+                    <canvas ref={canvasRef} width={800} height={580}
+                            className="w-full h-full" style={{display:'block'}}/>
+                    <div className="absolute bottom-3 left-3 flex gap-2">
+                      <button onClick={()=>setShowPhoto(v=>!v)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+                              style={{backgroundColor:showPhoto?'#1d4ed8':'rgba(6,16,26,0.9)',
+                                border:'1px solid '+(showPhoto?'#3b82f6':'#1a3350'),
+                                color:'#e2e8f0',backdropFilter:'blur(4px)'}}>
+                        {showPhoto?t('photo'):t('elevMap')}
+                      </button>
+                      <button onClick={()=>setTab('upload')}
+                              className="px-3 py-1.5 rounded-lg text-xs transition"
+                              style={{backgroundColor:'rgba(6,16,26,0.9)',border:'1px solid #1a3350',
+                                color:T2,backdropFilter:'blur(4px)'}}>
+                        {t('reset')}
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  </div>
 
-                {/* Info */}
-                <div className="px-4 pb-3">
-                  <div className="rounded-xl p-3" style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
-                    <p className="text-xs font-semibold text-gray-400 mb-2">{t('surveyInfo')}</p>
-                    <div className="space-y-1.5 text-xs">
-                      {[[t('area'),`${result.stats.area.toLocaleString()} m²`],
-                        [t('grid'),`${result.stats.cols}×${result.stats.rows}`],
-                        [t('altitude'),`${elevMin}~${elevMax} m`],
-                        [t('refAltLabel'),`${refElev} m`],
-                        [t('contourInterval'),`${contourInt} m`]
-                      ].map(([k,v])=>(
-                        <div key={k} className="flex justify-between">
-                          <span style={{color:T2}}>{k}</span>
-                          <span className="text-gray-200 font-medium">{v}</span>
-                        </div>
+                  {/* 우측 사이드 패널 (스크롤 락 해제 반영) */}
+                  <div className="w-full sm:w-[268px] shrink-0 flex flex-col sm:border-l border-t sm:border-t-0 border-[#1a3350] overflow-y-auto modal-scroll"
+                       style={{
+                         backgroundColor:'#060f18',
+                         WebkitOverflowScrolling: 'touch',
+                         touchAction: 'pan-y'
+                       }}>
+
+                    {/* Stats */}
+                    <div className="p-4 space-y-2">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">{t('earthworkAnalysis')}</p>
+                      {[
+                        {lb:t('cut'),v:result.stats.cut,c:'#ef4444',ic:'⛏️'},
+                        {lb:t('fill'),v:result.stats.fill,c:'#22c55e',ic:'🚛'},
+                        {lb:t('netEarthwork'),v:Math.abs(result.stats.net),c:'#facc15',ic:'⚖️',
+                          sub:result.stats.net>=0?t('cutDominant'):t('fillDominant')},
+                      ].map(({lb,v,c,ic,sub})=>(
+                          <div key={lb} className="rounded-xl p-3"
+                               style={{backgroundColor:'#091624',border:`1px solid ${c}25`}}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-xs">{ic}</span>
+                              <span className="text-xs" style={{color:T2}}>{lb}</span>
+                            </div>
+                            <div className="text-xl font-bold" style={{color:c}}>
+                              {v.toLocaleString()} <span className="text-sm font-normal text-gray-500">m³</span>
+                            </div>
+                            {sub&&<div className="text-xs mt-0.5" style={{color:T2}}>{sub}</div>}
+                          </div>
                       ))}
                     </div>
-                  </div>
-                </div>
 
-                {/* Export */}
-                <div className="px-4 pb-3">
-                  <button onClick={exportPNG}
-                          className="w-full py-2 rounded-lg text-xs font-semibold text-white transition"
-                          style={{backgroundColor:'#1e3a5f',border:'1px solid #2563eb'}}>
-                    {t('savePng')}
-                  </button>
-                </div>
-
-                {/* BIM Conversion — 선(폴리라인) 전용 */}
-                {onConvertToBIM&&(
-                  <div className="mx-3 mb-4 rounded-xl p-4 space-y-3"
-                       style={{backgroundColor:'#0e0820',border:'1px solid #4c1d95',
-                         boxShadow:'0 0 20px #7c3aed15'}}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base"
-                           style={{background:'linear-gradient(135deg,#1e3a5f,#2563eb)',border:'1px solid #3b82f650'}}>
-                        📐
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-blue-300">{t('bimConvert')}</p>
-                        <p className="text-xs" style={{color:T2}}>{t('drawingLineConvert')}</p>
+                    {/* Info */}
+                    <div className="px-4 pb-3">
+                      <div className="rounded-xl p-3" style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
+                        <p className="text-xs font-semibold text-gray-400 mb-2">{t('surveyInfo')}</p>
+                        <div className="space-y-1.5 text-xs">
+                          {[[t('area'),`${result.stats.area.toLocaleString()} m²`],
+                            [t('grid'),`${result.stats.cols}×${result.stats.rows}`],
+                            [t('altitude'),`${elevMin}~${elevMax} m`],
+                            [t('refAltLabel'),`${refElev} m`],
+                            [t('contourInterval'),`${contourInt} m`]
+                          ].map(([k,v])=>(
+                              <div key={k} className="flex justify-between">
+                                <span style={{color:T2}}>{k}</span>
+                                <span className="text-gray-200 font-medium">{v}</span>
+                              </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
-                    {cvDone==='ok'?(
-                      <div className="rounded-xl py-3 text-xs font-semibold text-center"
-                           style={{backgroundColor:'#0c2a1a',border:'1px solid #22c55e50',color:'#4ade80'}}>
-                        {t('projectCreated')}<br/>
-                        <span className="font-normal text-green-600 text-xs">{t('redirecting')}</span>
-                      </div>
-                    ):(
-                      <>
-                        {cvDone==='err'&&(
-                          <div className="text-xs text-red-400 rounded-lg px-3 py-2"
-                               style={{backgroundColor:'#2a1010',border:'1px solid #f4433620'}}>
-                            {t('conversionFailed')}
-                          </div>
-                        )}
+                    {/* Export */}
+                    <div className="px-4 pb-3">
+                      <button onClick={exportPNG}
+                              className="w-full py-2 rounded-lg text-xs font-semibold text-white transition"
+                              style={{backgroundColor:'#1e3a5f',border:'1px solid #2563eb'}}>
+                        {t('savePng')}
+                      </button>
+                    </div>
 
-                        <input type="text" value={cvName} onChange={e=>setCvName(e.target.value)}
-                               placeholder={t('projectNamePlaceholder')}
-                               className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none"
-                               style={{backgroundColor:'#060f18',border:'1px solid #4c1d95'}}/>
-
-                        {/* 구역 수 슬라이더 */}
-                        <div>
-                          <div className="flex justify-between text-xs mb-1.5">
-                            <span style={{color:T2}}>{t('edgeSensitivity')}</span>
-                            <span className="font-medium"
-                                  style={{color: lineCount === 0 ? '#6b7280' : showLineWarning ? '#f59e0b' : '#93c5fd'}}>
-                              {lineCount === 0
-                                ? t('noLines')
-                                : t('polylineCount', {count: lineCount})}
-                            </span>
-                          </div>
-                          <input type="range" min={4} max={12} step={1}
-                                 value={cvZones}
-                                 onChange={e=>setCvZones(+e.target.value)}
-                                 className="w-full accent-blue-500"/>
-                          <div className="flex justify-between text-xs mt-1" style={{color:'#475569'}}>
-                            <span>{t('noLinesLabel')}</span>
-                            <span>{t('moreLines')}</span>
-                          </div>
-                          {showLineWarning && lineCount > 0 && (
-                            <div className="flex items-start gap-1.5 mt-2 rounded-lg px-2.5 py-2 text-xs"
-                                 style={{backgroundColor:'#2a1a08',border:'1px solid #92400e',color:'#fbbf24'}}>
-                              <span className="shrink-0 mt-0.5">⚠️</span>
-                              <span>{t('manyLinesWarning', {count: lineCount})}</span>
+                    {/* BIM Conversion */}
+                    {onConvertToBIM&&(
+                        <div className="mx-3 mb-4 rounded-xl p-4 space-y-3"
+                             style={{backgroundColor:'#0e0820',border:'1px solid #4c1d95',
+                               boxShadow:'0 0 20px #7c3aed15'}}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base"
+                                 style={{background:'linear-gradient(135deg,#1e3a5f,#2563eb)',border:'1px solid #3b82f650'}}>
+                              📐
                             </div>
-                          )}
-                        </div>
+                            <div>
+                              <p className="text-xs font-bold text-blue-300">{t('bimConvert')}</p>
+                              <p className="text-xs" style={{color:T2}}>{t('drawingLineConvert')}</p>
+                            </div>
+                          </div>
 
-                        <button onClick={convertBIM} disabled={!cvName.trim()||cvBusy}
-                                className="w-full py-2.5 rounded-xl text-xs font-bold text-white transition-all"
-                                style={{
-                                  background:cvName.trim()&&!cvBusy?'linear-gradient(135deg,#2563eb,#1d4ed8)':'#0e0820',
-                                  border:`1px solid ${cvName.trim()?'#3b82f6':'#1e2a3a'}`,
-                                  cursor:!cvName.trim()||cvBusy?'not-allowed':'pointer',
-                                  boxShadow:cvName.trim()&&!cvBusy?'0 0 16px #3b82f645':'none',
-                                }}>
-                          {cvBusy?(
-                            <span className="flex items-center justify-center gap-2">
+                          {cvDone==='ok'?(
+                              <div className="rounded-xl py-3 text-xs font-semibold text-center"
+                                   style={{backgroundColor:'#0c2a1a',border:'1px solid #22c55e50',color:'#4ade80'}}>
+                                {t('projectCreated')}<br/>
+                                <span className="font-normal text-green-600 text-xs">{t('redirecting')}</span>
+                              </div>
+                          ):(
+                              <>
+                                {cvDone==='err'&&(
+                                    <div className="text-xs text-red-400 rounded-lg px-3 py-2"
+                                         style={{backgroundColor:'#2a1010',border:'1px solid #f4433620'}}>
+                                      {t('conversionFailed')}
+                                    </div>
+                                )}
+
+                                <input type="text" value={cvName} onChange={e=>setCvName(e.target.value)}
+                                       placeholder={t('projectNamePlaceholder')}
+                                       className="w-full px-3 py-2 rounded-lg text-xs text-white outline-none"
+                                       style={{backgroundColor:'#060f18',border:'1px solid #4c1d95'}}/>
+
+                                <div>
+                                  <div className="flex justify-between text-xs mb-1.5">
+                                    <span style={{color:T2}}>{t('edgeSensitivity')}</span>
+                                    <span className="font-medium"
+                                          style={{color: lineCount === 0 ? '#6b7280' : showLineWarning ? '#f59e0b' : '#93c5fd'}}>
+                              {lineCount === 0
+                                  ? t('noLines')
+                                  : t('polylineCount', {count: lineCount})}
+                            </span>
+                                  </div>
+                                  <input type="range" min={4} max={12} step={1}
+                                         value={cvZones}
+                                         onChange={e=>setCvZones(+e.target.value)}
+                                         className="w-full accent-blue-500"/>
+                                  <div className="flex justify-between text-xs mt-1" style={{color:'#475569'}}>
+                                    <span>{t('noLinesLabel')}</span>
+                                    <span>{t('moreLines')}</span>
+                                  </div>
+                                  {showLineWarning && lineCount > 0 && (
+                                      <div className="flex items-start gap-1.5 mt-2 rounded-lg px-2.5 py-2 text-xs"
+                                           style={{backgroundColor:'#2a1a08',border:'1px solid #92400e',color:'#fbbf24'}}>
+                                        <span className="shrink-0 mt-0.5">⚠️</span>
+                                        <span>{t('manyLinesWarning', {count: lineCount})}</span>
+                                      </div>
+                                  )}
+                                </div>
+
+                                <button onClick={convertBIM} disabled={!cvName.trim()||cvBusy}
+                                        className="w-full py-2.5 rounded-xl text-xs font-bold text-white transition-all"
+                                        style={{
+                                          background:cvName.trim()&&!cvBusy?'linear-gradient(135deg,#2563eb,#1d4ed8)':'#0e0820',
+                                          border:`1px solid ${cvName.trim()?'#3b82f6':'#1e2a3a'}`,
+                                          cursor:!cvName.trim()||cvBusy?'not-allowed':'pointer',
+                                          boxShadow:cvName.trim()&&!cvBusy?'0 0 16px #3b82f645':'none',
+                                        }}>
+                                  {cvBusy?(
+                                      <span className="flex items-center justify-center gap-2">
                               <span className="animate-spin">⏳</span> {t('converting')}
                             </span>
-                          ):t('createBimProject')}
-                        </button>
-                      </>
+                                  ):t('createBimProject')}
+                                </button>
+                              </>
+                          )}
+                        </div>
                     )}
                   </div>
-                )}
-              </div>
-            </div>
-          )}
+                </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
   );
 }

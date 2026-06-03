@@ -62,3 +62,43 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   filter: invert(1) opacity(1);
 }
+
+/* ── 모바일 전반 UX ─────────────────────────────── */
+
+/* 버튼 / 링크 탭 지연(300ms) 제거 */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* iOS Safari: input 포커스 시 자동 확대 방지 (font-size 16px 이상이면 줌 안 됨) */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/* range 슬라이더 터치 영역 확대 */
+input[type="range"] {
+  height: 32px;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+}
+
+/* 모달 내부 스크롤 — iOS 관성 스크롤 */
+.modal-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 드래그 비활성 — 실수 선택 방지 */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
