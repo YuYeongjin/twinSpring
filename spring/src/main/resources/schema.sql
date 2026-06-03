@@ -56,6 +56,17 @@ CREATE TABLE IF NOT EXISTS sensor_data
 );
 
 -- ================================================================
+-- sensor_data 기존 테이블 마이그레이션
+-- (Docker 볼륨에 구버전 테이블이 남아있을 때 대응)
+--   1) location 컬럼: VARCHAR → TEXT
+--   2) 기본키: id 단일키 → (id, timestamp) 복합키
+-- ※ 이미 올바른 상태라도 DROP→ADD 는 안전하게 재적용됨
+-- ================================================================
+ALTER TABLE sensor_data ALTER COLUMN location TYPE TEXT;
+ALTER TABLE sensor_data DROP CONSTRAINT IF EXISTS sensor_data_pkey;
+ALTER TABLE sensor_data ADD CONSTRAINT sensor_data_pkey PRIMARY KEY (id, timestamp);
+
+-- ================================================================
 -- sensor_data → TimescaleDB Hypertable 변환
 --
 -- create_hypertable: timestamp 컬럼 기준으로 7일 단위 청크 파티셔닝
