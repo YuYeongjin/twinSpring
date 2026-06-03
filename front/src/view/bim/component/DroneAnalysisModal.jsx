@@ -328,6 +328,9 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
     ctx.clearRect(0,0,cw,ch);
     const sx=cw/cols,sy=ch/rows;
 
+    const isMobile = window.innerWidth < 640;
+    const scale = isMobile ? 1.6 : 1.0;
+
     if(showPhoto&&img){
       ctx.globalAlpha=0.55;ctx.drawImage(img,0,0,cw,ch);ctx.globalAlpha=1;
     } else {
@@ -344,78 +347,106 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
 
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
       const t=smooth[r][c];
-      if(t>refT+0.01){ctx.fillStyle='rgba(239,68,68,0.15)';ctx.fillRect(c*sx,r*sy,sx+1,sy+1);}
-      else if(t<refT-0.01){ctx.fillStyle='rgba(34,197,94,0.1)';ctx.fillRect(c*sx,r*sy,sx+1,sy+1);}
+      if(t>refT+0.01){ctx.fillStyle=isMobile?'rgba(239,68,68,0.22)':'rgba(239,68,68,0.15)';ctx.fillRect(c*sx,r*sy,sx+1,sy+1);}
+      else if(t<refT-0.01){ctx.fillStyle=isMobile?'rgba(34,197,94,0.18)':'rgba(34,197,94,0.1)';ctx.fillRect(c*sx,r*sy,sx+1,sy+1);}
     }
 
     ctx.save();ctx.globalAlpha=0.5;
     for(const{chains,t,major}of contours){
       if(major)continue;
-      ctx.strokeStyle=elevHex(t);ctx.lineWidth=0.7;
+      ctx.strokeStyle=elevHex(t);ctx.lineWidth=0.7 * scale;
       for(const ch of chains)drawChain(ctx,ch,sx,sy);
     }ctx.restore();
 
     ctx.save();ctx.globalAlpha=0.92;
     for(const{chains,t,major,elev}of contours){
       if(!major)continue;
-      ctx.strokeStyle=elevHex(t);ctx.lineWidth=2.0;
+      ctx.strokeStyle=elevHex(t);ctx.lineWidth=2.0 * scale;
       for(const ch of chains)drawChain(ctx,ch,sx,sy);
-      if(chains[0]?.length>4){
+      if(chains[0]?.length > 4){
         const mid=chains[0][chains[0].length>>1];
-        ctx.save();ctx.globalAlpha=1;ctx.font='bold 10px monospace';
+        ctx.save();ctx.globalAlpha=1;
+        ctx.font=`bold ${Math.round(10 * scale)}px monospace`;
         ctx.fillStyle='#fff';ctx.shadowColor='#000';ctx.shadowBlur=4;
         ctx.fillText(`${elev.toFixed(0)}m`,mid[0]*sx+3,mid[1]*sy-3);
         ctx.restore();
       }
     }ctx.restore();
 
-    ctx.save();ctx.strokeStyle='#facc15';ctx.lineWidth=2.2;
-    ctx.setLineDash([10,5]);ctx.globalAlpha=0.95;
+    ctx.save();ctx.strokeStyle='#facc15';ctx.lineWidth=2.4 * scale;
+    ctx.setLineDash([isMobile?14:10, isMobile?7:5]);ctx.globalAlpha=0.95;
     for(const ch of refChains)drawChain(ctx,ch,sx,sy);
     ctx.restore();
 
     ctx.save();
-    const bh=ch*0.45,by=(ch-bh)/2,bx=cw-14;
+    const bh=ch*0.45,by=(ch-bh)/2,bx=cw-(isMobile?20:14);
     const grad=ctx.createLinearGradient(0,by+bh,0,by);
     STOPS.forEach(([t,[r,g,b]])=>grad.addColorStop(t,`rgb(${r},${g},${b})`));
-    ctx.fillStyle=grad;ctx.fillRect(bx,by,10,bh);
-    ctx.strokeStyle='rgba(255,255,255,0.25)';ctx.lineWidth=1;ctx.strokeRect(bx,by,10,bh);
-    ctx.font='9px monospace';ctx.fillStyle='#e2e8f0';ctx.textAlign='right';
-    ctx.shadowColor='#000';ctx.shadowBlur=3;
-    ctx.fillText(`${elevMax}m`,bx-3,by+5);ctx.fillText(`${elevMin}m`,bx-3,by+bh+5);
+    ctx.fillStyle=grad;ctx.fillRect(bx,by,isMobile?14:10,bh);
+    ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;ctx.strokeRect(bx,by,isMobile?14:10,bh);
+    ctx.font=`bold ${Math.round(9 * scale)}px monospace`;ctx.fillStyle='#e2e8f0';ctx.textAlign='right';
+    ctx.shadowColor='#000';ctx.shadowBlur=4;
+    ctx.fillText(`${elevMax}m`,bx-4,by+5);ctx.fillText(`${elevMin}m`,bx-4,by+bh+5);
     ctx.restore();
 
     const bm=Math.pow(10,Math.floor(Math.log10(scaleW/4)));
     const bp=(bm/scaleW)*cw;
     ctx.save();ctx.fillStyle='#fff';
-    ctx.fillRect(16,ch-20,bp,5);ctx.fillRect(16,ch-26,2,12);ctx.fillRect(16+bp,ch-26,2,12);
-    ctx.font='bold 11px monospace';ctx.fillStyle='#e2e8f0';
-    ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText(`${bm}m`,16,ch-30);
+    ctx.fillRect(16,ch-20,bp,5 * scale);ctx.fillRect(16,ch-(23+3*scale),2,8*scale);ctx.fillRect(16+bp,ch-(23+3*scale),2,8*scale);
+    ctx.font=`bold ${Math.round(11 * scale)}px monospace`;ctx.fillStyle='#e2e8f0';
+    ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText(`${bm}m`,16,ch-(25+5*scale));
     ctx.restore();
 
-    ctx.save();ctx.translate(cw-26,30);
-    ctx.beginPath();ctx.moveTo(0,-15);ctx.lineTo(5,8);ctx.lineTo(0,3);ctx.lineTo(-5,8);ctx.closePath();
+    ctx.save();ctx.translate(cw-(isMobile?35:26),isMobile?45:30);
+    ctx.beginPath();ctx.moveTo(0,-15*scale);ctx.lineTo(5*scale,8*scale);ctx.lineTo(0,3*scale);ctx.lineTo(-5*scale,8*scale);ctx.closePath();
     ctx.fillStyle='#60a5fa';ctx.fill();
-    ctx.font='bold 12px sans-serif';ctx.fillStyle='#93c5fd';ctx.textAlign='center';
-    ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText('N',0,-20);
+    ctx.font=`bold ${Math.round(12 * scale)}px sans-serif`;ctx.fillStyle='#93c5fd';ctx.textAlign='center';
+    ctx.shadowColor='#000';ctx.shadowBlur=4;ctx.fillText('N',0,-18*scale);
     ctx.restore();
 
     ctx.save();
-    ctx.fillStyle='rgba(8,17,26,0.82)';ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=1;
-    ctx.beginPath();
-    if(ctx.roundRect)ctx.roundRect(10,10,120,68,6);else ctx.rect(10,10,120,68);
-    ctx.fill();ctx.stroke();
-    ctx.font='10px monospace';
+    ctx.font=`bold ${Math.round(10 * scale)}px sans-serif`;
+
     const cutLegend = t('cutLegend');
     const fillLegend = t('fillLegend');
     const refLineTxt = t('refLine', { n: refElev });
-    ctx.fillStyle='rgba(239,68,68,0.85)';ctx.fillRect(16,20,13,10);
-    ctx.fillStyle='#e2e8f0';ctx.fillText(cutLegend,33,29);
-    ctx.fillStyle='rgba(34,197,94,0.85)';ctx.fillRect(16,36,13,10);
-    ctx.fillStyle='#e2e8f0';ctx.fillText(fillLegend,33,45);
-    ctx.strokeStyle='#facc15';ctx.lineWidth=2;ctx.setLineDash([5,3]);
-    ctx.beginPath();ctx.moveTo(16,58);ctx.lineTo(29,58);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='#facc15';ctx.fillText(refLineTxt,33,62);
+
+    const w1 = ctx.measureText(cutLegend).width;
+    const w2 = ctx.measureText(fillLegend).width;
+    const w3 = ctx.measureText(refLineTxt).width;
+    const maxTextWidth = Math.max(w1, w2, w3);
+
+    const padding = 12 * scale;
+    const itemGap = isMobile ? 22 : 18;
+    const lw = maxTextWidth + (isMobile ? 40 : 34) * scale + padding * 2;
+    const lh = padding * 2 + itemGap * 2 + (isMobile ? 14 : 10);
+
+    ctx.fillStyle = 'rgba(8,17,26,0.92)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(10, 10, lw, lh, 6); else ctx.rect(10, 10, lw, lh);
+    ctx.fill(); ctx.stroke();
+
+    const startY = 14 + padding;
+    ctx.fillStyle = 'rgba(239,68,68,0.95)';
+    ctx.fillRect(10 + padding, startY, 14 * scale, 10 * scale);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(cutLegend, 10 + padding + 18 * scale, startY + 9 * scale);
+
+    ctx.fillStyle = 'rgba(34,197,94,0.95)';
+    ctx.fillRect(10 + padding, startY + itemGap, 14 * scale, 10 * scale);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText(fillLegend, 10 + padding + 18 * scale, startY + itemGap + 9 * scale);
+
+    ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.5 * scale; ctx.setLineDash([5,3]);
+    ctx.beginPath();
+    ctx.moveTo(10 + padding, startY + itemGap * 2 + 5 * scale);
+    ctx.lineTo(10 + padding + 14 * scale, startY + itemGap * 2 + 5 * scale);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#facc15';
+    ctx.fillText(refLineTxt, 10 + padding + 18 * scale, startY + itemGap * 2 + 9 * scale);
     ctx.restore();
 
   },[result,tab,showPhoto,scaleW,scaleH,refElev,elevMin,elevMax,t]);
@@ -466,9 +497,11 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
   const T2='#8896a4';
 
   return(
-      <div className="fixed inset-0 z-50 flex items-center justify-center"
+      <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4"
            style={{backgroundColor:'rgba(0,0,0,0.82)',backdropFilter:'blur(6px)'}}>
-        <div className="relative w-full max-w-5xl max-h-[100vh] flex flex-col rounded-2xl overflow-enabled"
+
+        {/* ─── [모바일 최대화 가이드 튜닝] 모바일일 때는 h-screen / rounded-none으로 타이트하게 뷰포트 밀착 ─── */}
+        <div className="relative w-full max-w-5xl h-screen sm:h-[90vh] flex flex-col rounded-none sm:rounded-2xl overflow-hidden"
              style={{backgroundColor:'#06101a',border:'1px solid #1a3350',boxShadow:'0 25px 80px rgba(0,0,0,0.7)'}}>
 
           {/* Header */}
@@ -516,11 +549,11 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
 
           <canvas ref={hidRef} className="hidden"/>
 
-          <div className="flex-1 overflow-hidden min-h-0">
+          <div className="flex-1 relative min-h-0 w-full overflow-hidden">
 
-            {/* ─── UPLOAD TAB (스크롤 락 해제 반영) ─── */}
+            {/* ─── UPLOAD TAB ─── */}
             {tab==='upload'&&(
-                <div className="h-full overflow-y-auto modal-scroll p-4 sm:p-6"
+                <div className="absolute inset-0 overflow-y-auto modal-scroll p-4 sm:p-6"
                      style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
                   <div className="max-w-2xl mx-auto space-y-4 sm:space-y-5">
 
@@ -542,6 +575,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                                position:'absolute', inset:0,
                                width:'100%', height:'100%',
                                opacity:0, cursor:'pointer', zIndex:10,
+                               touchAction:'manipulation',
                              }}/>
 
                       {file?(
@@ -557,11 +591,10 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                       ):(
                           <div className="flex flex-col items-center justify-center text-center p-6 w-full"
                                style={{position:'relative',zIndex:1,minHeight:148,pointerEvents:'none'}}>
-                            <div className="text-4xl mb-3 opacity-80">🛸</div>
+                            <div className="text-4xl mb-3 opacity-80">📂</div>
                             <p className="text-sm font-medium text-gray-300 hidden sm:block">
                               {t('dragOrClick')} <span className="text-blue-400 underline">{t('clickToSelect')}</span>
                             </p>
-                            <p className="text-sm font-medium text-blue-400 sm:hidden">📂 탭하여 사진 선택</p>
                             <p className="text-xs mt-2 text-gray-600">{t('fileSupport')}</p>
                           </div>
                       )}
@@ -645,22 +678,26 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
 
             {/* ─── RESULT TAB ─── */}
             {tab==='result'&&result&&(
-                <div className="flex flex-col sm:flex-row h-full min-h-0 overflow-y-auto sm:overflow-hidden">
+                <div className="absolute inset-0 flex flex-col sm:flex-row h-full w-full overflow-hidden">
 
-                  <div className="relative w-full flex-shrink-0 sm:flex-1 sm:min-h-0"
-                       style={{backgroundColor:'#040b11',height:'clamp(200px,42vw,420px)'}}>
-                    <canvas ref={canvasRef} width={800} height={580}
-                            className="w-full h-full" style={{display:'block'}}/>
-                    <div className="absolute bottom-3 left-3 flex gap-2">
+                  {/* 좌측 도면 영역 (모바일 격자 분배 비율 상향: 45vh -> 52vh로 상향해 확장) */}
+                  <div className="relative w-full h-[52vh] sm:h-full sm:flex-1 bg-[#040b11] min-h-0 flex flex-col">
+                    <div className="flex-1 relative min-h-0 w-full">
+                      <canvas ref={canvasRef} width={800} height={580}
+                              className="w-full h-full object-contain" style={{display:'block'}}/>
+                    </div>
+
+                    {/* 사진 / 재설정 버튼 바 */}
+                    <div className="p-3 bg-[#060f18] sm:bg-transparent border-b border-[#1a3350] sm:border-0 flex gap-2 z-20 shrink-0 sm:absolute sm:bottom-3 sm:left-3">
                       <button onClick={()=>setShowPhoto(v=>!v)}
-                              className="px-3 py-1.5 rounded-lg text-xs font-medium transition"
+                              className="px-4 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium transition flex-1 sm:flex-none text-center"
                               style={{backgroundColor:showPhoto?'#1d4ed8':'rgba(6,16,26,0.9)',
                                 border:'1px solid '+(showPhoto?'#3b82f6':'#1a3350'),
                                 color:'#e2e8f0',backdropFilter:'blur(4px)'}}>
                         {showPhoto?t('photo'):t('elevMap')}
                       </button>
                       <button onClick={()=>setTab('upload')}
-                              className="px-3 py-1.5 rounded-lg text-xs transition"
+                              className="px-4 py-2 sm:px-3 sm:py-1.5 rounded-lg text-xs transition flex-1 sm:flex-none text-center"
                               style={{backgroundColor:'rgba(6,16,26,0.9)',border:'1px solid #1a3350',
                                 color:T2,backdropFilter:'blur(4px)'}}>
                         {t('reset')}
@@ -668,8 +705,8 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                     </div>
                   </div>
 
-                  {/* 우측 사이드 패널 (스크롤 락 해제 반영) */}
-                  <div className="w-full sm:w-[268px] shrink-0 flex flex-col sm:border-l border-t sm:border-t-0 border-[#1a3350] overflow-y-auto modal-scroll"
+                  {/* 우측 사이드 스크롤 패널 (모바일에서 남은 뷰포트를 완전히 스크롤 처리) */}
+                  <div className="w-full h-[38vh] sm:h-full sm:w-[268px] shrink-0 flex flex-col sm:border-l border-t sm:border-t-0 border-[#1a3350] overflow-y-auto modal-scroll"
                        style={{
                          backgroundColor:'#060f18',
                          WebkitOverflowScrolling: 'touch',
@@ -677,7 +714,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                        }}>
 
                     {/* Stats */}
-                    <div className="p-4 space-y-2">
+                    <div className="p-4 space-y-2 shrink-0">
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">{t('earthworkAnalysis')}</p>
                       {[
                         {lb:t('cut'),v:result.stats.cut,c:'#ef4444',ic:'⛏️'},
@@ -700,7 +737,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                     </div>
 
                     {/* Info */}
-                    <div className="px-4 pb-3">
+                    <div className="px-4 pb-3 shrink-0">
                       <div className="rounded-xl p-3" style={{backgroundColor:'#091624',border:'1px solid #1a3350'}}>
                         <p className="text-xs font-semibold text-gray-400 mb-2">{t('surveyInfo')}</p>
                         <div className="space-y-1.5 text-xs">
@@ -720,9 +757,9 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
                     </div>
 
                     {/* Export */}
-                    <div className="px-4 pb-3">
+                    <div className="px-4 pb-3 shrink-0">
                       <button onClick={exportPNG}
-                              className="w-full py-2 rounded-lg text-xs font-semibold text-white transition"
+                              className="w-full py-2 rounded-lg text-xs font-semibold text-white transition hover:bg-blue-700"
                               style={{backgroundColor:'#1e3a5f',border:'1px solid #2563eb'}}>
                         {t('savePng')}
                       </button>
@@ -730,7 +767,7 @@ export default function DroneAnalysisModal({onClose,onConvertToBIM,onProjectSele
 
                     {/* BIM Conversion */}
                     {onConvertToBIM&&(
-                        <div className="mx-3 mb-4 rounded-xl p-4 space-y-3"
+                        <div className="mx-3 mb-6 rounded-xl p-4 space-y-3 shrink-0"
                              style={{backgroundColor:'#0e0820',border:'1px solid #4c1d95',
                                boxShadow:'0 0 20px #7c3aed15'}}>
                           <div className="flex items-center gap-2">
