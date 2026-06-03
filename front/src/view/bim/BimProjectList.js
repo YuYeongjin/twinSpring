@@ -505,6 +505,7 @@ function IfcImportModal({ onClose, onImport }) {
                       <p className="text-sm hidden sm:block" style={{ color: TB.text2 }}>
                         {t('dragOrClick')} <span className="text-blue-400 underline">{t('clickToSelect')}</span>
                       </p>
+                      <p className="text-xs mt-1 text-gray-600 sm:hidden">📂</p>
                       <p className="text-xs mt-1 text-gray-600">{t('ifcSupport')}</p>
                     </>
                 )}

@@ -102,3 +102,35 @@ input[type="range"]::-moz-range-thumb {
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* ── BIM 모바일 사이드 패널 슬라이드 애니메이션 ─────────────── */
+@keyframes slideInFromLeft {
+  from { transform: translateX(-100%); opacity: 0.6; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes slideOutToLeft {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+@keyframes slideInFromRight {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideOutToRight {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+@keyframes fadeInDim {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fadeOutDim {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.bim-panel-left      { animation: slideInFromLeft  0.26s cubic-bezier(0.4,0,0.2,1) both; }
+.bim-panel-left-out  { animation: slideOutToLeft   0.22s cubic-bezier(0.4,0,0.2,1) both; }
+.bim-panel-right     { animation: slideInFromRight 0.26s cubic-bezier(0.4,0,0.2,1) both; }
+.bim-panel-right-out { animation: slideOutToRight  0.22s cubic-bezier(0.4,0,0.2,1) both; }
+.bim-panel-dim       { animation: fadeInDim        0.22s ease both; }
+.bim-panel-dim-out   { animation: fadeOutDim       0.18s ease both; }

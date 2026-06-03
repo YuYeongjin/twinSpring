@@ -281,18 +281,18 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     setCamError('');
 
     if (!window.isSecureContext) {
-      setCamError('[K8s] 페이지가 Secure Context가 아닙니다. HTTPS 인증서를 확인하거나 브라우저 주소창에서 직접 https://를 확인하세요.');
+      setCamError(t('camErrSecureCtx'));
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCamError('[브라우저] navigator.mediaDevices.getUserMedia 를 지원하지 않습니다. — ' + tr('cameraHttpsRequired'));
+      setCamError('[Browser] navigator.mediaDevices.getUserMedia not supported. — ' + t('cameraHttpsRequired'));
       return;
     }
     if (navigator.permissions) {
       try {
         const perm = await navigator.permissions.query({ name: 'camera' });
         if (perm.state === 'denied') {
-          setCamError('[권한 거부] 브라우저가 이 사이트의 카메라를 차단했습니다. 브라우저 설정 → 사이트 권한에서 카메라를 허용해 주세요.');
+          setCamError(t('camErrPermBrowser'));
           return;
         }
       } catch (_) {}
@@ -309,13 +309,13 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     } catch (e) {
       const name = e.name ?? '';
       if (name === 'NotAllowedError') {
-        setCamError('[권한 거부] 카메라 접근이 차단되었습니다. 브라우저 주소창 자물쇠 → 카메라를 "허용"으로 설정하거나, URL 스트림을 대신 사용하세요.');
+        setCamError(t('camErrPermDenied'));
       } else if (name === 'NotFoundError') {
-        setCamError('[장치 없음] 연결된 카메라를 찾을 수 없습니다.');
+        setCamError(t('camErrNoDevice'));
       } else if (name === 'NotReadableError') {
-        setCamError('[장치 사용 중] 카메라가 다른 앱에서 사용 중입니다. 다른 탭/앱을 닫고 다시 시도하세요.');
+        setCamError(t('camErrInUse'));
       } else {
-        setCamError(tr('cameraError') + e.message);
+        setCamError(t('cameraError') + e.message);
       }
     }
   }, []);
@@ -374,7 +374,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
       canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
     } catch (e) {
       // CORS 없는 URL 스트림은 canvas에 그릴 수 없음 (보안 제한)
-      throw new Error('이 URL 스트림은 캡처가 차단됩니다. 서버에 CORS 헤더가 필요합니다.');
+      throw new Error(t('camErrCors'));
     }
     const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
     const form = new FormData();
@@ -882,7 +882,7 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
             borderRadius: '8px', padding: '5px 12px',
             fontSize: '11px', color: '#fca5a5', whiteSpace: 'nowrap',
           }}>
-            🖱 드래그로 안전구역을 그리세요 &nbsp;·&nbsp; 우클릭으로 취소 &nbsp;·&nbsp; 구역 ✕로 삭제
+            드래그로 안전구역을 그리세요 &nbsp;·&nbsp; 우클릭으로 취소 &nbsp;·&nbsp; 구역 ✕로 삭제
           </div>
         )}
 
@@ -1574,22 +1574,22 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
     // 새로 침범한 구역에 대해서만 알림 발생 (중복 방지)
     for (const id of newSet) {
       if (!prevViolated.current.has(id)) {
+        const projName = selectedProject?.projectName ?? t('zoneViolationSite');
         const zoneAlert = pushAlert({
           source:      'SAFE_ZONE',
           severity:    'HIGH',
-          title:       `안전구역 침범 — ${selectedProject?.projectName ?? '현장'}`,
-          detail:      `지정 안전구역에 작업자가 진입했습니다.`,
+          title:       t('zoneViolationTitle', { name: projName }),
+          detail:      t('zoneViolationDetail'),
           projectId:   selectedProject?.projectId   ?? '',
-          projectName: selectedProject?.projectName ?? '',
+          projectName: projName,
         });
-        // Agent WBS 수정 제안 (1분 쿨타임)
         pushWbsSuggest({
           eventType:   'SAFE_ZONE',
           source:      'SAFE_ZONE_VIOLATION',
-          title:       `안전구역 침범 감지`,
-          detail:      `${selectedProject?.projectName ?? '현장'}에서 작업자가 지정 안전구역에 진입했습니다. 안전 점검 일정 추가를 권장합니다.`,
+          title:       t('zoneViolationAlertTitle'),
+          detail:      t('zoneViolationWbs', { name: projName }),
           projectId:   selectedProject?.projectId   ?? '',
-          projectName: selectedProject?.projectName ?? '',
+          projectName: projName,
           alertId:     zoneAlert.id,
         });
       }

@@ -43,10 +43,6 @@ const AUTO_PHASES = [
 ];
 const PHASE_DURATION = 2200;
 
-/** Spring Boot WebSocket 엔드포인트 URL 생성
- *  - 운영(DNS+HTTPS+nginx): window.location.origin/ws/sensor → nginx 프록시
- *  - 개발: hostname:8080/ws/sensor (localhost·IP 접속 모두 대응)
- */
 function buildWsUrl() {
   if (process.env.REACT_APP_API_URL) {
     return `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/ws/sensor`;
@@ -57,14 +53,12 @@ function buildWsUrl() {
   return `${window.location.origin}/ws/sensor`;
 }
 
-/** 위도/경도 → Three.js XZ 미터 변환 (원점 기준 상대 좌표) */
 function latLngToXZ(lat, lng, originLat, originLng) {
   const dx = (lat - originLat) * 111111;
   const dz = (lng - originLng) * 111111 * Math.cos(originLat * D2R);
   return { x: dx, z: dz };
 }
 
-// Compute world-space positions of key arm joint points (boom pivot, boom mid, arm pivot, arm mid, bucket pivot, bucket tip)
 function computeArmPoints(st, machine) {
   const ms = machine.bodyScale;
   const totalRad    = (st.bodyRotation + st.swingAngle) * D2R;
@@ -104,7 +98,6 @@ function computeArmPoints(st, machine) {
   ];
 }
 
-// ── Transparent BIM element ────────────────────────────────────────────────
 function TransparentBimElement({ element, offsetX, offsetZ, isColliding }) {
   const size = useMemo(() => [
     Math.max(0.1, Number(element.sizeX)),
@@ -125,36 +118,34 @@ function TransparentBimElement({ element, offsetX, offsetZ, isColliding }) {
   ], [element.rotationX, element.rotationY, element.rotationZ]);
 
   return (
-    <Box args={size} position={position} rotation={rotation}>
-      <meshStandardMaterial
-        color={isColliding ? '#ff7777' : '#6699dd'}
-        transparent
-        opacity={isColliding ? 0.55 : 0.25}
-        roughness={0.3}
-        metalness={0.08}
-        side={THREE.DoubleSide}
-      />
-      <Edges threshold={15} color={isColliding ? '#ff3333' : '#4477bb'} linewidth={isColliding ? 2.5 : 1.2} />
-    </Box>
+      <Box args={size} position={position} rotation={rotation}>
+        <meshStandardMaterial
+            color={isColliding ? '#ff7777' : '#6699dd'}
+            transparent
+            opacity={isColliding ? 0.55 : 0.25}
+            roughness={0.3}
+            metalness={0.08}
+            side={THREE.DoubleSide}
+        />
+        <Edges threshold={15} color={isColliding ? '#ff3333' : '#4477bb'} linewidth={isColliding ? 2.5 : 1.2} />
+      </Box>
   );
 }
 
-// ── Track rollers ──────────────────────────────────────────────────────────
 function TrackRollers({ side }) {
   const x = side === 'left' ? -2.1 : 2.1;
   return (
-    <>
-      {[-2.2, -1.1, 0, 1.1, 2.2].map((z, i) => (
-        <mesh key={i} position={[x, 0.04, z]} rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.27, 0.27, 0.52, 10]} />
-          <meshStandardMaterial color="#1c1c1c" metalness={0.7} roughness={0.3} />
-        </mesh>
-      ))}
-    </>
+      <>
+        {[-2.2, -1.1, 0, 1.1, 2.2].map((z, i) => (
+            <mesh key={i} position={[x, 0.04, z]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.27, 0.27, 0.52, 10]} />
+              <meshStandardMaterial color="#1c1c1c" metalness={0.7} roughness={0.3} />
+            </mesh>
+        ))}
+      </>
   );
 }
 
-// ── Excavator 3D model (useFrame-driven) ───────────────────────────────────
 function ExcavatorModel({ stateRef, machine }) {
   const s   = machine.bodyScale;
   const BL  = machine.boomLen   / s;
@@ -180,90 +171,86 @@ function ExcavatorModel({ stateRef, machine }) {
   });
 
   return (
-    <group ref={bodyRef}>
-      <group scale={[s, s, s]}>
-        {/* 하부 */}
-        <mesh position={[0, 0.36, 0]} castShadow receiveShadow>
-          <boxGeometry args={[3.9, 0.72, 5.4]} />
-          <meshStandardMaterial color="#3b4228" roughness={0.85} metalness={0.1} />
-        </mesh>
-        <mesh position={[-2.1, 0.37, 0]} castShadow>
-          <boxGeometry args={[0.62, 0.60, 5.85]} />
-          <meshStandardMaterial color="#191919" roughness={0.95} />
-        </mesh>
-        <mesh position={[2.1, 0.37, 0]} castShadow>
-          <boxGeometry args={[0.62, 0.60, 5.85]} />
-          <meshStandardMaterial color="#191919" roughness={0.95} />
-        </mesh>
-        <TrackRollers side="left" />
-        <TrackRollers side="right" />
-        {[-1, 1].map((sx, i) => (
-          <mesh key={`idr${i}`} position={[sx*2.1, 0.37, 2.75]} rotation={[0,0,Math.PI/2]} castShadow>
-            <cylinderGeometry args={[0.32, 0.32, 0.55, 12]} />
-            <meshStandardMaterial color="#2a2a2a" metalness={0.6} />
+      <group ref={bodyRef}>
+        <group scale={[s, s, s]}>
+          <mesh position={[0, 0.36, 0]} castShadow receiveShadow>
+            <boxGeometry args={[3.9, 0.72, 5.4]} />
+            <meshStandardMaterial color="#3b4228" roughness={0.85} metalness={0.1} />
           </mesh>
-        ))}
-
-        {/* 상부 선회체 */}
-        <group ref={swingRef} position={[0, 0.72, 0]}>
-          <mesh position={[0, 0.72, 0.1]} castShadow receiveShadow>
-            <boxGeometry args={[3.3, 1.44, 4.0]} />
-            <meshStandardMaterial color="#f5a623" roughness={0.52} metalness={0.22} />
+          <mesh position={[-2.1, 0.37, 0]} castShadow>
+            <boxGeometry args={[0.62, 0.60, 5.85]} />
+            <meshStandardMaterial color="#191919" roughness={0.95} />
           </mesh>
-          <mesh position={[-0.65, 1.92, -0.6]} castShadow>
-            <boxGeometry args={[1.95, 1.85, 2.1]} />
-            <meshStandardMaterial color="#f5a623" roughness={0.48} metalness={0.2} />
+          <mesh position={[2.1, 0.37, 0]} castShadow>
+            <boxGeometry args={[0.62, 0.60, 5.85]} />
+            <meshStandardMaterial color="#191919" roughness={0.95} />
           </mesh>
-          <mesh position={[-0.65, 2.05, 0.45]}>
-            <boxGeometry args={[1.75, 0.85, 0.06]} />
-            <meshStandardMaterial color="#88ccff" transparent opacity={0.42} />
-          </mesh>
-          <mesh position={[0.2, 0.7, -2.45]} castShadow>
-            <boxGeometry args={[3.1, 0.95, 1.25]} />
-            <meshStandardMaterial color="#282828" metalness={0.55} roughness={0.6} />
-          </mesh>
-          <mesh position={[0, 0, 0]} rotation={[Math.PI/2, 0, 0]}>
-            <torusGeometry args={[1.4, 0.15, 8, 24]} />
-            <meshStandardMaterial color="#444" metalness={0.8} />
-          </mesh>
-
-          {/* 붐 피벗 */}
-          <group position={[0, 1.4, 1.9]}>
-            <group ref={boomRef}>
-              <mesh position={[0, 0, BL/2]} castShadow>
-                <boxGeometry args={[0.58, 0.58, BL]} />
-                <meshStandardMaterial color="#d48810" roughness={0.48} metalness={0.38} />
+          <TrackRollers side="left" />
+          <TrackRollers side="right" />
+          {[-1, 1].map((sx, i) => (
+              <mesh key={`idr${i}`} position={[sx*2.1, 0.37, 2.75]} rotation={[0,0,Math.PI/2]} castShadow>
+                <cylinderGeometry args={[0.32, 0.32, 0.55, 12]} />
+                <meshStandardMaterial color="#2a2a2a" metalness={0.6} />
               </mesh>
-              <mesh position={[-0.35, -0.32, BL*0.38]} rotation={[0.32,0,0]} castShadow>
-                <cylinderGeometry args={[0.11, 0.11, BL*0.72, 8]} />
-                <meshStandardMaterial color="#888" metalness={0.85} roughness={0.2} />
-              </mesh>
+          ))}
 
-              {/* 암 피벗 */}
-              <group position={[0, 0, BL]}>
-                <group ref={armRef}>
-                  <mesh position={[0, 0, AL/2]} castShadow>
-                    <boxGeometry args={[0.44, 0.44, AL]} />
-                    <meshStandardMaterial color="#c07a0a" roughness={0.5} metalness={0.35} />
-                  </mesh>
+          <group ref={swingRef} position={[0, 0.72, 0]}>
+            <mesh position={[0, 0.72, 0.1]} castShadow receiveShadow>
+              <boxGeometry args={[3.3, 1.44, 4.0]} />
+              <meshStandardMaterial color="#f5a623" roughness={0.52} metalness={0.22} />
+            </mesh>
+            <mesh position={[-0.65, 1.92, -0.6]} castShadow>
+              <boxGeometry args={[1.95, 1.85, 2.1]} />
+              <meshStandardMaterial color="#f5a623" roughness={0.48} metalness={0.2} />
+            </mesh>
+            <mesh position={[-0.65, 2.05, 0.45]}>
+              <boxGeometry args={[1.75, 0.85, 0.06]} />
+              <meshStandardMaterial color="#88ccff" transparent opacity={0.42} />
+            </mesh>
+            <mesh position={[0.2, 0.7, -2.45]} castShadow>
+              <boxGeometry args={[3.1, 0.95, 1.25]} />
+              <meshStandardMaterial color="#282828" metalness={0.55} roughness={0.6} />
+            </mesh>
+            <mesh position={[0, 0, 0]} rotation={[Math.PI/2, 0, 0]}>
+              <torusGeometry args={[1.4, 0.15, 8, 24]} />
+              <meshStandardMaterial color="#444" metalness={0.8} />
+            </mesh>
 
-                  {/* 버킷 피벗 */}
-                  <group position={[0, 0, AL]}>
-                    <group ref={bucketRef}>
-                      <mesh position={[0, -0.2, buL*0.45]} castShadow>
-                        <boxGeometry args={[1.38, 0.78, buL*1.05]} />
-                        <meshStandardMaterial color="#6a6a6a" metalness={0.68} roughness={0.38} />
-                      </mesh>
-                      <mesh position={[0, -0.06, -0.06]} castShadow>
-                        <boxGeometry args={[1.38, 0.58, 0.13]} />
-                        <meshStandardMaterial color="#5a5a5a" metalness={0.72} />
-                      </mesh>
-                      {[-0.52, -0.18, 0.18, 0.52].map((x, i) => (
-                        <mesh key={i} position={[x, -0.52, buL*0.88]} castShadow>
-                          <boxGeometry args={[0.1, 0.14, buL*0.35]} />
-                          <meshStandardMaterial color="#3a3a3a" metalness={0.88} />
+            <group position={[0, 1.4, 1.9]}>
+              <group ref={boomRef}>
+                <mesh position={[0, 0, BL/2]} castShadow>
+                  <boxGeometry args={[0.58, 0.58, BL]} />
+                  <meshStandardMaterial color="#d48810" roughness={0.48} metalness={0.38} />
+                </mesh>
+                <mesh position={[-0.35, -0.32, BL*0.38]} rotation={[0.32,0,0]} castShadow>
+                  <cylinderGeometry args={[0.11, 0.11, BL*0.72, 8]} />
+                  <meshStandardMaterial color="#888" metalness={0.85} roughness={0.2} />
+                </mesh>
+
+                <group position={[0, 0, BL]}>
+                  <group ref={armRef}>
+                    <mesh position={[0, 0, AL/2]} castShadow>
+                      <boxGeometry args={[0.44, 0.44, AL]} />
+                      <meshStandardMaterial color="#c07a0a" roughness={0.5} metalness={0.35} />
+                    </mesh>
+
+                    <group position={[0, 0, AL]}>
+                      <group ref={bucketRef}>
+                        <mesh position={[0, -0.2, buL*0.45]} castShadow>
+                          <boxGeometry args={[1.38, 0.78, buL*1.05]} />
+                          <meshStandardMaterial color="#6a6a6a" metalness={0.68} roughness={0.38} />
                         </mesh>
-                      ))}
+                        <mesh position={[0, -0.06, -0.06]} castShadow>
+                          <boxGeometry args={[1.38, 0.58, 0.13]} />
+                          <meshStandardMaterial color="#5a5a5a" metalness={0.72} />
+                        </mesh>
+                        {[-0.52, -0.18, 0.18, 0.52].map((x, i) => (
+                            <mesh key={i} position={[x, -0.52, buL*0.88]} castShadow>
+                              <boxGeometry args={[0.1, 0.14, buL*0.35]} />
+                              <meshStandardMaterial color="#3a3a3a" metalness={0.88} />
+                            </mesh>
+                        ))}
+                      </group>
                     </group>
                   </group>
                 </group>
@@ -272,11 +259,9 @@ function ExcavatorModel({ stateRef, machine }) {
           </group>
         </group>
       </group>
-    </group>
   );
 }
 
-// ── Collision detector (pure Three.js loop, no React state inside) ─────────
 function CollisionDetector({ stateRef, machine, elementsRef, offsetRef, onCollisionRef }) {
   const prevColliding = useRef(false);
   const lastCall = useRef(0);
@@ -325,20 +310,22 @@ function CollisionDetector({ stateRef, machine, elementsRef, offsetRef, onCollis
   return null;
 }
 
-// ── Ground plane ───────────────────────────────────────────────────────────
 function Ground() {
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={[200, 200]} />
-      <meshStandardMaterial color="#2e3a1a" roughness={0.95} />
-    </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[200, 200]} />
+        <meshStandardMaterial color="#2e3a1a" roughness={0.95} />
+      </mesh>
   );
 }
 
-// ── Main TestDashboard ─────────────────────────────────────────────────────
-export default function TestDashboard() {
+// ================================================================
+// Main TestDashboard
+// ================================================================
+export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscreen }) {
   const t = useT('gpsControl');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const rootContainerRef = useRef(null); // 최상위 Fullscreen API 구속 타깃 노드
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -350,50 +337,66 @@ export default function TestDashboard() {
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // BIM
   const [bimProjects, setBimProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [bimElements, setBimElements] = useState([]);
   const [loadingBim, setLoadingBim] = useState(false);
   const elementsRef = useRef([]);
 
-  // Collision
   const [colliding, setColliding] = useState(false);
   const [collidingIds, setCollidingIds] = useState([]);
   const [collisionLog, setCollisionLog] = useState([]);
   const [alertPulse, setAlertPulse] = useState(true);
   const wasCollidingRef = useRef(false);
 
-  // Auto-play
   const [autoPlay, setAutoPlay] = useState(false);
   const autoPlayRef = useRef(false);
   const autoPhaseRef = useRef(0);
 
-  // Keyboard
   const keysRef = useRef(new Set());
   const animRef = useRef(null);
 
-  // ── GPS / WebSocket 상태 ──────────────────────────────────────────────────
   const [gpsConnected, setGpsConnected] = useState(false);
-  const [lastGpsPacket, setLastGpsPacket] = useState(null);   // 마지막 수신 패킷 표시용
+  const [lastGpsPacket, setLastGpsPacket] = useState(null);
   const [gpsPacketCount, setGpsPacketCount] = useState(0);
-  const [gpsHz, setGpsHz] = useState(0);                      // 수신 빈도 (Hz)
+  const [gpsHz, setGpsHz] = useState(0);
   const [gpsError, setGpsError] = useState('');
 
-  const gpsStompRef   = useRef(null);   // STOMP Client
-  const gpsActiveRef  = useRef(false);  // 실시간 GPS 활성 여부 (키보드 잠금용)
-  const gpsOriginRef  = useRef(null);   // 원점 GPS (첫 패킷의 lat/lng)
-  const gpsHzCountRef = useRef(0);      // Hz 계산용 카운터
-  const gpsHzTimerRef = useRef(null);   // Hz 계산용 타이머
+  const gpsStompRef   = useRef(null);
+  const gpsActiveRef  = useRef(false);
+  const gpsOriginRef  = useRef(null);
+  const gpsHzCountRef = useRef(0);
+  const gpsHzTimerRef = useRef(null);
 
-  // ── GPS 데이터 → 굴착기 상태 변환 ───────────────────────────────────────
+  // ─── [HTML5 하드웨어 Fullscreen 감지 이펙트 선언] ───
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const isCurrentlyFull = !!document.fullscreenElement;
+      if (isCurrentlyFull !== canvasFullscreen) {
+        onToggleCanvasFullscreen?.();
+      }
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, [canvasFullscreen, onToggleCanvasFullscreen]);
+
+  // 스마트폰 브라우저 네비게이션 가림용 수동 풀스크린 요청 가이드
+  const triggerMobileFullscreen = useCallback(() => {
+    if (!rootContainerRef.current) return;
+    if (!document.fullscreenElement) {
+      rootContainerRef.current.requestFullscreen().catch(err => {
+        console.error("모바일 전체화면 진입 거절됨:", err);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
+
   const handleGpsData = useCallback((packet) => {
-    // ① 원점 설정 (첫 패킷)
     if (gpsOriginRef.current === null && packet.lat != null && packet.lng != null) {
       gpsOriginRef.current = { lat: packet.lat, lng: packet.lng };
     }
 
-    // ② lat/lng → XZ 좌표 (미터 단위 Three.js 공간)
     let posX = stateRef.current.positionX;
     let posZ = stateRef.current.positionZ;
     if (packet.lat != null && packet.lng != null && gpsOriginRef.current) {
@@ -402,19 +405,13 @@ export default function TestDashboard() {
       posZ = z;
     }
 
-    // ③ 방향각 (heading → bodyRotation)
-    //    heading: 0~360 (진북 기준 시계방향)
-    //    Three.js bodyRotation: 도 단위, Y축 회전
     let bodyRot = stateRef.current.bodyRotation;
     if (packet.heading != null) {
       bodyRot = packet.heading;
     } else if (packet.alpha != null) {
-      // DeviceOrientation alpha = 방위각 (0~360, 시계방향)
       bodyRot = packet.alpha;
     }
 
-    // ④ 관절 각도 매핑
-    //    우선순위: 직접 제공된 각도 > IMU에서 계산
     let boom   = stateRef.current.boomAngle;
     let arm    = stateRef.current.armAngle;
     let bucket = stateRef.current.bucketAngle;
@@ -423,8 +420,6 @@ export default function TestDashboard() {
     if (packet.boomAngle != null) {
       boom = clamp(packet.boomAngle, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
     } else if (packet.beta != null) {
-      // beta: -180~180 (pitch, 앞으로 기울면 양수)
-      // 0° = 수평, +45° = 앞으로 45° 기울어짐 → 붐 올라감
       boom = clamp(packet.beta * 0.6 + 35, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
     }
 
@@ -439,38 +434,23 @@ export default function TestDashboard() {
     if (packet.swingAngle != null) {
       swing = packet.swingAngle;
     } else if (packet.gamma != null) {
-      // gamma: -90~90 (roll, 오른쪽으로 기울면 양수)
-      // 선회 각도를 roll에 매핑 (±90° 범위를 ±120°로 스케일)
       swing = clamp(packet.gamma * 1.33, -120, 120);
     }
 
-    // ⑤ stateRef 직접 업데이트 (useFrame과 동기화, React state 우회)
     stateRef.current = {
-      positionX: posX,
-      positionY: stateRef.current.positionY,
-      positionZ: posZ,
-      bodyRotation: bodyRot,
-      swingAngle: swing,
-      boomAngle: boom,
-      armAngle: arm,
-      bucketAngle: bucket,
+      positionX: posX, positionY: stateRef.current.positionY, positionZ: posZ,
+      bodyRotation: bodyRot, swingAngle: swing, boomAngle: boom, armAngle: arm, bucketAngle: bucket,
     };
 
-    // ⑥ UI 표시를 위해 React state 업데이트 (throttle: 100ms)
     setState({ ...stateRef.current });
     setLastGpsPacket(packet);
     setGpsPacketCount(c => c + 1);
-
-    // Hz 카운터
     gpsHzCountRef.current++;
   }, []);
 
-  // ── GPS 연결 ─────────────────────────────────────────────────────────────
   const connectGps = useCallback(() => {
     if (gpsStompRef.current) return;
-
     setGpsError('');
-    // 오토 플레이 중이면 중지
     setAutoPlay(false);
     autoPlayRef.current = false;
 
@@ -488,8 +468,6 @@ export default function TestDashboard() {
         });
         setGpsConnected(true);
         gpsActiveRef.current = true;
-
-        // Hz 측정 타이머 (1초마다 갱신)
         gpsHzTimerRef.current = setInterval(() => {
           setGpsHz(gpsHzCountRef.current);
           gpsHzCountRef.current = 0;
@@ -512,7 +490,6 @@ export default function TestDashboard() {
     gpsStompRef.current = client;
   }, [handleGpsData]);
 
-  // ── GPS 해제 ─────────────────────────────────────────────────────────────
   const disconnectGps = useCallback(() => {
     if (gpsStompRef.current) {
       gpsStompRef.current.deactivate();
@@ -527,14 +504,12 @@ export default function TestDashboard() {
     setGpsHz(0);
   }, []);
 
-  // ── GPS 원점 초기화 ───────────────────────────────────────────────────────
   const resetGpsOrigin = useCallback(() => {
     gpsOriginRef.current = null;
     setState(prev => ({ ...prev, positionX: 0, positionZ: 0 }));
     stateRef.current = { ...stateRef.current, positionX: 0, positionZ: 0 };
   }, []);
 
-  // 컴포넌트 언마운트 시 정리
   useEffect(() => {
     return () => {
       if (gpsStompRef.current) gpsStompRef.current.deactivate();
@@ -542,7 +517,6 @@ export default function TestDashboard() {
     };
   }, []);
 
-  // Compute BIM offset so building is centered at (0, 0, BUILDING_OFFSET_Z)
   const bimOffset = useMemo(() => {
     if (bimElements.length === 0) return { x: 0, z: 0 };
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -561,7 +535,6 @@ export default function TestDashboard() {
   const offsetRef = useRef(bimOffset);
   useEffect(() => { offsetRef.current = bimOffset; }, [bimOffset]);
 
-  // Stable collision callback ref
   const onCollisionRef = useRef(null);
   onCollisionRef.current = useCallback((isColliding, ids) => {
     setColliding(isColliding);
@@ -570,7 +543,6 @@ export default function TestDashboard() {
       const ts = new Date().toLocaleTimeString('ko-KR');
       setCollisionLog(prev => [{ ts, ids }, ...prev].slice(0, 8));
 
-      // Agent WBS 수정 제안 — 새 충돌 발생 시 한 번만 발행 (1분 쿨타임)
       pushWbsSuggest({
         eventType:   'COLLISION',
         source:      'TEST_COLLISION',
@@ -583,41 +555,36 @@ export default function TestDashboard() {
     wasCollidingRef.current = isColliding;
   }, [selectedProject]);
 
-  // Load BIM projects
   useEffect(() => {
     AxiosCustom.get('/api/bim/projects')
-      .then(res => setBimProjects(res.data || []))
-      .catch(() => {});
+        .then(res => setBimProjects(res.data || []))
+        .catch(() => {});
   }, []);
 
-  // Load BIM elements when project is selected
   const handleSelectProject = useCallback((proj) => {
     setSelectedProject(proj);
     setLoadingBim(true);
     setBimElements([]);
     elementsRef.current = [];
     AxiosCustom.get(`/api/bim/project/${proj.projectId}`)
-      .then(res => {
-        const elems = Array.isArray(res.data) ? res.data : (res.data?.elements || []);
-        setBimElements(elems);
-        elementsRef.current = elems;
-      })
-      .catch(() => { setBimElements([]); elementsRef.current = []; })
-      .finally(() => setLoadingBim(false));
+        .then(res => {
+          const elems = Array.isArray(res.data) ? res.data : (res.data?.elements || []);
+          setBimElements(elems);
+          elementsRef.current = elems;
+        })
+        .catch(() => { setBimElements([]); elementsRef.current = []; })
+        .finally(() => setLoadingBim(false));
   }, []);
 
-  // Alert pulse
   useEffect(() => {
     if (!colliding) return;
     const id = setInterval(() => setAlertPulse(p => !p), 550);
     return () => clearInterval(id);
   }, [colliding]);
 
-  // Keyboard listeners
   useEffect(() => {
     const CTRL = new Set(['w','a','s','d','q','e','r','f','t','g','y','h','W','A','S','D','Q','E','R','F','T','G','Y','H']);
     const onDown = e => {
-      // GPS 실시간 제어 중에는 키보드 무시
       if (gpsActiveRef.current) return;
       if (CTRL.has(e.key)) { e.preventDefault(); autoPlayRef.current = false; setAutoPlay(false); }
       keysRef.current.add(e.key);
@@ -628,11 +595,9 @@ export default function TestDashboard() {
     return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
   }, []);
 
-  // Main control loop
   useEffect(() => {
     const MOVE = 0.07, ROT = 1.0, JOINT = 0.6;
     const tick = () => {
-      // GPS 활성 중에는 키보드 제어 스킵
       if (!gpsActiveRef.current) {
         const keys = keysRef.current;
         if (keys.size > 0) {
@@ -641,7 +606,6 @@ export default function TestDashboard() {
             const cos = Math.cos(s.bodyRotation * D2R), sin = Math.sin(s.bodyRotation * D2R);
             if (keys.has('w') || keys.has('W')) { s.positionX += sin*MOVE; s.positionZ += cos*MOVE; }
             if (keys.has('s') || keys.has('S')) { s.positionX -= sin*MOVE; s.positionZ -= cos*MOVE; }
-            // 전진(W) / 후진(S) 기준으로 A=좌·D=우 일관성 유지
             const _rev = (keys.has('s') || keys.has('S')) ? -1 : 1;
             if (keys.has('a') || keys.has('A')) s.bodyRotation += ROT * _rev;
             if (keys.has('d') || keys.has('D')) s.bodyRotation -= ROT * _rev;
@@ -663,14 +627,12 @@ export default function TestDashboard() {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, []);
 
-  // Auto-play: smooth interpolation through phases
   useEffect(() => {
     if (!autoPlay) return;
     autoPhaseRef.current = 0;
     let rafId = null;
 
     const phaseTick = () => {
-      // GPS 활성 중에는 오토플레이 스킵
       if (!gpsActiveRef.current) {
         const target = AUTO_PHASES[autoPhaseRef.current];
         setState(prev => ({
@@ -699,789 +661,639 @@ export default function TestDashboard() {
     autoPlayRef.current = false;
   };
 
-  // Style constants
   const panelBg     = '#0d1b2a';
   const panelBorder = '1px solid #253347';
   const secColor    = '#8896a4';
   const accentBlue  = '#60a5fa';
   const accentGreen = '#4ade80';
   const accentRed   = '#f87171';
-
-  // ── GPS 연결 상태 색상 ─────────────────────────────────────────────────────
   const gpsColor = gpsConnected ? accentGreen : (gpsError ? accentRed : secColor);
 
-  // ── Shared: 3D Canvas content ──────────────────────────────────────────────
   const canvasContent = (
-    <>
-      <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.5} />
-      <ambientLight intensity={0.5} />
-      <directionalLight
-        position={[50, 60, 30]} intensity={1.2} castShadow
-        shadow-mapSize-width={2048} shadow-mapSize-height={2048}
-        shadow-camera-far={180} shadow-camera-left={-60}
-        shadow-camera-right={60} shadow-camera-top={60} shadow-camera-bottom={-60}
-      />
-      <pointLight position={[-20, 10, 5]} intensity={0.3} color="#ff9944" />
-      <Ground />
-      <gridHelper args={[80, 40, '#1a3a5f', '#0d2035']} position={[0, 0.01, 0]} />
-      {bimElements.map(elem => (
-        <TransparentBimElement
-          key={elem.elementId}
-          element={elem}
-          offsetX={bimOffset.x}
-          offsetZ={bimOffset.z}
-          isColliding={collidingIds.includes(elem.elementId)}
+      <>
+        <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.5} />
+        <ambientLight intensity={0.5} />
+        <directionalLight
+            position={[50, 60, 30]} intensity={1.2} castShadow
+            shadow-mapSize-width={2048} shadow-mapSize-height={2048}
+            shadow-camera-far={180} shadow-camera-left={-60}
+            shadow-camera-right={60} shadow-camera-top={60} shadow-camera-bottom={-60}
         />
-      ))}
-      <ExcavatorModel stateRef={stateRef} machine={MACHINE} />
-      <CollisionDetector
-        stateRef={stateRef}
-        machine={MACHINE}
-        elementsRef={elementsRef}
-        offsetRef={offsetRef}
-        onCollisionRef={onCollisionRef}
-      />
-      <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.01} />
-      <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
-        <GizmoViewport labelColor="white" axisHeadScale={0.85} />
-      </GizmoHelper>
-    </>
+        <pointLight position={[-20, 10, 5]} intensity={0.3} color="#ff9944" />
+        <Ground />
+        <gridHelper args={[80, 40, '#1a3a5f', '#0d2035']} position={[0, 0.01, 0]} />
+        {bimElements.map(elem => (
+            <TransparentBimElement
+                key={elem.elementId}
+                element={elem}
+                offsetX={bimOffset.x}
+                offsetZ={bimOffset.z}
+                isColliding={collidingIds.includes(elem.elementId)}
+            />
+        ))}
+        <ExcavatorModel stateRef={stateRef} machine={MACHINE} />
+        <CollisionDetector
+            stateRef={stateRef}
+            machine={MACHINE}
+            elementsRef={elementsRef}
+            offsetRef={offsetRef}
+            onCollisionRef={onCollisionRef}
+        />
+        <OrbitControls enableDamping dampingFactor={0.06} minDistance={4} maxDistance={120} maxPolarAngle={Math.PI / 2 - 0.01} />
+        <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
+          <GizmoViewport labelColor="white" axisHeadScale={0.85} />
+        </GizmoHelper>
+      </>
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%' , height:'85vh'}}>
+      /* 최상위 Fullscreen 모바일 가변 컨테이너 바인딩 */
+      <div ref={rootContainerRef} style={{ display: 'flex', flexDirection: 'column', width: '100%', height: canvasFullscreen ? '100vh' : '85vh' }}>
 
-      {/* ── Header ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-        padding: '8px 4px 12px', borderBottom: '1px solid #1e3a5f', marginBottom: '10px',
-      }}>
+        {/* ── Header ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+          padding: '8px 14px 12px', borderBottom: '1px solid #1e3a5f', marginBottom: '10px',
+        }}>
         <span style={{ color: '#f5a623', fontSize: isMobile ? '13px' : '15px', fontWeight: 700 }}>
           🧪 Test — Collision Test
         </span>
-        <span style={{
-          fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
-          background: '#1a2a0a', color: '#f5a623', border: '1px solid #f5a62340',
-        }}>Beta</span>
-
-        {/* GPS 연결 배지 */}
-        {gpsConnected && (
           <span style={{
-            background: 'rgba(4,47,46,0.9)', border: '1px solid #4ade80',
-            color: accentGreen, borderRadius: '8px', padding: '3px 12px',
-            fontSize: '12px', fontWeight: 700,
-          }}>
+            fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
+            background: '#1a2a0a', color: '#f5a623', border: '1px solid #f5a62340',
+          }}>Beta</span>
+
+          {gpsConnected && (
+              <span style={{
+                background: 'rgba(4,47,46,0.9)', border: '1px solid #4ade80',
+                color: accentGreen, borderRadius: '8px', padding: '3px 12px',
+                fontSize: '12px', fontWeight: 700,
+              }}>
             📡 GPS 실시간 제어 중 — {gpsHz}Hz
           </span>
-        )}
-
-        {colliding && (
-          <span style={{
-            background: alertPulse ? 'rgba(127,29,29,0.95)' : 'rgba(90,10,10,0.9)',
-            border: `${alertPulse ? 2 : 1}px solid #ef4444`,
-            color: '#fca5a5', borderRadius: '8px', padding: '3px 12px',
-            fontSize: '12px', fontWeight: 700,
-            boxShadow: alertPulse ? '0 0 12px #ef444450' : 'none',
-            transition: 'all 0.3s',
-          }}>
-            🚨 Collision Detected!
-          </span>
-        )}
-      </div>
-
-      {/* ── Desktop Layout ── */}
-      {!isMobile && (
-        <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px' }}>
-
-          {/* Left panel: BIM project selector + GPS 제어 */}
-          <div style={{
-            width: '215px', flexShrink: 0, background: panelBg, border: panelBorder,
-            borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
-            gap: '10px', overflowY: 'auto', fontSize: '12px',
-          }}>
-            <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
-              🏗 BIM Project
-            </div>
-
-            {bimProjects.length === 0 ? (
-              <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '20px 0', fontSize: '11px' }}>
-                No BIM Projects
-              </div>
-            ) : (
-              bimProjects.map(proj => {
-                const active = selectedProject?.projectId === proj.projectId;
-                return (
-                  <button
-                    key={proj.projectId}
-                    onClick={() => handleSelectProject(proj)}
-                    style={{
-                      background: active ? '#0f2040' : '#111e2e',
-                      border: `1px solid ${active ? accentBlue : '#253347'}`,
-                      borderRadius: '8px', padding: '8px 10px', cursor: 'pointer',
-                      textAlign: 'left', width: '100%', transition: 'all 0.15s',
-                    }}
-                  >
-                    <div style={{ color: active ? accentBlue : '#e2e8f0', fontWeight: active ? 700 : 400, fontSize: '12px', whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      maxWidth: '150px' }}>
-                      {proj.projectName}
-                    </div>
-                    <div style={{ color: '#4a5568', fontSize: '10px', marginTop: '2px' }}>{proj.structureType}</div>
-                  </button>
-                );
-              })
-            )}
-
-            {selectedProject && (
-              <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-                <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Loaded Elements</div>
-                {loadingBim
-                  ? <div style={{ color: '#facc15', fontSize: '11px' }}>Loading...</div>
-                  : <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '13px' }}>{bimElements.length}</div>
-                }
-              </div>
-            )}
-
-            {/* ── GPS 실시간 제어 섹션 ─────────────────────────────────── */}
-            <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
-              <div style={{ color: '#a78bfa', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>
-                {t('sectionTitle')}
-              </div>
-
-              {/* 연결 상태 표시 */}
-              <div style={{
-                background: gpsConnected ? '#042f2e' : '#111e2e',
-                border: `1px solid ${gpsConnected ? '#4ade8040' : '#253347'}`,
-                borderRadius: '8px', padding: '8px', marginBottom: '6px',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: secColor, fontSize: '10px' }}>{t('statusLabel')}</span>
-                  <span style={{ color: gpsColor, fontWeight: 700, fontSize: '11px' }}>
-                    {gpsConnected ? t('connected') : t('standby')}
-                  </span>
-                </div>
-                {gpsConnected && (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                      <span style={{ color: secColor, fontSize: '10px' }}>{t('rxFreq')}</span>
-                      <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                      <span style={{ color: secColor, fontSize: '10px' }}>{t('totalPackets')}</span>
-                      <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
-                    </div>
-                  </>
-                )}
-                {gpsError && (
-                  <div style={{ color: accentRed, fontSize: '10px', marginTop: '4px' }}>{gpsError}</div>
-                )}
-              </div>
-
-              {/* 연결 / 해제 버튼 */}
-              {!gpsConnected ? (
-                <button
-                  onClick={connectGps}
-                  style={{
-                    width: '100%', background: '#1a1040',
-                    border: '1px solid #7c3aed', borderRadius: '8px', padding: '8px',
-                    color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
-                  }}
-                >
-                  {t('connectBtn')}
-                </button>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <button
-                    onClick={resetGpsOrigin}
-                    style={{
-                      width: '100%', background: '#0f2a18',
-                      border: '1px solid #22c55e', borderRadius: '8px', padding: '6px',
-                      color: accentGreen, fontWeight: 700, fontSize: '11px', cursor: 'pointer',
-                    }}
-                  >
-                    {t('resetOrigin')}
-                  </button>
-                  <button
-                    onClick={disconnectGps}
-                    style={{
-                      width: '100%', background: '#1a0808',
-                      border: '1px solid #ef4444', borderRadius: '8px', padding: '6px',
-                      color: accentRed, fontWeight: 700, fontSize: '11px', cursor: 'pointer',
-                    }}
-                  >
-                    {t('disconnect')}
-                  </button>
-                </div>
-              )}
-
-              {/* GPS 사용 중일 때 안내 메시지 */}
-              {gpsConnected && (
-                <div style={{
-                  background: '#1a1040', border: '1px solid #7c3aed33',
-                  borderRadius: '6px', padding: '7px', marginTop: '6px', fontSize: '10px',
-                  color: '#a78bfa', lineHeight: 1.5,
-                }}>
-                  {t('kbLocked')}
-                </div>
-              )}
-            </div>
-
-            {/* ── 시뮬레이션 ── */}
-            <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
-              <div style={{ color: accentBlue, fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>⚙ Simulation</div>
-
-              <button
-                onClick={() => {
-                  if (gpsConnected) return; // GPS 중에는 오토플레이 불가
-                  const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next;
-                }}
-                style={{
-                  width: '100%',
-                  background: autoPlay ? '#0f2a18' : '#111e2e',
-                  border: `1px solid ${autoPlay ? '#22c55e' : (gpsConnected ? '#253347' : '#253347')}`,
-                  borderRadius: '8px', padding: '8px',
-                  color: gpsConnected ? '#2a3a4a' : (autoPlay ? '#4ade80' : secColor),
-                  fontWeight: 700, fontSize: '12px',
-                  cursor: gpsConnected ? 'not-allowed' : 'pointer',
-                  opacity: gpsConnected ? 0.45 : 1,
-                }}
-              >
-                {autoPlay ? '⏹ Stop Auto Mode' : '▶ Start Auto Mode'}
-              </button>
-
-              <button
-                onClick={handleReset}
-                style={{
-                  width: '100%', background: '#111e2e', border: '1px solid #253347',
-                  borderRadius: '8px', padding: '8px', marginTop: '6px',
-                  color: secColor, fontSize: '12px', cursor: 'pointer',
-                }}
-              >
-                ↺ Reset
-              </button>
-            </div>
-
-            {collisionLog.length > 0 && (
-              <div style={{ background: '#1a0808', border: '1px solid #7f1d1d', borderRadius: '8px', padding: '9px' }}>
-                <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 700, marginBottom: '6px' }}>📋 Collision Log</div>
-                {collisionLog.map((log, i) => (
-                  <div key={i} style={{ fontSize: '10px', marginBottom: '5px', borderBottom: i < collisionLog.length-1 ? '1px solid #3a1a1a' : 'none', paddingBottom: '4px' }}>
-                    <span style={{ color: '#ef4444', fontWeight: 700 }}>🚨 Collision Detected</span>
-                    <br />
-                    <span style={{ color: '#4a5568' }}>{log.ts}</span>
-                    <br />
-                    <span style={{ color: '#fca5a5' }}>{log.ids.length} elements in contact</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Center: 3D Canvas */}
-          <div style={{
-            flex: 1, height: '100%', borderRadius: '12px', overflow: 'hidden',
-            border: colliding ? '2px solid #ef4444' : (gpsConnected ? '2px solid #4ade8060' : panelBorder),
-            position: 'relative',
-            boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 40px #ef444455' : (gpsConnected ? '0 0 0 1px #4ade8030' : 'none'),
-            transition: 'box-shadow 0.3s, border-color 0.3s',
-          }}>
-            {colliding && (
-              <div style={{
-                position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
-                background: alertPulse ? 'rgba(220,38,38,0.20)' : 'rgba(220,38,38,0.06)',
-                transition: 'background 0.4s', borderRadius: '10px',
-              }} />
-            )}
-            {colliding && (
-              <div style={{
-                position: 'absolute', top: '14px', left: '50%', transform: 'translateX(-50%)',
-                zIndex: 20, pointerEvents: 'none',
-                background: alertPulse ? 'rgba(127,29,29,0.97)' : 'rgba(100,20,20,0.94)',
-                border: `${alertPulse ? 2 : 1}px solid #ef4444`,
-                borderRadius: '10px', padding: '10px 28px',
-                color: '#fca5a5', fontSize: '14px', fontWeight: 700,
-                boxShadow: alertPulse ? '0 0 28px #ef444480, 0 0 60px #ef444430' : 'none',
-                transition: 'all 0.35s', whiteSpace: 'nowrap',
-              }}>
-                ⚠️ WARNING — Excavation equipment has contacted the structure!
-              </div>
-            )}
-            {!selectedProject && (
-              <div style={{
-                position: 'absolute', top: '50%', left: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 10, color: '#2a3a4a', textAlign: 'center', pointerEvents: 'none',
-              }}>
-                <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏗</div>
-                <div style={{ fontSize: '14px' }}>Select a BIM project from the left panel</div>
-              </div>
-            )}
-
-            {/* 키보드 단축키 안내 (GPS 연결 시 비활성 안내로 전환) */}
-            <div style={{
-              position: 'absolute', bottom: '12px', left: '12px', zIndex: 10, pointerEvents: 'none',
-              background: 'rgba(13,27,42,0.88)', border: `1px solid ${gpsConnected ? '#4ade8030' : '#253347'}`,
-              borderRadius: '10px', padding: '10px 14px', fontSize: '11px',
-              color: gpsConnected ? '#2a4a3a' : secColor, lineHeight: 1.75,
-            }}>
-              {gpsConnected ? (
-                <>
-                  <div style={{ color: accentGreen, fontWeight: 700, marginBottom: '4px' }}>📡 GPS 제어 모드</div>
-                  <div style={{ color: '#2a4a3a' }}>키보드 제어 비활성화됨</div>
-                  <div style={{ color: '#2a4a3a' }}>센서 데이터로 굴착기 제어 중</div>
-                </>
-              ) : (
-                <>
-                  <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px' }}>⌨ Keyboard Controls</div>
-                  {[['W / S','Forward / Backward'],['A / D','Body Rotation'],['Q / E','Swing ±'],['R / F','Boom Up/Down'],['T / G','Arm Bend'],['Y / H','Bucket Rotate']].map(([k,v]) => (
-                    <div key={k} style={{ display: 'flex', gap: '8px' }}>
-                      <span style={{ color: '#e2e8f0', minWidth: '52px', fontFamily: 'monospace' }}>{k}</span>
-                      <span>{v}</span>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-
-            {/* Top-right 상태 뱃지 */}
-            <div style={{
-              position: 'absolute', top: '12px', right: '12px', zIndex: 10, pointerEvents: 'none',
-              background: 'rgba(13,27,42,0.90)', border: '1px solid #253347',
-              borderRadius: '10px', padding: '8px 14px', fontSize: '12px', lineHeight: 1.7,
-            }}>
-              <div style={{ color: '#f5a623', fontWeight: 700 }}>🚜 0.6W Medium Excavator</div>
-              {selectedProject && <div style={{ color: secColor }}>🏗 {selectedProject.projectName}</div>}
-              <div style={{ color: gpsConnected ? accentGreen : (autoPlay ? '#4ade80' : secColor), fontSize: '11px' }}>
-                {gpsConnected ? `📡 GPS ${gpsHz}Hz` : (autoPlay ? '▶ Auto Mode Active' : '■ Manual Control')}
-              </div>
-              <div style={{ color: colliding ? '#ef4444' : '#4ade80', fontWeight: 700, marginTop: '4px' }}>
-                {colliding ? '● Collision' : '● Safe'}
-              </div>
-            </div>
-
-            {/* GPS 실시간 데이터 오버레이 */}
-            {gpsConnected && lastGpsPacket && (
-              <div style={{
-                position: 'absolute', top: '12px', left: '12px', zIndex: 10, pointerEvents: 'none',
-                background: 'rgba(4,47,46,0.92)', border: '1px solid #4ade8040',
-                borderRadius: '10px', padding: '8px 12px', fontSize: '10px', lineHeight: 1.7,
-                color: secColor, minWidth: '150px',
-              }}>
-                <div style={{ color: accentGreen, fontWeight: 700, marginBottom: '3px' }}>📡 GPS Live</div>
-                {lastGpsPacket.lat != null && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                    <span>Lat / Lng</span>
-                    <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
-                      {lastGpsPacket.lat.toFixed(5)}, {lastGpsPacket.lng?.toFixed(5)}
-                    </span>
-                  </div>
-                )}
-                {lastGpsPacket.heading != null && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                    <span>Heading</span>
-                    <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{lastGpsPacket.heading?.toFixed(1)}°</span>
-                  </div>
-                )}
-                {lastGpsPacket.alpha != null && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-                    <span>α/β/γ</span>
-                    <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
-                      {lastGpsPacket.alpha?.toFixed(0)}°/{lastGpsPacket.beta?.toFixed(0)}°/{lastGpsPacket.gamma?.toFixed(0)}°
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
-              {canvasContent}
-            </Canvas>
-          </div>
-
-          {/* Right panel: status monitor */}
-          <div style={{
-            width: '195px', flexShrink: 0, background: panelBg, border: panelBorder,
-            borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
-            gap: '10px', overflowY: 'auto', fontSize: '12px',
-          }}>
-            <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
-              📊 Status Monitor
-            </div>
-
-            <div style={{
-              background: colliding ? (alertPulse ? 'rgba(127,29,29,0.6)' : 'rgba(90,15,15,0.5)') : '#0d1e10',
-              border: `1px solid ${colliding ? '#ef4444' : '#1a4a1a'}`,
-              borderRadius: '8px', padding: '10px', transition: 'all 0.35s',
-            }}>
-              <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Collision Status</div>
-              <div style={{ color: colliding ? '#f87171' : '#4ade80', fontWeight: 700, fontSize: '16px' }}>
-                {colliding ? '🚨 Collision' : '✓ Safe'}
-              </div>
-              {colliding && <div style={{ color: '#fca5a5', fontSize: '10px', marginTop: '4px' }}>{collidingIds.length} elements in contact</div>}
-            </div>
-
-            <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-              <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Excavator Position (m)</div>
-              {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                  <span style={{ color: secColor }}>{l}</span>
-                  <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{Number(v).toFixed(1)}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-              <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Joint Angles (°)</div>
-              {[
-                ['Body',   state.bodyRotation, '#94a3b8'],
-                ['Swing',  state.swingAngle,   '#a78bfa'],
-                ['Boom',   state.boomAngle,    accentBlue],
-                ['Arm',    state.armAngle,     '#34d399'],
-                ['Bucket', state.bucketAngle,  '#fb923c'],
-              ].map(([l, v, c]) => (
-                <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                  <span style={{ color: secColor }}>{l}</span>
-                  <span style={{ color: c, fontFamily: 'monospace', fontWeight: 600 }}>{Math.round(v)}°</span>
-                </div>
-              ))}
-            </div>
-
-            {/* GPS 실시간 데이터 패널 */}
-            {gpsConnected && (
-              <div style={{
-                background: '#042f2e',
-                border: '1px solid #4ade8030',
-                borderRadius: '8px', padding: '9px',
-              }}>
-                <div style={{ color: accentGreen, fontSize: '10px', fontWeight: 700, marginBottom: '6px' }}>
-                  📡 GPS 실시간 데이터
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                  <span style={{ color: secColor, fontSize: '10px' }}>수신 빈도</span>
-                  <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                  <span style={{ color: secColor, fontSize: '10px' }}>총 패킷</span>
-                  <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
-                </div>
-                {lastGpsPacket?.lat != null && (
-                  <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                      <span style={{ color: secColor, fontSize: '10px' }}>Lat</span>
-                      <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{lastGpsPacket.lat.toFixed(6)}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                      <span style={{ color: secColor, fontSize: '10px' }}>Lng</span>
-                      <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{lastGpsPacket.lng?.toFixed(6)}</span>
-                    </div>
-                  </>
-                )}
-                {lastGpsPacket?.alpha != null && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                    <span style={{ color: secColor, fontSize: '10px' }}>IMU (α/β/γ)</span>
-                    <span style={{ color: '#a78bfa', fontFamily: 'monospace', fontSize: '10px' }}>
-                      {Math.round(lastGpsPacket.alpha)}/{Math.round(lastGpsPacket.beta)}/{Math.round(lastGpsPacket.gamma)}
-                    </span>
-                  </div>
-                )}
-                <div style={{
-                  marginTop: '6px', fontSize: '10px', color: '#2a5a4a',
-                  borderTop: '1px solid #1a4a3a', paddingTop: '4px'
-                }}>
-                  키보드 제어 잠금됨
-                </div>
-              </div>
-            )}
-
-            <div style={{
-              background: autoPlay ? '#0f2a18' : '#111e2e',
-              border: `1px solid ${autoPlay ? '#22c55e44' : 'transparent'}`,
-              borderRadius: '8px', padding: '9px',
-            }}>
-              <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Auto Mode</div>
-              <div style={{ color: autoPlay ? '#4ade80' : '#3a4a5a', fontWeight: 700 }}>
-                {autoPlay ? `▶ Working (Phase ${autoPhaseRef.current + 1}/${AUTO_PHASES.length})` : '■ Stopped'}
-              </div>
-            </div>
-
-            {selectedProject && (
-              <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
-                <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>BIM Building</div>
-                <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: '11px', wordBreak: 'break-all' }}>
-                  {selectedProject.projectName}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                  <span style={{ color: secColor, fontSize: '10px' }}>Elements</span>
-                  <span style={{ color: accentBlue, fontFamily: 'monospace' }}>{bimElements.length}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
-                  <span style={{ color: secColor, fontSize: '10px' }}>Type</span>
-                  <span style={{ color: '#e2e8f0', fontSize: '10px' }}>{selectedProject.structureType}</span>
-                </div>
-              </div>
-            )}
-
-            <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
-              <div style={{ color: secColor, marginBottom: '6px', fontWeight: 700 }}>Legend</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <div style={{ width: '14px', height: '10px', background: '#6699dd', opacity: 0.5, border: '1px solid #4477bb', borderRadius: '2px' }} />
-                <span style={{ color: secColor }}>BIM Building (Transparent)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <div style={{ width: '14px', height: '10px', background: '#ff7777', opacity: 0.7, border: '1px solid #ff3333', borderRadius: '2px' }} />
-                <span style={{ color: secColor }}>Colliding Element</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div style={{ width: '14px', height: '10px', background: '#f5a623', border: '1px solid #c07a0a', borderRadius: '2px' }} />
-                <span style={{ color: secColor }}>Excavator</span>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      )}
-
-      {/* ── Mobile Layout ── */}
-      {isMobile && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-
-          {/* ── 모바일 GPS 제어 (RTK-GPS 모사) ── */}
-          <MobileGpsSender />
-
-          {/* BIM project selector row */}
-          <div style={{
-            background: panelBg, border: panelBorder,
-            borderRadius: '10px', padding: '10px 12px',
-          }}>
-            <div style={{ color: accentBlue, fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>
-              🏗 BIM Project
-            </div>
-            {bimProjects.length === 0 ? (
-              <div style={{ color: '#3a4a5a', fontSize: '11px' }}>No BIM Projects</div>
-            ) : (
-              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
-                {bimProjects.map(proj => {
-                  const active = selectedProject?.projectId === proj.projectId;
-                  return (
-                    <button
-                      key={proj.projectId}
-                      onClick={() => handleSelectProject(proj)}
-                      style={{
-                        flexShrink: 0,
-                        background: active ? '#0f2040' : '#111e2e',
-                        border: `1px solid ${active ? accentBlue : '#253347'}`,
-                        borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
-                        color: active ? accentBlue : '#e2e8f0',
-                        fontWeight: active ? 700 : 400, fontSize: '12px',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {proj.projectName}
-                      {loadingBim && active && ' …'}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {selectedProject && !loadingBim && (
-              <div style={{ marginTop: '6px', fontSize: '11px', color: secColor }}>
-                {bimElements.length} elements loaded
-              </div>
-            )}
-          </div>
-
-          {/* GPS 제어 (모바일) */}
-          <div style={{
-            background: gpsConnected ? '#042f2e' : panelBg,
-            border: `1px solid ${gpsConnected ? '#4ade8040' : '#253347'}`,
-            borderRadius: '10px', padding: '10px 12px',
-          }}>
-            <div style={{ color: '#a78bfa', fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>
-              {t('sectionTitle')}
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {!gpsConnected ? (
-                <button
-                  onClick={connectGps}
-                  style={{
-                    flex: 1, background: '#1a1040', border: '1px solid #7c3aed',
-                    borderRadius: '8px', padding: '9px 8px',
-                    color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
-                  }}
-                >
-                  {t('connectBtn')}
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={resetGpsOrigin}
-                    style={{
-                      flex: 1, background: '#0f2a18', border: '1px solid #22c55e',
-                      borderRadius: '8px', padding: '9px 8px',
-                      color: accentGreen, fontWeight: 700, fontSize: '12px', cursor: 'pointer',
-                    }}
-                  >
-                    {t('resetOrigin')}
-                  </button>
-                  <button
-                    onClick={disconnectGps}
-                    style={{
-                      background: '#1a0808', border: '1px solid #ef4444',
-                      borderRadius: '8px', padding: '9px 14px',
-                      color: accentRed, fontWeight: 700, fontSize: '12px', cursor: 'pointer',
-                    }}
-                  >
-                    {t('disconnectShort')}
-                  </button>
-                </>
-              )}
-              <div style={{ fontSize: '11px', color: gpsColor }}>
-                {gpsConnected ? t('connectedHz', { hz: gpsHz, count: gpsPacketCount }) : t('standby')}
-              </div>
-            </div>
-          </div>
-
-          {/* Auto / Reset controls */}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={() => {
-                if (gpsConnected) return;
-                const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next;
-              }}
-              style={{
-                flex: 1,
-                background: autoPlay ? '#0f2a18' : '#111e2e',
-                border: `1px solid ${autoPlay ? '#22c55e' : '#253347'}`,
-                borderRadius: '10px', padding: '11px 8px',
-                color: gpsConnected ? '#2a3a4a' : (autoPlay ? '#4ade80' : secColor),
-                fontWeight: 700, fontSize: '13px', cursor: gpsConnected ? 'not-allowed' : 'pointer',
-                opacity: gpsConnected ? 0.5 : 1,
-              }}
-            >
-              {autoPlay ? '⏹ Stop Auto' : '▶ Auto Mode'}
-            </button>
-            <button
-              onClick={handleReset}
-              style={{
-                background: '#111e2e', border: '1px solid #253347',
-                borderRadius: '10px', padding: '11px 18px',
-                color: secColor, fontSize: '13px', cursor: 'pointer',
-              }}
-            >
-              ↺ Reset
-            </button>
-          </div>
-
-          {/* 3D Canvas */}
-          <div style={{
-            width: '100%',
-            height: 'clamp(320px, 45vh, 500px)',
-            borderRadius: '12px', overflow: 'hidden',
-            border: colliding ? '2px solid #ef4444' : (gpsConnected ? '2px solid #4ade8060' : panelBorder),
-            position: 'relative',
-            boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 30px #ef444455' : 'none',
-            transition: 'box-shadow 0.3s, border-color 0.3s',
-          }}>
-            {colliding && (
-              <div style={{
-                position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
-                background: alertPulse ? 'rgba(220,38,38,0.20)' : 'rgba(220,38,38,0.06)',
-                transition: 'background 0.4s', borderRadius: '10px',
-              }} />
-            )}
-            {colliding && (
-              <div style={{
-                position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
-                zIndex: 20, pointerEvents: 'none',
-                background: alertPulse ? 'rgba(127,29,29,0.97)' : 'rgba(100,20,20,0.94)',
-                border: `${alertPulse ? 2 : 1}px solid #ef4444`,
-                borderRadius: '8px', padding: '7px 16px',
-                color: '#fca5a5', fontSize: '12px', fontWeight: 700,
-                boxShadow: alertPulse ? '0 0 20px #ef444470' : 'none',
-                transition: 'all 0.35s', whiteSpace: 'nowrap',
-              }}>
-                ⚠️ Collision Detected!
-              </div>
-            )}
-            {!selectedProject && (
-              <div style={{
-                position: 'absolute', top: '50%', left: '50%',
-                transform: 'translate(-50%, -50%)',
-                zIndex: 10, color: '#2a3a4a', textAlign: 'center', pointerEvents: 'none',
-              }}>
-                <div style={{ fontSize: '36px', marginBottom: '10px' }}>🏗</div>
-                <div style={{ fontSize: '12px' }}>Select a BIM project above</div>
-              </div>
-            )}
-            {/* Top-right mini badge */}
-            <div style={{
-              position: 'absolute', top: '8px', right: '8px', zIndex: 10, pointerEvents: 'none',
-              background: 'rgba(13,27,42,0.90)', border: '1px solid #253347',
-              borderRadius: '8px', padding: '5px 10px', fontSize: '11px', lineHeight: 1.6,
-            }}>
-              <div style={{ color: gpsConnected ? accentGreen : (autoPlay ? '#4ade80' : secColor) }}>
-                {gpsConnected ? `📡 GPS` : (autoPlay ? '▶ Auto' : '■ Manual')}
-              </div>
-              <div style={{ color: colliding ? '#ef4444' : '#4ade80', fontWeight: 700 }}>
-                {colliding ? '● Collision' : '● Safe'}
-              </div>
-            </div>
-
-            <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
-              {canvasContent}
-            </Canvas>
-          </div>
-
-          {/* Status strip */}
-          <div style={{
-            background: colliding ? (alertPulse ? 'rgba(127,29,29,0.55)' : 'rgba(90,15,15,0.45)') : '#0d1e10',
-            border: `1px solid ${colliding ? '#ef4444' : '#1a4a1a'}`,
-            borderRadius: '10px', padding: '10px 14px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            transition: 'all 0.35s',
-          }}>
-            <div>
-              <div style={{ color: secColor, fontSize: '10px' }}>Collision Status</div>
-              <div style={{ color: colliding ? '#f87171' : '#4ade80', fontWeight: 700, fontSize: '15px' }}>
-                {colliding ? `🚨 ${collidingIds.length} elements hit` : '✓ Safe'}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ color: secColor, fontSize: '10px' }}>Control Mode</div>
-              <div style={{ color: gpsConnected ? accentGreen : (autoPlay ? '#4ade80' : '#3a4a5a'), fontWeight: 700, fontSize: '13px' }}>
-                {gpsConnected ? `GPS ${gpsHz}Hz` : (autoPlay ? `Phase ${autoPhaseRef.current + 1}/${AUTO_PHASES.length}` : 'Off')}
-              </div>
-            </div>
-          </div>
-
-          {/* Collision log (compact) */}
-          {collisionLog.length > 0 && (
-            <div style={{
-              background: '#1a0808', border: '1px solid #7f1d1d',
-              borderRadius: '10px', padding: '10px 12px',
-            }}>
-              <div style={{ color: '#fca5a5', fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>
-                📋 Collision Log
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {collisionLog.slice(0, 4).map((log, i) => (
-                  <div key={i} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    fontSize: '11px', paddingBottom: '4px',
-                    borderBottom: i < Math.min(collisionLog.length, 4) - 1 ? '1px solid #3a1a1a' : 'none',
-                  }}>
-                    <span style={{ color: '#ef4444', fontWeight: 700 }}>🚨 {log.ids.length} elements</span>
-                    <span style={{ color: '#4a5568' }}>{log.ts}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
           )}
 
+          {colliding && (
+              <span style={{
+                background: alertPulse ? 'rgba(127,29,29,0.95)' : 'rgba(90,10,10,0.9)',
+                border: `${alertPulse ? 2 : 1}px solid #ef4444`,
+                color: '#fca5a5', borderRadius: '8px', padding: '3px 12px',
+                fontSize: '12px', fontWeight: 700,
+                boxShadow: alertPulse ? '0 0 12px #ef444450' : 'none',
+                transition: 'all 0.3s',
+              }}>
+            🚨 Collision Detected!
+          </span>
+          )}
         </div>
-      )}
 
-    </div>
+        {/* ── Desktop Layout ── */}
+        {!isMobile && (
+            <div style={{ display: 'flex', width: '100%', height: 'calc(100vh - 175px)', gap: '10px', padding: '0 14px' }}>
+
+              <div style={{
+                width: '215px', flexShrink: 0, background: panelBg, border: panelBorder,
+                borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
+                gap: '10px', overflowY: 'auto', fontSize: '12px',
+              }}>
+                <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
+                  🏗 BIM Project
+                </div>
+
+                {bimProjects.length === 0 ? (
+                    <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '20px 0', fontSize: '11px' }}>
+                      No BIM Projects
+                    </div>
+                ) : (
+                    bimProjects.map(proj => {
+                      const active = selectedProject?.projectId === proj.projectId;
+                      return (
+                          <button
+                              key={proj.projectId}
+                              onClick={() => handleSelectProject(proj)}
+                              style={{
+                                background: active ? '#0f2040' : '#111e2e',
+                                border: `1px solid ${active ? accentBlue : '#253347'}`,
+                                borderRadius: '8px', padding: '8px 10px', cursor: 'pointer',
+                                textAlign: 'left', width: '100%', transition: 'all 0.15s',
+                              }}
+                          >
+                            <div style={{ color: active ? accentBlue : '#e2e8f0', fontWeight: active ? 700 : 400, fontSize: '12px', whiteSpace: 'nowrap',
+                              overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px' }}>
+                              {proj.projectName}
+                            </div>
+                            <div style={{ color: '#4a5568', fontSize: '10px', marginTop: '2px' }}>{proj.structureType}</div>
+                          </button>
+                      );
+                    })
+                )}
+
+                {selectedProject && (
+                    <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
+                      <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Loaded Elements</div>
+                      {loadingBim
+                          ? <div style={{ color: '#facc15', fontSize: '11px' }}>Loading...</div>
+                          : <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '13px' }}>{bimElements.length}</div>
+                      }
+                    </div>
+                )}
+
+                <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
+                  <div style={{ color: '#a78bfa', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>
+                    {t('sectionTitle')}
+                  </div>
+
+                  <div style={{
+                    background: gpsConnected ? '#042f2e' : '#111e2e',
+                    border: `1px solid ${gpsConnected ? '#4ade8040' : '#253347'}`,
+                    borderRadius: '8px', padding: '8px', marginBottom: '6px',
+                  }}>
+                    <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: secColor, fontSize: '10px' }}>{t('statusLabel')}</span>
+                      <span style={{ color: gpsColor, fontWeight: 700, fontSize: '11px' }}>
+                    {gpsConnected ? t('connected') : t('standby')}
+                  </span>
+                    </div>
+                    {gpsConnected && (
+                        <>
+                          <div style={{ display: 'flex', justifycontent: 'space-between', marginTop: '4px' }}>
+                            <span style={{ color: secColor, fontSize: '10px' }}>{t('rxFreq')}</span>
+                            <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
+                          </div>
+                          <div style={{ display: 'flex', justifycontent: 'space-between', marginTop: '2px' }}>
+                            <span style={{ color: secColor, fontSize: '10px' }}>{t('totalPackets')}</span>
+                            <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
+                          </div>
+                        </>
+                    )}
+                    {gpsError && (
+                        <div style={{ color: accentRed, fontSize: '10px', marginTop: '4px' }}>{gpsError}</div>
+                    )}
+                  </div>
+
+                  {!gpsConnected ? (
+                      <button
+                          onClick={connectGps}
+                          style={{
+                            width: '100%', background: '#1a1040',
+                            border: '1px solid #7c3aed', borderRadius: '8px', padding: '8px',
+                            color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                          }}
+                      >
+                        {t('connectBtn')}
+                      </button>
+                  ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <button
+                            onClick={resetGpsOrigin}
+                            style={{
+                              width: '100%', background: '#0f2a18',
+                              border: '1px solid #22c55e', borderRadius: '8px', padding: '6px',
+                              color: accentGreen, fontWeight: 700, fontSize: '11px', cursor: 'pointer',
+                            }}
+                        >
+                          {t('resetOrigin')}
+                        </button>
+                        <button
+                            onClick={disconnectGps}
+                            style={{
+                              width: '100%', background: '#1a0808',
+                              border: '1px solid #ef4444', borderRadius: '8px', padding: '6px',
+                              color: accentRed, fontWeight: 700, fontSize: '11px', cursor: 'pointer',
+                            }}
+                        >
+                          {t('disconnect')}
+                        </button>
+                      </div>
+                  )}
+
+                  {gpsConnected && (
+                      <div style={{
+                        background: '#1a1040', border: '1px solid #7c3aed33',
+                        borderRadius: '6px', padding: '7px', marginTop: '6px', fontSize: '10px',
+                        color: '#a78bfa', lineheight: 1.5,
+                      }}>
+                        {t('kbLocked')}
+                      </div>
+                  )}
+                </div>
+
+                <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
+                  <div style={{ color: accentBlue, fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>⚙ Simulation</div>
+
+                  <button
+                      onClick={() => {
+                        if (gpsConnected) return;
+                        const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next;
+                      }}
+                      style={{
+                        width: '100%',
+                        background: autoPlay ? '#0f2a18' : '#111e2e',
+                        border: `1px solid ${autoPlay ? '#22c55e' : '#253347'}`,
+                        borderRadius: '8px', padding: '8px',
+                        color: gpsConnected ? '#2a3a4a' : (autoPlay ? '#4ade80' : secColor),
+                        fontWeight: 700, fontSize: '12px',
+                        cursor: gpsConnected ? 'not-allowed' : 'pointer',
+                        opacity: gpsConnected ? 0.45 : 1,
+                      }}
+                  >
+                    {autoPlay ? '⏹ Stop Auto Mode' : '▶ Start Auto Mode'}
+                  </button>
+
+                  <button
+                      onClick={handleReset}
+                      style={{
+                        width: '100%', background: '#111e2e', border: '1px solid #253347',
+                        borderRadius: '8px', padding: '8px', marginTop: '6px',
+                        color: secColor, fontSize: '12px', cursor: 'pointer',
+                      }}
+                  >
+                    ↺ Reset
+                  </button>
+                </div>
+
+                {collisionLog.length > 0 && (
+                    <div style={{ background: '#1a0808', border: '1px solid #7f1d1d', borderRadius: '8px', padding: '9px' }}>
+                      <div style={{ color: '#fca5a5', fontSize: '11px', fontWeight: 700, marginBottom: '6px' }}>📋 Collision Log</div>
+                      {collisionLog.map((log, i) => (
+                          <div key={i} style={{ fontSize: '10px', marginBottom: '5px', borderBottom: i < collisionLog.length-1 ? '1px solid #3a1a1a' : 'none', paddingBottom: '4px' }}>
+                            <span style={{ color: '#ef4444', fontWeight: 700 }}>🚨 Collision Detected</span>
+                            <br />
+                            <span style={{ color: '#4a5568' }}>{log.ts}</span>
+                            <br />
+                            <span style={{ color: '#fca5a5' }}>{log.ids.length} elements in contact</span>
+                          </div>
+                      ))}
+                    </div>
+                )}
+              </div>
+
+              <div style={{
+                flex: 1, height: '100%', borderRadius: '12px', overflow: 'hidden',
+                border: colliding ? '2px solid #ef4444' : (gpsConnected ? '2px solid #4ade8060' : panelBorder),
+                position: 'relative',
+                boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 40px #ef444455' : (gpsConnected ? '0 0 0 1px #4ade8030' : 'none'),
+                transition: 'box-shadow 0.3s, border-color 0.3s',
+              }}>
+                {colliding && (
+                    <div style={{
+                      position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
+                      background: alertPulse ? 'rgba(220,38,38,0.20)' : 'rgba(220,38,38,0.06)',
+                      transition: 'background 0.4s', borderRadius: '10px',
+                    }} />
+                )}
+                {colliding && (
+                    <div style={{
+                      position: 'absolute', top: '14px', left: '50%', transform: 'translateX(-50%)',
+                      zIndex: 20, pointerEvents: 'none',
+                      background: alertPulse ? 'rgba(127,29,29,0.97)' : 'rgba(100,20,20,0.94)',
+                      border: `${alertPulse ? 2 : 1}px solid #ef4444`,
+                      borderRadius: '10px', padding: '10px 28px',
+                      color: '#fca5a5', fontSize: '14px', fontWeight: 700,
+                      boxShadow: alertPulse ? '0 0 28px #ef444480, 0 0 60px #ef444430' : 'none',
+                      transition: 'all 0.35s', whiteSpace: 'nowrap',
+                    }}>
+                      ⚠️ WARNING — Excavation equipment has contacted the structure!
+                    </div>
+                )}
+                {!selectedProject && (
+                    <div style={{
+                      position: 'absolute', top: '50%', left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      zIndex: 10, color: '#2a3a4a', textAlign: 'center', pointerEvents: 'none',
+                    }}>
+                      <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏗</div>
+                      <div style={{ fontSize: '14px' }}>Select a BIM project from the left panel</div>
+                    </div>
+                )}
+
+                <div style={{
+                  position: 'absolute', bottom: '12px', left: '12px', zIndex: 10, pointerEvents: 'none',
+                  background: 'rgba(13,27,42,0.88)', border: `1px solid ${gpsConnected ? '#4ade8030' : '#253347'}`,
+                  borderRadius: '10px', padding: '10px 14px', fontSize: '11px',
+                  color: gpsConnected ? '#2a4a3a' : secColor, lineheight: 1.75,
+                }}>
+                  {gpsConnected ? (
+                      <>
+                        <div style={{ color: accentGreen, fontWeight: 700, marginBottom: '4px' }}>📡 GPS 제어 모드</div>
+                        <div style={{ color: '#2a4a3a' }}>키보드 제어 비활성화됨</div>
+                        <div style={{ color: '#2a4a3a' }}>센서 데이터로 굴착기 제어 중</div>
+                      </>
+                  ) : (
+                      <>
+                        <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px' }}>⌨ Keyboard Controls</div>
+                        {[['W / S','Forward / Backward'],['A / D','Body Rotation'],['Q / E','Swing ±'],['R / F','Boom Up/Down'],['T / G','Arm Bend'],['Y / H','Bucket Rotate']].map(([k,v]) => (
+                            <div key={k} style={{ display: 'flex', gap: '8px' }}>
+                              <span style={{ color: '#e2e8f0', minWidth: '52px', fontFamily: 'monospace' }}>{k}</span>
+                              <span>{v}</span>
+                            </div>
+                        ))}
+                      </>
+                  )}
+                </div>
+
+                <div style={{
+                  position: 'absolute', top: '12px', right: '12px', zIndex: 10, pointerEvents: 'none',
+                  background: 'rgba(13,27,42,0.90)', border: '1px solid #253347',
+                  borderRadius: '10px', padding: '8px 14px', fontSize: '12px', lineheight: 1.7,
+                }}>
+                  <div style={{ color: '#f5a623', fontWeight: 700 }}>🚜 0.6W Medium Excavator</div>
+                  {selectedProject && <div style={{ color: secColor }}>🏗 {selectedProject.projectName}</div>}
+                  <div style={{ color: gpsConnected ? accentGreen : (autoPlay ? '#4ade80' : secColor), fontSize: '11px' }}>
+                    {gpsConnected ? `📡 GPS ${gpsHz}Hz` : (autoPlay ? '▶ Auto Mode Active' : '■ Manual Control')}
+                  </div>
+                  <div style={{ color: colliding ? '#ef4444' : '#4ade80', fontWeight: 700, marginTop: '4px' }}>
+                    {colliding ? '● Collision' : '● Safe'}
+                  </div>
+                </div>
+
+                {gpsConnected && lastGpsPacket && (
+                    <div style={{
+                      position: 'absolute', top: '12px', left: '12px', zIndex: 10, pointerEvents: 'none',
+                      background: 'rgba(4,47,46,0.92)', border: '1px solid #4ade8040',
+                      borderRadius: '10px', padding: '8px 12px', fontSize: '10px', lineheight: 1.7,
+                      color: secColor, minWidth: '150px',
+                    }}>
+                      <div style={{ color: accentGreen, fontWeight: 700, marginBottom: '3px' }}>📡 GPS Live</div>
+                      {lastGpsPacket.lat != null && (
+                          <div style={{ display: 'flex', justifycontent: 'space-between', gap: '8px' }}>
+                            <span>Lat / Lng</span>
+                            <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
+                      {lastGpsPacket.lat.toFixed(5)}, {lastGpsPacket.lng?.toFixed(5)}
+                    </span>
+                          </div>
+                      )}
+                      {lastGpsPacket.heading != null && (
+                          <div style={{ display: 'flex', justifycontent: 'space-between', gap: '8px' }}>
+                            <span>Heading</span>
+                            <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{lastGpsPacket.heading?.toFixed(1)}°</span>
+                          </div>
+                      )}
+                    </div>
+                )}
+
+                <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
+                  {canvasContent}
+                </Canvas>
+              </div>
+
+              <div style={{
+                width: '195px', flexShrink: 0, background: panelBg, border: panelBorder,
+                borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
+                gap: '10px', overflowY: 'auto', fontSize: '12px',
+              }}>
+                <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
+                  📊 Status Monitor
+                </div>
+
+                <div style={{
+                  background: colliding ? (alertPulse ? 'rgba(127,29,29,0.6)' : 'rgba(90,15,15,0.5)') : '#0d1e10',
+                  border: `1px solid ${colliding ? '#ef4444' : '#1a4a1a'}`,
+                  borderRadius: '8px', padding: '10px', transition: 'all 0.35s',
+                }}>
+                  <div style={{ color: secColor, fontSize: '10px', marginBottom: '4px' }}>Collision Status</div>
+                  <div style={{ color: colliding ? '#f87171' : '#4ade80', fontWeight: 700, fontSize: '16px' }}>
+                    {colliding ? '🚨 Collision' : '✓ Safe'}
+                  </div>
+                </div>
+
+                <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
+                  <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Excavator Position (m)</div>
+                  {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
+                      <div key={l} style={{ display: 'flex', justifycontent: 'space-between', marginBottom: '3px' }}>
+                        <span style={{ color: secColor }}>{l}</span>
+                        <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{Number(v).toFixed(1)}</span>
+                      </div>
+                  ))}
+                </div>
+
+                <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
+                  <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Joint Angles (°)</div>
+                  {[
+                    ['Body',   state.bodyRotation, '#94a3b8'],
+                    ['Swing',  state.swingAngle,   '#a78bfa'],
+                    ['Boom',   state.boomAngle,    accentBlue],
+                    ['Arm',    state.armAngle,     '#34d399'],
+                    ['Bucket', state.bucketAngle,  '#fb923c'],
+                  ].map(([l, v, c]) => (
+                      <div key={l} style={{ display: 'flex', justifycontent: 'space-between', marginBottom: '3px' }}>
+                        <span style={{ color: secColor }}>{l}</span>
+                        <span style={{ color: c, fontFamily: 'monospace', fontWeight: 600 }}>{Math.round(v)}°</span>
+                      </div>
+                  ))}
+                </div>
+
+                <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px', fontSize: '10px' }}>
+                  <div style={{ color: secColor, marginBottom: '6px', fontWeight: 700 }}>Legend</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <div style={{ width: '14px', height: '10px', background: '#6699dd', opacity: 0.5, border: '1px solid #4477bb', borderRadius: '2px' }} />
+                    <span style={{ color: secColor }}>BIM Building</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '14px', height: '10px', background: '#f5a623', border: '1px solid #c07a0a', borderRadius: '2px' }} />
+                    <span style={{ color: secColor }}>Excavator</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+        )}
+
+        {/* ── Mobile Layout ── */}
+        {isMobile && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '0 8px' }}>
+
+              <MobileGpsSender />
+
+              <div style={{ background: panelBg, border: panelBorder, borderRadius: '10px', padding: '10px 12px' }}>
+                <div style={{ color: accentBlue, fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>
+                  🏗 BIM Project
+                </div>
+                {bimProjects.length === 0 ? (
+                    <div style={{ color: '#3a4a5a', fontSize: '11px' }}>No BIM Projects</div>
+                ) : (
+                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
+                      {bimProjects.map(proj => {
+                        const active = selectedProject?.projectId === proj.projectId;
+                        return (
+                            <button
+                                key={proj.projectId}
+                                onClick={() => handleSelectProject(proj)}
+                                style={{
+                                  flexShrink: 0, background: active ? '#0f2040' : '#111e2e',
+                                  border: `1px solid ${active ? accentBlue : '#253347'}`,
+                                  borderRadius: '8px', padding: '6px 12px', cursor: 'pointer',
+                                  color: active ? accentBlue : '#e2e8f0',
+                                  fontWeight: active ? 700 : 400, fontSize: '12px',
+                                  whiteSpace: 'nowrap',
+                                }}
+                            >
+                              {proj.projectName}
+                            </button>
+                        );
+                      })}
+                    </div>
+                )}
+              </div>
+
+              <div style={{
+                background: gpsConnected ? '#042f2e' : panelBg,
+                border: `1px solid ${gpsConnected ? '#4ade8040' : '#253347'}`,
+                borderRadius: '10px', padding: '10px 12px',
+              }}>
+                <div style={{ color: '#a78bfa', fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>
+                  {t('sectionTitle')}
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {!gpsConnected ? (
+                      <button
+                          onClick={connectGps}
+                          style={{
+                            flex: 1, background: '#1a1040', border: '1px solid #7c3aed',
+                            borderRadius: '8px', padding: '9px 8px',
+                            color: '#a78bfa', fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                          }}
+                      >
+                        {t('connectBtn')}
+                      </button>
+                  ) : (
+                      <>
+                        <button
+                            onClick={resetGpsOrigin}
+                            style={{
+                              flex: 1, background: '#0f2a18', border: '1px solid #22c55e',
+                              borderRadius: '8px', padding: '9px 8px',
+                              color: accentGreen, fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                            }}
+                        >
+                          {t('resetOrigin')}
+                        </button>
+                        <button
+                            onClick={disconnectGps}
+                            style={{
+                              background: '#1a0808', border: '1px solid #ef4444',
+                              borderRadius: '8px', padding: '9px 14px',
+                              color: accentRed, fontWeight: 700, fontSize: '12px', cursor: 'pointer',
+                            }}
+                        >
+                          {t('disconnectShort')}
+                        </button>
+                      </>
+                  )}
+                  <div style={{ fontSize: '11px', color: gpsColor }}>
+                    {gpsConnected ? t('connectedHz', { hz: gpsHz, count: gpsPacketCount }) : t('standby')}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                    onClick={() => {
+                      if (gpsConnected) return;
+                      const next = !autoPlay; setAutoPlay(next); autoPlayRef.current = next;
+                    }}
+                    style={{
+                      flex: 1, background: autoPlay ? '#0f2a18' : '#111e2e',
+                      border: `1px solid ${autoPlay ? '#22c55e' : '#253347'}`,
+                      borderRadius: '10px', padding: '11px 8px',
+                      color: gpsConnected ? '#2a3a4a' : (autoPlay ? '#4ade80' : secColor),
+                      fontWeight: 700, fontSize: '13px', cursor: gpsConnected ? 'not-allowed' : 'pointer',
+                      opacity: gpsConnected ? 0.5 : 1,
+                    }}
+                >
+                  {autoPlay ? '⏹ Stop Auto' : '▶ Auto Mode'}
+                </button>
+                <button onClick={handleReset} style={{ background: '#111e2e', border: '1px solid #253347', borderRadius: '10px', padding: '11px 18px', color: secColor, fontSize: '13px', cursor: 'pointer' }}>
+                  ↺ Reset
+                </button>
+              </div>
+
+              {/* 3D 캔버스 영역 */}
+              <div style={{
+                width: '100%',
+                height: canvasFullscreen ? '100%' : 'clamp(320px, 45vh, 500px)',
+                borderRadius: '12px', overflow: 'hidden',
+                border: colliding ? '2px solid #ef4444' : (gpsConnected ? '2px solid #4ade8060' : panelBorder),
+                position: 'relative',
+                boxShadow: colliding ? '0 0 0 1px #ef4444, 0 0 30px #ef444455' : 'none',
+                transition: 'box-shadow 0.3s, border-color 0.3s',
+              }}>
+
+                {/* ─── [모바일 전용 하드웨어 풀스크린 버튼 탑재] ─── */}
+                <button
+                    onClick={triggerMobileFullscreen}
+                    title={canvasFullscreen ? '전체화면 해제' : '전체화면'}
+                    style={{
+                      position: 'absolute', top: 10, right: 10, zIndex: 30,
+                      width: 34, height: 34,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: 8, fontSize: 15, cursor: 'pointer',
+                      backgroundColor: canvasFullscreen ? 'rgba(30,58,95,0.95)' : 'rgba(6,16,26,0.85)',
+                      border: `1px solid ${canvasFullscreen ? '#3b82f6' : '#253347'}`,
+                      color: canvasFullscreen ? '#60a5fa' : '#8896a4',
+                      backdropFilter: 'blur(4px)',
+                    }}
+                >
+                  {canvasFullscreen ? '⊠' : '⛶'}
+                </button>
+
+                {colliding && (
+                    <div style={{
+                      position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
+                      background: alertPulse ? 'rgba(220,38,38,0.20)' : 'rgba(220,38,38,0.06)',
+                      transition: 'background 0.4s', borderRadius: '10px',
+                    }} />
+                )}
+                {colliding && (
+                    <div style={{
+                      position: 'absolute', top: '10px', left: '50%', transform: 'translateX(-50%)',
+                      zIndex: 20, pointerEvents: 'none',
+                      background: alertPulse ? 'rgba(127,29,29,0.97)' : 'rgba(100,20,20,0.94)',
+                      border: `${alertPulse ? 2 : 1}px solid #ef4444`,
+                      borderRadius: '8px', padding: '7px 16px',
+                      color: '#fca5a5', fontSize: '12px', fontWeight: 700,
+                      boxShadow: alertPulse ? '0 0 20px #ef444470' : 'none',
+                      transition: 'all 0.35s', whiteSpace: 'nowrap',
+                    }}>
+                      ⚠️ Collision Detected!
+                    </div>
+                )}
+                {!selectedProject && (
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 10, color: '#2a3a4a', textAlign: 'center', pointerEvents: 'none' }}>
+                      <div style={{ fontSize: '36px', marginBottom: '10px' }}>🏗</div>
+                      <div style={{ fontSize: '12px' }}>Select a BIM project above</div>
+                    </div>
+                )}
+
+                <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
+                  {canvasContent}
+                </Canvas>
+              </div>
+
+              <div style={{
+                background: colliding ? (alertPulse ? 'rgba(127,29,29,0.55)' : 'rgba(90,15,15,0.45)') : '#0d1e10',
+                border: `1px solid ${colliding ? '#ef4444' : '#1a4a1a'}`,
+                borderRadius: '10px', padding: '10px 14px',
+                display: 'flex', alignItems: 'center', justifycontent: 'space-between',
+                transition: 'all 0.35s',
+              }}>
+                <div>
+                  <div style={{ color: secColor, fontSize: '10px' }}>Collision Status</div>
+                  <div style={{ color: colliding ? '#f87171' : '#4ade80', fontWeight: 700, fontSize: '15px' }}>
+                    {colliding ? `🚨 ${collidingIds.length} elements hit` : '✓ Safe'}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ color: secColor, fontSize: '10px' }}>Control Mode</div>
+                  <div style={{ color: gpsConnected ? accentGreen : (autoPlay ? '#4ade80' : '#3a4a5a'), fontWeight: 700, fontSize: '13px' }}>
+                    {gpsConnected ? `GPS ${gpsHz}Hz` : (autoPlay ? `Phase ${autoPhaseRef.current + 1}/${AUTO_PHASES.length}` : 'Off')}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+        )}
+
+      </div>
   );
 }
