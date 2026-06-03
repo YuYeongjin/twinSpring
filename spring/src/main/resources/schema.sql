@@ -15,10 +15,10 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_project
 (
-    project_id     VARCHAR(200) NOT NULL PRIMARY KEY,
-    project_name   VARCHAR(200) NULL,
-    structure_type VARCHAR(500) NULL,
-    span_count     VARCHAR(200) NULL
+    project_id     TEXT NOT NULL PRIMARY KEY,
+    project_name   TEXT NULL,
+    structure_type TEXT NULL,
+    span_count     TEXT NULL
 );
 
 -- ================================================================
@@ -26,16 +26,16 @@ CREATE TABLE IF NOT EXISTS bim_project
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_element
 (
-    project_id   VARCHAR(200)     NULL,
-    element_id   VARCHAR(200)     NOT NULL PRIMARY KEY,
-    element_type VARCHAR(500)     NULL,
+    project_id   TEXT             NULL,
+    element_id   TEXT             NOT NULL PRIMARY KEY,
+    element_type TEXT             NULL,
     position_x   DOUBLE PRECISION NULL,
     position_y   DOUBLE PRECISION NULL,
     position_z   DOUBLE PRECISION NULL,
     size_x       DOUBLE PRECISION NULL,
     size_y       DOUBLE PRECISION NULL,
     size_z       DOUBLE PRECISION NULL,
-    material     VARCHAR(255)     NULL,
+    material     TEXT             NULL,
     CONSTRAINT bim_element_ibfk_1
         FOREIGN KEY (project_id) REFERENCES bim_project (project_id)
 );
@@ -48,10 +48,10 @@ CREATE INDEX IF NOT EXISTS idx_project_id ON bim_element (project_id);
 CREATE TABLE IF NOT EXISTS sensor_data
 (
     id          BIGINT GENERATED ALWAYS AS IDENTITY,
-    location    VARCHAR(100) NOT NULL,
+    location    TEXT             NOT NULL,
     temperature DOUBLE PRECISION NOT NULL,
     humidity    DOUBLE PRECISION,
-    timestamp   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    timestamp   TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id, timestamp)
 );
 
@@ -140,14 +140,14 @@ ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS rotation_z DOUBLE PRECISION DEF
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_layer
 (
-    layer_id    VARCHAR(200) NOT NULL PRIMARY KEY,
-    project_id  VARCHAR(200) NOT NULL,
-    layer_name  VARCHAR(200) NOT NULL DEFAULT 'layer',
-    color       VARCHAR(20)  NOT NULL DEFAULT '#60a5fa',
-    visible     BOOLEAN      NOT NULL DEFAULT TRUE,
-    element_ids TEXT         NULL,
-    sort_order  INT          NOT NULL DEFAULT 0,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    layer_id    TEXT        NOT NULL PRIMARY KEY,
+    project_id  TEXT        NOT NULL,
+    layer_name  TEXT        NOT NULL DEFAULT 'layer',
+    color       TEXT        NOT NULL DEFAULT '#60a5fa',
+    visible     BOOLEAN     NOT NULL DEFAULT TRUE,
+    element_ids TEXT        NULL,
+    sort_order  INT         NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_bim_layer_project ON bim_layer (project_id);
 
@@ -156,9 +156,9 @@ CREATE INDEX IF NOT EXISTS idx_bim_layer_project ON bim_layer (project_id);
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_element_color
 (
-    element_id VARCHAR(200) NOT NULL PRIMARY KEY,
-    project_id VARCHAR(200) NOT NULL,
-    color      VARCHAR(20)  NOT NULL
+    element_id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    color      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_bim_color_project ON bim_element_color (project_id);
 
@@ -167,15 +167,15 @@ CREATE INDEX IF NOT EXISTS idx_bim_color_project ON bim_element_color (project_i
 -- ================================================================
 CREATE TABLE IF NOT EXISTS bim_line
 (
-    line_id      VARCHAR(64)      NOT NULL PRIMARY KEY,
-    project_id   VARCHAR(64)      NOT NULL,
+    line_id      TEXT             NOT NULL PRIMARY KEY,
+    project_id   TEXT             NOT NULL,
     start_x      DOUBLE PRECISION NOT NULL DEFAULT 0,
     start_y      DOUBLE PRECISION NOT NULL DEFAULT 0,
     start_z      DOUBLE PRECISION NOT NULL DEFAULT 0,
     end_x        DOUBLE PRECISION NOT NULL DEFAULT 0,
     end_y        DOUBLE PRECISION NOT NULL DEFAULT 0,
     end_z        DOUBLE PRECISION NOT NULL DEFAULT 0,
-    color        VARCHAR(20)      NOT NULL DEFAULT '#60a5fa',
+    color        TEXT             NOT NULL DEFAULT '#60a5fa',
     line_width   DOUBLE PRECISION NOT NULL DEFAULT 2,
     points_json  TEXT             NULL,
     closed       BOOLEAN          NOT NULL DEFAULT FALSE,
@@ -197,9 +197,9 @@ ALTER TABLE bim_line ADD COLUMN IF NOT EXISTS shape_height DOUBLE PRECISION NOT 
 -- ================================================================
 CREATE TABLE IF NOT EXISTS simulation_project
 (
-    project_id   VARCHAR(64)  NOT NULL PRIMARY KEY,
-    project_name VARCHAR(200) NOT NULL,
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    project_id   TEXT        NOT NULL PRIMARY KEY,
+    project_name TEXT        NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ================================================================
@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS simulation_project
 -- ================================================================
 CREATE TABLE IF NOT EXISTS simulation_state
 (
-    excavator_id        VARCHAR(64)      NOT NULL PRIMARY KEY,
+    excavator_id        TEXT             NOT NULL PRIMARY KEY,
     position_x          DOUBLE PRECISION NOT NULL DEFAULT 0,
     position_y          DOUBLE PRECISION NOT NULL DEFAULT 0,
     position_z          DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -216,9 +216,9 @@ CREATE TABLE IF NOT EXISTS simulation_state
     boom_angle          DOUBLE PRECISION NOT NULL DEFAULT 35,
     arm_angle           DOUBLE PRECISION NOT NULL DEFAULT 60,
     bucket_angle        DOUBLE PRECISION NOT NULL DEFAULT -25,
-    operation_mode      VARCHAR(20)      NOT NULL DEFAULT 'IDLE',
+    operation_mode      TEXT             NOT NULL DEFAULT 'IDLE',
     soil_in_bucket      DOUBLE PRECISION NOT NULL DEFAULT 0,
-    selected_machine_id VARCHAR(20)      NOT NULL DEFAULT '0.6W',
+    selected_machine_id TEXT             NOT NULL DEFAULT '0.6W',
     height_map_data     TEXT             NULL,
     zone_map_data       TEXT             NULL,
     has_random_terrain  BOOLEAN          NOT NULL DEFAULT FALSE,
@@ -234,37 +234,37 @@ ALTER TABLE simulation_state ADD COLUMN IF NOT EXISTS has_random_terrain BOOLEAN
 -- ================================================================
 CREATE TABLE IF NOT EXISTS safe_project
 (
-    project_id   VARCHAR(64)   NOT NULL PRIMARY KEY,
-    project_name VARCHAR(255)  NOT NULL,
-    location     VARCHAR(512)  NULL,
-    description  TEXT          NULL,
-    camera_url   VARCHAR(1024) NULL,
-    status       VARCHAR(32)   NOT NULL DEFAULT 'ACTIVE',
-    mode         VARCHAR(16)   NOT NULL DEFAULT 'SAFETY',
-    created_at   TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at   TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP
+    project_id   TEXT        NOT NULL PRIMARY KEY,
+    project_name TEXT        NOT NULL,
+    location     TEXT        NULL,
+    description  TEXT        NULL,
+    camera_url   TEXT        NULL,
+    status       TEXT        NOT NULL DEFAULT 'ACTIVE',
+    mode         TEXT        NOT NULL DEFAULT 'SAFETY',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 기존 safe_project 테이블에 mode 컬럼 추가 (없는 경우)
-ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode VARCHAR(16) NOT NULL DEFAULT 'SAFETY';
+ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'SAFETY';
 
 -- ================================================================
 -- WBS 프로젝트 테이블
 -- ================================================================
 CREATE TABLE IF NOT EXISTS wbs_project
 (
-    project_id      VARCHAR(64)  NOT NULL PRIMARY KEY,
-    project_name    VARCHAR(255) NOT NULL,
-    location        VARCHAR(512) NULL,
-    contract_amount BIGINT       NULL,
-    status          VARCHAR(32)  NOT NULL DEFAULT 'PLANNED',
-    description     TEXT         NULL,
-    start_date      DATE         NULL,
-    end_date        DATE         NULL,
-    client_name     VARCHAR(255) NULL,
-    manager_name    VARCHAR(255) NULL,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    project_id      TEXT        NOT NULL PRIMARY KEY,
+    project_name    TEXT        NOT NULL,
+    location        TEXT        NULL,
+    contract_amount BIGINT      NULL,
+    status          TEXT        NOT NULL DEFAULT 'PLANNED',
+    description     TEXT        NULL,
+    start_date      DATE        NULL,
+    end_date        DATE        NULL,
+    client_name     TEXT        NULL,
+    manager_name    TEXT        NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ================================================================
@@ -272,22 +272,22 @@ CREATE TABLE IF NOT EXISTS wbs_project
 -- ================================================================
 CREATE TABLE IF NOT EXISTS wbs_task
 (
-    task_id         VARCHAR(64)  NOT NULL PRIMARY KEY,
-    wbs_project_id  VARCHAR(64)  NOT NULL REFERENCES wbs_project (project_id) ON DELETE CASCADE,
-    wbs_code        VARCHAR(64)  NULL,
-    task_name       VARCHAR(512) NOT NULL,
-    start_date      DATE         NULL,
-    end_date        DATE         NULL,
-    duration        INTEGER      NULL,
-    progress        INTEGER      NOT NULL DEFAULT 0,
-    predecessor_ids TEXT         NULL,
-    status          VARCHAR(32)  NOT NULL DEFAULT 'NOT_STARTED',
-    responsible     VARCHAR(255) NULL,
-    notes           TEXT         NULL,
-    source          VARCHAR(32)  NOT NULL DEFAULT 'MANUAL',
-    sort_order      INTEGER      NOT NULL DEFAULT 0,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    task_id        TEXT        NOT NULL PRIMARY KEY,
+    wbs_project_id TEXT        NOT NULL REFERENCES wbs_project (project_id) ON DELETE CASCADE,
+    wbs_code       TEXT        NULL,
+    task_name      TEXT        NOT NULL,
+    start_date     DATE        NULL,
+    end_date       DATE        NULL,
+    duration       INTEGER     NULL,
+    progress       INTEGER     NOT NULL DEFAULT 0,
+    predecessor_ids TEXT       NULL,
+    status         TEXT        NOT NULL DEFAULT 'NOT_STARTED',
+    responsible    TEXT        NULL,
+    notes          TEXT        NULL,
+    source         TEXT        NOT NULL DEFAULT 'MANUAL',
+    sort_order     INTEGER     NOT NULL DEFAULT 0,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_wbs_task_project ON wbs_task (wbs_project_id);
 
@@ -296,12 +296,12 @@ CREATE INDEX IF NOT EXISTS idx_wbs_task_project ON wbs_task (wbs_project_id);
 -- ================================================================
 CREATE TABLE IF NOT EXISTS project_link
 (
-    link_id          VARCHAR(64)  NOT NULL PRIMARY KEY,
-    wbs_project_id   VARCHAR(64)  NOT NULL REFERENCES wbs_project (project_id) ON DELETE CASCADE,
-    linked_type      VARCHAR(32)  NOT NULL,
-    linked_project_id VARCHAR(64) NOT NULL,
-    note             TEXT         NULL,
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    link_id           TEXT        NOT NULL PRIMARY KEY,
+    wbs_project_id    TEXT        NOT NULL REFERENCES wbs_project (project_id) ON DELETE CASCADE,
+    linked_type       TEXT        NOT NULL,
+    linked_project_id TEXT        NOT NULL,
+    note              TEXT        NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_project_link_wbs    ON project_link (wbs_project_id);
 CREATE INDEX IF NOT EXISTS idx_project_link_linked ON project_link (linked_type, linked_project_id);
@@ -312,13 +312,13 @@ CREATE INDEX IF NOT EXISTS idx_project_link_linked ON project_link (linked_type,
 -- ================================================================
 CREATE TABLE IF NOT EXISTS monitoring_camera
 (
-    camera_id    VARCHAR(64)   NOT NULL PRIMARY KEY,
-    project_id   VARCHAR(64)   NOT NULL,
-    camera_name  VARCHAR(255)  NOT NULL DEFAULT '카메라',
-    camera_url   VARCHAR(1024) NOT NULL,
-    enabled      BOOLEAN       NOT NULL DEFAULT TRUE,
-    sort_order   INT           NOT NULL DEFAULT 0,
-    created_at   TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP
+    camera_id   TEXT        NOT NULL PRIMARY KEY,
+    project_id  TEXT        NOT NULL,
+    camera_name TEXT        NOT NULL DEFAULT '카메라',
+    camera_url  TEXT        NOT NULL,
+    enabled     BOOLEAN     NOT NULL DEFAULT TRUE,
+    sort_order  INT         NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_monitoring_camera_project ON monitoring_camera (project_id);
 
@@ -327,14 +327,14 @@ CREATE INDEX IF NOT EXISTS idx_monitoring_camera_project ON monitoring_camera (p
 -- ================================================================
 CREATE TABLE IF NOT EXISTS monitoring_schedule
 (
-    schedule_id          VARCHAR(64)  NOT NULL PRIMARY KEY,
-    project_id           VARCHAR(64)  NOT NULL,
-    enabled              BOOLEAN      NOT NULL DEFAULT FALSE,
-    capture_interval_sec INT          NOT NULL DEFAULT 1800,
-    retention_sec        INT          NOT NULL DEFAULT 3600,
-    last_captured_at     TIMESTAMPTZ  NULL,
-    created_at           TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at           TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    schedule_id          TEXT        NOT NULL PRIMARY KEY,
+    project_id           TEXT        NOT NULL,
+    enabled              BOOLEAN     NOT NULL DEFAULT FALSE,
+    capture_interval_sec INT         NOT NULL DEFAULT 1800,
+    retention_sec        INT         NOT NULL DEFAULT 3600,
+    last_captured_at     TIMESTAMPTZ NULL,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_monitoring_schedule_project ON monitoring_schedule (project_id);
 
@@ -345,22 +345,22 @@ CREATE INDEX IF NOT EXISTS idx_monitoring_schedule_project ON monitoring_schedul
 -- ================================================================
 CREATE TABLE IF NOT EXISTS monitoring_snapshot
 (
-    snapshot_id      VARCHAR(64)  NOT NULL PRIMARY KEY,
-    project_id       VARCHAR(64)  NOT NULL,
-    schedule_id      VARCHAR(64)  NOT NULL,
-    mode             VARCHAR(16)  NOT NULL,
-    image_data       BYTEA        NULL,
-    is_problem       BOOLEAN      NOT NULL DEFAULT FALSE,
-    detection_json   TEXT         NULL,
-    captured_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at       TIMESTAMPTZ  NULL
+    snapshot_id    TEXT        NOT NULL PRIMARY KEY,
+    project_id     TEXT        NOT NULL,
+    schedule_id    TEXT        NOT NULL,
+    mode           TEXT        NOT NULL,
+    image_data     BYTEA       NULL,
+    is_problem     BOOLEAN     NOT NULL DEFAULT FALSE,
+    detection_json TEXT        NULL,
+    captured_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at     TIMESTAMPTZ NULL
 );
 CREATE INDEX IF NOT EXISTS idx_monitoring_snapshot_project ON monitoring_snapshot (project_id);
 CREATE INDEX IF NOT EXISTS idx_monitoring_snapshot_expires ON monitoring_snapshot (expires_at);
 
 -- monitoring_snapshot 에 카메라 참조 컬럼 추가 (기존 행은 NULL 허용)
-ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_id   VARCHAR(64)  NULL;
-ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_name VARCHAR(255) NULL;
+ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_id   TEXT NULL;
+ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_name TEXT NULL;
 
 -- ================================================================
 -- 대화 히스토리 테이블 (채팅 세션 대화 내역 영구 보존)
@@ -368,10 +368,10 @@ ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS camera_name VARCHAR(255
 CREATE TABLE IF NOT EXISTS chat_history
 (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    session_id VARCHAR(200) NOT NULL,
-    role       VARCHAR(20)  NOT NULL,
-    content    TEXT         NOT NULL,
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    session_id TEXT        NOT NULL,
+    role       TEXT        NOT NULL,
+    content    TEXT        NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history (session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_history_time    ON chat_history (created_at DESC);
@@ -381,9 +381,9 @@ CREATE INDEX IF NOT EXISTS idx_chat_history_time    ON chat_history (created_at 
 -- ================================================================
 CREATE TABLE IF NOT EXISTS user_settings
 (
-    setting_key   VARCHAR(100) NOT NULL PRIMARY KEY,
-    setting_value TEXT         NOT NULL DEFAULT '',
-    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    setting_key   TEXT        NOT NULL PRIMARY KEY,
+    setting_value TEXT        NOT NULL DEFAULT '',
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 기본 설정값 삽입 (없으면)
@@ -408,12 +408,12 @@ INSERT INTO user_settings (setting_key, setting_value)
 -- ================================================================
 CREATE TABLE IF NOT EXISTS progress_analysis_log
 (
-    analysis_id     VARCHAR(64)      NOT NULL PRIMARY KEY,
-    snapshot_id     VARCHAR(64)      NOT NULL,
-    wbs_task_id     VARCHAR(64)      NOT NULL,
-    wbs_project_id  VARCHAR(64)      NOT NULL,
-    before_progress INTEGER          NOT NULL DEFAULT 0,
-    after_progress  INTEGER          NOT NULL DEFAULT 0,
+    analysis_id    TEXT             NOT NULL PRIMARY KEY,
+    snapshot_id    TEXT             NOT NULL,
+    wbs_task_id    TEXT             NOT NULL,
+    wbs_project_id TEXT             NOT NULL,
+    before_progress INTEGER         NOT NULL DEFAULT 0,
+    after_progress  INTEGER         NOT NULL DEFAULT 0,
     confidence      DOUBLE PRECISION NOT NULL DEFAULT 0,
     analysis_notes  TEXT,
     rag_evidence    TEXT,
@@ -424,7 +424,7 @@ CREATE INDEX IF NOT EXISTS idx_progress_analysis_project ON progress_analysis_lo
 CREATE INDEX IF NOT EXISTS idx_progress_analysis_time    ON progress_analysis_log (analyzed_at DESC);
 
 -- safe_project 에 PROGRESS 모드 지원 (기존 CHECK 없으면 그냥 사용)
-ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(64) NULL;
+ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS analysis_id TEXT NULL;
 
 -- ================================================================
 -- Safe 프로젝트 ↔ IoT 센서 매핑 테이블
@@ -432,11 +432,11 @@ ALTER TABLE monitoring_snapshot ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(64)
 -- ================================================================
 CREATE TABLE IF NOT EXISTS safe_iot_mapping
 (
-    mapping_id      VARCHAR(64)  NOT NULL PRIMARY KEY,
-    project_id      VARCHAR(64)  NOT NULL REFERENCES safe_project (project_id) ON DELETE CASCADE,
-    sensor_location VARCHAR(100) NOT NULL,
-    sensor_alias    VARCHAR(255) NULL,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    mapping_id      TEXT        NOT NULL PRIMARY KEY,
+    project_id      TEXT        NOT NULL REFERENCES safe_project (project_id) ON DELETE CASCADE,
+    sensor_location TEXT        NOT NULL,
+    sensor_alias    TEXT        NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (project_id, sensor_location)
 );
 CREATE INDEX IF NOT EXISTS idx_safe_iot_mapping_project ON safe_iot_mapping (project_id);
@@ -447,11 +447,11 @@ CREATE INDEX IF NOT EXISTS idx_safe_iot_mapping_project ON safe_iot_mapping (pro
 CREATE TABLE IF NOT EXISTS agent_query_log
 (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    session_id VARCHAR(200) NOT NULL,
-    message    TEXT         NOT NULL,
-    domain     VARCHAR(50)  NULL,
-    project_id VARCHAR(200) NULL,
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    session_id TEXT        NOT NULL,
+    message    TEXT        NOT NULL,
+    domain     TEXT        NULL,
+    project_id TEXT        NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_agent_query_log_session ON agent_query_log (session_id);
 CREATE INDEX IF NOT EXISTS idx_agent_query_log_time    ON agent_query_log (created_at DESC);
