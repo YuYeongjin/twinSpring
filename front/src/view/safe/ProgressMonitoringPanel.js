@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import AxiosCustom from '../../axios/AxiosCustom';
+import { useT } from '../../i18n/LanguageContext';
 
 function ConfidenceBar({ value }) {
   const pct  = Math.round((value || 0) * 100);
@@ -16,16 +17,18 @@ function ConfidenceBar({ value }) {
 }
 
 function ProgressDelta({ before, after }) {
+  const tp = useT('progress');
   const delta = after - before;
   const color = delta > 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#6b7280';
   return (
     <span style={{ fontSize: 11, color }}>
-      {before}% → {after}% {delta > 0 ? `(+${delta})` : delta < 0 ? `(${delta})` : '(변화 없음)'}
+      {before}% → {after}% {delta > 0 ? `(+${delta})` : delta < 0 ? `(${delta})` : tp('noChange')}
     </span>
   );
 }
 
 export default function ProgressMonitoringPanel({ selectedProject }) {
+  const tp = useT('progress');
   const [analyses, setAnalyses]       = useState([]);
   const [loading, setLoading]         = useState(true);
   const [expanded, setExpanded]       = useState(null);
@@ -72,10 +75,10 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <h3 style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 700, margin: 0 }}>
-            📐 공정 진도 자동 분석
+            {tp('title')}
           </h3>
           <p style={{ color: '#6b7280', fontSize: 11, marginTop: 3 }}>
-            1시간 주기 카메라 촬영 → AI 비전 분석 → WBS 자동 업데이트 · 시방서 증빙 첨부
+            {tp('subtitle')}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -84,7 +87,7 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
               fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
               background: 'transparent', border: '1px solid #253347', color: '#6b7280',
             }}>
-            ↻ 새로고침
+            {tp('refresh')}
           </button>
           <button onClick={handleManualTrigger} disabled={triggerLoading}
             style={{
@@ -93,7 +96,7 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
               border: '1px solid ' + (triggerLoading ? '#253347' : '#2a5080'),
               color: triggerLoading ? '#6b7280' : '#60a5fa',
             }}>
-            {triggerLoading ? '⏳ 분석 중…' : '▶ 지금 분석'}
+            {triggerLoading ? tp('analyzing') : tp('analyzeNow')}
           </button>
         </div>
       </div>
@@ -107,10 +110,8 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
           display: 'flex', alignItems: 'center', gap: 8,
         }}>
           <span>✓</span>
-          <span>WBS 연결: <strong>{wbsLinks[0]?.wbsProjectName || wbsProjectId}</strong></span>
-          <span style={{ color: '#6b7280', fontSize: 10 }}>
-            — 분석 결과가 이 프로젝트의 태스크 진도에 자동 반영됩니다
-          </span>
+          <span>{tp('wbsLinked', { name: wbsLinks[0]?.wbsProjectName || wbsProjectId })}</span>
+          <span style={{ color: '#6b7280', fontSize: 10 }}>{tp('wbsLinkedDesc')}</span>
         </div>
       ) : (
         <div style={{
@@ -118,24 +119,23 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
           background: '#1a1000', border: '1px solid #d97706',
           fontSize: 12, color: '#d97706',
         }}>
-          ⚠ WBS 프로젝트가 연결되지 않았습니다. 프로젝트 설정에서 WBS를 연결하면 진도가 자동으로 업데이트됩니다.
+          {tp('wbsNotLinked')}
         </div>
       )}
 
       {/* ── 분석 로그 ── */}
       {loading ? (
         <div style={{ textAlign: 'center', color: '#4b5563', padding: '24px 0', fontSize: 13 }}>
-          불러오는 중…
+          {tp('loading')}
         </div>
       ) : analyses.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: '32px 0',
           border: '1px dashed #253347', borderRadius: 10, color: '#4b5563', fontSize: 13,
         }}>
-          <p>아직 분석 기록이 없습니다.</p>
+          <p>{tp('noAnalyses')}</p>
           <p style={{ fontSize: 11, marginTop: 6 }}>
-            모니터링 스케줄을 활성화하고 모드를 <strong style={{ color: '#60a5fa' }}>진도 모니터링</strong>으로 설정하면
-            1시간마다 자동으로 분석됩니다.
+            {tp('noAnalysesHint', { mode: <strong style={{ color: '#60a5fa' }}>{tp('progressMode')}</strong> })}
           </p>
         </div>
       ) : (
@@ -177,7 +177,7 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
 
               {/* 신뢰도 바 */}
               <div style={{ marginTop: 8 }}>
-                <p style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>AI 신뢰도</p>
+                <p style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>{tp('aiConfidence')}</p>
                 <ConfidenceBar value={a.confidence} />
               </div>
 
@@ -188,7 +188,7 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
                   {a.analysisNotes && (
                     <div style={{ marginBottom: 10 }}>
                       <p style={{ fontSize: 11, color: '#60a5fa', fontWeight: 600, marginBottom: 4 }}>
-                        🤖 AI 분석 결과
+                        {tp('aiAnalysis')}
                       </p>
                       <p style={{ fontSize: 11, color: '#93c5fd', lineHeight: 1.6 }}>
                         {a.analysisNotes}
@@ -204,7 +204,7 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
                       return (
                         <div>
                           <p style={{ fontSize: 11, color: '#f59e0b', fontWeight: 600, marginBottom: 6 }}>
-                            📋 시방서 증빙 ({docs.length}건)
+                            {tp('specEvidence', { n: docs.length })}
                           </p>
                           {docs.map((doc, i) => (
                             <div key={i} style={{
@@ -231,7 +231,7 @@ export default function ProgressMonitoringPanel({ selectedProject }) {
                         target="_blank" rel="noopener noreferrer"
                         style={{ fontSize: 11, color: '#60a5fa', textDecoration: 'underline' }}
                         onClick={e => e.stopPropagation()}>
-                        📷 분석에 사용된 스냅샷 보기
+                        {tp('viewSnapshot')}
                       </a>
                     </div>
                   )}

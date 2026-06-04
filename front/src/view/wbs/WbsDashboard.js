@@ -187,58 +187,82 @@ function SidebarItem({ project, selected, onSelect, onEdit, onDelete }) {
 // ══════════════════════════════════════════════════════════════════
 //  메인 대시보드
 // ══════════════════════════════════════════════════════════════════
-// ── 온습도 칩 ────────────────────────────────────────────────────
-function SensorChip({ sensorLatest, sensorWsStatus }) {
-  if (!sensorLatest) {
-    // 아직 데이터 없음 — 연결 중 표시
+// ── 날씨 칩 (Weather API) ─────────────────────────────────────────
+function WeatherChip() {
+  const [weather, setWeather] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchWeather = useCallback(async () => {
+    try {
+      // 저장된 위치 설정 조회 후 날씨 fetch
+      const settingsRes = await AxiosCustom.get('/api/settings');
+      const map = {};
+      (settingsRes.data || []).forEach(s => { map[s.settingKey] = s.settingValue; });
+
+      const params = map.weather_city
+        ? `?city=${encodeURIComponent(map.weather_city)}`
+        : `?lat=${map.weather_lat || '37.5665'}&lon=${map.weather_lon || '126.9780'}`;
+
+      const res = await AxiosCustom.get(`/api/weather${params}`);
+      const d = res.data;
+      setWeather(d && typeof d.temp === 'number' && !d.error ? d : null);
+    } catch {
+      setWeather(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchWeather();
+    const id = setInterval(fetchWeather, 10 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [fetchWeather]);
+
+  if (loading) {
     return (
       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg shrink-0"
         style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
-        <span className="text-xs animate-pulse" style={{ color: "#475569" }}>
-          {sensorWsStatus === 'connected' ? '🌡 —°C  💧 —%' : '📡 …'}
-        </span>
+        <span className="text-xs animate-pulse" style={{ color: "#475569" }}>🌡 …</span>
       </div>
     );
   }
 
-  const temp = sensorLatest.temperature != null ? Number(sensorLatest.temperature).toFixed(1) : null;
-  const hum = sensorLatest.humidity != null ? Math.round(Number(sensorLatest.humidity)) : null;
+  const temp = weather?.temp != null ? Number(weather.temp).toFixed(1) : null;
+  const hum  = weather?.humidity != null ? Math.round(Number(weather.humidity)) : null;
 
-  // 색상: 온도 범위에 따라
   const tempColor = temp == null ? "#64748b"
-    : temp > 35 ? "#f87171"   // 위험
-      : temp > 28 ? "#fb923c"   // 주의
-        : temp > 10 ? "#4ade80"   // 정상
-          : "#60a5fa";  // 저온
+    : temp > 35 ? "#f87171"
+    : temp > 28 ? "#fb923c"
+    : temp > 10 ? "#4ade80"
+    : "#60a5fa";
 
   const humColor = hum == null ? "#64748b"
     : hum > 80 ? "#60a5fa"
-      : hum < 30 ? "#fb923c"
-        : "#94a3b8";
+    : hum < 30 ? "#fb923c"
+    : "#94a3b8";
 
   return (
     <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg shrink-0"
-      style={{ backgroundColor: "#0d1b2a", border: "1px solid #1a2a3a" }}>
-      {/* 온도 */}
+      style={{ backgroundColor: "#0d1b2a", border: "1px solid #1a2a3a" }}
+      title={weather?.cityName || ''}>
       <span className="flex items-center gap-1 text-xs font-mono">
         <span>🌡</span>
         <span style={{ color: tempColor }}>{temp != null ? `${temp}°C` : "—"}</span>
       </span>
-
-      {/* 구분 */}
       <span style={{ color: "#253347" }}>│</span>
-
-      {/* 습도 */}
       <span className="flex items-center gap-1 text-xs font-mono">
         <span>💧</span>
         <span style={{ color: humColor }}>{hum != null ? `${hum}%` : "—"}</span>
       </span>
-
+      {weather?.mock && (
+        <span style={{ fontSize: 9, color: "#d97706", opacity: 0.7 }}>DEMO</span>
+      )}
     </div>
   );
 }
 
-export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsStatus, autoEditRequest, onAutoEditDone }) {
+export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoEditDone }) {
   const t = useT('wbs');
 
   // ── 데이터 상태 ──────────────────────────────────────────────
@@ -588,7 +612,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
 
           {/* 센서 칩 — 항상 표시 */}
           <div className="shrink-0">
-            <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
+            <WeatherChip />
           </div>
 
           {/* 새 현장 */}
@@ -703,7 +727,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
             {/* 사이드바 하단: 온습도 + 새 현장 */}
             <div className="px-2 py-2 flex flex-col gap-1.5" style={{ borderTop: "1px solid #1a2a3a" }}>
               {/* 온습도 칩 */}
-              <SensorChip sensorLatest={sensorLatest} sensorWsStatus={sensorWsStatus} />
+              <WeatherChip />
               {/* 새 현장 버튼 */}
               <button
                 onClick={() => { setEditingProject(null); setShowModal(true); }}

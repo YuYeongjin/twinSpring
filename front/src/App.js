@@ -170,6 +170,9 @@ function App() {
   // ── Agent health check ────────────────────────────────────────
   const [agentAvailable, setAgentAvailable] = useState(null);
 
+  // ── 환경설정 탭 IP 접근 권한 ──────────────────────────────────
+  const [settingsAllowed, setSettingsAllowed] = useState(false);
+
   // ── IoT 센서 연결 (앱 수명 동안 유지 → Simulation 탭에 props로 전달) ──
   const { latest: sensorLatest, wsStatus: sensorWsStatus } = SatelliteAPI();
 
@@ -491,6 +494,12 @@ function App() {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    AxiosCustom.get('/api/auth/ip-allowed')
+      .then(res => setSettingsAllowed(res.data.allowed === true))
+      .catch(() => setSettingsAllowed(false));
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0d1b2a] flex items-center justify-center text-gray-400">
@@ -550,8 +559,6 @@ function App() {
       return (
         <WbsDashboard
           onNavigateToTab={handleWbsNavigate}
-          sensorLatest={sensorLatest}
-          sensorWsStatus={sensorWsStatus}
           autoEditRequest={autoEditRequest}
           onAutoEditDone={() => setAutoEditRequest(null)}
         />

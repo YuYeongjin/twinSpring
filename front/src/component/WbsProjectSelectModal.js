@@ -8,22 +8,24 @@
 
 import React, { useEffect, useState } from 'react';
 import AxiosCustom from '../axios/AxiosCustom';
+import { useT } from '../i18n/LanguageContext';
 
-const EVENT_META = {
-  COLLISION: { icon: '⚠️', color: '#ef4444', label: '부재 충돌 감지' },
-  CRACK:     { icon: '🔍', color: '#f59e0b', label: '균열 감지' },
-  SAFE_ZONE: { icon: '🚨', color: '#ff4444', label: '안전구역 침범' },
-  SAFETY:    { icon: '⛑️', color: '#f59e0b', label: '안전복장 위반' },
+const EVENT_META_STYLE = {
+  COLLISION: { icon: '⚠️', color: '#ef4444', labelKey: 'eventCollision' },
+  CRACK:     { icon: '🔍', color: '#f59e0b', labelKey: 'eventCrack' },
+  SAFE_ZONE: { icon: '🚨', color: '#ff4444', labelKey: 'eventSafeZone' },
+  SAFETY:    { icon: '⛑️', color: '#f59e0b', labelKey: 'eventSafety' },
 };
 
-const STATUS_META = {
-  PLANNED:     { icon: '📋', color: '#94a3b8', bg: '#1e293b', label: '계획' },
-  IN_PROGRESS: { icon: '🔨', color: '#60a5fa', bg: '#1e3a5f', label: '진행 중' },
-  COMPLETED:   { icon: '✅', color: '#4ade80', bg: '#14532d', label: '완료' },
-  ON_HOLD:     { icon: '⏸', color: '#f59e0b', bg: '#451a03', label: '보류' },
+const STATUS_META_STYLE = {
+  PLANNED:     { icon: '📋', color: '#94a3b8', bg: '#1e293b', labelKey: 'statusPlanned' },
+  IN_PROGRESS: { icon: '🔨', color: '#60a5fa', bg: '#1e3a5f', labelKey: 'statusInProgress' },
+  COMPLETED:   { icon: '✅', color: '#4ade80', bg: '#14532d', labelKey: 'statusCompleted' },
+  ON_HOLD:     { icon: '⏸', color: '#f59e0b', bg: '#451a03', labelKey: 'statusOnHold' },
 };
 
 export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) {
+  const t = useT('agentWbs');
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -33,7 +35,6 @@ export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) 
       .then(r => {
         const list = r.data || [];
         setProjects(list);
-        // 기본 선택: IN_PROGRESS 우선, 없으면 첫 번째
         const def = list.find(p => p.status === 'IN_PROGRESS') || list[0] || null;
         setSelected(def);
       })
@@ -41,7 +42,8 @@ export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) 
       .finally(() => setLoading(false));
   }, []);
 
-  const meta = EVENT_META[eventItem?.eventType] ?? { icon: '🤖', color: '#60a5fa', label: '이벤트 감지' };
+  const metaStyle = EVENT_META_STYLE[eventItem?.eventType] ?? { icon: '🤖', color: '#60a5fa', labelKey: 'eventDefault' };
+  const meta = { ...metaStyle, label: t(metaStyle.labelKey) };
 
   return (
     <div
@@ -81,7 +83,7 @@ export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '13px', fontWeight: 700, color: meta.color }}>{meta.label}</div>
             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-              WBS에 반영할 현장 프로젝트를 선택하세요
+              {t('selectProject')}
             </div>
           </div>
           <button
@@ -114,7 +116,7 @@ export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) 
         <div style={{ padding: '10px 20px 4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ fontSize: '11px', color: '#475569' }}>🔗</span>
           <span style={{ fontSize: '11px', color: '#475569' }}>
-            연결된 WBS 현장이 없습니다 — 업데이트할 현장을 선택해 주세요
+            {t('noLinkedSite')}
           </span>
         </div>
 
@@ -122,16 +124,17 @@ export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) 
         <div style={{ padding: '8px 20px 6px', maxHeight: '46vh', overflowY: 'auto' }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '28px', color: '#475569', fontSize: '13px' }}>
-              ⏳ 현장 로드 중…
+              {t('loadingSites')}
             </div>
           ) : projects.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '28px', color: '#475569', fontSize: '13px' }}>
-              등록된 WBS 현장이 없습니다
+              {t('noSites')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
               {projects.map(p => {
-                const sm = STATUS_META[p.status] || STATUS_META.PLANNED;
+                const smStyle = STATUS_META_STYLE[p.status] || STATUS_META_STYLE.PLANNED;
+                const sm = { ...smStyle, label: t(smStyle.labelKey) };
                 const isSel = selected?.projectId === p.projectId;
                 return (
                   <button
@@ -177,7 +180,7 @@ export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) 
                           <span style={{ fontSize: '10px', color: '#475569' }}>📍 {p.location}</span>
                         )}
                         <span style={{ fontSize: '10px', color: '#334155' }}>
-                          작업 {p.taskCount ?? 0}개
+                          {t('taskCount', { n: p.taskCount ?? 0 })}
                         </span>
                       </div>
                     </div>
@@ -201,7 +204,7 @@ export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) 
               background: '#1c2a3a', border: '1px solid #253347', color: '#8896a4', cursor: 'pointer',
             }}
           >
-            취소
+            {t('cancelBtn')}
           </button>
           <button
             disabled={!selected || loading}
@@ -217,8 +220,8 @@ export default function WbsProjectSelectModal({ eventItem, onSelect, onClose }) 
             }}
           >
             {selected
-              ? `✅ ${selected.projectName}에 반영`
-              : '현장을 선택하세요'}
+              ? t('applyTo', { name: selected.projectName })
+              : t('selectSitePh')}
           </button>
         </div>
       </div>
