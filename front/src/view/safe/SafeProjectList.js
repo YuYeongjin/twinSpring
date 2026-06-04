@@ -445,7 +445,7 @@ export default function SafeProjectList({
               <button onClick={() => setShowAllCameras(true)}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
                       style={{ backgroundColor: "#1e1a3a", border: "1px solid #818cf8", color: "#c4b5fd" }}>
-                📹 전체 카메라 조회
+                {t('cameraListTitle')}
               </button>
               <div className="relative">
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm"
