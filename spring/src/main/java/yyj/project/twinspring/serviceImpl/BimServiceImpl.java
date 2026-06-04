@@ -94,7 +94,11 @@ public class BimServiceImpl implements BimService {
                 .onStatus(status -> status.isError(), clientResponse ->
                         Mono.error(new RuntimeException("C# Server Error: " + clientResponse.statusCode())))
                 .bodyToFlux(BimProjectDTO.class)
-                .collectList();
+                .collectList()
+                .onErrorResume(e -> {
+                    log.warn("C# BIM 서버 연결 실패 — 로컬 DB로 폴백: {}", e.getMessage());
+                    return Mono.fromCallable(this::getBimProjectsFromDb);
+                });
     }
 
     @Override
@@ -176,8 +180,35 @@ public class BimServiceImpl implements BimService {
         Mono<List<BimElementDTO>> responseBodyMono = webClient.get()
                 .uri("/api/bim/project/{projectId}", projectId)
                 .retrieve()
-                .bodyToMono(typeRef);
+                .bodyToMono(typeRef)
+                .onErrorResume(e -> {
+                    log.warn("C# BIM 서버 연결 실패 — 로컬 DB 요소로 폴백: projectId={}, err={}", projectId, e.getMessage());
+                    return Mono.fromCallable(() -> elementsFromDb(projectId));
+                });
         return ResponseEntity.ok(responseBodyMono);
+    }
+
+    /** C# 서버 미구동 시 PostgreSQL 에서 요소 목록 조회 (로컬 개발 폴백용) */
+    private List<BimElementDTO> elementsFromDb(String projectId) {
+        return bimDAO.getElementsByProject(projectId).stream()
+                .map(row -> {
+                    BimElementDTO dto = new BimElementDTO();
+                    dto.setElementId(row.get("elementId") == null ? null : row.get("elementId").toString());
+                    dto.setProjectId(row.get("projectId") == null ? null : row.get("projectId").toString());
+                    dto.setElementType(row.get("elementType") == null ? null : row.get("elementType").toString());
+                    dto.setMaterial(row.get("material") == null ? null : row.get("material").toString());
+                    dto.setPositionX(row.get("positionX") == null ? null : toDouble(row.get("positionX")));
+                    dto.setPositionY(row.get("positionY") == null ? null : toDouble(row.get("positionY")));
+                    dto.setPositionZ(row.get("positionZ") == null ? null : toDouble(row.get("positionZ")));
+                    dto.setSizeX(row.get("sizeX") == null ? null : toDouble(row.get("sizeX")));
+                    dto.setSizeY(row.get("sizeY") == null ? null : toDouble(row.get("sizeY")));
+                    dto.setSizeZ(row.get("sizeZ") == null ? null : toDouble(row.get("sizeZ")));
+                    dto.setRotationX(row.get("rotationX") == null ? null : toDouble(row.get("rotationX")));
+                    dto.setRotationY(row.get("rotationY") == null ? null : toDouble(row.get("rotationY")));
+                    dto.setRotationZ(row.get("rotationZ") == null ? null : toDouble(row.get("rotationZ")));
+                    return dto;
+                })
+                .collect(Collectors.toList());
     }
 
     /**

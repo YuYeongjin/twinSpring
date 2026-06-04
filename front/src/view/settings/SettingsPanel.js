@@ -1,13 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import AxiosCustom from '../../axios/AxiosCustom';
+import { useT } from '../../i18n/LanguageContext';
 
-const RETENTION_OPTIONS = [
-  { value: '1',  label: '1일' },
-  { value: '7',  label: '7일' },
-  { value: '30', label: '30일' },
-  { value: '90', label: '90일' },
-  { value: '0',  label: '무제한' },
-];
+const RETENTION_KEYS = ['1', '7', '30', '90', '0'];
 
 function Section({ title, children }) {
   return (
@@ -304,6 +299,8 @@ function ServerMonitor() {
 
 // ── 메인 패널 ───────────────────────────────────────────────────────────────
 export default function SettingsPanel() {
+  const t = useT('settings');
+
   const [settings, setSettings]       = useState({});
   const [saving, setSaving]           = useState({});
   const [weatherLat, setWeatherLat]   = useState('37.5665');
@@ -311,6 +308,7 @@ export default function SettingsPanel() {
   const [weatherCity, setWeatherCity] = useState('');
   const [retention, setRetention]     = useState('30');
   const [toast, setToast]             = useState('');
+  const [apiKeyStatus, setApiKeyStatus] = useState('checking'); // 'checking' | 'ok' | 'mock' | 'error'
 
   const load = useCallback(() => {
     AxiosCustom.get('/api/settings').then(r => {
@@ -326,17 +324,30 @@ export default function SettingsPanel() {
 
   useEffect(() => { load(); }, [load]);
 
+  // API 키 등록 여부 확인
+  useEffect(() => {
+    setApiKeyStatus('checking');
+    AxiosCustom.get('/api/weather?city=Seoul')
+      .then(r => {
+        const d = r.data;
+        if (!d || d.error || typeof d.temp !== 'number') setApiKeyStatus('error');
+        else if (d.mock) setApiKeyStatus('mock');
+        else setApiKeyStatus('ok');
+      })
+      .catch(() => setApiKeyStatus('error'));
+  }, []);
+
   const save = useCallback(async (key, value) => {
     setSaving(p => ({ ...p, [key]: true }));
     try {
       await AxiosCustom.put(`/api/settings/${key}`, { value });
       setSettings(p => ({ ...p, [key]: value }));
-      setToast('저장됨');
+      setToast(t('saved'));
       setTimeout(() => setToast(''), 1800);
     } finally {
       setSaving(p => ({ ...p, [key]: false }));
     }
-  }, []);
+  }, [t]);
 
   const saveAll = useCallback(async () => {
     await Promise.all([
@@ -346,6 +357,21 @@ export default function SettingsPanel() {
       save('weather_city', weatherCity),
     ]);
   }, [save, retention, weatherLat, weatherLon, weatherCity]);
+
+  const RETENTION_OPTIONS = [
+    { value: '1',  label: t('day1') },
+    { value: '7',  label: t('day7') },
+    { value: '30', label: t('day30') },
+    { value: '90', label: t('day90') },
+    { value: '0',  label: t('unlimited') },
+  ];
+
+  const API_KEY_INFO = {
+    checking: { color: '#6b7280', text: t('apiKeyChecking') },
+    ok:       { color: '#4ade80', text: t('apiKeyOk') },
+    mock:     { color: '#f59e0b', text: t('apiKeyMock') },
+    error:    { color: '#f87171', text: t('apiKeyError') },
+  };
 
   const btnStyle = (active) => ({
     padding: '4px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
@@ -360,10 +386,12 @@ export default function SettingsPanel() {
     color: '#e2e8f0', fontSize: 12, padding: '5px 10px', width: 120,
   };
 
+  const apiInfo = API_KEY_INFO[apiKeyStatus] ?? API_KEY_INFO.checking;
+
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px' }}>
       <h2 style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 700, marginBottom: 20 }}>
-        ⚙️ 환경 설정
+        {t('title')}
       </h2>
 
       {/* ── 서버 모니터링 ── */}
@@ -372,9 +400,8 @@ export default function SettingsPanel() {
       </Section>
 
       {/* ── 대화 히스토리 정책 ── */}
-      <Section title="💬 대화 히스토리 보관 정책">
-        <Row label="보관 기간"
-             desc="설정 기간이 지난 대화 기록은 매일 새벽 3시에 자동 삭제됩니다. (0 = 무제한 보존)">
+      <Section title={t('chatSection')}>
+        <Row label={t('retentionLabel')} desc={t('retentionDesc')}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {RETENTION_OPTIONS.map(({ value, label }) => (
               <button key={value}
@@ -386,48 +413,63 @@ export default function SettingsPanel() {
           </div>
         </Row>
         <p style={{ fontSize: 11, color: '#4b5563', marginTop: -8 }}>
-          현재 설정: <span style={{ color: '#60a5fa' }}>
-            {RETENTION_OPTIONS.find(o => o.value === retention)?.label ?? retention + '일'}
+          {t('retentionCurrent')}{' '}
+          <span style={{ color: '#60a5fa' }}>
+            {RETENTION_OPTIONS.find(o => o.value === retention)?.label ?? retention}
           </span>
-          {' '}보관 · 저장 후 다음날 새벽 3시부터 적용
+          {' '}{t('retentionSuffix')}
         </p>
       </Section>
 
       {/* ── 날씨 API 설정 ── */}
-      <Section title="🌤️ 날씨 위젯 위치 설정">
-        <Row label="도시명 (우선)"
-             desc="입력 시 좌표보다 우선 사용됩니다. 예: Seoul, Busan">
+      <Section title={t('weatherSection')}>
+        <Row label={t('cityLabel')} desc={t('cityDesc')}>
           <input style={inputStyle} value={weatherCity}
-            placeholder="예: Seoul"
+            placeholder={t('cityPlaceholder')}
             onChange={e => setWeatherCity(e.target.value)} />
         </Row>
-        <Row label="위도 / 경도"
-             desc="도시명이 비어있을 때 사용됩니다.">
+        <Row label={t('latLonLabel')} desc={t('latLonDesc')}>
           <div style={{ display: 'flex', gap: 8 }}>
             <input style={inputStyle} value={weatherLat}
-              placeholder="위도 (lat)"
+              placeholder="lat"
               onChange={e => setWeatherLat(e.target.value)} />
             <input style={inputStyle} value={weatherLon}
-              placeholder="경도 (lon)"
+              placeholder="lon"
               onChange={e => setWeatherLon(e.target.value)} />
           </div>
         </Row>
-        <p style={{ fontSize: 11, color: '#4b5563' }}>
-          OpenWeatherMap API 키는 서버 환경변수 <code style={{ color: '#60a5fa' }}>OPENWEATHER_API_KEY</code> 에 설정하세요.
-          키가 없으면 데모 데이터가 표시됩니다.
+
+        {/* API 키 상태 표시 */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 14px', borderRadius: 8,
+          background: '#060f1a', border: `1px solid ${apiInfo.color}30`,
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', whiteSpace: 'nowrap' }}>
+            {t('apiKeySection')}
+          </span>
+          <span style={{
+            fontSize: 12, color: apiInfo.color,
+            animation: apiKeyStatus === 'checking' ? 'pulse 1.4s ease-in-out infinite' : 'none',
+          }}>
+            {apiInfo.text}
+          </span>
+        </div>
+        <p style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
+          <code style={{ color: '#4b5563' }}>OPENWEATHER_API_KEY</code>
         </p>
       </Section>
 
       {/* ── 시스템 정보 ── */}
-      <Section title="ℹ️ 시스템 정보">
+      <Section title={t('systemSection')}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px', fontSize: 12 }}>
           {[
-            ['플랫폼', 'Digital Twin YJ-01'],
-            ['AI 모델', 'qwen2.5:3b (Ollama)'],
-            ['라우터 모델', 'llama3.2:1b'],
-            ['벡터 DB', 'pgvector (PostgreSQL)'],
-            ['건설 기준', 'KCS / KDS 한국 시방서'],
-            ['프레임워크', 'Spring Boot 3 · React 19 · LangGraph'],
+            ['Platform', 'Digital Twin'],
+            ['AI Model', 'qwen2.5:3b (Ollama)'],
+            ['Router', 'llama3.2:1b'],
+            ['Vector DB', 'pgvector (PostgreSQL)'],
+            ['Standard', 'KCS / KDS'],
+            ['Framework', 'Spring Boot 3 · React 19 · LangGraph'],
           ].map(([k, v]) => (
             <div key={k}>
               <span style={{ color: '#6b7280' }}>{k}: </span>
@@ -445,7 +487,7 @@ export default function SettingsPanel() {
             background: '#1e3a5f', border: '1px solid #2a5080', color: '#60a5fa',
             cursor: 'pointer',
           }}>
-          💾 설정 저장
+          {t('saveBtn')}
         </button>
         {toast && <span style={{ fontSize: 12, color: '#4ade80' }}>✓ {toast}</span>}
       </div>

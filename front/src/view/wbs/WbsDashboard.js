@@ -295,13 +295,13 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
 
     // 이벤트 유형별 삽입할 태스크 정의
     const TASK_MAP = {
-      COLLISION: { taskName: '⚠️ 부재 충돌 보정 작업', duration: 2, source: 'AGENT_AUTO' },
-      CRACK: { taskName: '🔍 균열 보수 공사', duration: 3, source: 'AGENT_CRACK' },
-      SAFE_ZONE: { taskName: '🚨 안전구역 재설정 및 안전점검', duration: 1, source: 'AGENT_AUTO' },
-      SAFETY: { taskName: '⛑️ 안전교육 실시', duration: 1, source: 'AGENT_AUTO' },
+      COLLISION: { taskName: t('autoTaskCollision'), duration: 2, source: 'AGENT_AUTO' },
+      CRACK:     { taskName: t('autoTaskCrack'),     duration: 3, source: 'AGENT_CRACK' },
+      SAFE_ZONE: { taskName: t('autoTaskSafeZone'),  duration: 1, source: 'AGENT_AUTO' },
+      SAFETY:    { taskName: t('autoTaskSafety'),    duration: 1, source: 'AGENT_AUTO' },
     };
     const taskDef = TASK_MAP[autoEditRequest.eventType] ?? {
-      taskName: '📋 자동 추가 작업', duration: 1, source: 'AGENT_AUTO',
+      taskName: t('autoTaskDefault'), duration: 1, source: 'AGENT_AUTO',
     };
 
     // 날짜 유틸
@@ -346,7 +346,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
         // RAG 근거가 있으면 노트에 시방서 출처 포함
         const ragEvidence = autoEditRequest.ragEvidence || [];
         const ragNote = ragEvidence.length > 0
-          ? '\n\n[시방서 근거]\n' + ragEvidence
+          ? t('ragEvidenceLabel') + ragEvidence
             .map((ev, i) => {
               const header = `${i + 1}. ${ev.source}${ev.series ? ` (${ev.series})` : ''}`;
               const snippet = ev.content ? `\n   → ${ev.content.slice(0, 200).replace(/\n/g, ' ')}` : '';
@@ -354,7 +354,7 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
             })
             .join('\n')
           : '';
-        const notes = `[Agent 자동 생성] ${autoEditRequest.title || ''} — ${autoEditRequest.detail || ''}${ragNote}`.trim();
+        const notes = `${t('agentNotePrefix')} ${autoEditRequest.title || ''} — ${autoEditRequest.detail || ''}${ragNote}`.trim();
 
         await AxiosCustom.post(`/api/wbs/project/${target.projectId}/agent-tasks`, {
           source: taskDef.source,
@@ -553,9 +553,9 @@ export default function WbsDashboard({ onNavigateToTab, sensorLatest, sensorWsSt
           {autoEditStatus === 'running' && <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>}
           {autoEditStatus === 'done' && '✅'}
           {autoEditStatus === 'error' && '❌'}
-          {autoEditStatus === 'running' && ' WBS 자동 수정 중 — CPM 재계산 진행 중…'}
-          {autoEditStatus === 'done' && ` WBS 자동 수정 완료${autoEditTargetName ? ` — ${autoEditTargetName}` : ''} 일정이 업데이트되었습니다.`}
-          {autoEditStatus === 'error' && ' WBS 자동 수정 실패 — 수동으로 확인해 주세요.'}
+          {autoEditStatus === 'running' && ` ${t('wbsAutoEditing')}`}
+          {autoEditStatus === 'done' && ` ${t('wbsAutoEditDone', { target: autoEditTargetName ? t('wbsAutoEditDoneTarget', { name: autoEditTargetName }) : '' })}`}
+          {autoEditStatus === 'error' && ` ${t('wbsAutoEditFail')}`}
         </div>
       )}
 

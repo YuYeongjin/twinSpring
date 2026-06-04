@@ -217,18 +217,19 @@ function PredecessorSelect({ value, onChange, tasks, currentTaskId }) {
 //  계획 / 실행 이중 진행률 셀
 // ══════════════════════════════════════════════════════════════════
 function ProgressCell({ startDate, endDate, execProgress, isEditing, onExecChange }) {
+  const t = useT('wbs');
   const plan  = calcPlanProgress(startDate, endDate);
   const exec  = Number(execProgress) || 0;
   const delta = plan !== null ? exec - plan : null;
 
   const deltaColor = delta === null ? "#94a3b8" : delta > 0 ? "#4ade80" : delta < 0 ? "#f87171" : "#60a5fa";
-  const deltaShort = delta === null ? null : delta > 0 ? `▲ +${delta}%` : delta < 0 ? `▼ ${delta}%` : "= 동일";
-  const deltaTitle = delta === null ? "" : delta > 0 ? "계획 대비 빠름" : delta < 0 ? "계획 대비 늦음" : "계획과 동일";
+  const deltaShort = delta === null ? null : delta > 0 ? `▲ +${delta}%` : delta < 0 ? `▼ ${delta}%` : t('deltaEqual');
+  const deltaTitle = delta === null ? "" : delta > 0 ? t('deltaFaster') : delta < 0 ? t('deltaSlower') : t('deltaSame');
 
   return (
     <div className="flex flex-col gap-1" style={{ minWidth: 130 }}>
       <div className="flex items-center gap-1">
-        <span style={{ fontSize: 9, color: "#64748b", width: 22, flexShrink: 0, textAlign: "right" }}>계획</span>
+        <span style={{ fontSize: 9, color: "#64748b", width: 22, flexShrink: 0, textAlign: "right" }}>{t('planLabel')}</span>
         <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "#1e293b", minWidth: 40 }}>
           <div className="h-full rounded-full transition-all" style={{ width: `${plan ?? 0}%`, backgroundColor: "#3b82f6" }} />
         </div>

@@ -527,6 +527,7 @@ export default function SafeProjectList({
 // 각 카드 클릭 → 해당 프로젝트로 이동.
 // ══════════════════════════════════════════════════════════════
 function AllCameraView({ projectList, onSelectProject, onBack }) {
+  const t = useT('safeProjectList');
   const [camerasByProject, setCamerasByProject] = useState({});
   const [latestSnapByProject, setLatestSnapByProject] = useState({});
   const [loading, setLoading] = useState(true);
@@ -576,7 +577,7 @@ function AllCameraView({ projectList, onSelectProject, onBack }) {
     return [{
       key:        proj.projectId,
       project:    proj,
-      cameraName: proj.cameraUrl ? '기본 카메라' : '카메라 미등록',
+      cameraName: proj.cameraUrl ? t('cameraDefault') : t('cameraNotRegistered'),
       cameraUrl:  proj.cameraUrl ?? null,
       snap,
     }];
@@ -592,24 +593,24 @@ function AllCameraView({ projectList, onSelectProject, onBack }) {
         <button onClick={onBack}
           className="text-sm px-3 py-1.5 rounded-lg"
           style={{ background: '#1c2a3a', border: '1px solid #253347', color: '#8896a4' }}>
-          ← 프로젝트 목록
+          {t('backBtn')}
         </button>
-        <h2 className="text-xl font-bold text-white">📹 전체 카메라 조회</h2>
+        <h2 className="text-xl font-bold text-white">{t('cameraListTitle')}</h2>
         <span className="text-sm text-gray-500">
-          {cards.length}개 카메라 · {projectList.length}개 프로젝트
+          {t('cameraListSubtitle', { cams: cards.length, projs: projectList.length })}
         </span>
       </div>
 
       {loading && (
         <div className="flex items-center justify-center py-32 text-gray-500">
-          카메라 목록 로딩 중…
+          {t('cameraLoading')}
         </div>
       )}
 
       {!loading && cards.length === 0 && (
         <div className="flex flex-col items-center justify-center py-32 text-center">
           <div className="text-6xl mb-4">📷</div>
-          <p className="text-gray-400">등록된 프로젝트가 없습니다.</p>
+          <p className="text-gray-400">{t('cameraEmpty')}</p>
         </div>
       )}
 
@@ -632,6 +633,7 @@ function AllCameraView({ projectList, onSelectProject, onBack }) {
 
 // ── 카메라 카드 ────────────────────────────────────────────────
 function CameraCard({ card, isCrack, onClick }) {
+  const t = useT('safeProjectList');
   const { project, cameraName, cameraUrl, snap } = card;
   const hasSnap   = !!snap?.snapshotId;
   const imgUrl    = hasSnap ? `/api/monitoring/snapshot/${snap.snapshotId}/image` : null;
@@ -646,11 +648,11 @@ function CameraCard({ card, isCrack, onClick }) {
     if (!iso) return null;
     const diff = Date.now() - new Date(iso).getTime();
     const m = Math.floor(diff / 60000);
-    if (m < 1)  return '방금 전';
-    if (m < 60) return `${m}분 전`;
+    if (m < 1)  return t('timeAgoJustNow');
+    if (m < 60) return t('timeAgoMin', { n: m });
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h}시간 전`;
-    return `${Math.floor(h / 24)}일 전`;
+    if (h < 24) return t('timeAgoHour', { n: h });
+    return t('timeAgoDay', { n: Math.floor(h / 24) });
   }
 
   return (
@@ -673,7 +675,7 @@ function CameraCard({ card, isCrack, onClick }) {
               {noCamera ? '📵' : isRtsp ? '📡' : '📷'}
             </span>
             <span className="text-xs text-gray-600">
-              {noCamera ? '카메라 미등록' : isRtsp ? 'RTSP 스트림' : '스냅샷 없음'}
+              {noCamera ? t('cameraNotRegistered') : isRtsp ? t('statusRtsp') : t('statusNoSnapshot')}
             </span>
           </div>
         )}
@@ -683,13 +685,13 @@ function CameraCard({ card, isCrack, onClick }) {
           {/* 모드 배지 */}
           <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
             style={{ background: modeBg, border: `1px solid ${modeBorder}`, color: modeColor, fontSize: '10px' }}>
-            {isCrack ? '🔍 균열' : '🛡 안전'}
+            {isCrack ? t('modeCrack') : t('modeSafe')}
           </span>
           {/* 프로젝트 상태 배지 */}
           {project.status !== 'ACTIVE' && (
             <span className="text-xs px-1.5 py-0.5 rounded"
               style={{ background: '#1e293b', border: '1px solid #475569', color: '#94a3b8', fontSize: '10px' }}>
-              {project.status === 'INACTIVE' ? '🟡 비활성' : '⚫ 보관'}
+              {project.status === 'INACTIVE' ? t('statusInactiveBadge') : t('statusArchivedBadge')}
             </span>
           )}
         </div>

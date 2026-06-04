@@ -62,3 +62,75 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
   filter: invert(1) opacity(1);
 }
+
+/* ── 모바일 전반 UX ─────────────────────────────── */
+
+/* 버튼 / 링크 탭 지연(300ms) 제거 */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* iOS Safari: input 포커스 시 자동 확대 방지 (font-size 16px 이상이면 줌 안 됨) */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
+/* range 슬라이더 터치 영역 확대 */
+input[type="range"] {
+  height: 32px;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+}
+
+/* 모달 내부 스크롤 — iOS 관성 스크롤 */
+.modal-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 드래그 비활성 — 실수 선택 방지 */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── BIM 모바일 사이드 패널 슬라이드 애니메이션 ─────────────── */
+@keyframes slideInFromLeft {
+  from { transform: translateX(-100%); opacity: 0.6; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes slideOutToLeft {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+@keyframes slideInFromRight {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes slideOutToRight {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+@keyframes fadeInDim {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fadeOutDim {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.bim-panel-left      { animation: slideInFromLeft  0.26s cubic-bezier(0.4,0,0.2,1) both; }
+.bim-panel-left-out  { animation: slideOutToLeft   0.22s cubic-bezier(0.4,0,0.2,1) both; }
+.bim-panel-right     { animation: slideInFromRight 0.26s cubic-bezier(0.4,0,0.2,1) both; }
+.bim-panel-right-out { animation: slideOutToRight  0.22s cubic-bezier(0.4,0,0.2,1) both; }
+.bim-panel-dim       { animation: fadeInDim        0.22s ease both; }
+.bim-panel-dim-out   { animation: fadeOutDim       0.18s ease both; }

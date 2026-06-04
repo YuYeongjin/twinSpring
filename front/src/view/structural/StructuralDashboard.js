@@ -14,27 +14,51 @@ import {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const MATERIALS = {
-  concrete_24: {
-    id: 'concrete_24', label: 'Concrete C24', density: 24,
-    allowCompressive: 16, allowShear: 1.4,
-  },
-  concrete_30: {
-    id: 'concrete_30', label: 'Concrete C30', density: 24,
-    allowCompressive: 20, allowShear: 1.7,
-  },
-  concrete_40: {
-    id: 'concrete_40', label: 'Concrete C40', density: 24,
-    allowCompressive: 26.7, allowShear: 2.1,
-  },
-  steel_235: {
-    id: 'steel_235', label: 'Steel SS275', density: 78.5,
-    allowCompressive: 157, allowShear: 91,
-  },
-  steel_355: {
-    id: 'steel_355', label: 'Steel SM355', density: 78.5,
-    allowCompressive: 237, allowShear: 137,
-  },
+  // Concrete grades
+  concrete_20: { id: 'concrete_20', label: 'Concrete C20', density: 24, allowCompressive: 13.3, allowShear: 1.1 },
+  concrete_24: { id: 'concrete_24', label: 'Concrete C24', density: 24, allowCompressive: 16,   allowShear: 1.4 },
+  concrete_25: { id: 'concrete_25', label: 'Concrete C25', density: 24, allowCompressive: 16.7, allowShear: 1.5 },
+  concrete_30: { id: 'concrete_30', label: 'Concrete C30', density: 24, allowCompressive: 20,   allowShear: 1.7 },
+  concrete_35: { id: 'concrete_35', label: 'Concrete C35', density: 24, allowCompressive: 23.3, allowShear: 1.9 },
+  concrete_40: { id: 'concrete_40', label: 'Concrete C40', density: 24, allowCompressive: 26.7, allowShear: 2.1 },
+  concrete_50: { id: 'concrete_50', label: 'Concrete C50', density: 25, allowCompressive: 33.3, allowShear: 2.5 },
+  concrete_60: { id: 'concrete_60', label: 'Concrete C60 / Prestressed', density: 25, allowCompressive: 40, allowShear: 3.0 },
+  // Steel grades
+  steel_235: { id: 'steel_235', label: 'Steel SS275 / Grade A', density: 78.5, allowCompressive: 157, allowShear: 91  },
+  steel_400: { id: 'steel_400', label: 'Steel SS400 / Grade B', density: 78.5, allowCompressive: 163, allowShear: 94  },
+  steel_275: { id: 'steel_275', label: 'Steel SHN275',          density: 78.5, allowCompressive: 180, allowShear: 104 },
+  steel_355: { id: 'steel_355', label: 'Steel SHN355 / SM355',  density: 78.5, allowCompressive: 237, allowShear: 137 },
+  // Timber
+  timber_pine:   { id: 'timber_pine',   label: 'Timber Pine / LVL',    density: 5.5, allowCompressive: 18, allowShear: 2.5 },
+  timber_glulam: { id: 'timber_glulam', label: 'Timber Glulam / CLT',  density: 4.5, allowCompressive: 24, allowShear: 3.0 },
+  // Composite
+  composite_src: { id: 'composite_src', label: 'Steel-Concrete Composite', density: 40, allowCompressive: 80,  allowShear: 30 },
+  composite_frp: { id: 'composite_frp', label: 'FRP / Carbon Fiber',        density: 20, allowCompressive: 150, allowShear: 60 },
 };
+
+// BIM 에디터 재료 문자열 → MATERIALS 키 매핑
+function resolveMaterialFromBim(bimMaterial, fallbackId) {
+  if (!bimMaterial) return fallbackId;
+  const m = bimMaterial.toLowerCase();
+  if (m.includes('c60') || m.includes('high-strength') || m.includes('prestressed')) return 'concrete_60';
+  if (m.includes('c50'))  return 'concrete_50';
+  if (m.includes('c40'))  return 'concrete_40';
+  if (m.includes('c35'))  return 'concrete_35';
+  if (m.includes('c30'))  return 'concrete_30';
+  if (m.includes('c25'))  return 'concrete_25';
+  if (m.includes('c24'))  return 'concrete_24';
+  if (m.includes('c20') || m.includes('concrete')) return 'concrete_20';
+  if (m.includes('shn355') || m.includes('sm355')) return 'steel_355';
+  if (m.includes('shn275')) return 'steel_275';
+  if (m.includes('ss400') || m.includes('grade b')) return 'steel_400';
+  if (m.includes('ss275') || m.includes('ss400') || m.includes('grade a') || m.includes('steel')) return 'steel_235';
+  if (m.includes('stainless')) return 'steel_400';
+  if (m.includes('glulam') || m.includes('clt') || m.includes('oak')) return 'timber_glulam';
+  if (m.includes('timber') || m.includes('pine') || m.includes('lvl')) return 'timber_pine';
+  if (m.includes('carbon') || m.includes('frp')) return 'composite_frp';
+  if (m.includes('composite')) return 'composite_src';
+  return fallbackId;
+}
 
 const SEISMIC_ZONES = [
   { value: 1, label: 'Zone I  — Low Risk (0.08g)', Sa: 0.08 },
@@ -158,11 +182,15 @@ const FORMULA_HELP = {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function runAnalysis(modelData, env, loads, matId) {
-  const mat = MATERIALS[matId];
   const seismic = SEISMIC_ZONES.find(z => z.value === env.seismicZone) ?? SEISMIC_ZONES[1];
   const qDesign = 0.6125 * (env.windSpeed ** 2) / 1000 * 1.3 * 1.5;
 
   return modelData.map((el, idx) => {
+    // BIM 에디터에서 설정한 재료 우선 적용, 없으면 전역 기본값 사용
+    const elMatId = resolveMaterialFromBim(el.material, matId);
+    const mat = MATERIALS[elMatId] ?? MATERIALS[matId];
+    const fromBim = !!el.material;
+
     // 기본값 1로 통일 (메인 에디터와 동일)
     const sX = Math.max(Number(el.sizeX) || 1, 0.01);
     const sY = Math.max(Number(el.sizeY) || 1, 0.01); // 깊이(Depth)
@@ -252,6 +280,10 @@ function runAnalysis(modelData, env, loads, matId) {
       elementId: el.elementId ?? idx,
       elementName: el.elementName || `${ELEMENT_LABELS[type] ?? type}-${idx + 1}`,
       elementType: type,
+      materialId: elMatId,
+      materialLabel: mat.label,
+      materialFromBim: fromBim,
+      bimMaterialRaw: el.material || '',
       selfWeight: +selfWt.toFixed(2),
       axialLoad: +axialLoad.toFixed(2),
       windLoad: +(qDesign * sX * sZ).toFixed(2),
@@ -560,11 +592,13 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
     setSpecLoading(true);
     setSpecData(null);
     const elementTypes = [...new Set(analysisResults.map(r => r.elementType))];
+    const materialTypes = [...new Set(analysisResults.map(r => r.materialId))];
     const hasDanger  = analysisResults.some(r => r.status === 'danger');
     const hasWarning = analysisResults.some(r => r.status === 'warning');
     try {
       const res = await AxiosCustom.post('/api/chat/structural-spec', {
-        materialType: matId,
+        materialType: materialTypes[0] ?? matId,
+        materialTypes,
         elementTypes,
         hasDanger,
         hasWarning,
@@ -597,21 +631,22 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
         const names = dangerElems.map(r => r.elementName).join(', ');
         const minSF = Math.min(...dangerElems.map(r => r.safetyFactor)).toFixed(2);
 
+        const projName = proj?.projectName ?? t('structCurrentModel');
         const alert = pushAlert({
           source:      'BIM',
           severity:    'HIGH',
-          title:       `구조 위험 부재 감지 — ${proj?.projectName ?? '현재 모델'}`,
-          detail:      `${dangerElems.length}개 부재 안전율 미달 (최소 SF=${minSF}): ${names}`,
+          title:       t('structDangerTitle', { name: projName }),
+          detail:      t('structDangerDetail', { count: dangerElems.length, sf: minSF, names }),
           projectId:   proj?.projectId ?? '',
-          projectName: proj?.projectName ?? '',
+          projectName: projName,
         });
         pushWbsSuggest({
           eventType:   'STRUCTURAL_DANGER',
           source:      'BIM_STRUCTURAL',
-          title:       `구조 위험 부재 ${dangerElems.length}개 감지 (SF < 1.0)`,
-          detail:      `${proj?.projectName ?? '현재 모델'} — 최소 안전율 ${minSF}, 영향 부재: ${names.slice(0, 80)}`,
+          title:       t('structDangerTitle', { name: projName }),
+          detail:      `${projName} — ${t('structDangerDetail', { count: dangerElems.length, sf: minSF, names: names.slice(0, 80) })}`,
           projectId:   proj?.projectId ?? '',
-          projectName: proj?.projectName ?? '',
+          projectName: projName,
           alertId:     alert.id,
         });
       }
@@ -686,6 +721,13 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
 
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  const [isLg, setIsLg] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+  useEffect(() => {
+    const h = () => setIsLg(window.innerWidth >= 1024);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+
   return (
       <div className="w-full bg-space-900 flex flex-col overflow-hidden box-border p-3">
 
@@ -695,14 +737,10 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
               <div className="bg-[#0f1422] border border-amber-600/40 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
                 <div className="flex items-center gap-3 mb-4">
                   <span className="text-2xl">⚠️</span>
-                  <h3 className="text-base font-bold text-amber-300">드론 사진 추출 데이터 경고</h3>
+                  <h3 className="text-base font-bold text-amber-300">{t('structDroneWarnTitle')}</h3>
                 </div>
                 <p className="text-xs text-gray-300 leading-relaxed mb-5">
-                  이 프로젝트는 <span className="text-amber-300 font-semibold">드론 사진 분석</span>으로 생성된 BIM 데이터입니다.<br /><br />
-                  사진 해상도·카메라 왜곡·기준점 오차 등으로 인해 추출된 치수가
-                  <span className="text-red-400 font-semibold"> 실제 치수와 다를 수 있습니다.</span><br /><br />
-                  응력·안전율 계산 결과가 부정확할 수 있으므로, 반드시 실측 치수와 비교한 후 판단하세요.
-                  설계 의사결정에 직접 사용하지 마세요.
+                  {t('structDroneWarnBody')}
                 </p>
                 <div className="flex gap-3">
                   <button
@@ -711,7 +749,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                   bg-amber-900/30 text-amber-300 border border-amber-600/40
                   hover:bg-amber-900/50 transition"
                   >
-                    경고 확인 후 진행
+                    {t('structDroneWarnConfirm')}
                   </button>
                   <button
                       onClick={() => setDroneWarnOpen(false)}
@@ -719,7 +757,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                   bg-[#141a2a] text-gray-400 border border-[#1b2236]
                   hover:bg-[#1b2236] transition"
                   >
-                    취소
+                    {t('cancel') || 'Cancel'}
                   </button>
                 </div>
               </div>
@@ -727,63 +765,125 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
         )}
 
         {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-gray-100 flex items-center gap-2 flex-wrap">
               <span>🔩</span> Structural Analysis
               {selectedProject && (
-                  <span className="text-sm font-normal text-gray-400">
+                  <span className="text-sm font-normal text-gray-400 truncate">
                 — {selectedProject.projectName}
               </span>
               )}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-gray-500 mt-0.5 hidden lg:block">
               Set environmental conditions &amp; loads, then run analysis → Visualize safe/danger zones on BIM model
             </p>
           </div>
-          <div className="flex items-center gap-3">
+
+          {/* 데스크탑: 기존 버튼 영역 */}
+          <div className="hidden lg:flex items-center gap-3">
             {results && (
                 <span className="text-xs text-gray-500 flex items-center gap-1.5">
-              {modelData.length} elements
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" title="Live — auto-recalculates on input change" />
-            </span>
+                  {modelData.length} elements
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                </span>
             )}
             {selectedProject?.structureType === 'DRONE' && (
                 <span className="flex items-center gap-1 text-xs text-amber-400 border border-amber-600/30 bg-amber-900/20 px-2 py-1 rounded-lg">
-              ⚠️ 드론 추출 데이터
-            </span>
+                  ⚠️ 드론 추출 데이터
+                </span>
             )}
             <button
                 onClick={handleAnalyze}
                 disabled={isAnalyzing || !modelData.length}
                 className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold
-              bg-accent-blue/10 text-accent-blue border border-accent-blue/30
-              hover:bg-accent-blue/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                           bg-accent-blue/10 text-accent-blue border border-accent-blue/30
+                           hover:bg-accent-blue/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
               {isAnalyzing ? '⏳ Analyzing…' : results ? '↺ Re-run' : '▶ Run Analysis'}
             </button>
           </div>
-        </div>
 
-        {/* Mobile settings toggle */}
-        <button
-            onClick={() => setSettingsOpen(v => !v)}
-            className="lg:hidden flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border transition-colors self-start"
-            style={{
-              backgroundColor: settingsOpen ? "#1e3a5f" : "#0f1422",
-              border: settingsOpen ? "1px solid #2a5080" : "1px solid #141a2a",
-              color: settingsOpen ? "#60a5fa" : "#8896a4",
-            }}
-        >
-          <span>{settingsOpen ? "▲" : "▼"}</span>
-          {settingsOpen ? "Collapse Settings" : "⚙ Env · Load · Material"}
-        </button>
+          {/* 모바일: Settings + Run 한 줄 */}
+          <div className="flex lg:hidden items-center gap-2">
+            {selectedProject?.structureType === 'DRONE' && (
+                <span className="text-xs text-amber-400 border border-amber-600/30 bg-amber-900/20 px-2 py-1 rounded-lg shrink-0">
+                  ⚠️ 드론
+                </span>
+            )}
+            <button
+                onClick={() => setSettingsOpen(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors shrink-0"
+                style={{
+                  backgroundColor: settingsOpen ? '#1e3a5f' : '#0f1422',
+                  border: settingsOpen ? '1px solid #2a5080' : '1px solid #141a2a',
+                  color: settingsOpen ? '#60a5fa' : '#8896a4',
+                }}
+            >
+              ⚙ Settings
+            </button>
+            <button
+                onClick={handleAnalyze}
+                disabled={isAnalyzing || !modelData.length}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold
+                           bg-accent-blue/10 text-accent-blue border border-accent-blue/30
+                           hover:bg-accent-blue/20 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
+            >
+              {isAnalyzing ? '⏳' : results ? '↺' : '▶'} {isAnalyzing ? 'Analyzing…' : results ? 'Re-run' : 'Run'}
+            </button>
+          </div>
+        </div>
 
         {/* Main layout */}
         <div className="flex flex-col lg:flex-row gap-3 flex-1">
 
+          {/* 모바일: 배경 딤 */}
+          {settingsOpen && !isLg && (
+              <div
+                  onClick={() => setSettingsOpen(false)}
+                  style={{
+                    position: 'fixed', inset: 0, zIndex: 49,
+                    backgroundColor: 'rgba(0,0,0,0.55)',
+                    backdropFilter: 'blur(2px)',
+                  }}
+              />
+          )}
+
           {/* ── Left: Settings panel ────────────────────────────────────── */}
-          <div className={`lg:w-64 lg:shrink-0 flex flex-col gap-3 ${settingsOpen ? 'flex' : 'hidden lg:flex'}`}>
+          <div
+              className="lg:w-64 lg:shrink-0 flex flex-col gap-3"
+              style={!isLg ? {
+                position: 'fixed', left: 0, top: 0, bottom: 0,
+                width: '82vw', maxWidth: 300,
+                zIndex: 50,
+                backgroundColor: '#080c14',
+                borderRight: '1px solid #141a2a',
+                overflowY: 'auto',
+                padding: '16px 12px 32px',
+                transform: settingsOpen ? 'translateX(0)' : 'translateX(-100%)',
+                transition: 'transform 0.26s cubic-bezier(0.4,0,0.2,1)',
+                boxShadow: settingsOpen ? '6px 0 32px rgba(0,0,0,0.7)' : 'none',
+              } : {}}
+          >
+          {/* 모바일 헤더 */}
+          {!isLg && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: 12, paddingBottom: 12,
+                borderBottom: '1px solid #141a2a',
+              }}>
+                <span style={{ color: '#93c5fd', fontSize: 13, fontWeight: 700 }}>⚙ Settings</span>
+                <button
+                    onClick={() => setSettingsOpen(false)}
+                    style={{
+                      width: 28, height: 28, borderRadius: 6,
+                      backgroundColor: '#0f1422', border: '1px solid #141a2a',
+                      color: '#6b7280', fontSize: 14, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                >✕</button>
+              </div>
+          )}
 
             {/* Environmental Conditions */}
             <Card title="🌍 Environmental Conditions">
@@ -865,20 +965,23 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             </Card>
 
             {/* Material */}
-            <Card title="🏗 Material" help={FORMULA_HELP.material}>
-              <div className="flex flex-col gap-1.5">
+            <Card title="🏗 Default Material" help={FORMULA_HELP.material}>
+              <p className="text-xs text-gray-600 mb-2 leading-relaxed">
+                {t('structDefaultMatDesc')}
+              </p>
+              <div className="flex flex-col gap-1 overflow-y-auto" style={{ maxHeight: 160 }}>
                 {Object.values(MATERIALS).map(m => (
                     <label key={m.id}
-                           className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer border transition
+                           className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer border transition shrink-0
                     ${matId === m.id
                                ? 'bg-blue-900/30 border-blue-600/40 text-gray-100'
                                : 'bg-[#141a2a] border-[#1b2236] text-gray-400 hover:bg-[#1b2236]'}`}
                     >
                       <input type="radio" name="mat" value={m.id} checked={matId === m.id}
-                             onChange={() => setMatId(m.id)} className="accent-blue-500" />
-                      <div>
-                        <div className="text-xs font-medium">{m.label}</div>
-                        <div className="text-xs text-gray-500">Allow. Comp. {m.allowCompressive} MPa</div>
+                             onChange={() => setMatId(m.id)} className="accent-blue-500 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium truncate">{m.label}</div>
+                        <div className="text-xs text-gray-500">{m.allowCompressive} MPa</div>
                       </div>
                     </label>
                 ))}
@@ -972,16 +1075,17 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                           <thead className="bg-[#141a2a] sticky top-0 z-10">
                           <tr>
                             {[
-                              { key: 'elementName', label: 'Name', w: 'w-28' },
-                              { key: 'elementType', label: 'Type', w: 'w-16' },
-                              { key: 'axialLoad', label: 'Axial(kN)', w: 'w-20' },
-                              { key: 'windLoad', label: 'Wind(kN)', w: 'w-20' },
-                              { key: 'seismicLoad', label: 'Seismic(kN)', w: 'w-16' },
-                              { key: 'maxStress', label: 'Max Stress(MPa)', w: 'w-24' },
-                              { key: 'allowStress', label: 'Allow.(MPa)', w: 'w-20' },
-                              { key: 'safetyFactor', label: 'SF', w: 'w-20' },
-                              { key: 'utilization', label: 'Util.(%)', w: 'w-28' },
-                              { key: 'status', label: 'Status', w: 'w-16' },
+                              { key: 'elementName',  label: 'Name',            w: 'w-28' },
+                              { key: 'elementType',  label: 'Type',            w: 'w-16' },
+                              { key: 'materialLabel',label: 'Material',        w: 'w-36' },
+                              { key: 'axialLoad',    label: 'Axial(kN)',       w: 'w-20' },
+                              { key: 'windLoad',     label: 'Wind(kN)',        w: 'w-20' },
+                              { key: 'seismicLoad',  label: 'Seismic(kN)',     w: 'w-16' },
+                              { key: 'maxStress',    label: 'Max Stress(MPa)', w: 'w-24' },
+                              { key: 'allowStress',  label: 'Allow.(MPa)',     w: 'w-20' },
+                              { key: 'safetyFactor', label: 'SF',              w: 'w-20' },
+                              { key: 'utilization',  label: 'Util.(%)',        w: 'w-28' },
+                              { key: 'status',       label: 'Status',          w: 'w-16' },
                             ].map(col => (
                                 <th key={col.key}
                                     onClick={() => toggleSort(col.key)}
@@ -1009,6 +1113,14 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                               >
                                 <td className="px-3 py-2 text-gray-200 font-medium">{r.elementName}</td>
                                 <td className="px-3 py-2 text-gray-400">{ELEMENT_LABELS[r.elementType] ?? r.elementType}</td>
+                                <td className="px-3 py-2">
+                                  <span className={`text-xs font-mono ${r.materialFromBim ? 'text-cyan-300' : 'text-gray-500'}`}>
+                                    {r.materialLabel}
+                                  </span>
+                                  {r.materialFromBim && (
+                                    <span className="ml-1 text-xs text-cyan-600" title={t('structBimMatTooltip')}>{t('structBimTag')}</span>
+                                  )}
+                                </td>
                                 <td className="px-3 py-2 text-gray-300 font-mono">{r.axialLoad}</td>
                                 <td className="px-3 py-2 text-gray-300 font-mono">{r.windLoad}</td>
                                 <td className="px-3 py-2 text-gray-300 font-mono">{r.seismicLoad}</td>
@@ -1114,7 +1226,78 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
           </div>
 
           {/* ── Right: Summary panel ─────────────────────────────────── */}
-          <div className="w-56 shrink-0 flex flex-col gap-3">
+          <div className="w-full lg:w-56 lg:shrink-0 flex flex-col gap-3">
+
+            {/* Selected Element Detail — 상단 고정, 선택 시 우선 표시 */}
+            {selectedResult && (
+                <Card title="🔍 Selected Element">
+                  <div className="flex flex-col gap-1.5 text-xs">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-gray-200 font-medium truncate">{selectedResult.elementName}</span>
+                      <StatusBadge status={selectedResult.status} />
+                    </div>
+                    <hr className="border-[#1b2236]" />
+                    {/* 재료 정보 */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 shrink-0">Material</span>
+                      <div className="flex items-center gap-1">
+                        <span className={`font-mono truncate max-w-[90px] ${selectedResult.materialFromBim ? 'text-cyan-300' : 'text-gray-400'}`}>
+                          {selectedResult.materialLabel}
+                        </span>
+                        {selectedResult.materialFromBim ? (
+                          <span className="px-1 py-0.5 rounded bg-cyan-900/40 text-cyan-400 border border-cyan-700/40 shrink-0">{t('structBimTag')}</span>
+                        ) : (
+                          <span className="px-1 py-0.5 rounded bg-gray-800 text-gray-600 border border-gray-700 shrink-0">{t('structDefaultTag')}</span>
+                        )}
+                      </div>
+                    </div>
+                    <hr className="border-[#1b2236]" />
+                    {[
+                      { label: 'Type',           value: ELEMENT_LABELS[selectedResult.elementType] ?? selectedResult.elementType },
+                      { label: 'Self Weight',    value: `${selectedResult.selfWeight} kN` },
+                      { label: 'Axial',          value: `${selectedResult.axialLoad} kN` },
+                      { label: 'Wind Load',      value: `${selectedResult.windLoad} kN` },
+                      { label: 'Seismic Load',   value: `${selectedResult.seismicLoad} kN` },
+                      { label: 'Bending Moment', value: `${selectedResult.bendingMoment} kN·m` },
+                      { label: 'Shear Force',    value: `${selectedResult.shearForce} kN` },
+                      { label: 'Axial Stress',   value: `${selectedResult.axialStress} MPa` },
+                      { label: 'Bending Stress', value: `${selectedResult.bendingStress} MPa` },
+                      { label: 'Shear Stress',   value: `${selectedResult.shearStress} MPa` },
+                    ].map(({ label, value }) => (
+                        <div key={label} className="flex justify-between gap-1">
+                          <span className="text-gray-500 shrink-0">{label}</span>
+                          <span className="font-mono text-gray-300 text-right">{value}</span>
+                        </div>
+                    ))}
+                    <hr className="border-[#1b2236]" />
+                    <div className="flex justify-between font-bold">
+                      <span className="text-gray-400">Max Stress</span>
+                      <span className="font-mono text-gray-100">{selectedResult.maxStress} MPa</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span className="text-gray-400">Safety Factor</span>
+                      <span className="font-mono" style={{ color: STATUS_CFG[selectedResult.status].color }}>
+                        {selectedResult.safetyFactor}
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="flex justify-between text-gray-500 mb-1">
+                        <span>Utilization</span>
+                        <span className="font-mono" style={{ color: STATUS_CFG[selectedResult.status].color }}>
+                          {selectedResult.utilization}%
+                        </span>
+                      </div>
+                      <div className="h-2 bg-[#141a2a] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all"
+                             style={{
+                               width: `${Math.min(selectedResult.utilization, 100)}%`,
+                               backgroundColor: STATUS_CFG[selectedResult.status].color,
+                             }} />
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+            )}
 
             {/* Analysis Summary */}
             <Card title="📊 Analysis Summary">
@@ -1206,15 +1389,52 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                   { label: 'Dead Load', value: `${loads.deadLoad} kN/m²` },
                   { label: 'Live Load', value: `${loads.liveLoad} kN/m²` },
                   { label: 'Floors', value: `${loads.numFloors} fl` },
-                  { label: 'Material', value: MATERIALS[matId].label },
                 ].map(({ label, value, highlight }) => (
                     <div key={label} className="flex justify-between gap-1">
                       <span className="text-gray-500 shrink-0">{label}</span>
                       <span className={`font-mono text-right truncate ${highlight ? 'text-accent-blue' : 'text-gray-300'}`}>
-                    {value}
-                  </span>
+                        {value}
+                      </span>
                     </div>
                 ))}
+                {/* 재료: 결과가 있으면 실제 적용된 재료 목록, 없으면 기본값 */}
+                <div className="border-t border-[#1b2236] pt-1.5 mt-0.5">
+                  {results ? (() => {
+                    const matGroups = results.reduce((acc, r) => {
+                      const key = r.materialId;
+                      if (!acc[key]) acc[key] = { label: r.materialLabel, fromBim: r.materialFromBim, count: 0 };
+                      acc[key].count++;
+                      return acc;
+                    }, {});
+                    const entries = Object.values(matGroups);
+                    return (
+                      <>
+                        <p className="text-gray-600 mb-1">{t('structAppliedMats', { n: entries.length })}</p>
+                        {entries.map(m => (
+                          <div key={m.label} className="flex items-center justify-between gap-1 py-0.5">
+                            <div className="flex items-center gap-1 min-w-0">
+                              {m.fromBim
+                                ? <span className="text-cyan-600 shrink-0">{t('structBimTag')}</span>
+                                : <span className="text-gray-600 shrink-0">{t('structDefaultTag')}</span>
+                              }
+                              <span className={`truncate font-mono ${m.fromBim ? 'text-cyan-300' : 'text-gray-400'}`}>
+                                {m.label}
+                              </span>
+                            </div>
+                            <span className="text-gray-600 shrink-0">{t('structMemberCount', { n: m.count })}</span>
+                          </div>
+                        ))}
+                      </>
+                    );
+                  })() : (
+                    <div className="flex justify-between gap-1">
+                      <span className="text-gray-500 shrink-0">Default Mat.</span>
+                      <span className="font-mono text-gray-300 text-right truncate">
+                        {MATERIALS[matId]?.label ?? matId}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </Card>
 
@@ -1264,62 +1484,6 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 </Card>
             )}
 
-            {/* Selected Element Detail */}
-            {selectedResult && (
-                <Card title="🔍 Selected Element">
-                  <div className="flex flex-col gap-1.5 text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-gray-200 font-medium truncate">{selectedResult.elementName}</span>
-                      <StatusBadge status={selectedResult.status} />
-                    </div>
-                    <hr className="border-[#1b2236]" />
-                    {[
-                      { label: 'Type', value: ELEMENT_LABELS[selectedResult.elementType] ?? selectedResult.elementType },
-                      { label: 'Self Weight', value: `${selectedResult.selfWeight} kN` },
-                      { label: 'Axial', value: `${selectedResult.axialLoad} kN` },
-                      { label: 'Wind Load', value: `${selectedResult.windLoad} kN` },
-                      { label: 'Seismic Load', value: `${selectedResult.seismicLoad} kN` },
-                      { label: 'Bending Moment', value: `${selectedResult.bendingMoment} kN·m` },
-                      { label: 'Shear Force', value: `${selectedResult.shearForce} kN` },
-                      { label: 'Axial Stress', value: `${selectedResult.axialStress} MPa` },
-                      { label: 'Bending Stress', value: `${selectedResult.bendingStress} MPa` },
-                      { label: 'Shear Stress', value: `${selectedResult.shearStress} MPa` },
-                    ].map(({ label, value }) => (
-                        <div key={label} className="flex justify-between gap-1">
-                          <span className="text-gray-500 shrink-0">{label}</span>
-                          <span className="font-mono text-gray-300 text-right">{value}</span>
-                        </div>
-                    ))}
-                    <hr className="border-[#1b2236]" />
-                    <div className="flex justify-between font-bold">
-                      <span className="text-gray-400">Max Stress</span>
-                      <span className="font-mono text-gray-100">{selectedResult.maxStress} MPa</span>
-                    </div>
-                    <div className="flex justify-between font-bold">
-                      <span className="text-gray-400">Safety Factor (SF)</span>
-                      <span className="font-mono" style={{ color: STATUS_CFG[selectedResult.status].color }}>
-                    {selectedResult.safetyFactor}
-                  </span>
-                    </div>
-                    {/* Utilization gauge */}
-                    <div className="mt-1">
-                      <div className="flex justify-between text-gray-500 mb-1">
-                        <span>Utilization</span>
-                        <span className="font-mono" style={{ color: STATUS_CFG[selectedResult.status].color }}>
-                      {selectedResult.utilization}%
-                    </span>
-                      </div>
-                      <div className="h-2 bg-[#141a2a] rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all"
-                             style={{
-                               width: `${Math.min(selectedResult.utilization, 100)}%`,
-                               backgroundColor: STATUS_CFG[selectedResult.status].color,
-                             }} />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-            )}
           </div>
         </div>
       </div>
