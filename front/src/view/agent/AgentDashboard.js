@@ -465,15 +465,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   const [mobilePanel, setMobilePanel] = useState('chat');
 
   // ─────────────────────────────────────────────────
-  if (agentAvailable === false) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <span className="text-5xl opacity-30">🤖</span>
-        <p className="text-gray-400 font-semibold">{t('llmOffline')}</p>
-        <p className="text-gray-600 text-sm">{t('llmOfflineDesc')}</p>
-      </div>
-    );
-  }
+  const chatDisabled = agentAvailable === false;
 
   return (
     <div className="flex flex-col lg:h-[calc(100vh-120px)]">
@@ -514,6 +506,14 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 
         {/* ════ Left: Chat panel ════ */}
         <div className={`flex-col flex-1 min-w-0 bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden ${mobilePanel === 'chat' ? 'flex' : 'hidden lg:flex'}`}>
+          {/* Agent offline banner */}
+          {chatDisabled && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-yellow-900/30 border-b border-yellow-700/40 text-xs text-yellow-400">
+              <span>⚠</span>
+              <span>{t('llmOffline')} — {t('llmOfflineDesc')}</span>
+            </div>
+          )}
+
           {/* Chat header */}
           <div className="flex items-center justify-between px-4 py-3 bg-[#162032] border-b border-[#253347]">
             <span className="text-sm font-semibold text-gray-200">{t('chat')}</span>
@@ -558,24 +558,26 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           )}
 
           {/* Quick prompts — context-aware */}
-          <div className="px-3 sm:px-4 pt-2 pb-1 bg-[#162032] border-t border-[#253347]">
-            <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              {(selectedProject
-                ? [t('quickShowTemp'), t('quickMemberCount'), t('quickAddColumn'), t('quickTabGuide')]
-                : selectedSimulationProject
-                  ? [t('quickShowTemp'), t('quickSimStatus'), t('quickSimDig'), t('quickTestTab')]
-                  : [t('quickShowTemp'), t('quickBimList'), t('quickSimTab'), t('quickTabGuide')]
-              ).map(q => (
-                <button
-                  key={q}
-                  onClick={() => sendMessage(q)}
-                  className="text-xs bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 px-3 py-1 rounded-full transition-colors whitespace-nowrap shrink-0"
-                >
-                  {q}
-                </button>
-              ))}
+          {!chatDisabled && (
+            <div className="px-3 sm:px-4 pt-2 pb-1 bg-[#162032] border-t border-[#253347]">
+              <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {(selectedProject
+                  ? [t('quickShowTemp'), t('quickMemberCount'), t('quickTabGuide')]
+                  : selectedSimulationProject
+                    ? [t('quickShowTemp'), t('quickSimStatus'), t('quickSimDig'), t('quickTestTab')]
+                    : [t('quickShowTemp'), t('quickBimList'), t('quickSimTab'), t('quickTabGuide')]
+                ).map(q => (
+                  <button
+                    key={q}
+                    onClick={() => sendMessage(q)}
+                    className="text-xs bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 px-3 py-1 rounded-full transition-colors whitespace-nowrap shrink-0"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Input area */}
           <div className="px-3 sm:px-4 py-2.5 sm:py-3 bg-[#162032]">
@@ -583,13 +585,15 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
               <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
               <button
                 onClick={() => imageInputRef.current?.click()}
+                disabled={chatDisabled}
                 title="Attach image"
-                className="hidden sm:flex w-9 h-9 items-center justify-center rounded-lg bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 transition-colors text-base shrink-0"
+                className="hidden sm:flex w-9 h-9 items-center justify-center rounded-lg bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 transition-colors text-base shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
               >📎</button>
               <button
                 onClick={toggleListening}
+                disabled={chatDisabled}
                 title={isListening ? t('stopRecording') : t('voiceInput')}
-                className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg transition-all text-sm sm:text-base shrink-0 ${
+                className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg transition-all text-sm sm:text-base shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
                   isListening
                     ? 'bg-red-600/30 text-red-400 border border-red-600/50 animate-pulse'
                     : sttError
@@ -601,13 +605,14 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
                 type="text"
                 value={input}
                 onChange={e => { setInput(e.target.value); setSttError(''); }}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={isListening ? t('listening') : t('typeOrSpeak')}
-                className="flex-1 min-w-0 bg-[#253347] text-gray-200 text-sm rounded-xl px-3 sm:px-4 py-2.5 outline-none placeholder-gray-500 focus:ring-2 focus:ring-accent-blue/50"
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && !chatDisabled && sendMessage()}
+                placeholder={chatDisabled ? t('llmOffline') : isListening ? t('listening') : t('typeOrSpeak')}
+                disabled={chatDisabled}
+                className="flex-1 min-w-0 bg-[#253347] text-gray-200 text-sm rounded-xl px-3 sm:px-4 py-2.5 outline-none placeholder-gray-500 focus:ring-2 focus:ring-accent-blue/50 disabled:opacity-40 disabled:cursor-not-allowed"
               />
               <button
                 onClick={sendMessage}
-                disabled={loading || (!input.trim() && !imageBase64)}
+                disabled={chatDisabled || loading || (!input.trim() && !imageBase64)}
                 className="flex items-center justify-center gap-1 sm:px-5 px-3 py-2.5 rounded-xl bg-accent-blue text-white text-sm font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors shrink-0"
               >
                 <span className="hidden sm:inline">{t('send')}</span>
