@@ -1341,7 +1341,7 @@ export const translations = {
       addTask: '+ 작업 추가', noTasksMsg: 'WBS 작업이 없습니다.', noTasksAddHint: '"+ 작업 추가" 버튼을 사용하세요.',
       ganttOf: '간트 — {name}', noTasksGanttHint: '📋 WBS 탭에서 작업을 추가하세요',
       wbsListTitle: '📋 WBS ({n}개 작업)', sourceInfo: '🔗 CPM  🔍 균열  🤖 자동',
-      loadingWbs: 'WBS 불러오는 중…', criticalDays: 'CPM {n}일', criticalTag: '🔴 주공정',
+      loadingWbs: 'WBS Loading…', criticalDays: 'CPM {n}일', criticalTag: '🔴 주공정',
       tabLog: '🔔 로그',
       editBtn: '수정', deleteBtn: '삭제', saveBtn: '저장',
       colAuthor: '작성자', authorUser: '사용자', authorAgent: 'Agent',
