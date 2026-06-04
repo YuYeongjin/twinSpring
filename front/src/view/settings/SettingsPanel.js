@@ -300,6 +300,101 @@ function ServerMonitor() {
   );
 }
 
+// ── RAG 인덱스 관리 ─────────────────────────────────────────────────────────
+function RagManager() {
+  const t = useT('settings');
+  const [status, setStatus]     = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [msg, setMsg]           = useState('');
+
+  const fetchStatus = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await AxiosCustom.get('/api/chat/rag-status');
+      setStatus(r.data);
+      if (r.data?.status === 'running') {
+        setTimeout(fetchStatus, 3000);
+      } else {
+        setBuilding(false);
+      }
+    } catch {
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  const handleRebuild = async () => {
+    setBuilding(true);
+    setMsg('');
+    try {
+      const r = await AxiosCustom.post('/api/chat/rag-rebuild');
+      setMsg(r.data?.message || '');
+      setTimeout(fetchStatus, 3000);
+    } catch {
+      setMsg(t('ragConnFailed'));
+      setBuilding(false);
+    }
+  };
+
+  const isRunning = building || status?.status === 'running';
+
+  const statusColor = !status ? '#4b5563'
+    : !status.dbReachable ? '#ef4444'
+    : status.hasData ? '#4ade80'
+    : '#f59e0b';
+
+  const statusText = !status ? t('ragChecking')
+    : !status.dbReachable ? t('ragDbFail')
+    : status.status === 'running' ? t('ragIndexing')
+    : status.hasData ? t('ragOk', { n: status.chunks?.toLocaleString() })
+    : t('ragEmpty');
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div>
+          <span style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600 }}>{t('ragCollection')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%',
+              background: statusColor, display: 'inline-block', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: statusColor }}>{statusText}</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={fetchStatus} disabled={loading}
+            style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+              background: 'transparent', border: '1px solid #253347', color: '#6b7280' }}>
+            ↻
+          </button>
+          <button onClick={handleRebuild} disabled={isRunning}
+            style={{
+              fontSize: 11, padding: '4px 14px', borderRadius: 6,
+              cursor: isRunning ? 'wait' : 'pointer',
+              background: isRunning ? '#1a2a3a' : '#1e3a5f',
+              border: `1px solid ${isRunning ? '#253347' : '#2a5080'}`,
+              color: isRunning ? '#6b7280' : '#60a5fa',
+            }}>
+            {isRunning ? t('ragBuilding') : t('ragRebuildBtn')}
+          </button>
+        </div>
+      </div>
+      {msg && (
+        <div style={{ fontSize: 11, color: '#93c5fd', background: '#0d1b2a',
+          border: '1px solid #1e3a5f', borderRadius: 6, padding: '6px 10px', marginTop: 4 }}>
+          {msg}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
+        {t('ragRebuildMsg')}
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 패널 ───────────────────────────────────────────────────────────────
 export default function SettingsPanel() {
   const t = useT('settings');
@@ -396,6 +491,11 @@ export default function SettingsPanel() {
       <h2 style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 700, marginBottom: 20 }}>
         {t('title')}
       </h2>
+
+      {/* ── RAG 인덱스 관리 ── */}
+      <Section title={t('ragSection')}>
+        <RagManager />
+      </Section>
 
       {/* ── 서버 모니터링 ── */}
       <Section title={t('monitorSection')}>
