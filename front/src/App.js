@@ -504,7 +504,7 @@ function App() {
     return (
       <div className="min-h-screen bg-[#0d1b2a] flex items-center justify-center text-gray-400">
         <div className="text-center">
-          <div className="text-4xl mb-4">🏗</div>
+          <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" className="mb-4 mx-auto" style={{ width: 96, height: 96, objectFit: 'contain' }} />
           <div className="text-sm">{t('loading')}</div>
         </div>
       </div>

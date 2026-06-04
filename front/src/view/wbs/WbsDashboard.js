@@ -531,7 +531,7 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
     return (
       <div className="flex items-center justify-center h-64 text-gray-400">
         <div className="text-center">
-          <div className="text-4xl mb-3">🏗</div>
+          <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" className="mb-3 mx-auto" style={{ width: 72, height: 72, objectFit: 'contain' }} />
           <div className="text-sm">{t('loadingWbs')}</div>
         </div>
       </div>
@@ -826,7 +826,7 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
             {selectedProject && taskLoading ? (
               <div className="flex items-center justify-center h-48 text-gray-400">
                 <div className="text-center">
-                  <div className="text-3xl mb-2 animate-pulse">📊</div>
+                  <img src={`${process.env.PUBLIC_URL}/logo512.png`} alt="logo" className="mb-2 mx-auto animate-pulse" style={{ width: 56, height: 56, objectFit: 'contain' }} />
                   <div className="text-sm">{t('loadingWbs')}</div>
                 </div>
               </div>

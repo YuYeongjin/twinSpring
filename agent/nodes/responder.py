@@ -35,11 +35,11 @@ def responder_node(state: AgentState) -> dict:
     messages     = state.get("messages", [])
     tool_results = state.get("tool_results") or {}
     rag_context  = state.get("rag_context") or ""
-    lang         = state.get("lang") or detect_lang(user_text)
     domain       = state.get("domain") or "chat"
 
     last      = messages[-1]
     user_text = last.content if hasattr(last, "content") else ""
+    lang      = state.get("lang") or detect_lang(user_text)
 
     # 프로젝트 이름 요청 — LLM 없이 바로 반환
     if tool_results.get("need_project_name"):
