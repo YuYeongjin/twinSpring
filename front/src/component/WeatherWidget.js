@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import AxiosCustom from '../axios/AxiosCustom';
+import { useT } from '../i18n/LanguageContext';
 
 const WEATHER_ICONS = {
   '01d': '☀️', '01n': '🌙',
@@ -14,6 +15,7 @@ const WEATHER_ICONS = {
 };
 
 export default function WeatherWidget({ lat = 37.5665, lon = 126.9780, city }) {
+  const t = useT('settings');
   const [weather, setWeather] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +26,6 @@ export default function WeatherWidget({ lat = 37.5665, lon = 126.9780, city }) {
     AxiosCustom.get(`/api/weather${params}`)
       .then(r => {
         const d = r.data;
-        // 오류 응답이나 유효하지 않은 데이터는 null 처리 (화면에 오류 텍스트 미표시)
         setWeather(d && typeof d.temp === 'number' && !d.error ? d : null);
       })
       .catch(() => setWeather(null))
@@ -45,7 +46,7 @@ export default function WeatherWidget({ lat = 37.5665, lon = 126.9780, city }) {
       borderRadius: 12, padding: '14px 18px',
     }}>
       <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 8, fontWeight: 600 }}>
-        🌍 외부 날씨
+        {t('weatherWidgetTitle')}
       </p>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -57,7 +58,7 @@ export default function WeatherWidget({ lat = 37.5665, lon = 126.9780, city }) {
               {weather ? `${Number(weather.temp).toFixed(1)}°C` : '—'}
             </span>
             <span style={{ fontSize: 12, color: '#6b7280' }}>
-              {weather?.cityName || '현장'}
+              {weather?.cityName || t('weatherSite')}
             </span>
             {weather?.mock && (
               <span style={{
@@ -74,9 +75,9 @@ export default function WeatherWidget({ lat = 37.5665, lon = 126.9780, city }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#6b7280' }}>
           {weather && (
             <>
-              <span>💧 습도 {weather.humidity}%</span>
-              <span>💨 풍속 {Number(weather.windSpeed).toFixed(1)} m/s</span>
-              <span>체감 {Number(weather.feelsLike).toFixed(0)}°C</span>
+              <span>{t('weatherHumidity', { v: weather.humidity })}</span>
+              <span>{t('weatherWind', { v: Number(weather.windSpeed).toFixed(1) })}</span>
+              <span>{t('weatherFeels', { v: Number(weather.feelsLike).toFixed(0) })}</span>
             </>
           )}
         </div>
@@ -88,9 +89,9 @@ export default function WeatherWidget({ lat = 37.5665, lon = 126.9780, city }) {
           paddingTop: 10, borderTop: '1px solid #1a2a3a',
           fontSize: 11, color: '#4b5563',
         }}>
-          <span>최저 {Number(weather.tempMin).toFixed(0)}°C</span>
-          <span>최고 {Number(weather.tempMax).toFixed(0)}°C</span>
-          <span style={{ marginLeft: 'auto' }}>10분 자동갱신</span>
+          <span>{t('weatherLow', { v: Number(weather.tempMin).toFixed(0) })}</span>
+          <span>{t('weatherHigh', { v: Number(weather.tempMax).toFixed(0) })}</span>
+          <span style={{ marginLeft: 'auto' }}>{t('weatherAutoRefresh')}</span>
         </div>
       )}
     </div>

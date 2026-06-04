@@ -559,8 +559,6 @@ function App() {
       return (
         <WbsDashboard
           onNavigateToTab={handleWbsNavigate}
-          sensorLatest={sensorLatest}
-          sensorWsStatus={sensorWsStatus}
           autoEditRequest={autoEditRequest}
           onAutoEditDone={() => setAutoEditRequest(null)}
         />
