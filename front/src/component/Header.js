@@ -149,24 +149,25 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
             </nav>
         )}
 
+        {/* Language switcher — 모바일 포함 항상 표시 (로고↔우측 사이 중앙) */}
+        <div className="flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-lg px-1 py-0.5">
+          {LANGS.map(l => (
+            <button
+              key={l}
+              onClick={() => setLang(l)}
+              className="px-2 py-0.5 rounded text-xs font-semibold transition-all"
+              style={{
+                backgroundColor: lang === l ? "#1e3a5f" : "transparent",
+                color: lang === l ? "#60a5fa" : "#8896a4",
+                border: lang === l ? "1px solid #2a5080" : "1px solid transparent",
+              }}
+            >
+              {l.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2 shrink-0">
-          {/* Language switcher */}
-          <div className="hidden sm:flex items-center gap-1 bg-[#0d1b2a] border border-[#253347] rounded-lg px-1 py-0.5">
-            {LANGS.map(l => (
-              <button
-                key={l}
-                onClick={() => setLang(l)}
-                className="px-2 py-0.5 rounded text-xs font-semibold transition-all"
-                style={{
-                  backgroundColor: lang === l ? "#1e3a5f" : "transparent",
-                  color: lang === l ? "#60a5fa" : "#8896a4",
-                  border: lang === l ? "1px solid #2a5080" : "1px solid transparent",
-                }}
-              >
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </div>
 
           {/* Clock — desktop only */}
           <div className="hidden sm:block text-xs sm:text-sm text-gray-400 whitespace-nowrap">
@@ -217,23 +218,6 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
               </button>
             );
           })}
-          {/* Mobile language switcher */}
-          <div className="flex items-center gap-2 px-6 py-3 border-t border-[#1a2a3a]">
-            {LANGS.map(l => (
-              <button
-                key={l}
-                onClick={() => setLang(l)}
-                className="px-3 py-1 rounded text-xs font-semibold transition-all"
-                style={{
-                  backgroundColor: lang === l ? "#1e3a5f" : "transparent",
-                  color: lang === l ? "#60a5fa" : "#8896a4",
-                  border: lang === l ? "1px solid #2a5080" : "1px solid #253347",
-                }}
-              >
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </div>
           <div className="px-6 py-3 text-xs text-gray-500 border-t border-[#1a2a3a]">
             {tzLabel} {time}
           </div>

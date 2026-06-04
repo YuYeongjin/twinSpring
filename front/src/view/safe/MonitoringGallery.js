@@ -1,21 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useT } from '../../i18n/LanguageContext';
 
-// CRACK 모드 전용 촬영 주기 (버튼 선택)
 const CRACK_INTERVALS = [
-  { sec: 1800,  label: '30분' },
-  { sec: 3600,  label: '1시간' },
-  { sec: 10800, label: '3시간' },
+  { sec: 1800,   labelKey: 'interval30m' },
+  { sec: 3600,   labelKey: 'interval1h' },
+  { sec: 10800,  labelKey: 'interval3h' },
 ];
 
-// SAFETY 모드 슬라이더 범위
 const SAFETY_MIN_SEC = 5;
 const SAFETY_MAX_SEC = 30;
 
 const RETENTION_OPTIONS = [
-  { sec: 3600,   label: '1시간' },
-  { sec: 86400,  label: '1일' },
-  { sec: 604800, label: '1주일' },
+  { sec: 3600,   labelKey: 'retain1h' },
+  { sec: 86400,  labelKey: 'retain1d' },
+  { sec: 604800, labelKey: 'retain1w' },
 ];
 
 async function safeJson(res) {
@@ -40,6 +38,7 @@ function chipStyle(active) {
 
 export default function MonitoringGallery({ selectedProject }) {
   const t = useT('safe');
+  const tm = useT('monitoring');
   const projectId   = selectedProject?.projectId;
   const isCrackMode = (selectedProject?.mode || 'SAFETY') === 'CRACK';
 
@@ -186,25 +185,22 @@ export default function MonitoringGallery({ selectedProject }) {
         style={{ borderColor: '#253347', background: '#0a1525' }}>
 
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-gray-300">📷 카메라 목록</p>
-          <span className="text-xs text-gray-500">({cameras.length}대)</span>
+          <p className="text-sm font-semibold text-gray-300">{tm('cameraListTitle')}</p>
+          <span className="text-xs text-gray-500">{tm('cameraCount', { n: cameras.length })}</span>
           <button onClick={startNew}
             className="ml-auto text-xs px-3 py-1 rounded-lg"
             style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>
-            + 카메라 추가
+            {tm('addCamera')}
           </button>
         </div>
 
         <p className="text-xs text-gray-500">
-          {isCrackMode
-            ? '균열 모드: 설정한 주기마다 모든 카메라를 캡처하여 저장합니다.'
-            : '안전 모드: 위험 감지 시에만 사진을 저장합니다 (프로젝트당 최대 10장).'}
+          {isCrackMode ? tm('crackModeDesc') : tm('safetyModeDesc')}
         </p>
 
-        {/* 카메라 목록 */}
         {cameras.length === 0 && editingCam !== 'new' && (
           <p className="text-xs text-gray-600 text-center py-2">
-            등록된 카메라가 없습니다. safe_project의 cameraUrl을 폴백으로 사용합니다.
+            {tm('noCameras')}
           </p>
         )}
 
@@ -226,11 +222,10 @@ export default function MonitoringGallery({ selectedProject }) {
       {/* ── 스케줄 설정 패널 ── */}
       <div className="rounded-xl border p-4 flex flex-col gap-3"
         style={{ borderColor: '#253347', background: '#0a1525' }}>
-        <p className="text-sm font-semibold text-gray-300">⚙ 스케줄 설정</p>
+        <p className="text-sm font-semibold text-gray-300">{tm('scheduleTitle')}</p>
 
-        {/* 상시 촬영 토글 */}
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400 w-24 shrink-0">상시 촬영</span>
+          <span className="text-xs text-gray-400 w-24 shrink-0">{tm('alwaysOn')}</span>
           <button onClick={() => setEnabled(v => !v)}
             className="w-10 h-5 rounded-full relative transition-colors"
             style={{ background: enabled ? '#22c55e' : '#374151' }}>
@@ -245,13 +240,13 @@ export default function MonitoringGallery({ selectedProject }) {
         {/* 촬영 주기 — SAFETY: 슬라이더(5~30초) / CRACK: 버튼 */}
         {isCrackMode ? (
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-gray-400 w-24 shrink-0">촬영 주기</span>
+            <span className="text-xs text-gray-400 w-24 shrink-0">{tm('captureInterval')}</span>
             <div className="flex gap-2 flex-wrap">
-              {CRACK_INTERVALS.map(({ sec, label }) => (
+              {CRACK_INTERVALS.map(({ sec, labelKey }) => (
                 <button key={sec} onClick={() => setCaptureInterval(sec)}
                   className="text-xs px-3 py-1 rounded-lg"
                   style={chipStyle(captureInterval === sec)}>
-                  {label}
+                  {tm(labelKey)}
                 </button>
               ))}
             </div>
@@ -259,15 +254,15 @@ export default function MonitoringGallery({ selectedProject }) {
         ) : (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400 w-24 shrink-0">촬영 주기</span>
+              <span className="text-xs text-gray-400 w-24 shrink-0">{tm('captureInterval')}</span>
               <span className="text-sm font-bold tabular-nums"
                 style={{ color: '#60a5fa', minWidth: '44px' }}>
-                {captureInterval}초
+                {tm('secUnit', { v: captureInterval })}
               </span>
               <span className="text-xs text-gray-500">
                 ({captureInterval < 60
-                  ? `${captureInterval}초마다`
-                  : `${Math.round(captureInterval / 60)}분마다`} 감지)
+                  ? tm('everySecond', { v: captureInterval })
+                  : tm('everyMinute', { v: Math.round(captureInterval / 60) })} 감지)
               </span>
             </div>
             <div className="flex items-center gap-3 pl-0">
@@ -301,13 +296,13 @@ export default function MonitoringGallery({ selectedProject }) {
 
         {/* 보관 기간 */}
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs text-gray-400 w-24 shrink-0">보관 기간</span>
+          <span className="text-xs text-gray-400 w-24 shrink-0">{tm('retentionPeriod')}</span>
           <div className="flex gap-2 flex-wrap">
-            {RETENTION_OPTIONS.map(({ sec, label }) => (
+            {RETENTION_OPTIONS.map(({ sec, labelKey }) => (
               <button key={sec} onClick={() => setRetentionSec(sec)}
                 className="text-xs px-3 py-1 rounded-lg"
                 style={chipStyle(retentionSec === sec)}>
-                {label}
+                {tm(labelKey)}
               </button>
             ))}
           </div>
@@ -318,12 +313,12 @@ export default function MonitoringGallery({ selectedProject }) {
           <button onClick={saveSchedule} disabled={schSaving}
             className="text-xs px-4 py-1.5 rounded-lg"
             style={{ background: '#1e3a5f', border: '1px solid #3b82f6', color: '#93c5fd' }}>
-            {schSaving ? '저장 중…' : '저장'}
+            {schSaving ? tm('saving') : tm('save')}
           </button>
-          {schSaved && <span className="text-xs text-green-400">저장됨 ✓</span>}
+          {schSaved && <span className="text-xs text-green-400">{tm('saved')}</span>}
           {schedule?.lastCapturedAt && (
             <span className="text-xs text-gray-500 ml-auto">
-              마지막 촬영: {fmtDate(schedule.lastCapturedAt)}
+              {tm('lastCapture', { time: fmtDate(schedule.lastCapturedAt) })}
             </span>
           )}
         </div>
@@ -334,8 +329,8 @@ export default function MonitoringGallery({ selectedProject }) {
         style={{ borderColor: '#253347', background: '#0a1525' }}>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-semibold text-gray-300">🖼 스냅샷 갤러리</p>
-          <span className="text-xs text-gray-500">({visibleSnaps.length}장)</span>
+          <p className="text-sm font-semibold text-gray-300">{tm('galleryTitle')}</p>
+          <span className="text-xs text-gray-500">{tm('snapCount', { n: visibleSnaps.length })}</span>
           <button onClick={loadSnapshots}
             className="text-xs px-2 py-1 rounded ml-auto"
             style={{ background: '#0d1b2a', border: '1px solid #253347', color: '#6b7280' }}>↻</button>
@@ -346,7 +341,7 @@ export default function MonitoringGallery({ selectedProject }) {
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => setFilterCam('all')}
               className="text-xs px-3 py-1 rounded-lg"
-              style={chipStyle(filterCam === 'all')}>전체</button>
+              style={chipStyle(filterCam === 'all')}>{tm('all')}</button>
             {cameras.map(cam => (
               <button key={cam.cameraId} onClick={() => setFilterCam(cam.cameraId)}
                 className="text-xs px-3 py-1 rounded-lg"
@@ -357,10 +352,10 @@ export default function MonitoringGallery({ selectedProject }) {
           </div>
         )}
 
-        {loading && <p className="text-xs text-gray-500 text-center py-4">불러오는 중…</p>}
+        {loading && <p className="text-xs text-gray-500 text-center py-4">{tm('loading')}</p>}
 
         {!loading && visibleSnaps.length === 0 && (
-          <p className="text-xs text-gray-500 text-center py-8">저장된 스냅샷이 없습니다</p>
+          <p className="text-xs text-gray-500 text-center py-8">{tm('noSnapshots')}</p>
         )}
 
         {visibleSnaps.length > 0 && (
@@ -386,6 +381,7 @@ export default function MonitoringGallery({ selectedProject }) {
 
 // ── 카메라 한 줄 ────────────────────────────────────────────────────
 function CameraRow({ cam, onEdit, onDelete }) {
+  const tm = useT('monitoring');
   const isRtsp = cam.cameraUrl?.toLowerCase().startsWith('rtsp://');
   return (
     <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
@@ -407,12 +403,12 @@ function CameraRow({ cam, onEdit, onDelete }) {
       <button onClick={onEdit}
         className="text-xs px-2 py-0.5 rounded shrink-0"
         style={{ background: '#0d1b2a', border: '1px solid #253347', color: '#8896a4' }}>
-        수정
+        {tm('editBtn')}
       </button>
       <button onClick={onDelete}
         className="text-xs px-2 py-0.5 rounded shrink-0"
         style={{ background: '#2a0a0a', border: '1px solid #7f1d1d', color: '#fca5a5' }}>
-        삭제
+        {tm('deleteBtn')}
       </button>
     </div>
   );
@@ -420,6 +416,7 @@ function CameraRow({ cam, onEdit, onDelete }) {
 
 // ── 카메라 추가/수정 폼 ─────────────────────────────────────────────
 function CameraForm({ form, setForm, saving, onSave, onCancel }) {
+  const tm = useT('monitoring');
   return (
     <div className="flex flex-col gap-2 px-3 py-3 rounded-lg"
       style={{ background: '#060f1c', border: '1px solid #3b82f6' }}>
@@ -427,13 +424,13 @@ function CameraForm({ form, setForm, saving, onSave, onCancel }) {
         <input
           className="flex-1 min-w-32 text-xs px-2 py-1.5 rounded"
           style={{ background: '#0d1b2a', border: '1px solid #253347', color: '#e2e8f0' }}
-          placeholder="카메라 이름 (예: 현장 정문)"
+          placeholder={tm('camNamePh')}
           value={form.cameraName}
           onChange={e => setForm(f => ({ ...f, cameraName: e.target.value }))} />
         <input
           className="flex-[2] min-w-48 text-xs px-2 py-1.5 rounded font-mono"
           style={{ background: '#0d1b2a', border: '1px solid #253347', color: '#e2e8f0' }}
-          placeholder="rtsp://192.168.1.100:554/stream  또는  http://IP/snapshot.jpg"
+          placeholder={tm('camUrlPh')}
           value={form.cameraUrl}
           onChange={e => setForm(f => ({ ...f, cameraUrl: e.target.value }))} />
       </div>
@@ -441,18 +438,18 @@ function CameraForm({ form, setForm, saving, onSave, onCancel }) {
         <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
           <input type="checkbox" checked={form.enabled}
             onChange={e => setForm(f => ({ ...f, enabled: e.target.checked }))} />
-          활성화
+          {tm('enableLabel')}
         </label>
         <div className="ml-auto flex gap-2">
           <button onClick={onSave} disabled={saving || !form.cameraUrl.trim()}
             className="text-xs px-3 py-1 rounded-lg"
             style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>
-            {saving ? '저장 중…' : '저장'}
+            {saving ? tm('saving') : tm('save')}
           </button>
           <button onClick={onCancel}
             className="text-xs px-3 py-1 rounded-lg"
             style={{ background: '#1c2a3a', border: '1px solid #253347', color: '#6b7280' }}>
-            취소
+            {tm('cancelBtn')}
           </button>
         </div>
       </div>
@@ -462,6 +459,7 @@ function CameraForm({ form, setForm, saving, onSave, onCancel }) {
 
 // ── 스냅샷 썸네일 카드 ──────────────────────────────────────────────
 function SnapshotCard({ snap, onClick, onDelete }) {
+  const tm = useT('monitoring');
   const imgUrl = `/api/monitoring/snapshot/${snap.snapshotId}/image`;
   return (
     <div className="rounded-lg border overflow-hidden flex flex-col cursor-pointer group"
@@ -473,7 +471,7 @@ function SnapshotCard({ snap, onClick, onDelete }) {
         {snap.isProblem && (
           <span className="absolute top-1 left-1 text-xs px-1 py-0.5 rounded"
             style={{ background: '#7f1d1d', color: '#fca5a5', fontSize: '10px' }}>
-            ⚠ 위험
+            {tm('dangerBadge')}
           </span>
         )}
         {snap.cameraName && (
@@ -486,12 +484,12 @@ function SnapshotCard({ snap, onClick, onDelete }) {
       <div className="px-2 py-1.5 flex flex-col gap-0.5">
         <span className="text-xs text-gray-400">{fmtDate(snap.capturedAt)}</span>
         {snap.expiresAt && (
-          <span className="text-xs text-gray-600">만료: {fmtDate(snap.expiresAt)}</span>
+          <span className="text-xs text-gray-600">{tm('expiresAt', { time: fmtDate(snap.expiresAt) })}</span>
         )}
         <button onClick={e => { e.stopPropagation(); onDelete(); }}
           className="text-xs mt-1 opacity-0 group-hover:opacity-100 transition-opacity"
           style={{ color: '#ef4444' }}>
-          삭제
+          {tm('deleteBtn')}
         </button>
       </div>
     </div>

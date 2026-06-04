@@ -20,66 +20,21 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AxiosCustom from '../axios/AxiosCustom';
 import { AGENT_WBS_EVENT, markApplied } from '../utils/alertStore';
+import { useT } from '../i18n/LanguageContext';
 
-// ── 이벤트 유형별 메타데이터 ────────────────────────────────────────────────
-const EVENT_META = {
-  COLLISION: {
-    icon:    '⚠️',
-    color:   '#ef4444',
-    bg:      'rgba(127,29,29,0.95)',
-    border:  '#ef4444',
-    label:   '부재 충돌 감지',
-    wbsMsg:  'CPM 일정에 영향이 없도록 충돌 보정 작업을 WBS에 추가하겠습니까?',
-  },
-  CRACK: {
-    icon:    '🔍',
-    color:   '#f59e0b',
-    bg:      'rgba(69,26,3,0.95)',
-    border:  '#f59e0b',
-    label:   '균열 감지',
-    wbsMsg:  '구조 균열이 감지되었습니다. 보수 공사 일정을 WBS에 추가하겠습니까?',
-  },
-  SAFE_ZONE: {
-    icon:    '🚨',
-    color:   '#ff4444',
-    bg:      'rgba(58,0,0,0.96)',
-    border:  '#ff4444',
-    label:   '안전구역 침범',
-    wbsMsg:  '안전구역 침범이 발생했습니다. 안전 점검 일정을 WBS에 추가하겠습니까?',
-  },
-  SAFETY: {
-    icon:    '⛑️',
-    color:   '#f59e0b',
-    bg:      'rgba(69,26,3,0.95)',
-    border:  '#f59e0b',
-    label:   '안전복장 위반',
-    wbsMsg:  '안전복장 미착용이 감지되었습니다. 안전교육 일정을 WBS에 추가하겠습니까?',
-  },
-  STRUCTURAL_DANGER: {
-    icon:    '🏗',
-    color:   '#ef4444',
-    bg:      'rgba(100,20,20,0.97)',
-    border:  '#ef4444',
-    label:   '구조 위험 부재 감지',
-    wbsMsg:  '안전율(SF < 1.0) 미달 부재가 발생했습니다. KDS 구조설계기준에 따라 구조 보강 공사 일정을 WBS에 추가하겠습니까?',
-  },
-  SIM_DANGER: {
-    icon:    '🦾',
-    color:   '#ef4444',
-    bg:      'rgba(100,20,20,0.97)',
-    border:  '#ef4444',
-    label:   '굴착기 전도 위험',
-    wbsMsg:  '굴착기 전도(Tip-Over) 위험이 감지되었습니다. KCS 건설기계 안전기준에 따라 작업 중단 및 안전 점검 일정을 WBS에 추가하겠습니까?',
-  },
+const EVENT_META_STYLE = {
+  COLLISION:         { icon: '⚠️', color: '#ef4444', bg: 'rgba(127,29,29,0.95)', border: '#ef4444', labelKey: 'eventCollision', msgKey: 'msgCollision' },
+  CRACK:             { icon: '🔍', color: '#f59e0b', bg: 'rgba(69,26,3,0.95)',   border: '#f59e0b', labelKey: 'eventCrack',     msgKey: 'msgCrack' },
+  SAFE_ZONE:         { icon: '🚨', color: '#ff4444', bg: 'rgba(58,0,0,0.96)',    border: '#ff4444', labelKey: 'eventSafeZone',  msgKey: 'msgSafeZone' },
+  SAFETY:            { icon: '⛑️', color: '#f59e0b', bg: 'rgba(69,26,3,0.95)',   border: '#f59e0b', labelKey: 'eventSafety',    msgKey: 'msgSafety' },
+  STRUCTURAL_DANGER: { icon: '🏗',  color: '#ef4444', bg: 'rgba(100,20,20,0.97)', border: '#ef4444', labelKey: 'eventStructural',msgKey: 'msgStructural' },
+  SIM_DANGER:        { icon: '🦾', color: '#ef4444', bg: 'rgba(100,20,20,0.97)', border: '#ef4444', labelKey: 'eventSimDanger', msgKey: 'msgSimDanger' },
 };
-
-const DEFAULT_META = {
-  icon: '🤖', color: '#60a5fa', bg: 'rgba(13,27,42,0.96)', border: '#60a5fa',
-  label: '이벤트 감지', wbsMsg: 'WBS 일정을 자동으로 수정하겠습니까?',
-};
+const DEFAULT_META_STYLE = { icon: '🤖', color: '#60a5fa', bg: 'rgba(13,27,42,0.96)', border: '#60a5fa', labelKey: 'eventDefault', msgKey: 'msgDefault' };
 
 // ── RAG 증거 패널 ──────────────────────────────────────────────────────────
 function RagEvidencePanel({ ragState, borderColor }) {
+  const t = useT('agentWbs');
   const [expanded, setExpanded] = useState(false);
 
   if (ragState === 'loading') {
@@ -95,7 +50,7 @@ function RagEvidencePanel({ ragState, borderColor }) {
         gap: '8px',
       }}>
         <span style={{ fontSize: '11px', animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
-        <span style={{ fontSize: '11px', color: '#64748b' }}>관련 시방서 검색 중…</span>
+        <span style={{ fontSize: '11px', color: '#64748b' }}>{t('ragSearching')}</span>
       </div>
     );
   }
@@ -113,7 +68,7 @@ function RagEvidencePanel({ ragState, borderColor }) {
         gap: '6px',
       }}>
         <span style={{ fontSize: '11px' }}>📋</span>
-        <span style={{ fontSize: '10px', color: '#475569' }}>관련 시방서 없음 — 작업 내용 기반으로 일정 추가</span>
+        <span style={{ fontSize: '10px', color: '#475569' }}>{t('ragNoData')}</span>
       </div>
     );
   }
@@ -131,7 +86,7 @@ function RagEvidencePanel({ ragState, borderColor }) {
         gap: '6px',
       }}>
         <span style={{ fontSize: '11px' }}>⚠️</span>
-        <span style={{ fontSize: '10px', color: '#475569' }}>시방서 검색 실패 (Agent 서버 확인 필요)</span>
+        <span style={{ fontSize: '10px', color: '#475569' }}>{t('ragError')}</span>
       </div>
     );
   }
@@ -150,7 +105,6 @@ function RagEvidencePanel({ ragState, borderColor }) {
       marginBottom: '10px',
       overflow: 'hidden',
     }}>
-      {/* 헤더 (토글) */}
       <button
         onClick={() => setExpanded(v => !v)}
         style={{
@@ -168,11 +122,11 @@ function RagEvidencePanel({ ragState, borderColor }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ fontSize: '12px' }}>📋</span>
           <span style={{ fontSize: '11px', color: borderColor, fontWeight: 700 }}>
-            관련 시방서 근거 {evidenceList.length}건
+            {t('ragTitle', { n: evidenceList.length })}
           </span>
         </span>
         <span style={{ fontSize: '10px', color: '#475569' }}>
-          {expanded ? '▲ 접기' : '▼ 펼치기'}
+          {expanded ? t('ragCollapse') : t('ragExpand')}
         </span>
       </button>
 
@@ -235,6 +189,7 @@ function RagEvidencePanel({ ragState, borderColor }) {
 
 // ── AgentWbsPopup ─────────────────────────────────────────────────────────
 export default function AgentWbsPopup({ onApprove }) {
+  const t = useT('agentWbs');
   const [visible,  setVisible]  = useState(false);
   const [current,  setCurrent]  = useState(null);   // 현재 표시 중인 이벤트
   const [entering, setEntering] = useState(false);  // 슬라이드 인 애니메이션
@@ -358,7 +313,12 @@ export default function AgentWbsPopup({ onApprove }) {
 
   if (!visible || !current) return null;
 
-  const meta = EVENT_META[current.eventType] ?? DEFAULT_META;
+  const metaStyle = EVENT_META_STYLE[current.eventType] ?? DEFAULT_META_STYLE;
+  const meta = {
+    ...metaStyle,
+    label: t(metaStyle.labelKey),
+    wbsMsg: t(metaStyle.msgKey),
+  };
 
   // ── 슬라이드 애니메이션 ──────────────────────────────────────────────────
   const transform = entering
@@ -458,7 +418,7 @@ export default function AgentWbsPopup({ onApprove }) {
             <span style={{ color: meta.color, fontWeight: 700 }}>Agent: </span>
             {meta.wbsMsg}
             <div style={{ marginTop: '6px', fontSize: '10px', color: '#64748b' }}>
-              승인 시 WBS 탭으로 이동하여 CPM 일정을 자동으로 조정합니다.
+              {t('approveHint')}
             </div>
           </div>
 
@@ -483,7 +443,7 @@ export default function AgentWbsPopup({ onApprove }) {
                 boxShadow: `0 2px 10px ${meta.border}40`,
               }}
             >
-              ✅ 승인 — WBS 수정
+              {t('approveBtn')}
             </button>
             <button
               onClick={handleDismiss}
@@ -499,7 +459,7 @@ export default function AgentWbsPopup({ onApprove }) {
                 cursor: 'pointer',
               }}
             >
-              거절
+              {t('dismissBtn')}
             </button>
           </div>
 

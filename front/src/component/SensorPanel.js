@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useT } from '../i18n/LanguageContext';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -47,6 +48,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────
 
 export default function SensorPanel() {
+  const t = useT('sensor');
   const [latest, setLatest]         = useState(null);
   const [trend, setTrend]           = useState([]);
   const [locations, setLocations]   = useState([]);
@@ -167,21 +169,20 @@ export default function SensorPanel() {
       {/* ── 헤더 ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, color: '#4b5563', fontWeight: 600 }}>🌡 현장 센서</span>
-          {/* WebSocket 상태 */}
+          <span style={{ fontSize: 11, color: '#4b5563', fontWeight: 600 }}>{t('title')}</span>
           <span style={{
             fontSize: 9, padding: '1px 6px', borderRadius: 8,
             background: wsStatus === 'connected' ? '#0d2211' : '#1a1000',
             border: `1px solid ${wsStatus === 'connected' ? '#4ade80' : '#d97706'}`,
             color: wsStatus === 'connected' ? '#4ade80' : '#d97706',
           }}>
-            {wsStatus === 'connected' ? '● LIVE' : '○ 연결 중'}
+            {wsStatus === 'connected' ? t('live') : t('connecting')}
           </span>
         </div>
 
         {/* 위치 필터 */}
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          <button style={btnStyle(selLocation === '')} onClick={() => setSelLoc('')}>전체</button>
+          <button style={btnStyle(selLocation === '')} onClick={() => setSelLoc('')}>{t('all')}</button>
           {locations.map(loc => (
             <button key={loc} style={btnStyle(selLocation === loc)} onClick={() => setSelLoc(loc)}>
               {loc}
@@ -200,14 +201,14 @@ export default function SensorPanel() {
           background: '#0d1b2a', borderRadius: 10, padding: '12px 14px',
           border: `1px solid ${!tempOk && temp != null ? '#ef4444' : '#1e3a5f'}`,
         }}>
-          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>🌡 온도</p>
+          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>{t('temp')}</p>
           <p style={{ fontSize: 26, fontWeight: 700, color: !tempOk && temp != null ? '#f87171' : '#e2e8f0', margin: 0 }}>
             {temp != null ? `${temp.toFixed(1)}°C` : '—'}
           </p>
           <p style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-            범위 {thresholds.tempMin}~{thresholds.tempMax}°C
+            {t('range', { min: thresholds.tempMin, max: `${thresholds.tempMax}°C` })}
           </p>
-          {temp != null && <StatusBadge label={tempOk ? '정상' : '임계 초과'} ok={tempOk} />}
+          {temp != null && <StatusBadge label={tempOk ? t('normal') : t('alertExceeded')} ok={tempOk} />}
         </div>
 
         {/* 습도 */}
@@ -215,14 +216,14 @@ export default function SensorPanel() {
           background: '#0d1b2a', borderRadius: 10, padding: '12px 14px',
           border: `1px solid ${!humOk && hum != null ? '#ef4444' : '#1e3a5f'}`,
         }}>
-          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>💧 습도</p>
+          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>{t('hum')}</p>
           <p style={{ fontSize: 26, fontWeight: 700, color: !humOk && hum != null ? '#f87171' : '#e2e8f0', margin: 0 }}>
             {hum != null ? `${hum.toFixed(1)}%` : '—'}
           </p>
           <p style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-            범위 {thresholds.humMin}~{thresholds.humMax}%
+            {t('range', { min: thresholds.humMin, max: `${thresholds.humMax}%` })}
           </p>
-          {hum != null && <StatusBadge label={humOk ? '정상' : '임계 초과'} ok={humOk} />}
+          {hum != null && <StatusBadge label={humOk ? t('normal') : t('alertExceeded')} ok={humOk} />}
         </div>
 
         {/* 상태 요약 */}
@@ -230,12 +231,12 @@ export default function SensorPanel() {
           background: anyAlert ? '#3a0f0f' : '#0d2211', borderRadius: 10, padding: '12px 14px',
           border: `1px solid ${anyAlert ? '#ef4444' : '#166534'}`,
         }}>
-          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>⚡ 종합 상태</p>
+          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>{t('statusCard')}</p>
           <p style={{ fontSize: 20, margin: '0 0 6px 0' }}>
             {temp == null ? '—' : anyAlert ? '🚨' : '✅'}
           </p>
           <p style={{ fontSize: 12, fontWeight: 600, color: anyAlert ? '#f87171' : '#4ade80', margin: 0 }}>
-            {temp == null ? '데이터 없음' : anyAlert ? '경보 발생' : '정상 범위'}
+            {temp == null ? t('noData') : anyAlert ? t('alertActive') : t('normalRange')}
           </p>
           {latest?.location && (
             <p style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>📍 {latest.location}</p>
@@ -251,25 +252,27 @@ export default function SensorPanel() {
       {/* ── 그래프 컨트롤 ── */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {[
-          { v: 'both',    label: '온도+습도', color: '#a78bfa' },
-          { v: 'avgTemp', label: '온도',     color: '#60a5fa' },
-          { v: 'avgHum',  label: '습도',     color: '#34d399' },
-        ].map(({ v, label, color }) => (
+          { v: 'both',    labelKey: 'bothMetric', color: '#a78bfa' },
+          { v: 'avgTemp', labelKey: 'tempMetric', color: '#60a5fa' },
+          { v: 'avgHum',  labelKey: 'humMetric',  color: '#34d399' },
+        ].map(({ v, labelKey, color }) => (
           <button key={v} style={btnStyle(metric === v, color)} onClick={() => setMetric(v)}>
-            {label}
+            {t(labelKey)}
           </button>
         ))}
         <div style={{ width: 1, background: '#253347', margin: '0 2px', alignSelf: 'stretch' }} />
         {[
-          { h: 6, label: '6h' }, { h: 24, label: '24h' },
-          { h: 72, label: '3일' }, { h: 168, label: '7일' },
-        ].map(({ h, label }) => (
+          { h: 6,   label: '6h' },
+          { h: 24,  label: '24h' },
+          { h: 72,  labelKey: 'day3' },
+          { h: 168, labelKey: 'day7' },
+        ].map(({ h, label, labelKey }) => (
           <button key={h} style={btnStyle(trendHours === h)} onClick={() => setTrendHours(h)}>
-            {label}
+            {labelKey ? t(labelKey) : label}
           </button>
         ))}
         <span style={{ marginLeft: 'auto', fontSize: 10, color: '#374151' }}>
-          {trend.length}개 포인트
+          {t('pointCount', { n: trend.length })}
         </span>
       </div>
 
@@ -277,7 +280,7 @@ export default function SensorPanel() {
       {trend.length === 0 ? (
         <div style={{ textAlign: 'center', color: '#374151', fontSize: 12, padding: '24px 0',
           border: '1px dashed #1e3a5f', borderRadius: 8 }}>
-          센서 데이터 없음
+          {t('noSensorData')}
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={180}>
@@ -304,19 +307,19 @@ export default function SensorPanel() {
               <>
                 <ReferenceLine y={thresholds.tempMax} stroke="#ef4444"
                   strokeDasharray="4 3" strokeWidth={1}
-                  label={{ value: `최대 ${thresholds.tempMax}°C`, fontSize: 9, fill: '#ef4444', position: 'insideTopRight' }} />
+                  label={{ value: t('tempMaxLabel', { v: thresholds.tempMax }), fontSize: 9, fill: '#ef4444', position: 'insideTopRight' }} />
                 <ReferenceLine y={thresholds.tempMin} stroke="#60a5fa"
                   strokeDasharray="4 3" strokeWidth={1}
-                  label={{ value: `최소 ${thresholds.tempMin}°C`, fontSize: 9, fill: '#60a5fa', position: 'insideBottomRight' }} />
+                  label={{ value: t('tempMinLabel', { v: thresholds.tempMin }), fontSize: 9, fill: '#60a5fa', position: 'insideBottomRight' }} />
               </>
             )}
 
             {(metric === 'avgTemp' || metric === 'both') && (
-              <Area type="monotone" dataKey="avgTemp" name="평균온도"
+              <Area type="monotone" dataKey="avgTemp" name={t('avgTemp')}
                 stroke="#60a5fa" strokeWidth={2} fill="url(#sGradTemp)" dot={false} />
             )}
             {(metric === 'avgHum' || metric === 'both') && (
-              <Area type="monotone" dataKey="avgHum" name="평균습도"
+              <Area type="monotone" dataKey="avgHum" name={t('avgHum')}
                 stroke="#34d399" strokeWidth={2} fill="url(#sGradHum)" dot={false} />
             )}
           </AreaChart>
@@ -324,7 +327,7 @@ export default function SensorPanel() {
       )}
 
       <p style={{ fontSize: 9, color: '#374151', marginTop: 6, textAlign: 'right' }}>
-        TimescaleDB time_bucket · {trendHours}h · 1분 자동갱신
+        {t('footer', { h: trendHours })}
       </p>
     </div>
   );

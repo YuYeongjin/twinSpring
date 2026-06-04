@@ -60,15 +60,20 @@ function fmtBps(bytes) {
   return bytes + ' B/s';
 }
 
-function timeAgo(ts) {
-  const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 60)   return diff + '초 전';
-  if (diff < 3600) return Math.floor(diff / 60) + '분 전';
-  return Math.floor(diff / 3600) + '시간 전';
+function useTimeAgo() {
+  const ts = useT('settings');
+  return (timestamp) => {
+    const diff = Math.floor((Date.now() - timestamp) / 1000);
+    if (diff < 60)   return ts('secAgo', { n: diff });
+    if (diff < 3600) return ts('minAgo', { n: Math.floor(diff / 60) });
+    return ts('hourAgo', { n: Math.floor(diff / 3600) });
+  };
 }
 
 // ── 서버 모니터링 섹션 ──────────────────────────────────────────────────────
 function ServerMonitor() {
+  const ts = useT('settings');
+  const timeAgo = useTimeAgo();
   const [stats, setStats]       = useState(null);
   const [visitors, setVisitors] = useState([]);
   const [netPrev, setNetPrev]   = useState(null);
@@ -108,7 +113,7 @@ function ServerMonitor() {
       setVisitors(visitorsRes.data || []);
       setError(null);
     } catch (e) {
-      setError('서버 연결 실패');
+      setError(ts('connFailed'));
     }
   }, [netPrev, lastTs]);
 
@@ -134,16 +139,16 @@ function ServerMonitor() {
       {/* 탭 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         {[
-          { key: 'resource', label: '💾 리소스' },
-          { key: 'traffic',  label: '📡 트래픽' },
-          { key: 'visitors', label: '👥 접속자' },
-        ].map(({ key, label }) => (
-          <button key={key} style={tabBtnStyle(tab === key)} onClick={() => setTab(key)}>{label}</button>
+          { key: 'resource', labelKey: 'tabResource' },
+          { key: 'traffic',  labelKey: 'tabTraffic' },
+          { key: 'visitors', labelKey: 'tabVisitors' },
+        ].map(({ key, labelKey }) => (
+          <button key={key} style={tabBtnStyle(tab === key)} onClick={() => setTab(key)}>{ts(labelKey)}</button>
         ))}
         <button onClick={fetchAll}
           style={{ marginLeft: 'auto', padding: '5px 10px', borderRadius: 6, fontSize: 11,
             background: 'transparent', color: '#4b5563', border: '1px solid #1a2a3a', cursor: 'pointer' }}>
-          ↻ 새로고침
+          {ts('refresh')}
         </button>
       </div>
 
@@ -157,14 +162,13 @@ function ServerMonitor() {
           {/* 업타임 */}
           {up.totalSeconds != null && (
             <div style={{ fontSize: 11, color: '#4b5563' }}>
-              호스트 업타임: <span style={{ color: '#93c5fd' }}>{up.days}일 {up.hours}시간 {up.minutes}분</span>
+              {ts('uptimeLabel', { d: up.days, h: up.hours, m: up.minutes })}
             </div>
           )}
 
-          {/* 메모리 */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
-              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>메모리</span>
+              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ts('memoryLabel')}</span>
               {mem.totalBytes > 0
                 ? <span style={{ color: '#93c5fd' }}>
                     {fmtBytes(mem.usedBytes)} / {fmtBytes(mem.totalBytes)}
@@ -172,21 +176,20 @@ function ServerMonitor() {
                       {mem.usedPercent}%
                     </span>
                   </span>
-                : <span style={{ color: '#4b5563' }}>수집 중…</span>
+                : <span style={{ color: '#4b5563' }}>{ts('collecting')}</span>
               }
             </div>
             <GaugeBar percent={mem.usedPercent} />
             {mem.availableBytes > 0 && (
               <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-                여유: {fmtBytes(mem.availableBytes)}
+                {ts('freeLabel', { v: fmtBytes(mem.availableBytes) })}
               </div>
             )}
           </div>
 
-          {/* 디스크 */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
-              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>디스크</span>
+              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ts('diskLabel')}</span>
               {disk.totalBytes > 0
                 ? <span style={{ color: '#93c5fd' }}>
                     {fmtBytes(disk.usedBytes)} / {fmtBytes(disk.totalBytes)}
@@ -194,13 +197,13 @@ function ServerMonitor() {
                       {disk.usedPercent}%
                     </span>
                   </span>
-                : <span style={{ color: '#4b5563' }}>수집 중…</span>
+                : <span style={{ color: '#4b5563' }}>{ts('collecting')}</span>
               }
             </div>
             <GaugeBar percent={disk.usedPercent} color="#8b5cf6" />
             {disk.freeBytes > 0 && (
               <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-                여유: {fmtBytes(disk.freeBytes)}
+                {ts('freeLabel', { v: fmtBytes(disk.freeBytes) })}
               </div>
             )}
           </div>
@@ -217,31 +220,31 @@ function ServerMonitor() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div style={{ background: '#0d1b2a', borderRadius: 8, padding: '10px 14px' }}>
-                  <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>↓ 수신 (RX)</div>
+                  <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>{ts('rxLabel')}</div>
                   <div style={{ fontSize: 14, color: '#4ade80', fontWeight: 700 }}>
                     {iface.rxBps != null ? fmtBps(iface.rxBps) : '—'}
                   </div>
                   <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-                    누적 {fmtBytes(iface.rxBytes)}
+                    {ts('cumulative', { v: fmtBytes(iface.rxBytes) })}
                   </div>
                 </div>
                 <div style={{ background: '#0d1b2a', borderRadius: 8, padding: '10px 14px' }}>
-                  <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>↑ 송신 (TX)</div>
+                  <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>{ts('txLabel')}</div>
                   <div style={{ fontSize: 14, color: '#f59e0b', fontWeight: 700 }}>
                     {iface.txBps != null ? fmtBps(iface.txBps) : '—'}
                   </div>
                   <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-                    누적 {fmtBytes(iface.txBytes)}
+                    {ts('cumulative', { v: fmtBytes(iface.txBytes) })}
                   </div>
                 </div>
               </div>
             </div>
           ))}
           {(stats?.net ?? []).length === 0 && !error && (
-            <div style={{ fontSize: 12, color: '#4b5563' }}>네트워크 인터페이스 정보 없음 (호스트 마운트 필요)</div>
+            <div style={{ fontSize: 12, color: '#4b5563' }}>{ts('noNetIface')}</div>
           )}
           <div style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
-            * 속도는 5초 간격 샘플링 값입니다
+            {ts('trafficNote')}
           </div>
         </div>
       )}
@@ -250,16 +253,16 @@ function ServerMonitor() {
       {tab === 'visitors' && (
         <div>
           {visitors.length === 0
-            ? <div style={{ fontSize: 12, color: '#4b5563' }}>접속 기록 없음</div>
+            ? <div style={{ fontSize: 12, color: '#4b5563' }}>{ts('noVisitors')}</div>
             : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ color: '#4b5563', borderBottom: '1px solid #1a2a3a' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>실IP</th>
-                      <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>요청수</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>마지막 URI</th>
-                      <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>마지막 접속</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>{ts('colIp')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>{ts('colRequests')}</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>{ts('colLastUri')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>{ts('colLastAccess')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -395,7 +398,7 @@ export default function SettingsPanel() {
       </h2>
 
       {/* ── 서버 모니터링 ── */}
-      <Section title="🖥️ 서버 모니터링 (호스트)">
+      <Section title={t('monitorSection')}>
         <ServerMonitor />
       </Section>
 
