@@ -91,11 +91,19 @@ function LayerRow({
                 {/* 가시성 토글 */}
                 <button
                     onClick={() => onUpdate(layer.layerId, { visible: !layer.visible })}
-                    className="transition text-base leading-none"
-                    style={{ color: layer.visible ? '#e2e8f0' : '#4b5563' }}
+                    className="transition leading-none flex items-center"
+                    style={{ color: layer.visible ? '#fbbf24' : '#4b5563' }}
                     title={layer.visible ? 'Hide' : 'Show'}
                 >
-                    {layer.visible ? '👁' : '🙈'}
+                    {layer.visible ? (
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                            <path d="M9 21h6v-1H9v1zm0-2h6v-1H9v1zM12 2C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17h8v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/>
+                        </svg>
+                    ) : (
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <path strokeLinejoin="round" d="M9 21h6M9 19h6M12 3C8.69 3 6 5.69 6 9c0 2.22 1.21 4.15 3 5.19V17h6v-2.81C16.79 13.15 18 11.22 18 9c0-3.31-2.69-6-6-6z"/>
+                        </svg>
+                    )}
                 </button>
 
                 {/* 삭제 */}
@@ -204,11 +212,19 @@ function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDele
                 {/* 가시성 토글 */}
                 <button
                     onClick={onToggleVisible}
-                    className="transition text-base leading-none"
-                    style={{ color: visible ? '#e2e8f0' : '#4b5563' }}
+                    className="transition leading-none flex items-center"
+                    style={{ color: visible ? '#fbbf24' : '#4b5563' }}
                     title={visible ? '선 숨기기' : '선 표시'}
                 >
-                    {visible ? '👁' : '🙈'}
+                    {visible ? (
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
+                            <path d="M9 21h6v-1H9v1zm0-2h6v-1H9v1zM12 2C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17h8v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/>
+                        </svg>
+                    ) : (
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5">
+                            <path strokeLinejoin="round" d="M9 21h6M9 19h6M12 3C8.69 3 6 5.69 6 9c0 2.22 1.21 4.15 3 5.19V17h6v-2.81C16.79 13.15 18 11.22 18 9c0-3.31-2.69-6-6-6z"/>
+                        </svg>
+                    )}
                 </button>
 
                 {/* 전체 삭제 */}

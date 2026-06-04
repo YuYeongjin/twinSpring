@@ -22,7 +22,11 @@ export default function WeatherWidget({ lat = 37.5665, lon = 126.9780, city }) {
       ? `?city=${encodeURIComponent(city)}`
       : `?lat=${lat}&lon=${lon}`;
     AxiosCustom.get(`/api/weather${params}`)
-      .then(r => setWeather(r.data))
+      .then(r => {
+        const d = r.data;
+        // 오류 응답이나 유효하지 않은 데이터는 null 처리 (화면에 오류 텍스트 미표시)
+        setWeather(d && typeof d.temp === 'number' && !d.error ? d : null);
+      })
       .catch(() => setWeather(null))
       .finally(() => setLoading(false));
   }, [lat, lon, city]);

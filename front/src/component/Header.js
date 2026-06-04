@@ -29,11 +29,11 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
       if (!startTime) startTime = ts;
       const hue = ((ts - startTime) / 1000 * 28) % 360;
       if (iconRef.current) {
-        const h = (n) => `hsl(${((hue + n) % 360).toFixed(0)},82%,62%)`;
+        const h = (n) => `hsl(${((hue + n) % 360).toFixed(0)},100%,72%)`;
         iconRef.current.style.background =
           `conic-gradient(${h(0)},${h(55)},${h(110)},${h(165)},${h(220)},${h(275)},${h(0)})`;
         iconRef.current.style.boxShadow =
-          `0 0 12px ${h(0)}, 0 0 4px rgba(255,255,255,0.25)`;
+          `0 0 18px ${h(0)}, 0 0 8px ${h(55)}, 0 0 4px rgba(255,255,255,0.5)`;
       }
       frame = requestAnimationFrame(animate);
     };
@@ -96,9 +96,14 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
 
         {/* Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div ref={iconRef} className="h-7 w-7 rounded-full flex-shrink-0" style={{ willChange: 'background, box-shadow' }} />
+          <div ref={iconRef} onClick={() => handleNavClick("wbs")} className="h-7 w-7 rounded-full flex-shrink-0 cursor-pointer" style={{
+            willChange: 'background, box-shadow',
+            transform: 'translateZ(0)',
+            isolation: 'isolate',
+            filter: 'saturate(1.3) brightness(1.15)',
+          }} />
           <h1 className="text-base sm:text-xl font-semibold tracking-wide whitespace-nowrap">
-            Digital Twin <span className="text-accent-blue">YJ-01</span>
+            Digital Twin
           </h1>
         </div>
 
