@@ -1569,19 +1569,20 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
       const margin = physicsResult.stabilityMargin != null
         ? `${(physicsResult.stabilityMargin * 100).toFixed(0)}%`
         : '';
+      const projName = proj?.projectName ?? t('defaultProject');
       const alert = pushAlert({
         source:      'SIMULATION',
         severity:    'HIGH',
-        title:       `굴착기 전도 위험 — ${proj?.projectName ?? '시뮬레이션'}`,
-        detail:      `안정성 마진 ${margin} — Tip-Over 위험. 즉시 작업 중단 필요.`,
+        title:       t('dangerAlertTitle', { name: projName }),
+        detail:      t('dangerAlertDetail', { margin }),
         projectId:   proj?.projectId ?? '',
         projectName: proj?.projectName ?? '',
       });
       pushWbsSuggest({
         eventType:   'SIM_DANGER',
         source:      'SIMULATION_DANGER',
-        title:       `굴착기 전도 위험 감지 (안정성 ${margin})`,
-        detail:      `${proj?.projectName ?? '시뮬레이션'} — Tip-Over Risk 발생. KCS 건설기계 안전기준에 따른 작업 중단 및 점검 필요.`,
+        title:       t('dangerWbsTitle', { margin }),
+        detail:      t('dangerWbsDetail', { name: projName }),
         projectId:   proj?.projectId ?? '',
         projectName: proj?.projectName ?? '',
         alertId:     alert.id,

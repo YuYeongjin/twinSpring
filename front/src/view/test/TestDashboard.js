@@ -324,6 +324,7 @@ function Ground() {
 // ================================================================
 export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscreen }) {
   const t = useT('gpsControl');
+  const tb = useT('bimDashboard');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const rootContainerRef = useRef(null); // 최상위 Fullscreen API 구속 타깃 노드
 
@@ -546,8 +547,8 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
       pushWbsSuggest({
         eventType:   'COLLISION',
         source:      'TEST_COLLISION',
-        title:       `부재 충돌 감지 — ${ids.length}개 부재`,
-        detail:      `굴착기 암/붐/버킷이 ${ids.length}개 구조 부재와 충돌하였습니다. (${ts})`,
+        title:       tb('collisionAlertTitle', { n: ids.length }),
+        detail:      tb('collisionAlertDetail', { n: ids.length, ts }),
         projectId:   selectedProject?.projectId   ?? '',
         projectName: selectedProject?.projectName ?? '',
       });

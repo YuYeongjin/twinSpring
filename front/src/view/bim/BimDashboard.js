@@ -741,27 +741,16 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         else { setShowLayerPanel(false); }
     }, [isDesktop]);
 
-    useEffect(() => {
-        const onFullscreenChange = () => {
-            const isCurrentlyFull = !!document.fullscreenElement;
-            if (isCurrentlyFull !== canvasFullscreen) {
-                onToggleCanvasFullscreen?.();
-            }
-        };
-        document.addEventListener('fullscreenchange', onFullscreenChange);
-        return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
-    }, [canvasFullscreen, onToggleCanvasFullscreen]);
+    // CSS 기반 전체화면 (헤더 위로 올라오는 overlay 방식)
+    const [bimFs, setBimFs] = useState(false);
+    const toggleBimFs = useCallback(() => setBimFs(v => !v), []);
 
-    const triggerHardwareFullscreen = useCallback(() => {
-        if (!rootContainerRef.current) return;
-        if (!document.fullscreenElement) {
-            rootContainerRef.current.requestFullscreen().catch(err => {
-                console.error("하드웨어 전체화면 진입 실패:", err);
-            });
-        } else {
-            document.exitFullscreen();
-        }
-    }, []);
+    useEffect(() => {
+        if (!bimFs) return;
+        const onKey = (e) => { if (e.key === 'Escape') setBimFs(false); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [bimFs]);
 
     const handlePanelDragStart = useCallback((side, e) => {
         e.preventDefault();
@@ -1174,7 +1163,11 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         undo, finishLineDraw, selectedLineId, deleteLine, setSelectedLineId]);
 
     return (
-        <div ref={rootContainerRef} className="w-full bg-space-900 flex flex-col overflow-hidden" style={{height: canvasFullscreen ? '100dvh' : '85dvh'}} >
+        <div ref={rootContainerRef} className="w-full bg-space-900 flex flex-col overflow-hidden"
+            style={bimFs
+                ? { position: 'fixed', inset: 0, zIndex: 9999, height: '100dvh', width: '100vw' }
+                : { height: '85dvh' }
+            }>
             {showDroneModal && (
                 <DroneAnalysisModal
                     onClose={() => setShowDroneModal(false)}
@@ -1351,7 +1344,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 className="flex-1 min-h-0 flex flex-col md:flex-row mt-2"
                 style={{ gap: 0, display: bimSubView === 'editor' ? undefined : 'none' }}
             >
-                {(showLeftPanel || leftClosing) && !canvasFullscreen && (
+                {(showLeftPanel || leftClosing) && !bimFs && (
                     <>
                     {/* 모바일: 배경 딤 */}
                     {!isDesktop && (
@@ -1510,21 +1503,21 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 <>
                                     <div ref={mainViewRef} className="absolute inset-0 z-10 touch-none" />
 
-                                    {/* 모바일 뷰 전용 하드웨어 풀스크린 트리거 버튼 */}
+                                    {/* 전체화면 토글 버튼 */}
                                     <button
-                                        onClick={triggerHardwareFullscreen}
-                                        title={canvasFullscreen ? '전체화면 해제' : '스마트폰 화면 가득 채우기'}
+                                        onClick={toggleBimFs}
+                                        title={bimFs ? t('exitFullscreen') : t('enterFullscreen')}
                                         className="absolute top-3 right-3 z-20 flex items-center justify-center rounded-lg transition-all sm:hidden"
                                         style={{
                                             width: 38, height: 38,
-                                            backgroundColor: canvasFullscreen ? 'rgba(30,58,95,0.95)' : 'rgba(6,16,26,0.85)',
-                                            border: `1px solid ${canvasFullscreen ? '#3b82f6' : '#253347'}`,
-                                            color: canvasFullscreen ? '#60a5fa' : '#8896a4',
+                                            backgroundColor: bimFs ? 'rgba(30,58,95,0.95)' : 'rgba(6,16,26,0.85)',
+                                            border: `1px solid ${bimFs ? '#3b82f6' : '#253347'}`,
+                                            color: bimFs ? '#60a5fa' : '#8896a4',
                                             backdropFilter: 'blur(4px)',
                                             fontSize: 18,
                                         }}
                                     >
-                                        {canvasFullscreen ? '⊠' : '⛶'}
+                                        {bimFs ? '⊠' : '⛶'}
                                     </button>
 
                                     <Canvas
@@ -1804,7 +1797,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         </Card>
 
                         <Card title={t('elementList')} right={<Chip color="green">{t('liveChip')}</Chip>} className="shrink-0">
-                            <p className="text-xs text-gray-600 mb-2">탭하면 해당 부재 전체 선택</p>
+                            <p className="text-xs text-gray-600 mb-2">{t('tapToSelectAll')}</p>
                             <CardGridWrapper>
                                 {['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcSlab', 'IfcPier', 'IfcRebar'].map(type => {
                                     const matching = modelData.filter(e => e.elementType === type);
