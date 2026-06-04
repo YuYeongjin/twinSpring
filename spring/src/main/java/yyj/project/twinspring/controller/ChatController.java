@@ -140,6 +140,16 @@ public class ChatController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/rag-status")
+    public ResponseEntity<Map<String, Object>> ragStatus() {
+        return ResponseEntity.ok(chatService.ragStatus());
+    }
+
+    @PostMapping("/rag-rebuild")
+    public ResponseEntity<Map<String, Object>> ragRebuild() {
+        return ResponseEntity.ok(chatService.ragRebuild());
+    }
+
     /**
      * WBS 프로젝트 생성 에이전트 채팅
      *

@@ -398,6 +398,132 @@ _EVENT_RAG_QUERIES: dict[str, str] = {
 }
 
 
+import threading
+import time as _time
+
+_rag_build_state = {"status": "idle", "message": "", "chunks": 0}  # idle | running | done | error
+_rag_build_lock  = threading.Lock()
+
+
+def _count_rag_chunks() -> int:
+    try:
+        import psycopg
+        from config.settings import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
+        with psycopg.connect(
+            host=VECTOR_DB_HOST, port=VECTOR_DB_PORT, dbname=VECTOR_DB_NAME,
+            user=VECTOR_DB_USER, password=VECTOR_DB_PASSWORD, connect_timeout=5,
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT COUNT(*) FROM langchain_pg_embedding e
+                    JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+                    WHERE c.name = 'construction_specs'
+                """)
+                return cur.fetchone()[0]
+    except Exception:
+        return -1
+
+
+def _auto_build_rag():
+    """서버 시작 후 백그라운드에서 RAG 인덱스 자동 구축 (없을 때만)."""
+    global _rag_build_state
+
+    # DB가 준비될 때까지 최대 3분 대기 (10초 간격)
+    for attempt in range(18):
+        _time.sleep(10)
+        count = _count_rag_chunks()
+        if count >= 0:
+            break
+        logger.info(f"[startup-rag] DB 준비 대기 중... ({attempt + 1}/18)")
+    else:
+        logger.warning("[startup-rag] DB 연결 실패 — RAG 자동 구축 건너뜀")
+        return
+
+    if count > 0:
+        logger.info(f"[startup-rag] RAG 인덱스 이미 존재 ({count:,}개 청크) — 건너뜀")
+        _rag_build_state = {"status": "done", "message": "기존 인덱스 사용", "chunks": count}
+        return
+
+    logger.info("[startup-rag] RAG 인덱스 없음 → 자동 구축 시작")
+    with _rag_build_lock:
+        _rag_build_state = {"status": "running", "message": "서버 시작 시 자동 구축 중...", "chunks": 0}
+    try:
+        from scripts.build_rag_index import build_index
+        build_index(force=False)
+        final = _count_rag_chunks()
+        _rag_build_state = {"status": "done", "message": "자동 구축 완료", "chunks": max(final, 0)}
+        logger.info(f"[startup-rag] 자동 구축 완료 — {final:,}개 청크")
+    except Exception as e:
+        logger.error("[startup-rag] 자동 구축 실패", exc_info=True)
+        _rag_build_state = {"status": "error", "message": str(e), "chunks": 0}
+
+
+@app.on_event("startup")
+async def on_startup():
+    """서버 시작 시 RAG 인덱스 자동 구축을 백그라운드에서 실행."""
+    threading.Thread(target=_auto_build_rag, daemon=True).start()
+    logger.info("[startup] RAG 자동 구축 스레드 시작 (DB 준비 대기 후 실행)")
+
+
+@app.get("/admin/rag-status")
+def rag_status():
+    """RAG 인덱스 현황 반환 (청크 수 + 빌드 상태)."""
+    try:
+        import psycopg
+        from config.settings import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
+        with psycopg.connect(
+            host=VECTOR_DB_HOST, port=VECTOR_DB_PORT, dbname=VECTOR_DB_NAME,
+            user=VECTOR_DB_USER, password=VECTOR_DB_PASSWORD, connect_timeout=5,
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT COUNT(*) FROM langchain_pg_embedding e
+                    JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+                    WHERE c.name = 'construction_specs'
+                """)
+                count = cur.fetchone()[0]
+        return {"dbReachable": True, "chunks": count, "hasData": count > 0, **_rag_build_state}
+    except Exception as e:
+        return {"dbReachable": False, "chunks": 0, "hasData": False, "status": _rag_build_state["status"], "message": str(e)}
+
+
+@app.post("/admin/rebuild-rag")
+def rebuild_rag():
+    """RAG 인덱스를 백그라운드에서 재구축."""
+    global _rag_build_state
+    with _rag_build_lock:
+        if _rag_build_state["status"] == "running":
+            return {"queued": False, "message": "이미 빌드가 진행 중입니다."}
+        _rag_build_state = {"status": "running", "message": "인덱싱 시작...", "chunks": 0}
+
+    def _run():
+        global _rag_build_state
+        try:
+            from scripts.build_rag_index import build_index
+            build_index(force=True)
+            # 완료 후 청크 수 재조회
+            import psycopg
+            from config.settings import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
+            with psycopg.connect(
+                host=VECTOR_DB_HOST, port=VECTOR_DB_PORT, dbname=VECTOR_DB_NAME,
+                user=VECTOR_DB_USER, password=VECTOR_DB_PASSWORD, connect_timeout=5,
+            ) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT COUNT(*) FROM langchain_pg_embedding e
+                        JOIN langchain_pg_collection c ON e.collection_id = c.uuid
+                        WHERE c.name = 'construction_specs'
+                    """)
+                    count = cur.fetchone()[0]
+            _rag_build_state = {"status": "done", "message": f"인덱싱 완료", "chunks": count}
+        except Exception as e:
+            logger.error("[rebuild_rag] 빌드 실패", exc_info=True)
+            _rag_build_state = {"status": "error", "message": str(e), "chunks": 0}
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"queued": True, "message": "RAG 인덱스 빌드를 시작했습니다. 386개 HWP 파일 처리 중..."}
+
+
 @app.post("/wbs-rag-suggest", response_model=WbsRagResponse)
 def wbs_rag_suggest(req: WbsRagRequest):
     from tools.construction_rag_tool import search_construction_docs
