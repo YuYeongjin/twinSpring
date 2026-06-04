@@ -1,5 +1,7 @@
 package yyj.project.twinspring.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.*;
@@ -21,9 +23,25 @@ import java.util.*;
 public class SettingsController {
 
     private final SettingsDAO settingsDAO;
+    private final Set<String> allowedIps;
 
-    public SettingsController(SettingsDAO settingsDAO) {
+    public SettingsController(SettingsDAO settingsDAO,
+                              @Value("${settings.allowed-ips}") List<String> allowedIpList) {
         this.settingsDAO = settingsDAO;
+        this.allowedIps = new HashSet<>(allowedIpList);
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("CF-Connecting-IP");
+        if (ip == null) ip = request.getHeader("X-Forwarded-For");
+        if (ip == null) ip = request.getRemoteAddr();
+        return ip != null ? ip.split(",")[0].trim() : "unknown";
+    }
+
+    @GetMapping("/api/auth/ip-allowed")
+    public ResponseEntity<Map<String, Boolean>> isIpAllowed(HttpServletRequest request) {
+        String ip = getClientIp(request);
+        return ResponseEntity.ok(Map.of("allowed", allowedIps.contains(ip)));
     }
 
     // ══════════════════════════════ SETTINGS ══════════════════════════════════

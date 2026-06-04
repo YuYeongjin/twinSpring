@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import AxiosCustom from '../../axios/AxiosCustom';
 import { useT } from '../../i18n/LanguageContext';
 
@@ -32,6 +32,275 @@ function Row({ label, desc, children }) {
   );
 }
 
+// ── 리소스 게이지 바 ────────────────────────────────────────────────────────
+function GaugeBar({ percent, color }) {
+  const clampedPct = Math.min(100, Math.max(0, percent ?? 0));
+  const barColor = percent >= 90 ? '#ef4444' : percent >= 70 ? '#f59e0b' : (color || '#3b82f6');
+  return (
+    <div style={{ background: '#0d1b2a', borderRadius: 4, height: 8, width: '100%', overflow: 'hidden' }}>
+      <div style={{
+        width: `${clampedPct}%`, height: '100%', borderRadius: 4,
+        background: barColor, transition: 'width 0.4s ease',
+      }} />
+    </div>
+  );
+}
+
+function fmtBytes(bytes) {
+  if (bytes == null || bytes < 0) return '—';
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+  if (bytes >= 1048576)    return (bytes / 1048576).toFixed(1) + ' MB';
+  return (bytes / 1024).toFixed(0) + ' KB';
+}
+
+function fmtBps(bytes) {
+  if (bytes == null || bytes < 0) return '—';
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' MB/s';
+  if (bytes >= 1024)    return (bytes / 1024).toFixed(1) + ' KB/s';
+  return bytes + ' B/s';
+}
+
+function useTimeAgo() {
+  const ts = useT('settings');
+  return (timestamp) => {
+    const diff = Math.floor((Date.now() - timestamp) / 1000);
+    if (diff < 60)   return ts('secAgo', { n: diff });
+    if (diff < 3600) return ts('minAgo', { n: Math.floor(diff / 60) });
+    return ts('hourAgo', { n: Math.floor(diff / 3600) });
+  };
+}
+
+// ── 서버 모니터링 섹션 ──────────────────────────────────────────────────────
+function ServerMonitor() {
+  const ts = useT('settings');
+  const timeAgo = useTimeAgo();
+  const [stats, setStats]       = useState(null);
+  const [visitors, setVisitors] = useState([]);
+  const [netPrev, setNetPrev]   = useState(null);
+  const [netRate, setNetRate]   = useState([]);
+  const [lastTs, setLastTs]     = useState(null);
+  const [error, setError]       = useState(null);
+  const [tab, setTab]           = useState('resource'); // 'resource' | 'traffic' | 'visitors'
+
+  const fetchAll = useCallback(async () => {
+    try {
+      const [statsRes, visitorsRes] = await Promise.all([
+        AxiosCustom.get('/api/system/stats'),
+        AxiosCustom.get('/api/system/visitors'),
+      ]);
+      const now = Date.now();
+      const newStats = statsRes.data;
+
+      // 네트워크 속도 계산 (전회 데이터 대비 diff)
+      if (netPrev && lastTs) {
+        const elapsed = (now - lastTs) / 1000;
+        const rates = (newStats.net || []).map(iface => {
+          const prev = netPrev.find(p => p.interface === iface.interface);
+          return {
+            interface: iface.interface,
+            rxBps: prev ? Math.max(0, (iface.rxBytes - prev.rxBytes) / elapsed) : 0,
+            txBps: prev ? Math.max(0, (iface.txBytes - prev.txBytes) / elapsed) : 0,
+            rxBytes: iface.rxBytes,
+            txBytes: iface.txBytes,
+          };
+        });
+        setNetRate(rates);
+      }
+
+      setNetPrev(newStats.net || []);
+      setLastTs(now);
+      setStats(newStats);
+      setVisitors(visitorsRes.data || []);
+      setError(null);
+    } catch (e) {
+      setError(ts('connFailed'));
+    }
+  }, [netPrev, lastTs]);
+
+  useEffect(() => {
+    fetchAll();
+    const id = setInterval(fetchAll, 5000);
+    return () => clearInterval(id);
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const tabBtnStyle = (active) => ({
+    padding: '5px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+    background: active ? '#1e3a5f' : 'transparent',
+    color:      active ? '#60a5fa' : '#6b7280',
+    border:     '1px solid ' + (active ? '#2a5080' : '#253347'),
+  });
+
+  const mem  = stats?.memory ?? {};
+  const disk = stats?.disk   ?? {};
+  const up   = stats?.uptime ?? {};
+
+  return (
+    <div>
+      {/* 탭 */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {[
+          { key: 'resource', labelKey: 'tabResource' },
+          { key: 'traffic',  labelKey: 'tabTraffic' },
+          { key: 'visitors', labelKey: 'tabVisitors' },
+        ].map(({ key, labelKey }) => (
+          <button key={key} style={tabBtnStyle(tab === key)} onClick={() => setTab(key)}>{ts(labelKey)}</button>
+        ))}
+        <button onClick={fetchAll}
+          style={{ marginLeft: 'auto', padding: '5px 10px', borderRadius: 6, fontSize: 11,
+            background: 'transparent', color: '#4b5563', border: '1px solid #1a2a3a', cursor: 'pointer' }}>
+          {ts('refresh')}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 12 }}>⚠ {error}</div>
+      )}
+
+      {/* ── 리소스 탭 ── */}
+      {tab === 'resource' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* 업타임 */}
+          {up.totalSeconds != null && (
+            <div style={{ fontSize: 11, color: '#4b5563' }}>
+              {ts('uptimeLabel', { d: up.days, h: up.hours, m: up.minutes })}
+            </div>
+          )}
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
+              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ts('memoryLabel')}</span>
+              {mem.totalBytes > 0
+                ? <span style={{ color: '#93c5fd' }}>
+                    {fmtBytes(mem.usedBytes)} / {fmtBytes(mem.totalBytes)}
+                    <span style={{ color: mem.usedPercent >= 80 ? '#ef4444' : '#4ade80', marginLeft: 8 }}>
+                      {mem.usedPercent}%
+                    </span>
+                  </span>
+                : <span style={{ color: '#4b5563' }}>{ts('collecting')}</span>
+              }
+            </div>
+            <GaugeBar percent={mem.usedPercent} />
+            {mem.availableBytes > 0 && (
+              <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
+                {ts('freeLabel', { v: fmtBytes(mem.availableBytes) })}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
+              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ts('diskLabel')}</span>
+              {disk.totalBytes > 0
+                ? <span style={{ color: '#93c5fd' }}>
+                    {fmtBytes(disk.usedBytes)} / {fmtBytes(disk.totalBytes)}
+                    <span style={{ color: disk.usedPercent >= 80 ? '#ef4444' : '#4ade80', marginLeft: 8 }}>
+                      {disk.usedPercent}%
+                    </span>
+                  </span>
+                : <span style={{ color: '#4b5563' }}>{ts('collecting')}</span>
+              }
+            </div>
+            <GaugeBar percent={disk.usedPercent} color="#8b5cf6" />
+            {disk.freeBytes > 0 && (
+              <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
+                {ts('freeLabel', { v: fmtBytes(disk.freeBytes) })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── 트래픽 탭 ── */}
+      {tab === 'traffic' && (
+        <div>
+          {(netRate.length > 0 ? netRate : (stats?.net ?? [])).map(iface => (
+            <div key={iface.interface} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: '#93c5fd', fontWeight: 600, marginBottom: 8 }}>
+                {iface.interface}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ background: '#0d1b2a', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>{ts('rxLabel')}</div>
+                  <div style={{ fontSize: 14, color: '#4ade80', fontWeight: 700 }}>
+                    {iface.rxBps != null ? fmtBps(iface.rxBps) : '—'}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
+                    {ts('cumulative', { v: fmtBytes(iface.rxBytes) })}
+                  </div>
+                </div>
+                <div style={{ background: '#0d1b2a', borderRadius: 8, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>{ts('txLabel')}</div>
+                  <div style={{ fontSize: 14, color: '#f59e0b', fontWeight: 700 }}>
+                    {iface.txBps != null ? fmtBps(iface.txBps) : '—'}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
+                    {ts('cumulative', { v: fmtBytes(iface.txBytes) })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+          {(stats?.net ?? []).length === 0 && !error && (
+            <div style={{ fontSize: 12, color: '#4b5563' }}>{ts('noNetIface')}</div>
+          )}
+          <div style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
+            {ts('trafficNote')}
+          </div>
+        </div>
+      )}
+
+      {/* ── 접속자 탭 ── */}
+      {tab === 'visitors' && (
+        <div>
+          {visitors.length === 0
+            ? <div style={{ fontSize: 12, color: '#4b5563' }}>{ts('noVisitors')}</div>
+            : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ color: '#4b5563', borderBottom: '1px solid #1a2a3a' }}>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>{ts('colIp')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>{ts('colRequests')}</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>{ts('colLastUri')}</th>
+                      <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>{ts('colLastAccess')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...visitors]
+                      .sort((a, b) => b.lastTime - a.lastTime)
+                      .map((v, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #111827' }}>
+                          <td style={{ padding: '6px 8px', color: '#60a5fa', fontFamily: 'monospace' }}>
+                            {v.ip}
+                          </td>
+                          <td style={{ padding: '6px 8px', color: '#93c5fd', textAlign: 'right' }}>
+                            {v.count}
+                          </td>
+                          <td style={{ padding: '6px 8px', color: '#6b7280',
+                            maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{
+                              color: v.lastStatus >= 400 ? '#ef4444' : '#6b7280',
+                              marginRight: 4, fontSize: 10
+                            }}>{v.lastStatus}</span>
+                            {v.lastUri}
+                          </td>
+                          <td style={{ padding: '6px 8px', color: '#4b5563', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            {timeAgo(v.lastTime)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 메인 패널 ───────────────────────────────────────────────────────────────
 export default function SettingsPanel() {
   const t = useT('settings');
 
@@ -127,6 +396,11 @@ export default function SettingsPanel() {
       <h2 style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 700, marginBottom: 20 }}>
         {t('title')}
       </h2>
+
+      {/* ── 서버 모니터링 ── */}
+      <Section title={t('monitorSection')}>
+        <ServerMonitor />
+      </Section>
 
       {/* ── 대화 히스토리 정책 ── */}
       <Section title={t('chatSection')}>
