@@ -47,11 +47,12 @@ CREATE INDEX IF NOT EXISTS idx_project_id ON bim_element (project_id);
 -- ================================================================
 CREATE TABLE IF NOT EXISTS sensor_data
 (
-    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id          BIGINT GENERATED ALWAYS AS IDENTITY,
     location    VARCHAR(100) NOT NULL,
     temperature DOUBLE PRECISION NOT NULL,
     humidity    DOUBLE PRECISION,
-    timestamp   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+    timestamp   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id, timestamp)
 );
 
 -- ================================================================

@@ -36,6 +36,14 @@ const RESTRICTED_CLASSES = new Set(['restricted', 'prohibited', 'danger-zone', '
 const PERSON_CLASSES = new Set(['person', 'people', 'man', 'woman', 'child', 'worker']);
 const CAM_MIN_H = 200;
 const CAM_MAX_H = 720;
+const CAM_STORAGE_KEY = 'safe_webcam_state';
+function camKey(projectId) { return projectId ? `${CAM_STORAGE_KEY}_${projectId}` : CAM_STORAGE_KEY; }
+function loadCamState(projectId) {
+  try { return JSON.parse(localStorage.getItem(camKey(projectId)) || 'null'); } catch { return null; }
+}
+function saveCamState(s, projectId) {
+  try { localStorage.setItem(camKey(projectId), JSON.stringify(s)); } catch {}
+}
 
 function analyzeDetections(detections = []) {
   const noHelmet = detections.some(d => NO_HELMET_CLASSES.has((d.class ?? '').toLowerCase()));
@@ -228,7 +236,7 @@ function ZoneChecker({ persons, zones, onViolationChange }) {
 // ── 웹캠 패널 (컨테이너 없음 — 부모가 관리) ─────────────────────────
 
 function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onError,
-  makeCaptureRef, onStreamingChange, stopDetectRef }) {
+  makeCaptureRef, onStreamingChange, stopDetectRef, projectId }) {
   const t = useT('safe');
   const videoRef = useRef(null);
   const [streaming, setStreaming] = useState(false);
@@ -236,13 +244,15 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
   const [camError, setCamError] = useState('');
   const liveDetectingRef = useRef(false);
   const [showSourceModal, setShowSourceModal] = useState(false);
-  const [urlInput, setUrlInput] = useState('');
-  const [camMode, setCamMode] = useState('local'); // 'local' | 'url'
+  const [urlInput, setUrlInput] = useState(() => loadCamState(projectId)?.url || '');
+  const [camMode, setCamMode] = useState(() => loadCamState(projectId)?.mode || 'local');
 
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
 
-  const stopCamera = useCallback(() => {
+  // saveStop=true: 사용자가 명시적으로 끈 경우 (wasStreaming: false 저장)
+  // saveStop=false: 언마운트 클린업 (localStorage 그대로 유지 → 복귀 시 자동 재시작 가능)
+  const stopCamera = useCallback((saveStop = true) => {
     liveDetectingRef.current = false;
     setLiveDetecting(false);
     if (videoRef.current) {
@@ -258,7 +268,11 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     }
     setStreaming(false);
     setCamError('');
-  }, []);
+    if (saveStop) {
+      const prev = loadCamState(projectId);
+      if (prev) saveCamState({ ...prev, wasStreaming: false }, projectId);
+    }
+  }, [projectId]);
 
   const startWithLocal = useCallback(async () => {
     const tr = tRef.current;
@@ -290,6 +304,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => {});
         setStreaming(true);
+        saveCamState({ mode: 'local', wasStreaming: true }, projectId);
       }
     } catch (e) {
       const name = e.name ?? '';
@@ -311,12 +326,13 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     setShowSourceModal(false);
     setCamMode('url');
     setCamError('');
+    saveCamState({ mode: 'url', url: trimmed, wasStreaming: true }, projectId);
     if (!videoRef.current) return;
     if (videoRef.current.srcObject) {
       videoRef.current.srcObject.getTracks().forEach(tr => tr.stop());
       videoRef.current.srcObject = null;
     }
-    videoRef.current.crossOrigin = 'anonymous';
+    videoRef.current.removeAttribute('crossorigin');
     videoRef.current.src = trimmed;
     videoRef.current.load();
     const onPlay = () => { setStreaming(true); };
@@ -326,9 +342,24 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     videoRef.current.play().catch(() => {});
   }, []);
 
-  // 언마운트 시 정리만 — 자동 시작 없음, 사용자가 소스를 선택
-  useEffect(() => { return () => stopCamera(); }, [stopCamera]);
+  // 언마운트 시 정리 — localStorage 유지 (탭 복귀 시 자동 재시작 위해)
+  useEffect(() => { return () => stopCamera(false); }, [stopCamera]);
   useEffect(() => { onStreamingChange?.(streaming); }, [streaming, onStreamingChange]);
+
+  // 마운트 시 이전 카메라 상태 복원 (프로젝트별)
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    const s = loadCamState(projectId);
+    if (!s?.wasStreaming) return;
+    if (s.mode === 'local') {
+      startWithLocal();
+    } else if (s.mode === 'url' && s.url) {
+      setUrlInput(s.url);
+      startWithUrl(s.url);
+    }
+  }, [projectId, startWithLocal, startWithUrl]);
   useEffect(() => {
     if (!streaming) { liveDetectingRef.current = false; setLiveDetecting(false); }
   }, [streaming]);
@@ -339,13 +370,20 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     const imgH = videoRef.current.videoHeight;
     const canvas = document.createElement('canvas');
     canvas.width = imgW; canvas.height = imgH;
-    canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    try {
+      canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    } catch (e) {
+      // CORS 없는 URL 스트림은 canvas에 그릴 수 없음 (보안 제한)
+      throw new Error('이 URL 스트림은 캡처가 차단됩니다. 서버에 CORS 헤더가 필요합니다.');
+    }
     const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
     const form = new FormData();
     form.append('file', blob, 'capture.jpg');
     const res = await fetch(`${DETECT_SERVER_URL}/api/detection/detect`, { method: 'POST', body: form });
     if (!res.ok) throw new Error(`${res.status}`);
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('detect server returned non-JSON response'); }
     return { ...data, _imgW: imgW, _imgH: imgH };
   }, []);
 
@@ -460,8 +498,9 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
 
         {/* ── 소스 선택 모달 ── */}
         {showSourceModal && (
-          <div className="absolute inset-0 flex items-center justify-center p-4 z-10"
-            style={{ background: 'rgba(0,0,0,0.82)' }}>
+          <div className="fixed inset-0 flex items-center justify-center p-4 z-50"
+            style={{ background: 'rgba(0,0,0,0.82)' }}
+            onClick={e => e.target === e.currentTarget && setShowSourceModal(false)}>
             <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
               style={{ background: '#1c2a3a', border: '1px solid #2d4060' }}>
 
@@ -1147,8 +1186,8 @@ function CrackMonitorPanel({ selectedProject }) {
   // BIM 프로젝트 목록 로드
   useEffect(() => {
     fetch('/api/bim/db-projects')
-      .then(r => r.ok ? r.json() : [])
-      .then(list => setBimProjects(list || []))
+      .then(r => r.ok ? r.text() : '[]')
+      .then(t => { try { setBimProjects(JSON.parse(t) || []); } catch { setBimProjects([]); } })
       .catch(() => setBimProjects([]));
   }, []);
 
@@ -1506,6 +1545,15 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   const [madeFallback, setMadeFallback] = useState(false);
   const [devNoticeDismissed, setDevNoticeDismissed]         = useState(false);
   const [offlineNoticeDismissed, setOfflineNoticeDismissed] = useState(false);
+  const [iotMappings, setIotMappings] = useState([]);
+
+  useEffect(() => {
+    if (!selectedProject?.projectId) { setIotMappings([]); return; }
+    fetch(`/api/safe/iot/mappings/${selectedProject.projectId}`)
+      .then(r => r.ok ? r.text() : '[]')
+      .then(t => { try { setIotMappings(JSON.parse(t) || []); } catch { setIotMappings([]); } })
+      .catch(() => setIotMappings([]));
+  }, [selectedProject?.projectId]);
 
   // ── 안전구역 상태 ──────────────────────────────────────────────────
   const [zones, setZones]               = useState([]);          // {id, cx, cz, w, d}[]
@@ -1602,7 +1650,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
     const client = new Client({
       webSocketFactory: () => new SockJS(wsUrl),
       reconnectDelay: 5000,
-      onConnect: () => client.subscribe('/topic/safe', msg => setSafeEvent(JSON.parse(msg.body))),
+      onConnect: () => client.subscribe('/topic/safe', msg => { try { setSafeEvent(JSON.parse(msg.body)); } catch {} }),
       onStompError: () => { /* 재접속은 reconnectDelay가 처리 — 콘솔 오류 억제 */ },
     });
     client.activate();
@@ -1649,11 +1697,11 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   return (
     <div className="flex flex-col gap-4">
 
-      {/* ── 외부 날씨 (좌) + 현장 IoT 센서 (우) ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12 }}
+      {/* ── 외부 날씨 (좌) + 현장 IoT 센서 (우, 매핑된 경우만) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: iotMappings.length > 0 ? '1fr 2fr' : '1fr', gap: 12 }}
            className="flex-col md:grid">
         <WeatherWidget />
-        <SensorPanel />
+        {iotMappings.length > 0 && <SensorPanel />}
       </div>
 
       {/* 현장 정보 헤더 바 */}
@@ -1826,6 +1874,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                 makeCaptureRef={makeCaptureRef}
                 stopDetectRef={stopDetectRef}
                 onStreamingChange={setCamStreaming}
+                projectId={selectedProject?.projectId}
               />
             </div>
 
