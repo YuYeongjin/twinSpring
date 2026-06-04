@@ -36,7 +36,7 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
   }, []);
 
   useEffect(() => { loadLinks(); }, [loadLinks]);
-  useEffect(() => { if (open) loadWbsProjects(); }, [open, loadWbsProjects]);
+  useEffect(() => { if (open || adding) loadWbsProjects(); }, [open, adding, loadWbsProjects]);
 
   // ── 링크 추가 ────────────────────────────────────────────────────
   async function handleAdd() {

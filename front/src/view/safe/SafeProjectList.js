@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useT } from "../../i18n/LanguageContext";
 import WbsLinkWidget from "../wbs/component/WbsLinkWidget";
 import AxiosCustom from "../../axios/AxiosCustom";
@@ -27,11 +27,27 @@ const STATUS_META = {
 // ── WBS 프로젝트 선택 드롭다운 패널 ──────────────────────────────
 function WbsProjectPicker({ selectedId, onChange, wbsProjects, loading, t }) {
   const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+  const btnRef = useRef(null);
   const selected = wbsProjects.find(p => p.projectId === selectedId);
+
+  function handleToggle() {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    }
+    setOpen(v => !v);
+  }
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(v => !v)}
+      <button ref={btnRef} type="button" onClick={handleToggle}
               className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition"
               style={{
                 backgroundColor: open ? "#0d2040" : "#0d1b2a",
@@ -46,8 +62,15 @@ function WbsProjectPicker({ selectedId, onChange, wbsProjects, loading, t }) {
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl overflow-hidden shadow-2xl"
-             style={{ backgroundColor: "#0a1521", border: "1px solid #1e3a5f", maxHeight: "220px" }}>
+        <div style={{
+          ...dropdownStyle,
+          backgroundColor: "#0a1521",
+          border: "1px solid #1e3a5f",
+          borderRadius: "12px",
+          overflow: "hidden",
+          boxShadow: "0 25px 50px -12px rgba(0,0,0,0.7)",
+          maxHeight: "220px",
+        }}>
           <div style={{ overflowY: "auto", maxHeight: "220px" }}>
             <button type="button" onClick={() => { onChange(""); setOpen(false); }}
                     className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-[#0d1b2a] transition"
@@ -80,7 +103,7 @@ function WbsProjectPicker({ selectedId, onChange, wbsProjects, loading, t }) {
         </div>
       )}
 
-      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+      {open && <div style={{ position: "fixed", inset: 0, zIndex: 9998 }} onClick={() => setOpen(false)} />}
     </div>
   );
 }
@@ -149,7 +172,7 @@ function ProjectModal({ initial = null, onClose, onSave }) {
         </div>
 
         {/* 스크롤 영역 */}
-        <div className="flex flex-col gap-4 px-6 pb-2 overflow-y-auto">
+        <div className="flex flex-col gap-4 px-6 pb-2 overflow-y-auto flex-1 min-h-0">
 
           {/* 프로젝트 유형 */}
           <div>
@@ -518,8 +541,8 @@ function AllCameraView({ projectList, onSelectProject, onBack }) {
           fetch(`/api/monitoring/cameras/${proj.projectId}`).catch(() => null),
           fetch(`/api/monitoring/snapshots/${proj.projectId}`).catch(() => null),
         ]);
-        const cameras   = camRes?.ok  ? await camRes.json()  : [];
-        const snapshots = snapRes?.ok ? await snapRes.json() : [];
+        const cameras   = camRes?.ok  ? await camRes.text().then(t  => { try { return JSON.parse(t);  } catch { return []; } }) : [];
+        const snapshots = snapRes?.ok ? await snapRes.text().then(t => { try { return JSON.parse(t); } catch { return []; } }) : [];
         return { projectId: proj.projectId, cameras, latestSnap: snapshots[0] ?? null };
       })
     ).then(results => {
