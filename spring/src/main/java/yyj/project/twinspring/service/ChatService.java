@@ -60,4 +60,10 @@ public interface ChatService {
      * SimulationDashboard 의 시방서 패널에서 사용.
      */
     Map<String, Object> excavationSpec(Map<String, Object> request);
+
+    /** RAG 인덱스 현황 조회 (청크 수, 빌드 상태) */
+    Map<String, Object> ragStatus();
+
+    /** RAG 인덱스 재구축 트리거 */
+    Map<String, Object> ragRebuild();
 }

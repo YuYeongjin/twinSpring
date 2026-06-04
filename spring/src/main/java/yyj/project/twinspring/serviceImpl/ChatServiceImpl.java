@@ -439,4 +439,41 @@ public class ChatServiceImpl implements ChatService {
             return Map.of("query", "", "evidence", List.of(), "hasData", false);
         }
     }
+
+    @Override
+    public Map<String, Object> ragStatus() {
+        try {
+            String raw = agentClient.get()
+                    .uri("/admin/rag-status")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[RagStatus] 조회 실패: {}", e.getMessage());
+            return Map.of("dbReachable", false, "chunks", 0, "hasData", false,
+                          "status", "error", "message", e.getMessage());
+        }
+    }
+
+    @Override
+    public Map<String, Object> ragRebuild() {
+        try {
+            String raw = agentClient.post()
+                    .uri("/admin/rebuild-rag")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue("{}")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[RagRebuild] 트리거 실패: {}", e.getMessage());
+            return Map.of("queued", false, "message", "Agent 서버 연결 실패: " + e.getMessage());
+        }
+    }
 }
