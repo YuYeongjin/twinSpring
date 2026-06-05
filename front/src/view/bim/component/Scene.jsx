@@ -1205,6 +1205,63 @@ function Ortho2DCamera({ viewMode, modelData, orbitRef }) {
 }
 
 // ================================================================
+// 그룹 이동 고스트 — 선택된 부재들을 마우스를 따라 미리보기로 이동
+// ================================================================
+function GroupMoveGhost({ groupMovePending, onGroupMoveConfirm }) {
+    const { camera, raycaster, mouse } = useThree();
+    const groupRef = useRef();
+    const lastHitRef = useRef(new THREE.Vector3());
+    const { elements, pivotX, pivotY } = groupMovePending;
+
+    const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+
+    useFrame(() => {
+        if (!groupRef.current) return;
+        raycaster.setFromCamera(mouse, camera);
+        const hit = lastHitRef.current;
+        if (!raycaster.ray.intersectPlane(plane, hit)) return;
+        // hit.x = dataX, hit.z = dataY(floorY) → delta 계산
+        groupRef.current.position.set(hit.x - pivotX, 0, hit.z - pivotY);
+    });
+
+    return (
+        <>
+            {/* 클릭 평면 — 클릭 시 그룹 이동 확정 */}
+            <mesh
+                rotation={[-Math.PI / 2, 0, 0]}
+                position={[0, 0.002, 0]}
+                onClick={e => {
+                    e.stopPropagation();
+                    onGroupMoveConfirm(lastHitRef.current.x, lastHitRef.current.z);
+                }}
+            >
+                <planeGeometry args={[500, 500]} />
+                <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} />
+            </mesh>
+
+            {/* 이동 미리보기: 전체 그룹이 delta만큼 이동하고 각 부재는 원래 상대 위치 유지 */}
+            <group ref={groupRef}>
+                {elements.map(el => {
+                    const px = Number(el.positionX) || 0;
+                    const py = Number(el.positionY) || 0;
+                    const pz = Number(el.positionZ) || 0;
+                    const sx = Math.max(0.1, Number(el.sizeX) || 1);
+                    const sy = Math.max(0.1, Number(el.sizeY) || 1);
+                    const sz = Math.max(0.1, Number(el.sizeZ) || 1);
+                    // Three.js: X=dataX, Y=dataZ(height base)+sz/2, Z=dataY(floorY)
+                    return (
+                        <mesh key={el.elementId} position={[px, pz + sz / 2, py]}>
+                            <boxGeometry args={[sx + 0.05, sz + 0.05, sy + 0.05]} />
+                            <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.8} />
+                        </mesh>
+                    );
+                })}
+            </group>
+        </>
+    );
+}
+
+// ================================================================
 // 메인 Scene
 // ================================================================
 export default function Scene({
