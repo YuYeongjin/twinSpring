@@ -1,7 +1,6 @@
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import * as THREE from 'three';
 
-// 선택용 투명 AABB 재질 — 렌더링은 완전 투명, 레이캐스팅은 정상 작동
 const HIT_MATERIAL = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0,
@@ -12,10 +11,10 @@ const HIT_MATERIAL = new THREE.MeshBasicMaterial({
 // ================================================================
 // 단일 IFC 요소 메시
 // ================================================================
-function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedElements }) {
+function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedElements, onMeshMount }) {
   const meshRef = useRef();
 
-  const elementId = mesh.elementId; // `IFC-${expressId}`
+  const elementId = mesh.elementId;
   const element   = useMemo(
     () => modelData?.find(e => e.elementId === elementId),
     [modelData, elementId]
@@ -24,7 +23,12 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
   const isSelected      = selectedElement?.data?.elementId === elementId;
   const isMultiSelected = selectedElements?.has(elementId) && !isSelected;
 
-  // Three.js BufferGeometry 생성
+  // meshRef 등록 / 해제
+  useEffect(() => {
+    onMeshMount?.(elementId, meshRef);
+    return () => onMeshMount?.(elementId, null);
+  }, [elementId, onMeshMount]);
+
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
@@ -43,7 +47,6 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
 
   useEffect(() => () => geometry.dispose(), [geometry]);
 
-  // 재질 (선택 상태에 따라 색상 변경)
   const material = useMemo(() => {
     const [r, g, b, a] = mesh.color;
     let color;
@@ -66,7 +69,6 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
   const handleClick = (e) => {
     e.stopPropagation();
     if (!onElementSelect) return;
-    // modelData에서 찾은 element 우선, 없으면 mesh 데이터로 폴백
     const target = element ?? {
       elementId: mesh.elementId,
       elementType: mesh.elementType,
@@ -77,7 +79,6 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
     onElementSelect(target, meshRef, e.shiftKey);
   };
 
-  // ── 투명 AABB 히트박스 (작은 모델도 안정적으로 선택 가능) ──────────
   // 좌표 규칙: positionX/Y = 평면(2D), positionZ = 높이(3D)
   // Three.js: X=posX, Y(up)=posZ+sizeZ/2, Z(depth)=posY
   const hitPos = useMemo(() => {
@@ -93,14 +94,13 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
     if (!element) return null;
     return [
       Math.max(Number(element.sizeX) || 0.02, 0.02),
-      Math.max(Number(element.sizeZ) || 0.02, 0.02),  // 높이
-      Math.max(Number(element.sizeY) || 0.02, 0.02),  // 평면 Y
+      Math.max(Number(element.sizeZ) || 0.02, 0.02),
+      Math.max(Number(element.sizeY) || 0.02, 0.02),
     ];
   }, [element]);
 
   return (
     <>
-      {/* 실제 IFC 지오메트리 메시 */}
       <mesh
         ref={meshRef}
         geometry={geometry}
@@ -112,7 +112,6 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
         receiveShadow
       />
 
-      {/* 투명 AABB 히트박스 — 작은 모델이나 복잡한 지오메트리에서 클릭 보조 */}
       {hitPos && hitArgs && (
         <mesh
           position={hitPos}
@@ -129,15 +128,59 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
 }
 
 // ================================================================
-// IFC 메시 그룹 — 실제 IFC 지오메트리를 Three.js로 렌더링
+// IFC 메시 그룹
+// ref를 통해 선택된 메시의 Three.js transform을 직접 조작한다.
 // ================================================================
-export function IFCMeshGroup({
-  ifcMeshes,
-  modelData,
-  onElementSelect,
-  selectedElement,
-  selectedElements,
-}) {
+export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
+  { ifcMeshes, modelData, onElementSelect, selectedElement, selectedElements },
+  ref
+) {
+  // elementId → React ref(meshRef) 맵
+  const meshRefsMap = useRef(new Map());
+
+  const handleMeshMount = useCallback((elementId, meshRef) => {
+    if (meshRef) meshRefsMap.current.set(elementId, meshRef);
+    else         meshRefsMap.current.delete(elementId);
+  }, []);
+
+  // Scene이 호출할 imperative API
+  useImperativeHandle(ref, () => ({
+    // translate: 선택된 메시들의 position에 델타를 더한다
+    applyTranslate(selectedIds, dx, dy, dz) {
+      for (const id of selectedIds) {
+        const mRef = meshRefsMap.current.get(id);
+        if (mRef?.current) {
+          mRef.current.position.x += dx;
+          mRef.current.position.y += dy;
+          mRef.current.position.z += dz;
+        }
+      }
+    },
+    // rotate: 각 메시를 centroid(THREE.Vector3) 주위로 quaternion 회전
+    applyRotate(selectedIds, centroid, quaternion) {
+      for (const id of selectedIds) {
+        const mRef = meshRefsMap.current.get(id);
+        if (!mRef?.current) continue;
+        const pos = mRef.current.position.clone().sub(centroid).applyQuaternion(quaternion).add(centroid);
+        mRef.current.position.copy(pos);
+        const q = new THREE.Quaternion().setFromEuler(mRef.current.rotation);
+        q.premultiply(quaternion);
+        mRef.current.rotation.setFromQuaternion(q);
+      }
+    },
+    // scale: 각 메시를 centroid 기준으로 (sx,sy,sz) 배율 적용
+    applyScale(selectedIds, centroid, sx, sy, sz) {
+      const scaleVec = new THREE.Vector3(sx, sy, sz);
+      for (const id of selectedIds) {
+        const mRef = meshRefsMap.current.get(id);
+        if (!mRef?.current) continue;
+        const pos = mRef.current.position.clone().sub(centroid).multiply(scaleVec).add(centroid);
+        mRef.current.position.copy(pos);
+        mRef.current.scale.multiply(scaleVec);
+      }
+    },
+  }), []);
+
   if (!ifcMeshes || ifcMeshes.length === 0) return null;
 
   return (
@@ -150,8 +193,9 @@ export function IFCMeshGroup({
           modelData={modelData}
           selectedElement={selectedElement}
           selectedElements={selectedElements}
+          onMeshMount={handleMeshMount}
         />
       ))}
     </group>
   );
-}
+});
