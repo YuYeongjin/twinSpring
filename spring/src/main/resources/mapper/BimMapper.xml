@@ -77,7 +77,8 @@
                line_width    AS "lineWidth",
                points_json   AS "pointsJson",
                closed,
-               shape_height  AS "shapeHeight"
+               shape_height  AS "shapeHeight",
+               line_type     AS "lineType"
         FROM bim_line
         WHERE project_id = #{projectId}
         ORDER BY created_at ASC
@@ -86,21 +87,23 @@
     <insert id="insertLine" parameterType="map">
         INSERT INTO bim_line (line_id, project_id, start_x, start_y, start_z,
                                end_x, end_y, end_z, color, line_width,
-                               points_json, closed, shape_height)
+                               points_json, closed, shape_height, line_type)
         VALUES (#{lineId}, #{projectId}, #{startX}, #{startY}, #{startZ},
                 #{endX}, #{endY}, #{endZ}, #{color}, #{lineWidth},
-                #{pointsJson,jdbcType=VARCHAR}, #{closed}, #{shapeHeight})
+                #{pointsJson,jdbcType=VARCHAR}, #{closed}, #{shapeHeight},
+                #{lineType,jdbcType=VARCHAR})
     </insert>
 
     <insert id="insertLinesBatch">
         INSERT INTO bim_line (line_id, project_id, start_x, start_y, start_z,
                                end_x, end_y, end_z, color, line_width,
-                               points_json, closed, shape_height)
+                               points_json, closed, shape_height, line_type)
         VALUES
         <foreach collection="list" item="l" separator=",">
             (#{l.lineId}, #{l.projectId}, #{l.startX}, #{l.startY}, #{l.startZ},
              #{l.endX}, #{l.endY}, #{l.endZ}, #{l.color}, #{l.lineWidth},
-             #{l.pointsJson,jdbcType=VARCHAR}, #{l.closed}, #{l.shapeHeight})
+             #{l.pointsJson,jdbcType=VARCHAR}, #{l.closed}, #{l.shapeHeight},
+             #{l.lineType,jdbcType=VARCHAR})
         </foreach>
     </insert>
 
@@ -116,7 +119,8 @@
             line_width   = #{lineWidth},
             points_json  = #{pointsJson,jdbcType=VARCHAR},
             closed       = #{closed},
-            shape_height = #{shapeHeight}
+            shape_height = #{shapeHeight},
+            line_type    = #{lineType,jdbcType=VARCHAR}
         WHERE line_id = #{lineId}
     </update>
 
