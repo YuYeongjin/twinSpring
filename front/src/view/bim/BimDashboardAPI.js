@@ -158,10 +158,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // 선택 모드 토글
     // ================================================================
     function toggleSelectMode() {
-        setIsSelectMode(prev => {
-            if (prev) setSelectedElements(new Set());
-            return !prev;
-        });
+        setIsSelectMode(prev => !prev);
     }
 
     // ================================================================
