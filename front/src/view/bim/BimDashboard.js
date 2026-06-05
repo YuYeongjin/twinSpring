@@ -168,6 +168,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onDecompose, onCl
     const t = useT('bimDashboard');
     const [form, setForm] = React.useState(null);
 
+    // 선 전환 시 전체 폼 초기화
     React.useEffect(() => {
         if (!line) { setForm(null); return; }
         let pts;
@@ -188,7 +189,23 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onDecompose, onCl
             shapeHeight: line.shapeHeight ?? 0,
             points: pts.map(p => [...p]),
         });
-    }, [line?.lineId]);
+    }, [line?.lineId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // 꼭짓점 드래그로 line.pointsJson이 외부에서 바뀌면 form.points만 동기화
+    React.useEffect(() => {
+        if (!form || !line) return;
+        let newPts;
+        try {
+            const raw = line.pointsJson;
+            newPts = raw
+                ? (typeof raw === 'string' ? JSON.parse(raw) : raw)
+                : [line.start, line.end];
+        } catch { return; }
+        if (!Array.isArray(newPts) || newPts.length < 2) return;
+        if (JSON.stringify(newPts) !== JSON.stringify(form.points)) {
+            setForm(prev => prev ? { ...prev, points: newPts.map(p => [...p]) } : prev);
+        }
+    }, [line?.pointsJson]); // eslint-disable-line react-hooks/exhaustive-deps
 
     if (!line || !form) return null;
 
@@ -353,8 +370,9 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onDecompose, onCl
                 <button
                     onClick={() => onSave({ ...line, ...form, lineType: form.lineType, pointsJson: JSON.stringify(form.points) })}
                     className="flex-1 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition"
+                    title="저장 (Ctrl+S)"
                 >
-                    {t('save')}
+                    {t('save')} <span className="opacity-50 text-[10px]">Ctrl+S</span>
                 </button>
                 <button
                     onClick={() => onDecompose?.(line.lineId)}
@@ -1132,6 +1150,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     pointsJson: null,
                     closed: false,
                     shapeHeight: 0,
+                    lineType: d.lineType ?? 'line',
                 }]);
             })
             .catch(err => console.error('선 저장 실패:', err));
@@ -1334,26 +1353,21 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         setLines(prev => prev.map(l => l.lineId === lineId ? { ...l, ...updates } : l));
     }, []);
 
-    const saveLineVertexDrag = useCallback((lineId, latestPoints) => {
-        setLines(prev => {
-            const line = prev.find(l => l.lineId === lineId);
-            if (!line) return prev;
-            const body = {
-                lineId,
-                projectId: selectedProject?.projectId,
-                startX: latestPoints[0][0], startY: latestPoints[0][1] ?? 0, startZ: latestPoints[0][2],
-                endX: latestPoints[latestPoints.length - 1][0],
-                endY: latestPoints[latestPoints.length - 1][1] ?? 0,
-                endZ: latestPoints[latestPoints.length - 1][2],
-                color: line.color, lineWidth: line.lineWidth,
-                pointsJson: JSON.stringify(latestPoints),
-                closed: line.closed, shapeHeight: line.shapeHeight,
-            };
-            AxiosCustom.put(`${API_BASE}/line`, body)
-                .catch(err => console.error('꼭짓점 드래그 저장 실패:', err));
-            return prev;
-        });
-    }, [selectedProject]);
+    // 꼭짓점 드래그 완료 — 로컬 상태는 onVertexUpdate(updateLineData)에서 실시간 반영됨.
+    // 서버 저장은 Save 버튼 또는 Ctrl+S에서 처리하므로 여기서는 API 호출하지 않음.
+    const saveLineVertexDrag = useCallback((_lineId, _latestPoints) => {
+        // no-op: local state already updated via onVertexUpdate
+    }, []);
+
+    // ── 전역 저장 (Save 버튼 / Ctrl+S) ──────────────────────────────
+    const handleGlobalSave = useCallback(() => {
+        if (selectedLineId) {
+            const currentLine = lines.find(l => l.lineId === selectedLineId);
+            if (currentLine) saveUpdateLine(currentLine);
+        } else if (selectedElement) {
+            saveUpdateElement();
+        }
+    }, [selectedLineId, lines, selectedElement, saveUpdateLine, saveUpdateElement]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const saveUpdateLine = useCallback((lineData) => {
         const pointsArr = lineData.pointsJson
@@ -1619,6 +1633,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     useEffect(() => {
         const onKeyDown = (e) => {
+            // Ctrl+S / Cmd+S — 전역 저장 (입력 포커스 위치 무관하게 항상 처리)
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                handleGlobalSave();
+                return;
+            }
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
             if (e.key === 't' || e.key === 'T') setTransformMode('translate');
             if (e.key === 'r' || e.key === 'R') setTransformMode('rotate');
@@ -1661,7 +1681,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     }, [selectedElement, pendingElement, isSelectMode, lineDrawMode, deleteSelectedElements,
         cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements,
         undo, finishLineDraw, selectedLineId, deleteLine, setSelectedLineId,
-        walkMode, measureMode, measurePoints]);
+        walkMode, measureMode, measurePoints, handleGlobalSave]);
 
     return (
         <div ref={rootContainerRef} className="w-full bg-space-900 flex flex-col overflow-hidden"

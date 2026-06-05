@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS bim_line
     points_json  TEXT             NULL,
     closed       BOOLEAN          NOT NULL DEFAULT FALSE,
     shape_height DOUBLE PRECISION NOT NULL DEFAULT 0,
+    line_type    TEXT             NOT NULL DEFAULT 'line',
     created_at   TIMESTAMPTZ      NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_bim_line_project ON bim_line (project_id);
@@ -191,6 +192,7 @@ CREATE INDEX IF NOT EXISTS idx_bim_line_project ON bim_line (project_id);
 ALTER TABLE bim_line ADD COLUMN IF NOT EXISTS points_json  TEXT;
 ALTER TABLE bim_line ADD COLUMN IF NOT EXISTS closed       BOOLEAN          NOT NULL DEFAULT FALSE;
 ALTER TABLE bim_line ADD COLUMN IF NOT EXISTS shape_height DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE bim_line ADD COLUMN IF NOT EXISTS line_type    TEXT             NOT NULL DEFAULT 'line';
 
 -- ================================================================
 -- 시뮬레이션 프로젝트 테이블
