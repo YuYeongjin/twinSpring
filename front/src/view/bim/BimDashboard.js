@@ -12,7 +12,9 @@ import MiniMapCanvas from './component/MiniMapCanvas';
 import AxiosCustom from '../../axios/AxiosCustom';
 import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
 import StructuralDashboard from '../structural/StructuralDashboard';
+import WorkPlanDashboard from './component/WorkPlanDashboard';
 import DroneAnalysisModal from './component/DroneAnalysisModal';
+import BimAgentChat from './component/BimAgentChat';
 import { useT } from '../../i18n/LanguageContext';
 
 const API_BASE = '/api/bim';
@@ -151,7 +153,18 @@ const MATERIAL_OPTIONS = {
 // LinePropertyPanel — 선 선택 시 표시되는 편집 패널
 // ================================================================
 
-function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
+const LINE_TYPE_OPTIONS = [
+    { value: 'line',   label: '선 (Line)',         color: null      },
+    { value: 'rebar',  label: '철근 (Rebar)',       color: '#ef4444' },
+    { value: 'wall',   label: '벽체 (Wall)',        color: '#94a3b8' },
+    { value: 'slab',   label: '슬래브 (Slab)',      color: '#60a5fa' },
+    { value: 'beam',   label: '보 (Beam)',          color: '#a78bfa' },
+    { value: 'column', label: '기둥 (Column)',      color: '#fbbf24' },
+    { value: 'floor',  label: '바닥 (Floor)',       color: '#34d399' },
+    { value: 'pipe',   label: '배관 (Pipe)',        color: '#22d3ee' },
+];
+
+function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onDecompose, onClose }) {
     const t = useT('bimDashboard');
     const [form, setForm] = React.useState(null);
 
@@ -170,6 +183,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
         setForm({
             color: line.color ?? '#60a5fa',
             lineWidth: line.lineWidth ?? 2,
+            lineType: line.lineType ?? 'line',
             closed: !!line.closed,
             shapeHeight: line.shapeHeight ?? 0,
             points: pts.map(p => [...p]),
@@ -185,6 +199,7 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
         onUpdate(line.lineId, {
             color: next.color,
             lineWidth: next.lineWidth,
+            lineType: next.lineType,
             closed: next.closed,
             shapeHeight: next.shapeHeight,
             pointsJson: JSON.stringify(next.points),
@@ -217,6 +232,35 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
             <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-cyan-300">{t('editLine')}</span>
                 <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xs">✕</button>
+            </div>
+
+            {/* 요소 타입 선택 */}
+            <div>
+                <label className="text-xs text-gray-400 block mb-1">요소 타입</label>
+                <div className="grid grid-cols-2 gap-1">
+                    {LINE_TYPE_OPTIONS.map(opt => (
+                        <button
+                            key={opt.value}
+                            onClick={() => {
+                                const autoColor = opt.color
+                                    ? opt.color
+                                    : (form.lineType !== 'line' ? '#60a5fa' : form.color);
+                                commit({ ...form, lineType: opt.value, color: opt.color ?? form.color });
+                            }}
+                            className={`px-2 py-1 rounded text-xs font-semibold border transition ${
+                                form.lineType === opt.value
+                                    ? 'border-cyan-500 bg-cyan-900/40 text-cyan-200'
+                                    : 'border-space-600 bg-space-700/40 text-gray-400 hover:text-gray-200'
+                            }`}
+                            style={opt.color && form.lineType === opt.value ? { borderColor: opt.color + '80', color: opt.color } : {}}
+                        >
+                            {opt.color && (
+                                <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: opt.color }} />
+                            )}
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -307,10 +351,17 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onClose }) {
 
             <div className="flex gap-2 pt-1">
                 <button
-                    onClick={() => onSave({ ...line, ...form, pointsJson: JSON.stringify(form.points) })}
+                    onClick={() => onSave({ ...line, ...form, lineType: form.lineType, pointsJson: JSON.stringify(form.points) })}
                     className="flex-1 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition"
                 >
                     {t('save')}
+                </button>
+                <button
+                    onClick={() => onDecompose?.(line.lineId)}
+                    className="px-3 py-1.5 rounded-md bg-amber-700/60 text-amber-300 hover:bg-amber-600/80 transition text-xs font-semibold"
+                    title="선을 개별 선분으로 분해"
+                >
+                    해체
                 </button>
                 <button
                     onClick={() => onDelete(line.lineId)}
@@ -1037,6 +1088,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const [lineColor, setLineColor] = useState('#60a5fa');
     const [lineWidth, setLineWidth] = useState(2);
     const [selectedLineId, setSelectedLineId] = useState(null);
+    const [multiSelectedLineIds, setMultiSelectedLineIds] = useState(new Set());
 
     useEffect(() => {
         const pid = selectedProject?.projectId;
@@ -1052,6 +1104,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     pointsJson: d.pointsJson ?? null,
                     closed: !!d.closed,
                     shapeHeight: d.shapeHeight ?? 0,
+                    lineType: d.lineType ?? 'line',
                 }));
                 setLines(loaded);
             })
@@ -1121,6 +1174,152 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         setLineChainStart(null);
     }, []);
 
+    // 선 다중 선택 토글 (Shift+클릭)
+    const handleLineMultiSelect = useCallback((lineId) => {
+        setMultiSelectedLineIds(prev => {
+            const next = new Set(prev);
+            if (next.has(lineId)) next.delete(lineId);
+            else next.add(lineId);
+            return next;
+        });
+        setShowLeftPanel(true);
+        setSelectedElement(null);
+        setSelectedElements(new Set());
+    }, [setSelectedElement, setSelectedElements]);
+
+    // 여러 선 합치기: 선택된 선들을 하나의 폴리라인으로 합침
+    const mergeSelectedLines = useCallback(() => {
+        const allIds = new Set([...multiSelectedLineIds, ...(selectedLineId ? [selectedLineId] : [])]);
+        if (allIds.size < 2) return;
+
+        const selectedLinesData = lines.filter(l => allIds.has(l.lineId));
+        if (selectedLinesData.length < 2) return;
+
+        // 순서대로 점들을 연결 (끝점-시작점 연결 시도)
+        const getLinePoints = (line) => {
+            if (line.pointsJson) {
+                try {
+                    const p = typeof line.pointsJson === 'string' ? JSON.parse(line.pointsJson) : line.pointsJson;
+                    if (Array.isArray(p) && p.length >= 2) return p;
+                } catch (_) {}
+            }
+            return [line.start, line.end];
+        };
+
+        let mergedPoints = getLinePoints(selectedLinesData[0]);
+        for (let i = 1; i < selectedLinesData.length; i++) {
+            const pts = getLinePoints(selectedLinesData[i]);
+            const lastPt = mergedPoints[mergedPoints.length - 1];
+            const threshold = 0.05;
+            const dStart = Math.hypot(pts[0][0] - lastPt[0], pts[0][1] - lastPt[1], (pts[0][2] ?? 0) - (lastPt[2] ?? 0));
+            const dEnd   = Math.hypot(pts[pts.length-1][0] - lastPt[0], pts[pts.length-1][1] - lastPt[1], (pts[pts.length-1][2] ?? 0) - (lastPt[2] ?? 0));
+            if (dEnd < threshold) {
+                // 끝점이 가깝다 → 역순으로 붙이기 (끝점 중복 제거)
+                mergedPoints = [...mergedPoints, ...[...pts].reverse().slice(1)];
+            } else if (dStart < threshold) {
+                // 시작점이 가깝다 → 그대로 붙이기 (시작점 중복 제거)
+                mergedPoints = [...mergedPoints, ...pts.slice(1)];
+            } else {
+                // 연결 안 됨 → 그냥 이어붙이기
+                mergedPoints = [...mergedPoints, ...pts];
+            }
+        }
+
+        const firstLine = selectedLinesData[0];
+        const pid = selectedProject?.projectId;
+        const start = mergedPoints[0];
+        const end = mergedPoints[mergedPoints.length - 1];
+
+        // 기존 선들 삭제
+        for (const lineId of allIds) deleteLine(lineId);
+
+        // 합쳐진 폴리라인 생성
+        AxiosCustom.post(`${API_BASE}/line`, {
+            projectId: pid,
+            startX: start[0], startY: start[1], startZ: start[2] ?? 0,
+            endX: end[0], endY: end[1], endZ: end[2] ?? 0,
+            color: firstLine.color,
+            lineWidth: firstLine.lineWidth,
+            lineType: firstLine.lineType ?? 'line',
+            pointsJson: JSON.stringify(mergedPoints),
+            closed: false,
+            shapeHeight: 0,
+        }).then(res => {
+            const d = res.data;
+            setLines(prev => [...prev, {
+                lineId: d.lineId,
+                start: [d.startX, d.startY, d.startZ],
+                end: [d.endX, d.endY, d.endZ],
+                color: d.color,
+                lineWidth: d.lineWidth,
+                lineType: firstLine.lineType ?? 'line',
+                pointsJson: JSON.stringify(mergedPoints),
+                closed: false,
+                shapeHeight: 0,
+            }]);
+        }).catch(err => console.error('합치기 저장 실패:', err));
+
+        setMultiSelectedLineIds(new Set());
+        setSelectedLineId(null);
+    }, [multiSelectedLineIds, selectedLineId, lines, selectedProject, deleteLine]);
+
+    // 선 분해: 선택된 선을 개별 선분으로 분리
+    const decomposeSelectedLine = useCallback((lineId) => {
+        const line = lines.find(l => l.lineId === lineId);
+        if (!line) return;
+
+        let pts;
+        if (line.pointsJson) {
+            try {
+                pts = typeof line.pointsJson === 'string' ? JSON.parse(line.pointsJson) : line.pointsJson;
+            } catch (_) { pts = [line.start, line.end]; }
+        } else {
+            pts = [line.start, line.end];
+        }
+
+        if (pts.length <= 2 && !line.closed) {
+            alert('이미 단일 선분입니다. 분해할 수 없습니다.');
+            return;
+        }
+
+        const segments = [];
+        for (let i = 0; i < pts.length - 1; i++) segments.push([pts[i], pts[i + 1]]);
+        if (line.closed && pts.length >= 3) segments.push([pts[pts.length - 1], pts[0]]);
+
+        deleteLine(lineId);
+
+        const pid = selectedProject?.projectId;
+        for (const [s, e] of segments) {
+            AxiosCustom.post(`${API_BASE}/line`, {
+                projectId: pid,
+                startX: s[0], startY: s[1], startZ: s[2] ?? 0,
+                endX: e[0], endY: e[1], endZ: e[2] ?? 0,
+                color: line.color,
+                lineWidth: line.lineWidth,
+                lineType: line.lineType ?? 'line',
+                pointsJson: null,
+                closed: false,
+                shapeHeight: 0,
+            }).then(res => {
+                const d = res.data;
+                setLines(prev => [...prev, {
+                    lineId: d.lineId,
+                    start: [d.startX, d.startY, d.startZ],
+                    end: [d.endX, d.endY, d.endZ],
+                    color: d.color,
+                    lineWidth: d.lineWidth,
+                    lineType: line.lineType ?? 'line',
+                    pointsJson: null,
+                    closed: false,
+                    shapeHeight: 0,
+                }]);
+            }).catch(err => console.error('분해 저장 실패:', err));
+        }
+
+        setSelectedLineId(null);
+        setMultiSelectedLineIds(new Set());
+    }, [lines, selectedProject, deleteLine]);
+
     const closeLineChain = useCallback(() => {
         if (lineStart && lineChainStart &&
             JSON.stringify(lineStart) !== JSON.stringify(lineChainStart)) {
@@ -1172,6 +1371,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             endZ: pointsArr[pointsArr.length - 1][2],
             color: lineData.color,
             lineWidth: lineData.lineWidth,
+            lineType: lineData.lineType ?? 'line',
             pointsJson: JSON.stringify(pointsArr),
             closed: lineData.closed,
             shapeHeight: lineData.shapeHeight,
@@ -1452,6 +1652,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     setSelectedElement(null);
                     setSelectedElements(new Set());
                     setSelectedLineId(null);
+                    setMultiSelectedLineIds(new Set());
                 }
             }
         };
@@ -1532,6 +1733,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             <button onClick={() => setBimSubView('structural')} className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
                                 style={{ backgroundColor: bimSubView === 'structural' ? '#1a3520' : 'transparent', color: bimSubView === 'structural' ? '#4ade80' : '#8896a4' }}
                             >{t('structuralAnalysis')}</button>
+                            <button onClick={() => setBimSubView('workplan')} className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                                style={{ backgroundColor: bimSubView === 'workplan' ? '#1e1a3f' : 'transparent', color: bimSubView === 'workplan' ? '#c084fc' : '#8896a4' }}
+                            >작업계획</button>
                         </div>
                     </div>
 
@@ -1637,6 +1841,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         <button onClick={() => setBimSubView('structural')} className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
                             style={{ backgroundColor: bimSubView === 'structural' ? '#1a3520' : 'transparent', color: bimSubView === 'structural' ? '#4ade80' : '#8896a4' }}
                         >{t('structuralAnalysis')}</button>
+                        <button onClick={() => setBimSubView('workplan')} className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+                            style={{ backgroundColor: bimSubView === 'workplan' ? '#1e1a3f' : 'transparent', color: bimSubView === 'workplan' ? '#c084fc' : '#8896a4' }}
+                        >작업계획</button>
                     </div>
 
                     {bimSubView === 'editor' && (<>
@@ -1801,6 +2008,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 <StructuralDashboard selectedProject={selectedProject} modelData={modelData} />
             </div>
 
+            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'block' : 'none' }}>
+                <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} />
+            </div>
+
             <div
                 ref={panelContainerRef}
                 className="flex-1 min-h-0 flex flex-col md:flex-row mt-2"
@@ -1881,6 +2092,32 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             />
                         </Card>
 
+                        {/* 다중 선 선택 액션 바 */}
+                        {(multiSelectedLineIds.size >= 1 || (selectedLineId && multiSelectedLineIds.size >= 1)) && (
+                            <Card
+                                title={`선 ${multiSelectedLineIds.size + (selectedLineId ? 1 : 0)}개 선택됨`}
+                                right={
+                                    <button
+                                        onClick={() => { setMultiSelectedLineIds(new Set()); setSelectedLineId(null); }}
+                                        className="text-gray-500 hover:text-gray-300 text-xs"
+                                    >✕ 해제</button>
+                                }
+                            >
+                                <div className="space-y-2">
+                                    <p className="text-xs text-gray-500">
+                                        Shift+클릭으로 선을 추가 선택하세요
+                                    </p>
+                                    <button
+                                        onClick={mergeSelectedLines}
+                                        disabled={(multiSelectedLineIds.size + (selectedLineId ? 1 : 0)) < 2}
+                                        className="w-full py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition disabled:opacity-30"
+                                    >
+                                        선 합치기 (Merge) — {multiSelectedLineIds.size + (selectedLineId ? 1 : 0)}개 → 1개
+                                    </button>
+                                </div>
+                            </Card>
+                        )}
+
                         {selectedLineId && (
                             <Card title={t('editLine')} right={<Chip color="blue">{t('drawLineChip')}</Chip>}>
                                 <LinePropertyPanel
@@ -1888,6 +2125,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     onUpdate={updateLineData}
                                     onSave={saveUpdateLine}
                                     onDelete={deleteLine}
+                                    onDecompose={decomposeSelectedLine}
                                     onClose={() => setSelectedLineId(null)}
                                 />
                             </Card>
@@ -2017,14 +2255,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             pushUndo={pushUndo}
                                             lines={visibleLines}
                                             selectedLineId={selectedLineId}
+                                            multiSelectedLineIds={multiSelectedLineIds}
                                             onLineSelect={(id) => {
                                                 setSelectedLineId(id);
+                                                setMultiSelectedLineIds(new Set());
                                                 if (id) {
                                                     setShowLeftPanel(true);
                                                     setSelectedElement(null);
                                                     setSelectedElements(new Set());
                                                 }
                                             }}
+                                            onLineMultiSelect={handleLineMultiSelect}
                                             lineDrawMode={lineDrawMode}
                                             lineDrawHeight={lineDrawHeight}
                                             lineStart={lineStart}
@@ -2364,6 +2605,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     </>
                 )}{/* end showLayerPanel */}
             </div>
+
+            {/* BIM Agent Chat — 구조 안정성 검토 & WBS 스케줄링 */}
+            {bimSubView === 'editor' && selectedProject && (
+                <BimAgentChat
+                    selectedProject={selectedProject}
+                    onShowStructural={() => setBimSubView('structural')}
+                />
+            )}
         </div>
     );
 }

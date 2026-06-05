@@ -1137,7 +1137,9 @@ export default function Scene({
     // 선 작도
     lines = [],
     selectedLineId,
+    multiSelectedLineIds = null,
     onLineSelect,
+    onLineMultiSelect,
     lineDrawMode,
     lineDrawHeight = 0,
     lineStart  = null,
@@ -1760,7 +1762,11 @@ export default function Scene({
                     key={line.lineId}
                     line={line}
                     selected={line.lineId === selectedLineId}
-                    onClick={onLineSelect}
+                    multiSelected={!!(multiSelectedLineIds?.has(line.lineId) && line.lineId !== selectedLineId)}
+                    onClick={(id, shiftKey) => {
+                        if (shiftKey) onLineMultiSelect?.(id);
+                        else onLineSelect?.(id);
+                    }}
                 />
             ))}
 

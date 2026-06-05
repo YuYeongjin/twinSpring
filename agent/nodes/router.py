@@ -18,7 +18,8 @@ from config.lang_util import detect_lang
 logger = logging.getLogger(__name__)
 
 _VALID_DOMAINS = frozenset(
-    {"bim", "sensor", "simulation", "safe", "wbs", "test", "orchestrator", "tab_guide", "chat"}
+    {"bim", "sensor", "simulation", "safe", "wbs", "test", "orchestrator", "tab_guide", "chat",
+     "bim_wbs"}
 )
 
 _ROUTER_SYSTEM = SystemMessage(content=(
