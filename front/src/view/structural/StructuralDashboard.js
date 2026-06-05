@@ -663,7 +663,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   }, [modelData, selectedProject, runActualAnalysis]);
 
   useEffect(() => {
-    if (!results || !modelData.length) return;
+    if (!modelData.length) return;
     const id = setTimeout(() => {
       setResults(runAnalysis(modelData, env, loads, matId));
     }, 250);

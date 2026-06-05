@@ -241,7 +241,7 @@ export default function BimAgentChat({
         title="BIM Agent"
         style={{
           position:     "fixed",
-          bottom:       72,
+          bottom:       24,
           right:        20,
           width:        46,
           height:       46,
@@ -267,7 +267,7 @@ export default function BimAgentChat({
       {open && (
         <div style={{
           position:     "fixed",
-          bottom:       126,
+          bottom:       78,
           right:        20,
           width:        360,
           maxHeight:    "62vh",

@@ -174,40 +174,48 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     };
 
     // ================================================================
-    // 저장 (서버 PUT) — rotation 포함
+    // 저장 (서버 PUT) — rotation 포함, 다중 선택 시 전체 저장
     // ================================================================
     function saveUpdateElement() {
         if (!selectedElement) return;
         pushUndo();
-        const payload = {
-            ...selectedElement.data,
-            projectId: selectedProject?.projectId || selectedElement.data.projectId,
-        };
 
-        if (payload.positionData) {
-            try {
-                const arr = typeof payload.positionData === 'string'
-                    ? JSON.parse(payload.positionData)
-                    : payload.positionData;
-                if (Array.isArray(arr) && arr.length >= 3) {
-                    payload.positionX = arr[0]; payload.positionY = arr[1]; payload.positionZ = arr[2];
-                }
-            } catch (e) { console.error("Position 파싱 오류", e); }
-        }
-        if (payload.sizeData) {
-            try {
-                const arr = typeof payload.sizeData === 'string'
-                    ? JSON.parse(payload.sizeData)
-                    : payload.sizeData;
-                if (Array.isArray(arr) && arr.length >= 3) {
-                    payload.sizeX = arr[0]; payload.sizeY = arr[1]; payload.sizeZ = arr[2];
-                }
-            } catch (e) { console.error("Size 파싱 오류", e); }
-        }
+        // 대표 부재 + 다중 선택된 모든 부재의 ID를 수집
+        const allIds = new Set([...selectedElements, selectedElement.data.elementId]);
 
-        AxiosCustom.put(`${API_BASE}/model/element`, payload)
-            .then(() => console.log("저장 완료:", payload.elementId))
-            .catch(err => console.error("저장 실패:", err));
+        for (const id of allIds) {
+            const latestData = modelData.find(e => e.elementId === id);
+            if (!latestData) continue;
+            const payload = {
+                ...latestData,
+                projectId: selectedProject?.projectId || latestData.projectId,
+            };
+
+            if (payload.positionData) {
+                try {
+                    const arr = typeof payload.positionData === 'string'
+                        ? JSON.parse(payload.positionData)
+                        : payload.positionData;
+                    if (Array.isArray(arr) && arr.length >= 3) {
+                        payload.positionX = arr[0]; payload.positionY = arr[1]; payload.positionZ = arr[2];
+                    }
+                } catch (e) { console.error("Position 파싱 오류", e); }
+            }
+            if (payload.sizeData) {
+                try {
+                    const arr = typeof payload.sizeData === 'string'
+                        ? JSON.parse(payload.sizeData)
+                        : payload.sizeData;
+                    if (Array.isArray(arr) && arr.length >= 3) {
+                        payload.sizeX = arr[0]; payload.sizeY = arr[1]; payload.sizeZ = arr[2];
+                    }
+                } catch (e) { console.error("Size 파싱 오류", e); }
+            }
+
+            AxiosCustom.put(`${API_BASE}/model/element`, payload)
+                .then(() => console.log("저장 완료:", id))
+                .catch(err => console.error("저장 실패:", err));
+        }
     }
 
     // ================================================================

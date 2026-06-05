@@ -1,8 +1,8 @@
 /**
- * WorkPlanDashboard.jsx  (v3 — i18n + FormulaTooltip)
+ * WorkPlanDashboard.jsx  (v4 — full i18n)
  */
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { useT } from '../../../i18n/LanguageContext';
+import { useT, useLanguage } from '../../../i18n/LanguageContext';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 계산 상수
@@ -22,34 +22,34 @@ const DEFAULT_SIZE = {
 };
 
 const SPEC = {
-  'IfcColumn:concrete': { prod:3.5/6,  workers:6,  maxW:18, roles:'거푸집공·철근공·콘크리트공', equipment:'거푸집, 진동기, 콘크리트 펌프카' },
-  'IfcColumn:steel':    { prod:0.19/5, workers:5,  maxW:10, roles:'용접공·조립공·신호수',       equipment:'용접기, 타워 크레인' },
-  'IfcColumn:timber':   { prod:2.0/4,  workers:4,  maxW:8,  roles:'목수·신호수',               equipment:'전동공구, 이동 크레인' },
-  'IfcColumn:composite':{ prod:2.5/7,  workers:7,  maxW:14, roles:'철골공·콘크리트공',           equipment:'용접기, 펌프카, 타워 크레인' },
-  'IfcBeam:concrete':   { prod:4.0/6,  workers:6,  maxW:18, roles:'거푸집공·철근공·콘크리트공', equipment:'거푸집, 진동기, 콘크리트 펌프카' },
-  'IfcBeam:steel':      { prod:0.26/5, workers:5,  maxW:10, roles:'용접공·조립공·신호수',       equipment:'용접기, 고장력 볼트 공구, 타워 크레인' },
-  'IfcBeam:timber':     { prod:2.5/4,  workers:4,  maxW:8,  roles:'목수·신호수',               equipment:'전동공구, 이동 크레인' },
-  'IfcBeam:composite':  { prod:3.0/7,  workers:7,  maxW:14, roles:'철골공·콘크리트공',           equipment:'용접기, 펌프카, 타워 크레인' },
-  'IfcSlab:concrete':   { prod:6.0/8,  workers:8,  maxW:16, roles:'철근공·콘크리트공',           equipment:'바이브레이터, 레벨링 장비, 콘크리트 펌프카' },
-  'IfcSlab:steel':      { prod:0.32/6, workers:6,  maxW:12, roles:'데크공·용접공',              equipment:'핀 용접기, 타워 크레인' },
-  'IfcSlab:timber':     { prod:3.5/5,  workers:5,  maxW:10, roles:'목수',                      equipment:'전동공구, 못 박기 총' },
-  'IfcSlab:composite':  { prod:4.5/7,  workers:7,  maxW:14, roles:'데크공·콘크리트공',           equipment:'핀 용접기, 바이브레이터, 펌프카' },
-  'IfcWall:concrete':   { prod:4.0/6,  workers:6,  maxW:18, roles:'거푸집공·철근공·콘크리트공', equipment:'유로폼, 진동기, 콘크리트 펌프카' },
-  'IfcWall:steel':      { prod:0.19/5, workers:5,  maxW:10, roles:'용접공·조립공·신호수',       equipment:'용접기, 이동 크레인' },
-  'IfcWall:timber':     { prod:2.5/4,  workers:4,  maxW:8,  roles:'목수',                      equipment:'전동공구' },
-  'IfcPier:concrete':   { prod:3.0/8,  workers:8,  maxW:16, roles:'거푸집공·철근공·콘크리트공', equipment:'거푸집, 진동기, 이동 크레인, 펌프카' },
-  'IfcPier:steel':      { prod:0.15/6, workers:6,  maxW:12, roles:'용접공·조립공·신호수',       equipment:'용접기, 대형 이동 크레인' },
+  'IfcColumn:concrete': { prod:3.5/6,  workers:6,  maxW:18, rolesKey:'rolesFormworkRebarConcrete', equipKey:'equipFormworkVibratorPump' },
+  'IfcColumn:steel':    { prod:0.19/5, workers:5,  maxW:10, rolesKey:'rolesWelderAssemblerSignal', equipKey:'equipWelderTowerCrane' },
+  'IfcColumn:timber':   { prod:2.0/4,  workers:4,  maxW:8,  rolesKey:'rolesCarpenterSignal',       equipKey:'equipPowerToolsMobileCrane' },
+  'IfcColumn:composite':{ prod:2.5/7,  workers:7,  maxW:14, rolesKey:'rolesSteelConcrete',         equipKey:'equipWelderPumpCrane' },
+  'IfcBeam:concrete':   { prod:4.0/6,  workers:6,  maxW:18, rolesKey:'rolesFormworkRebarConcrete', equipKey:'equipFormworkVibratorPump' },
+  'IfcBeam:steel':      { prod:0.26/5, workers:5,  maxW:10, rolesKey:'rolesWelderAssemblerSignal', equipKey:'equipWelderBoltCrane' },
+  'IfcBeam:timber':     { prod:2.5/4,  workers:4,  maxW:8,  rolesKey:'rolesCarpenterSignal',       equipKey:'equipPowerToolsMobileCrane' },
+  'IfcBeam:composite':  { prod:3.0/7,  workers:7,  maxW:14, rolesKey:'rolesSteelConcrete',         equipKey:'equipWelderPumpCrane' },
+  'IfcSlab:concrete':   { prod:6.0/8,  workers:8,  maxW:16, rolesKey:'rolesRebarConcrete',         equipKey:'equipVibratorLevelingPump' },
+  'IfcSlab:steel':      { prod:0.32/6, workers:6,  maxW:12, rolesKey:'rolesDeckWelder',            equipKey:'equipPinWelderTowerCrane' },
+  'IfcSlab:timber':     { prod:3.5/5,  workers:5,  maxW:10, rolesKey:'rolesCarpenter',             equipKey:'equipPowerToolsNailGun' },
+  'IfcSlab:composite':  { prod:4.5/7,  workers:7,  maxW:14, rolesKey:'rolesDeckConcrete',          equipKey:'equipPinWelderVibratorPump' },
+  'IfcWall:concrete':   { prod:4.0/6,  workers:6,  maxW:18, rolesKey:'rolesFormworkRebarConcrete', equipKey:'equipEuroformVibratorPump' },
+  'IfcWall:steel':      { prod:0.19/5, workers:5,  maxW:10, rolesKey:'rolesWelderAssemblerSignal', equipKey:'equipWelderMobileCrane' },
+  'IfcWall:timber':     { prod:2.5/4,  workers:4,  maxW:8,  rolesKey:'rolesCarpenter',             equipKey:'equipPowerTools' },
+  'IfcPier:concrete':   { prod:3.0/8,  workers:8,  maxW:16, rolesKey:'rolesFormworkRebarConcrete', equipKey:'equipFormworkVibratorCranePump' },
+  'IfcPier:steel':      { prod:0.15/6, workers:6,  maxW:12, rolesKey:'rolesWelderAssemblerSignal', equipKey:'equipWelderLargeMobileCrane' },
 };
-const SPEC_DEF = { prod:4.0/6, workers:6, maxW:12, roles:'일반공', equipment:'일반 공구' };
+const SPEC_DEF = { prod:4.0/6, workers:6, maxW:12, rolesKey:'rolesGeneral', equipKey:'equipGeneral' };
 
-const FIXED = {
-  '설계 및 인허가':    { days:30, workers:5,  roles:'건축사·구조기술사·감리',          equipment:'CAD/BIM 소프트웨어',             phase:'design' },
-  '가설공사':          { days:14, workers:10, roles:'형틀목수·일반공·안전관리자',       equipment:'굴착기 1대, 이동 크레인 1대',    phase:'temporary' },
-  '토공사 및 기초굴착':{ days:21, workers:15, roles:'굴착기 운전사·덤프 운전사·측량사',equipment:'굴착기 2대, 덤프트럭 4대, 항타기',phase:'earthwork' },
-  '기초공사':          { days:21, workers:14, roles:'항타공·철근공·콘크리트공·측량사', equipment:'항타기 1대, 펌프카 1대, 진동기 2대',phase:'foundation' },
-  '마감공사':          { days:30, workers:10, roles:'미장공·타일공·도장공·창호공',      equipment:'시스템 비계, 믹서 1대',          phase:'finishing' },
-  '설비 및 전기공사':  { days:21, workers:8,  roles:'배관공·전기공·소방공',             equipment:'배관·전기 공구 세트, 고소 작업차',phase:'mep' },
-  '검사 및 준공':      { days:14, workers:4,  roles:'감리원·검사관·측량사',             equipment:'측량기, 내화 시험 장비',          phase:'completion' },
+const FIXED_SPECS = {
+  design:     { nameKey:'taskDesign',     days:30, workers:5,  rolesKey:'rolesDesignTeam',     equipKey:'equipCadBim',           phase:'design' },
+  temporary:  { nameKey:'taskTemporary',  days:14, workers:10, rolesKey:'rolesTemporaryTeam',  equipKey:'equipExcavatorCrane1',  phase:'temporary' },
+  earthwork:  { nameKey:'taskEarthwork',  days:21, workers:15, rolesKey:'rolesEarthworkTeam',  equipKey:'equipEarthworkEquip',   phase:'earthwork' },
+  foundation: { nameKey:'taskFoundation', days:21, workers:14, rolesKey:'rolesFoundationTeam', equipKey:'equipFoundationEquip',  phase:'foundation' },
+  finishing:  { nameKey:'taskFinishing',  days:30, workers:10, rolesKey:'rolesFinishingTeam',  equipKey:'equipFinishingEquip',   phase:'finishing' },
+  mep:        { nameKey:'taskMep',        days:21, workers:8,  rolesKey:'rolesMepTeam',        equipKey:'equipMepEquip',         phase:'mep' },
+  completion: { nameKey:'taskCompletion', days:14, workers:4,  rolesKey:'rolesCompletionTeam', equipKey:'equipCompletionEquip',  phase:'completion' },
 };
 
 const PHASE_COLOR = {
@@ -57,10 +57,11 @@ const PHASE_COLOR = {
   frame:'#3b82f6',  slab:'#06b6d4',      wall:'#6366f1',      finishing:'#22c55e',
   mep:'#14b8a6',    completion:'#a855f7',
 };
-const PHASE_LABEL_KO = {
-  design:'설계', temporary:'가설', earthwork:'토공', foundation:'기초',
-  frame:'골조',  slab:'슬래브',    wall:'벽체',      finishing:'마감',
-  mep:'설비·전기', completion:'준공',
+const PHASE_KEYS = ['design','temporary','earthwork','foundation','frame','slab','wall','finishing','mep','completion'];
+const PHASE_LABEL_T_MAP = {
+  design:'phaseDesign', temporary:'phaseTemporary', earthwork:'phaseEarthwork', foundation:'phaseFoundation',
+  frame:'phaseFrame',   slab:'phaseSlab',            wall:'phaseWall',           finishing:'phaseFinishing',
+  mep:'phaseMep',       completion:'phaseCompletion',
 };
 
 const CONCRETE_MIX = { cement:350, sand:0.53, gravel:0.60, water:175 };
@@ -126,22 +127,22 @@ function detectFloors(elements) {
   });
 }
 
-function floorLabel(idx, floors) {
+function floorLabel(idx, floors, t) {
   const above = floors.map((_,i)=>i).filter(i=>floors[i].avgZ>=0.5);
   const below  = floors.map((_,i)=>i).filter(i=>floors[i].avgZ<0.5);
-  if (above.includes(idx)) return `${above.indexOf(idx)+1}층`;
-  return `B${below.length-below.indexOf(idx)}`;
+  if (above.includes(idx)) return t('floorAbove', {n: above.indexOf(idx)+1});
+  return t('floorBelow', {n: below.length-below.indexOf(idx)});
 }
 
-function calcPhase(vol, etype, mat) {
+function calcPhase(vol, etype, mat, t) {
   if (!vol||vol<=0) return null;
   const spec = SPEC[`${etype}:${mat}`]||SPEC_DEF;
   const w = Math.min(Math.ceil(vol/(spec.prod*TARGET_DAYS/SAFETY)), spec.maxW);
   return { days:Math.max(1,Math.ceil(vol/(spec.prod*w)*SAFETY)), workers:w,
-           roles:spec.roles, equipment:spec.equipment, volume:r2(vol) };
+           roles:t(spec.rolesKey), equipment:t(spec.equipKey), volume:r2(vol) };
 }
 
-function calcMaterials(elements) {
+function calcMaterials(elements, t) {
   const floors = detectFloors(elements);
   const agg = {
     concrete:{ vol:0, cement:0, sand:0, gravel:0, water:0, rebar:0, formwork:0 },
@@ -150,7 +151,7 @@ function calcMaterials(elements) {
     byFloor: [],
   };
   for (let i=0; i<floors.length; i++) {
-    const fl = { label:floorLabel(i,floors), conc_m3:0, rebar_t:0, fw_m2:0, steel_t:0, timber_m3:0 };
+    const fl = { label:floorLabel(i,floors,t), conc_m3:0, rebar_t:0, fw_m2:0, steel_t:0, timber_m3:0 };
     for (const el of floors[i].elements) {
       if (!['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcPier'].includes(el.elementType)) continue;
       const mat=classifyMat(el.material), vol=elVol(el), fw=fwArea(el);
@@ -170,12 +171,12 @@ function calcMaterials(elements) {
     }
     agg.byFloor.push(fl);
   }
-  const c=agg.concrete, s=agg.steel, t=agg.timber;
+  const c=agg.concrete, s=agg.steel, tm=agg.timber;
   c.vol=r1(c.vol); c.cement=r1(c.cement/1000); c.sand=r1(c.sand);
   c.gravel=r1(c.gravel); c.water=r1(c.water/1000); c.rebar=r1(c.rebar/1000);
   c.formwork=r0(c.formwork);
   s.weight=r1(s.weight); s.weldKg=r0(s.weldKg); s.bolts=r0(s.bolts);
-  t.vol=r1(t.vol); t.hardware=r0(t.hardware);
+  tm.vol=r1(tm.vol); tm.hardware=r0(tm.hardware);
   agg.byFloor = agg.byFloor.map(f=>({
     ...f, conc_m3:r1(f.conc_m3), rebar_t:r1(f.rebar_t),
     fw_m2:r0(f.fw_m2), steel_t:r1(f.steel_t), timber_m3:r1(f.timber_m3),
@@ -183,40 +184,44 @@ function calcMaterials(elements) {
   return agg;
 }
 
-function buildTasks(elements, startDate) {
+function buildTasks(elements, startDate, t) {
   const floors=detectFloors(elements); const tasks=[]; let cur=new Date(startDate);
   function push(name,startD,days,workers,roles,equipment,phase,extra={}) {
     const end=addDays(startD,days-1);
     tasks.push({name,start:startD,end,days,workers,roles,equipment,phase,...extra});
     return addDays(end,1);
   }
-  for (const pname of ['설계 및 인허가','가설공사']) {
-    const f=FIXED[pname]; cur=push(pname,cur,f.days,f.workers,f.roles,f.equipment,f.phase);
-  }
+
+  const d=FIXED_SPECS.design;
+  cur=push(t(d.nameKey),cur,d.days,d.workers,t(d.rolesKey),t(d.equipKey),d.phase);
+  const tmp=FIXED_SPECS.temporary;
+  cur=push(t(tmp.nameKey),cur,tmp.days,tmp.workers,t(tmp.rolesKey),t(tmp.equipKey),tmp.phase);
+
   const pierVol=elements.filter(e=>e.elementType==='IfcPier').reduce((s,e)=>s+elVol(e),0);
-  const pierP=calcPhase(pierVol,'IfcPier','concrete');
-  const ef=FIXED['토공사 및 기초굴착'];
-  cur=push('토공사 및 기초굴착',cur,pierP?pierP.days:ef.days,ef.workers+(pierP?pierP.workers:0),ef.roles,ef.equipment,ef.phase);
+  const pierP=calcPhase(pierVol,'IfcPier','concrete',t);
+  const ef=FIXED_SPECS.earthwork;
+  cur=push(t(ef.nameKey),cur,pierP?pierP.days:ef.days,ef.workers+(pierP?pierP.workers:0),t(ef.rolesKey),t(ef.equipKey),ef.phase);
+
   const foundVol=elements.filter(e=>['IfcColumn','IfcPier'].includes(e.elementType)).reduce((s,e)=>s+elVol(e),0)*1.5;
-  const foundP=calcPhase(foundVol,'IfcColumn','concrete');
-  const ff=FIXED['기초공사'];
-  cur=push('기초공사',cur,foundP?foundP.days:ff.days,ff.workers+(foundP?foundP.workers:0),ff.roles,ff.equipment,ff.phase);
+  const foundP=calcPhase(foundVol,'IfcColumn','concrete',t);
+  const ff=FIXED_SPECS.foundation;
+  cur=push(t(ff.nameKey),cur,foundP?foundP.days:ff.days,ff.workers+(foundP?foundP.workers:0),t(ff.rolesKey),t(ff.equipKey),ff.phase);
 
   if (!floors.length) {
-    cur=push('골조공사',cur,30,12,'거푸집공·철근공·콘크리트공','펌프카 1대, 타워 크레인 1대','frame');
+    cur=push(t('taskFrameOnly'),cur,30,12,t('rolesFormworkRebarConcrete'),t('equipPumpCrane1'),'frame');
   } else {
     const fStarts=[],fDays=[],fRes=[];
     for (let i=0; i<floors.length; i++) {
-      const lbl=floorLabel(i,floors), fEls=floors[i].elements;
+      const lbl=floorLabel(i,floors,t), fEls=floors[i].elements;
       const domMat=(etypes)=>{
         const vols={};
         fEls.filter(e=>etypes.includes(e.elementType)).forEach(e=>{const m=classifyMat(e.material);vols[m]=(vols[m]||0)+elVol(e);});
         return Object.entries(vols).sort((a,b)=>b[1]-a[1])[0]?.[0]||'concrete';
       };
       const sumVol=(et)=>fEls.filter(e=>et.includes(e.elementType)).reduce((s,e)=>s+elVol(e),0);
-      const frameP=calcPhase(sumVol(['IfcColumn','IfcBeam','IfcPier']),'IfcColumn',domMat(['IfcColumn','IfcBeam','IfcPier']));
-      const slabP =calcPhase(sumVol(['IfcSlab']),'IfcSlab',domMat(['IfcSlab']));
-      const wallP =calcPhase(sumVol(['IfcWall']),'IfcWall',domMat(['IfcWall']));
+      const frameP=calcPhase(sumVol(['IfcColumn','IfcBeam','IfcPier']),'IfcColumn',domMat(['IfcColumn','IfcBeam','IfcPier']),t);
+      const slabP =calcPhase(sumVol(['IfcSlab']),'IfcSlab',domMat(['IfcSlab']),t);
+      const wallP =calcPhase(sumVol(['IfcWall']),'IfcWall',domMat(['IfcWall']),t);
       fRes.push({lbl,frameP,slabP,wallP});
       fStarts.push(i===0 ? new Date(cur) : addDays(fStarts[i-1],Math.ceil(fDays[i-1]*OVERLAP)));
       fDays.push(frameP?frameP.days:1);
@@ -226,54 +231,57 @@ function buildTasks(elements, startDate) {
       const {lbl,frameP,slabP,wallP}=fRes[i], fs=fStarts[i]; let next=fs;
       if (frameP) {
         const spec=SPEC[`IfcColumn:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcColumn')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:`${lbl} 골조공사`,start:fs,end:addDays(fs,frameP.days-1),days:frameP.days,workers:frameP.workers,roles:spec.roles,equipment:spec.equipment,phase:'frame',volume:frameP.volume});
+        tasks.push({name:t('taskFrame',{floor:lbl}),start:fs,end:addDays(fs,frameP.days-1),days:frameP.days,workers:frameP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'frame',volume:frameP.volume});
         next=addDays(fs,frameP.days);
       }
       let se=next,we=next;
       if (slabP) {
         const spec=SPEC[`IfcSlab:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcSlab')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:`${lbl} 슬래브 공사`,start:next,end:addDays(next,slabP.days-1),days:slabP.days,workers:slabP.workers,roles:spec.roles,equipment:spec.equipment,phase:'slab',volume:slabP.volume});
+        tasks.push({name:t('taskSlab',{floor:lbl}),start:next,end:addDays(next,slabP.days-1),days:slabP.days,workers:slabP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'slab',volume:slabP.volume});
         se=addDays(next,slabP.days);
       }
       if (wallP) {
         const spec=SPEC[`IfcWall:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcWall')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:`${lbl} 벽체공사`,start:next,end:addDays(next,wallP.days-1),days:wallP.days,workers:wallP.workers,roles:spec.roles,equipment:spec.equipment,phase:'wall',volume:wallP.volume});
+        tasks.push({name:t('taskWall',{floor:lbl}),start:next,end:addDays(next,wallP.days-1),days:wallP.days,workers:wallP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'wall',volume:wallP.volume});
         we=addDays(next,wallP.days);
       }
       allEnds.push(se>we?se:we);
     }
     cur=allEnds.length?allEnds.reduce((a,b)=>a>b?a:b):cur;
   }
+
   const finArea=elements.filter(e=>['IfcSlab','IfcWall'].includes(e.elementType)).reduce((s,e)=>{const [sx,sy]=elDims(e);return s+sx*sy;},0);
   const finDays=Math.max(21,Math.min(90,Math.ceil(finArea/30)));
-  const fin=FIXED['마감공사'];
-  cur=push('마감공사',cur,finDays,fin.workers,fin.roles,`${fin.equipment} (면적 ${r0(finArea)}m² 기준)`,fin.phase);
+  const fin=FIXED_SPECS.finishing;
+  cur=push(t(fin.nameKey),cur,finDays,fin.workers,t(fin.rolesKey),`${t(fin.equipKey)} (${t('finAreaBasis',{n:r0(finArea)})})`,fin.phase);
+
   const mepStart=addDays(tasks[tasks.length-1].start,Math.ceil(finDays*0.70));
-  const mep=FIXED['설비 및 전기공사'];
+  const mep=FIXED_SPECS.mep;
   const mepEnd=addDays(mepStart,mep.days-1);
-  tasks.push({name:'설비 및 전기공사',start:mepStart,end:mepEnd,days:mep.days,workers:mep.workers,roles:mep.roles,equipment:mep.equipment,phase:'mep'});
+  tasks.push({name:t(mep.nameKey),start:mepStart,end:mepEnd,days:mep.days,workers:mep.workers,roles:t(mep.rolesKey),equipment:t(mep.equipKey),phase:'mep'});
+
   const lastEnd=tasks[tasks.length-2].end>mepEnd?tasks[tasks.length-2].end:mepEnd;
-  const cl=FIXED['검사 및 준공'];
-  tasks.push({name:'검사 및 준공',start:addDays(lastEnd,1),end:addDays(lastEnd,cl.days),days:cl.days,workers:cl.workers,roles:cl.roles,equipment:cl.equipment,phase:'completion'});
+  const cl=FIXED_SPECS.completion;
+  tasks.push({name:t(cl.nameKey),start:addDays(lastEnd,1),end:addDays(lastEnd,cl.days),days:cl.days,workers:cl.workers,roles:t(cl.rolesKey),equipment:t(cl.equipKey),phase:'completion'});
   return tasks;
 }
 
-function computeWorkPlan(modelData) {
+function computeWorkPlan(modelData, t) {
   if (!modelData?.length) return null;
   const relevant=modelData.filter(e=>['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcPier'].includes(e.elementType));
   if (!relevant.length) return null;
   const today=new Date(); today.setHours(0,0,0,0);
-  const tasks=buildTasks(relevant,today);
+  const tasks=buildTasks(relevant,today,t);
   if (!tasks.length) return null;
   const ps=tasks[0].start, pe=tasks[tasks.length-1].end;
   return { tasks, projectStart:ps, projectEnd:pe,
-    totalDays:dateDiff(ps,pe)+1, peakWorkers:Math.max(...tasks.map(t=>t.workers)),
+    totalDays:dateDiff(ps,pe)+1, peakWorkers:Math.max(...tasks.map(tk=>tk.workers)),
     floorCount:detectFloors(relevant).length, elementCount:relevant.length,
-    materials:calcMaterials(relevant) };
+    materials:calcMaterials(relevant,t) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FormulaTooltip  (StructuralDashboard 패턴 동일)
+// FormulaTooltip
 // ═══════════════════════════════════════════════════════════════════════════
 
 function FormulaTooltip({ data }) {
@@ -360,7 +368,6 @@ function FormulaTooltip({ data }) {
   );
 }
 
-// ── 섹션 헤더 (타이틀 + 툴팁) ────────────────────────────────────────────
 function SectionHeader({ title, tipData }) {
   return (
     <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700,
@@ -379,10 +386,10 @@ function SummaryCards({ plan, t }) {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
       {[
-        { label:t('cardDuration'), value:`${plan.totalDays}일`,     color:'#60a5fa' },
-        { label:t('cardFloors'),   value:`${plan.floorCount}개 층`, color:'#34d399' },
-        { label:t('cardTasks'),    value:`${plan.tasks.length}개`,  color:'#f59e0b' },
-        { label:t('cardPeak'),     value:`${plan.peakWorkers}명`,   color:'#c084fc' },
+        { label:t('cardDuration'), value:t('valDays',{n:plan.totalDays}),        color:'#60a5fa' },
+        { label:t('cardFloors'),   value:t('valFloors',{n:plan.floorCount}),     color:'#34d399' },
+        { label:t('cardTasks'),    value:t('valTasks',{n:plan.tasks.length}),    color:'#f59e0b' },
+        { label:t('cardPeak'),     value:t('valPersons',{n:plan.peakWorkers}),   color:'#c084fc' },
       ].map(c=>(
         <div key={c.label} style={{ background:'#1c2a3a', border:'1px solid #253347', borderRadius:12, padding:'12px 14px' }}>
           <p style={{ fontSize:11, color:'#64748b', marginBottom:4 }}>{c.label}</p>
@@ -427,22 +434,22 @@ function GanttChart({ plan, t }) {
             <div style={{ flex:1, position:'relative', height:20, background:'#0d1b2a', borderRadius:3 }}>
               {showToday && <div style={{ position:'absolute', left:`${(todayOff/totalDays)*100}%`,
                 top:0,bottom:0,width:1,background:'#ef4444',zIndex:2 }} />}
-              <div title={`${fmtDate(task.start)} ~ ${fmtDate(task.end)} (${task.days}일, ${task.workers}명)`}
+              <div title={`${fmtDate(task.start)} ~ ${fmtDate(task.end)} (${t('valDays',{n:task.days})}, ${t('valPersons',{n:task.workers})})`}
                 style={{ position:'absolute', left:`${left}%`, width:`${width}%`, height:'100%',
                   borderRadius:3, background:color, opacity:0.85, display:'flex', alignItems:'center',
                   paddingLeft:4, overflow:'hidden', whiteSpace:'nowrap', fontSize:10, color:'#fff',
                   fontWeight:600, cursor:'default' }}>
-                {width>5?`${task.days}일·${task.workers}명`:''}
+                {width>5?`${t('valDays',{n:task.days})}·${t('valPersons',{n:task.workers})}`:''}
               </div>
             </div>
           </div>
         );
       })}
       <div style={{ display:'flex', flexWrap:'wrap', gap:'6px 14px', marginTop:12, paddingLeft:NAME_W }}>
-        {Object.entries(PHASE_LABEL_KO).map(([k,lbl])=>(
+        {PHASE_KEYS.map(k=>(
           <div key={k} style={{ display:'flex', alignItems:'center', gap:4 }}>
             <div style={{ width:10, height:10, borderRadius:2, background:PHASE_COLOR[k] }} />
-            <span style={{ fontSize:10, color:'#64748b' }}>{lbl}</span>
+            <span style={{ fontSize:10, color:'#64748b' }}>{t(PHASE_LABEL_T_MAP[k])}</span>
           </div>
         ))}
       </div>
@@ -480,14 +487,14 @@ function TaskTable({ plan, t }) {
             <td style={td({color:'#94a3b8',fontFamily:'monospace'})}>{fmtDate(task.start)}</td>
             <td style={td({color:'#94a3b8',fontFamily:'monospace'})}>{fmtDate(task.end)}</td>
             <td style={td({color:'#60a5fa',textAlign:'center'})}>{task.days}</td>
-            <td style={td({color:'#c084fc',textAlign:'center',fontWeight:600})}>{task.workers}명</td>
+            <td style={td({color:'#c084fc',textAlign:'center',fontWeight:600})}>{t('valPersons',{n:task.workers})}</td>
             <td style={td({color:'#94a3b8',fontSize:10,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'})}>{task.roles}</td>
             <td style={td({color:'#64748b',fontSize:10})}>{task.equipment}</td>
           </tr>
         ))}</tbody>
         <tfoot><tr style={{background:'#1c2a3a'}}>
           <td colSpan={4} style={{...td(),color:'#64748b',fontWeight:600}}>{t('total')}</td>
-          <td style={td({color:'#60a5fa',fontWeight:700,textAlign:'center'})}>{plan.totalDays}일</td>
+          <td style={td({color:'#60a5fa',fontWeight:700,textAlign:'center'})}>{t('valDays',{n:plan.totalDays})}</td>
           <td style={td({color:'#c084fc',fontWeight:700,textAlign:'center'})}>{t('peak',{n:plan.peakWorkers})}</td>
           <td colSpan={2} style={td()}/>
         </tr></tfoot>
@@ -500,7 +507,6 @@ function MaterialsView({ materials, t }) {
   const {concrete:c,steel:s,timber:tl,byFloor}=materials;
   const hasConcrete=c.vol>0, hasSteel=s.weight>0, hasTimber=tl.vol>0;
 
-  // 툴팁 데이터 (t() 호출 결과로 구성)
   const tipDuration = {
     title:   t('tipDurationTitle'),
     formula: t('tipDurationFormula'),
@@ -564,33 +570,31 @@ function MaterialsView({ materials, t }) {
   return (
     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
 
-      {/* ── 좌측: 자재 요약 ──────────────────────────────────────────── */}
       <div>
-        {/* 공기 산정 방법 안내 */}
         <SectionHeader title={t('basisNote')} tipData={tipDuration} />
         <p style={{ fontSize:10, color:'#475569', marginBottom:14, lineHeight:1.6 }}>
-          물량(m³) ÷ 생산성(m³/인·일) × 안전계수 1.2 → 공기·인원 자동 결정
+          {t('basisFormula')}
           &nbsp;&nbsp;<FormulaTooltip data={tipOverlap} />
-          &nbsp;층별 중첩 시공 적용
+          &nbsp;{t('basisOverlapNote')}
         </p>
 
         {hasConcrete && (<>
           <SectionHeader title={t('secConcrete')} />
           <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:4 }}>
             <thead><tr>
-              <th style={th}>자재</th>
-              <th style={{...th,textAlign:'right'}}>수량</th>
-              <th style={{...th,textAlign:'right'}}>단위</th>
+              <th style={th}>{t('matColName')}</th>
+              <th style={{...th,textAlign:'right'}}>{t('csvQty')}</th>
+              <th style={{...th,textAlign:'right'}}>{t('csvUnit')}</th>
               <th style={th}>{t('basisNote')}</th>
             </tr></thead>
             <tbody>
-              <MatRow label={t('matConcrete')} value={c.vol}      unit="m³"  note="부재 부피 합산"  color="#60a5fa" />
+              <MatRow label={t('matConcrete')} value={c.vol}      unit="m³"  note={t('matBasisConcrete')}  color="#60a5fa" />
               <MatRow label={t('matCement')}   value={c.cement}   unit="t"   note="350 kg/m³" />
               <MatRow label={t('matSand')}     value={c.sand}     unit="m³"  note="0.53 m³/m³" />
               <MatRow label={t('matGravel')}   value={c.gravel}   unit="m³"  note="0.60 m³/m³" />
               <MatRow label={t('matWater')}    value={c.water}    unit="m³"  note="175 L/m³" />
-              <MatRow label={t('matRebar')}    value={c.rebar}    unit="t"   note="부재 유형별 배근율" color="#f59e0b" tipData={tipRebar} />
-              <MatRow label={t('matFormwork')} value={c.formwork} unit="m²"  note="노출 면적 (재사용 전)" color="#34d399" tipData={tipFw} />
+              <MatRow label={t('matRebar')}    value={c.rebar}    unit="t"   note={t('matBasisRebar')}     color="#f59e0b" tipData={tipRebar} />
+              <MatRow label={t('matFormwork')} value={c.formwork} unit="m²"  note={t('matBasisFormwork')}  color="#34d399" tipData={tipFw} />
             </tbody>
           </table>
         </>)}
@@ -599,13 +603,13 @@ function MaterialsView({ materials, t }) {
           <SectionHeader title={t('secSteel')} />
           <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:4 }}>
             <thead><tr>
-              <th style={th}>자재</th><th style={{...th,textAlign:'right'}}>수량</th>
-              <th style={{...th,textAlign:'right'}}>단위</th><th style={th}>{t('basisNote')}</th>
+              <th style={th}>{t('matColName')}</th><th style={{...th,textAlign:'right'}}>{t('csvQty')}</th>
+              <th style={{...th,textAlign:'right'}}>{t('csvUnit')}</th><th style={th}>{t('basisNote')}</th>
             </tr></thead>
             <tbody>
-              <MatRow label={t('matSteel')} value={s.weight} unit="t"    note="부피×7.85 t/m³"  color="#f59e0b" />
-              <MatRow label={t('matWeld')}  value={s.weldKg} unit="kg"   note="철골 중량의 2%" />
-              <MatRow label={t('matBolts')} value={s.bolts}  unit="세트" note="부재당 4세트 추정" />
+              <MatRow label={t('matSteel')}    value={s.weight} unit="t"               note={t('matBasisSteelWeight')} color="#f59e0b" />
+              <MatRow label={t('matWeld')}     value={s.weldKg} unit="kg"              note={t('matBasisWeld')} />
+              <MatRow label={t('matBolts')}    value={s.bolts}  unit={t('matUnitBolts')} note={t('matBasisBolts')} />
             </tbody>
           </table>
         </>)}
@@ -614,11 +618,11 @@ function MaterialsView({ materials, t }) {
           <SectionHeader title={t('secTimber')} />
           <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:4 }}>
             <thead><tr>
-              <th style={th}>자재</th><th style={{...th,textAlign:'right'}}>수량</th>
-              <th style={{...th,textAlign:'right'}}>단위</th><th style={th}>{t('basisNote')}</th>
+              <th style={th}>{t('matColName')}</th><th style={{...th,textAlign:'right'}}>{t('csvQty')}</th>
+              <th style={{...th,textAlign:'right'}}>{t('csvUnit')}</th><th style={th}>{t('basisNote')}</th>
             </tr></thead>
             <tbody>
-              <MatRow label={t('matTimber')}   value={tl.vol}      unit="m³" note="부재 부피 합산"  color="#a78bfa" />
+              <MatRow label={t('matTimber')}   value={tl.vol}      unit="m³" note={t('matBasisTimber')}  color="#a78bfa" />
               <MatRow label={t('matHardware')} value={tl.hardware} unit="kg" note="9 kg/m³" />
             </tbody>
           </table>
@@ -629,7 +633,6 @@ function MaterialsView({ materials, t }) {
         )}
       </div>
 
-      {/* ── 우측: 층별 집계 ──────────────────────────────────────────── */}
       <div>
         <SectionHeader title={t('secFloorBreakdown')} />
         <div style={{ overflowX:'auto' }}>
@@ -666,12 +669,12 @@ function MaterialsView({ materials, t }) {
         {hasConcrete && (
           <div style={{ marginTop:20, padding:'14px 16px', background:'#0d1b2a',
             border:'1px solid #1a2a3a', borderRadius:10 }}>
-            <p style={{ fontSize:11, color:'#64748b', marginBottom:10 }}>주요 자재 비중</p>
+            <p style={{ fontSize:11, color:'#64748b', marginBottom:10 }}>{t('matProportionTitle')}</p>
             {[
-              {label:`콘크리트 ${c.vol} m³`,   val:c.vol,           color:'#3b82f6', max:c.vol},
-              {label:`철근 ${c.rebar} t`,       val:c.rebar*5,       color:'#f59e0b', max:c.vol},
-              {label:`시멘트 ${c.cement} t`,    val:c.cement*3,      color:'#94a3b8', max:c.vol},
-              {label:`거푸집 ${c.formwork} m²`, val:c.formwork*0.15, color:'#34d399', max:c.vol},
+              {label:t('matBarConcrete',{vol:c.vol}),      val:c.vol,           color:'#3b82f6', max:c.vol},
+              {label:t('matBarRebar',{val:c.rebar}),        val:c.rebar*5,       color:'#f59e0b', max:c.vol},
+              {label:t('matBarCement',{val:c.cement}),      val:c.cement*3,      color:'#94a3b8', max:c.vol},
+              {label:t('matBarFormwork',{val:c.formwork}),  val:c.formwork*0.15, color:'#34d399', max:c.vol},
             ].map(row=>(
               <div key={row.label} style={{marginBottom:6}}>
                 <span style={{fontSize:10,color:'#64748b'}}>{row.label}</span>
@@ -692,54 +695,99 @@ function MaterialsView({ materials, t }) {
 // 내보내기
 // ═══════════════════════════════════════════════════════════════════════════
 
-function exportCSV(plan, projectName) {
+function exportCSV(plan, projectName, t) {
   const {tasks, materials:mat} = plan;
   const c=mat.concrete, s=mat.steel, tl=mat.timber;
-  const taskRows=tasks.map((t,i)=>[i+1,`"${t.name}"`,fmtDate(t.start),fmtDate(t.end),t.days,t.workers,`"${t.roles}"`,`"${t.equipment}"`].join(','));
+  const taskRows=tasks.map((task,i)=>[i+1,`"${task.name}"`,fmtDate(task.start),fmtDate(task.end),task.days,task.workers,`"${task.roles}"`,`"${task.equipment}"`].join(','));
   const matRows=[
-    [],['"[자재 소요량]"'],
-    ['"자재명"','"수량"','"단위"','"산정 기준"'],
+    [],
+    [`"${t('csvMatSection')}"`],
+    [`"${t('csvMatName')}"`,`"${t('csvQty')}"`,`"${t('csvUnit')}"`,`"${t('csvBasis')}"`],
     ...(c.vol>0?[
-      ['"콘크리트"',c.vol,'"m³"','"부재 부피 합산"'],['"시멘트"',c.cement,'"t"','"350 kg/m³"'],
-      ['"모래"',c.sand,'"m³"','"0.53 m³/m³"'],['"자갈"',c.gravel,'"m³"','"0.60 m³/m³"'],
-      ['"혼합수"',c.water,'"m³"','"175 L/m³"'],['"철근"',c.rebar,'"t"','"부재 유형별 배근율"'],
-      ['"거푸집"',c.formwork,'"m²"','"노출 면적"'],
+      [`"${t('matConcrete')}"`,c.vol,'"m³"',`"${t('matBasisConcrete')}"`],
+      [`"${t('matCement')}"`,c.cement,'"t"','"350 kg/m³"'],
+      [`"${t('matSand')}"`,c.sand,'"m³"','"0.53 m³/m³"'],
+      [`"${t('matGravel')}"`,c.gravel,'"m³"','"0.60 m³/m³"'],
+      [`"${t('matWater')}"`,c.water,'"m³"','"175 L/m³"'],
+      [`"${t('matRebar')}"`,c.rebar,'"t"',`"${t('matBasisRebar')}"`],
+      [`"${t('matFormwork')}"`,c.formwork,'"m²"',`"${t('matBasisFormwork')}"`],
     ]:[]),
-    ...(s.weight>0?[['"철골"',s.weight,'"t"','"부피×7.85"'],['"용접봉"',s.weldKg,'"kg"','"2%"'],['"볼트"',s.bolts,'"세트"','"부재당 4"']]:[]),
-    ...(tl.vol>0?[['"목재"',tl.vol,'"m³"','"합산"'],['"철물"',tl.hardware,'"kg"','"9 kg/m³"']]:[]),
+    ...(s.weight>0?[
+      [`"${t('matSteel')}"`,s.weight,'"t"',`"${t('matBasisSteelWeight')}"`],
+      [`"${t('matWeld')}"`,s.weldKg,'"kg"',`"${t('matBasisWeld')}"`],
+      [`"${t('matBolts')}"`,s.bolts,`"${t('matUnitBolts')}"`,`"${t('matBasisBolts')}"`],
+    ]:[]),
+    ...(tl.vol>0?[
+      [`"${t('matTimber')}"`,tl.vol,'"m³"',`"${t('matBasisTimber')}"`],
+      [`"${t('matHardware')}"`,tl.hardware,'"kg"','"9 kg/m³"'],
+    ]:[]),
   ];
   const floorRows=[
-    [],['"[층별 집계]"'],
-    ['"층"','"콘크리트(m³)"','"철근(t)"','"거푸집(m²)"','"철골(t)"','"목재(m³)"'],
+    [],
+    [`"${t('csvFloorSection')}"`],
+    [`"${t('flColFloor')}"`,`"${t('flColConc')}"`,`"${t('flColRebar')}"`,`"${t('flColFw')}"`,`"${t('flColSteel')}"`,`"${t('flColTimber')}"`],
     ...mat.byFloor.map(f=>[`"${f.label}"`,f.conc_m3,f.rebar_t,f.fw_m2,f.steel_t,f.timber_m3]),
   ];
   const csv='﻿'+[
-    ['#','공정명','착공일','준공일','공기(일)','인원','역할','주요 장비'].join(','),
+    [t('colNo'),`"${t('colTask')}"`,t('colStart'),t('colEnd'),t('colDays'),t('colWorkers'),`"${t('colRoles')}"`,`"${t('colEquip')}"`].join(','),
     ...taskRows, ...matRows.map(r=>r.join(',')), ...floorRows.map(r=>r.join(',')),
   ].join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  a.download=`${projectName}_작업계획.csv`; a.click(); URL.revokeObjectURL(a.href);
+  a.download=`${projectName}_${t('title')}.csv`; a.click(); URL.revokeObjectURL(a.href);
 }
 
-function printPlan(plan, projectName) {
+function printPlan(plan, projectName, t) {
   const {tasks,materials:mat,totalDays,peakWorkers,floorCount}=plan;
   const c=mat.concrete,s=mat.steel,tl=mat.timber;
-  const taskHtml=tasks.map((t,i)=>`<tr><td>${i+1}</td><td>${t.name}</td><td>${fmtDate(t.start)}</td><td>${fmtDate(t.end)}</td><td style="text-align:center">${t.days}</td><td style="text-align:center">${t.workers}명</td><td>${t.roles}</td><td>${t.equipment}</td></tr>`).join('');
+  const taskHtml=tasks.map((task,i)=>`<tr><td>${i+1}</td><td>${task.name}</td><td>${fmtDate(task.start)}</td><td>${fmtDate(task.end)}</td><td style="text-align:center">${task.days}</td><td style="text-align:center">${t('valPersons',{n:task.workers})}</td><td>${task.roles}</td><td>${task.equipment}</td></tr>`).join('');
   const matHtml=[
-    ...(c.vol>0?[`<tr><td>콘크리트</td><td>${c.vol}</td><td>m³</td><td>부재 부피 합산</td></tr>`,`<tr><td>시멘트</td><td>${c.cement}</td><td>t</td><td>350 kg/m³</td></tr>`,`<tr><td>모래</td><td>${c.sand}</td><td>m³</td><td>0.53 m³/m³</td></tr>`,`<tr><td>자갈</td><td>${c.gravel}</td><td>m³</td><td>0.60 m³/m³</td></tr>`,`<tr><td>혼합수</td><td>${c.water}</td><td>m³</td><td>175 L/m³</td></tr>`,`<tr><td>철근</td><td>${c.rebar}</td><td>t</td><td>부재 유형별 배근율</td></tr>`,`<tr><td>거푸집</td><td>${c.formwork}</td><td>m²</td><td>노출 면적</td></tr>`]:[]),
-    ...(s.weight>0?[`<tr><td>철골</td><td>${s.weight}</td><td>t</td><td>부피×7.85</td></tr>`,`<tr><td>용접봉</td><td>${s.weldKg}</td><td>kg</td><td>2%</td></tr>`,`<tr><td>볼트</td><td>${s.bolts}</td><td>세트</td><td>부재당 4</td></tr>`]:[]),
-    ...(tl.vol>0?[`<tr><td>목재</td><td>${tl.vol}</td><td>m³</td><td>합산</td></tr>`,`<tr><td>철물</td><td>${tl.hardware}</td><td>kg</td><td>9 kg/m³</td></tr>`]:[]),
+    ...(c.vol>0?[
+      `<tr><td>${t('matConcrete')}</td><td>${c.vol}</td><td>m³</td><td>${t('matBasisConcrete')}</td></tr>`,
+      `<tr><td>${t('matCement')}</td><td>${c.cement}</td><td>t</td><td>350 kg/m³</td></tr>`,
+      `<tr><td>${t('matSand')}</td><td>${c.sand}</td><td>m³</td><td>0.53 m³/m³</td></tr>`,
+      `<tr><td>${t('matGravel')}</td><td>${c.gravel}</td><td>m³</td><td>0.60 m³/m³</td></tr>`,
+      `<tr><td>${t('matWater')}</td><td>${c.water}</td><td>m³</td><td>175 L/m³</td></tr>`,
+      `<tr><td>${t('matRebar')}</td><td>${c.rebar}</td><td>t</td><td>${t('matBasisRebar')}</td></tr>`,
+      `<tr><td>${t('matFormwork')}</td><td>${c.formwork}</td><td>m²</td><td>${t('matBasisFormwork')}</td></tr>`,
+    ]:[]),
+    ...(s.weight>0?[
+      `<tr><td>${t('matSteel')}</td><td>${s.weight}</td><td>t</td><td>${t('matBasisSteelWeight')}</td></tr>`,
+      `<tr><td>${t('matWeld')}</td><td>${s.weldKg}</td><td>kg</td><td>${t('matBasisWeld')}</td></tr>`,
+      `<tr><td>${t('matBolts')}</td><td>${s.bolts}</td><td>${t('matUnitBolts')}</td><td>${t('matBasisBolts')}</td></tr>`,
+    ]:[]),
+    ...(tl.vol>0?[
+      `<tr><td>${t('matTimber')}</td><td>${tl.vol}</td><td>m³</td><td>${t('matBasisTimber')}</td></tr>`,
+      `<tr><td>${t('matHardware')}</td><td>${tl.hardware}</td><td>kg</td><td>9 kg/m³</td></tr>`,
+    ]:[]),
   ].join('');
   const floorHtml=mat.byFloor.map(f=>`<tr><td>${f.label}</td><td>${f.conc_m3||'-'}</td><td>${f.rebar_t||'-'}</td><td>${f.fw_m2||'-'}</td><td>${f.steel_t||'-'}</td><td>${f.timber_m3||'-'}</td></tr>`).join('');
   const w=window.open('','_blank','width=1100,height=800');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${projectName} — 작업계획서</title>
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${projectName} — ${t('title')}</title>
   <style>body{font-family:'Malgun Gothic',Arial,sans-serif;font-size:10pt;margin:15px}h2{font-size:14pt;margin-bottom:4px}h3{font-size:11pt;margin:14px 0 6px;color:#1e40af}.meta{color:#555;font-size:9pt;margin-bottom:14px}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}.card{border:1px solid #ccc;border-radius:6px;padding:8px 12px}.card .v{font-size:14pt;font-weight:bold;color:#1e40af}.card .l{font-size:8pt;color:#888}table{border-collapse:collapse;width:100%}th{background:#1e3a5f;color:#fff;padding:5px 8px;font-size:9pt;text-align:left}td{padding:4px 8px;border-bottom:1px solid #e5e7eb;font-size:9pt}tr:nth-child(even){background:#f8fafc}tfoot td{background:#f0f4ff;font-weight:bold}@page{size:A4 landscape;margin:12mm}</style></head><body>
-  <h2>작업계획서 — ${projectName}</h2>
-  <p class="meta">출력일: ${new Date().toLocaleDateString('ko-KR')} │ 총 공기 ${totalDays}일 │ ${floorCount}개 층 │ ${tasks.length}개 공정 │ 최대 ${peakWorkers}명</p>
-  <div class="summary"><div class="card"><div class="l">총 공기</div><div class="v">${totalDays}일</div></div><div class="card"><div class="l">층수</div><div class="v">${floorCount}층</div></div><div class="card"><div class="l">공정수</div><div class="v">${tasks.length}개</div></div><div class="card"><div class="l">최대 인원</div><div class="v">${peakWorkers}명</div></div></div>
-  <h3>공정표</h3><table><thead><tr><th>#</th><th>공정명</th><th>착공일</th><th>준공일</th><th>공기(일)</th><th>인원</th><th>역할</th><th>주요 장비</th></tr></thead><tbody>${taskHtml}</tbody><tfoot><tr><td colspan="4">합계</td><td style="text-align:center">${totalDays}일</td><td style="text-align:center">최대 ${peakWorkers}명</td><td colspan="2"></td></tr></tfoot></table>
-  ${matHtml?`<h3>자재 소요량</h3><table style="width:48%;display:inline-table;margin-right:2%;vertical-align:top"><thead><tr><th>자재</th><th>수량</th><th>단위</th><th>기준</th></tr></thead><tbody>${matHtml}</tbody></table><table style="width:48%;display:inline-table;vertical-align:top"><thead><tr><th>층</th><th>콘크리트</th><th>철근</th><th>거푸집</th><th>철골</th><th>목재</th></tr></thead><tbody>${floorHtml}</tbody></table>`:''}
+  <h2>${t('printTitle',{name:projectName})}</h2>
+  <p class="meta">${t('printMeta',{date:new Date().toLocaleDateString(),days:totalDays,floors:floorCount,tasks:tasks.length,peak:peakWorkers})}</p>
+  <div class="summary">
+    <div class="card"><div class="l">${t('printSumDuration')}</div><div class="v">${t('valDays',{n:totalDays})}</div></div>
+    <div class="card"><div class="l">${t('printSumFloors')}</div><div class="v">${t('valFloors',{n:floorCount})}</div></div>
+    <div class="card"><div class="l">${t('printSumTasks')}</div><div class="v">${t('valTasks',{n:tasks.length})}</div></div>
+    <div class="card"><div class="l">${t('printSumPeak')}</div><div class="v">${t('valPersons',{n:peakWorkers})}</div></div>
+  </div>
+  <h3>${t('printSchedule')}</h3>
+  <table>
+    <thead><tr><th>#</th><th>${t('colTask')}</th><th>${t('colStart')}</th><th>${t('colEnd')}</th><th>${t('colDays')}</th><th>${t('colWorkers')}</th><th>${t('colRoles')}</th><th>${t('colEquip')}</th></tr></thead>
+    <tbody>${taskHtml}</tbody>
+    <tfoot><tr><td colspan="4">${t('total')}</td><td style="text-align:center">${t('valDays',{n:totalDays})}</td><td style="text-align:center">${t('valPersons',{n:peakWorkers})}</td><td colspan="2"></td></tr></tfoot>
+  </table>
+  ${matHtml?`<h3>${t('printMaterials')}</h3>
+  <table style="width:48%;display:inline-table;margin-right:2%;vertical-align:top">
+    <thead><tr><th>${t('matColName')}</th><th>${t('csvQty')}</th><th>${t('csvUnit')}</th><th>${t('csvBasis')}</th></tr></thead>
+    <tbody>${matHtml}</tbody>
+  </table>
+  <table style="width:48%;display:inline-table;vertical-align:top">
+    <thead><tr><th>${t('printFloor')}</th><th>${t('printConcrete')}</th><th>${t('printRebar')}</th><th>${t('printFormwork')}</th><th>${t('printSteel')}</th><th>${t('printTimber')}</th></tr></thead>
+    <tbody>${floorHtml}</tbody>
+  </table>`:''}
   <script>window.onload=()=>{window.print();window.close();}</script></body></html>`);
   w.document.close();
 }
@@ -749,9 +797,10 @@ function printPlan(plan, projectName) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function WorkPlanDashboard({ selectedProject, modelData }) {
+  const { lang } = useLanguage();
   const t    = useT('workPlan');
   const [view, setView] = useState('gantt');
-  const plan = useMemo(() => computeWorkPlan(modelData), [modelData]);
+  const plan = useMemo(() => computeWorkPlan(modelData, t), [modelData, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const projectName = selectedProject?.projectName || t('title');
 
   if (!plan) return (
@@ -769,7 +818,6 @@ export default function WorkPlanDashboard({ selectedProject, modelData }) {
     <div style={{ display:'flex', flexDirection:'column', height:'100%', padding:'16px 20px',
       overflowY:'auto', gap:14, background:'#080f1a', color:'#e2e8f0', fontFamily:'inherit' }}>
 
-      {/* 헤더 */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
         <div>
           <h2 style={{ fontSize:15, fontWeight:700, color:'#f1f5f9', margin:0 }}>
@@ -790,11 +838,11 @@ export default function WorkPlanDashboard({ selectedProject, modelData }) {
               }}>{lbl}</button>
             ))}
           </div>
-          <button onClick={()=>exportCSV(plan,projectName)} style={{ padding:'5px 12px', borderRadius:8,
+          <button onClick={()=>exportCSV(plan,projectName,t)} style={{ padding:'5px 12px', borderRadius:8,
             fontSize:11, fontWeight:600, background:'#1c2a3a', border:'1px solid #253347', color:'#4ade80', cursor:'pointer' }}>
             {t('btnCsv')}
           </button>
-          <button onClick={()=>printPlan(plan,projectName)} style={{ padding:'5px 12px', borderRadius:8,
+          <button onClick={()=>printPlan(plan,projectName,t)} style={{ padding:'5px 12px', borderRadius:8,
             fontSize:11, fontWeight:600, background:'#1c2a3a', border:'1px solid #253347', color:'#60a5fa', cursor:'pointer' }}>
             {t('btnPrint')}
           </button>
