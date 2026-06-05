@@ -10,7 +10,7 @@ import SkyEnvironment from './SkyEnvironment';
 // ================================================================
 // 스냅 상수 & 유틸
 // ================================================================
-const SNAP_THRESHOLD = 0.8;
+const SNAP_THRESHOLD = 3.0;
 const HANDLE_HALF    = 0.13;
 
 /**
@@ -429,13 +429,61 @@ function VertexSnapIndicator({ snapVertices, snapEnabled, viewMode = '3d' }) {
 }
 
 // ================================================================
+// 선택된 부재 꼭짓점 스냅 포인트 시각화 (항상 표시)
+// ================================================================
+function ElementSnapPoints({ element }) {
+    if (!element) return null;
+    const pX = Number(element.positionX) || 0;
+    const pY = Number(element.positionY) || 0;
+    const pZ = Number(element.positionZ) || 0;
+    const sX = (Number(element.sizeX) || 1) / 2;
+    const sY = (Number(element.sizeY) || 1) / 2;
+    const sZ = Number(element.sizeZ) || 1;
+
+    // Three.js 좌표: X=BIM_X, Y=BIM_Z(height), Z=BIM_Y(floor)
+    const pts = [];
+    for (const dx of [-1, 0, 1]) for (const dz of [-1, 0, 1]) {
+        if (dx === 0 && dz === 0) continue;
+        pts.push([pX + dx * sX, pZ,       pY + dz * sY]); // 바닥
+        pts.push([pX + dx * sX, pZ + sZ,  pY + dz * sY]); // 상단
+    }
+    // 중심 바닥 / 상단 / 중간
+    pts.push([pX, pZ,        pY]);
+    pts.push([pX, pZ + sZ,   pY]);
+    pts.push([pX, pZ + sZ/2, pY]);
+
+    return (
+        <>
+            {pts.map((p, i) => (
+                <mesh key={i} position={p} renderOrder={999}>
+                    <sphereGeometry args={[0.12, 8, 8]} />
+                    <meshBasicMaterial color="#ffd700" depthTest={false} transparent opacity={0.85} />
+                </mesh>
+            ))}
+        </>
+    );
+}
+
+// ================================================================
 // HoverTracker — 마우스 → 월드 좌표 실시간 추적 (렌더 없음)
 // ================================================================
 function HoverTracker({ drawHeight, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef, lineStart, viewMode = '3d' }) {
     const { camera, raycaster, mouse } = useThree();
     const hitPoint = useMemo(() => new THREE.Vector3(), []);
+    const _proj    = useMemo(() => new THREE.Vector3(), []);
 
-    // 3D 모드: 잠긴 축에 따라 스냅 평면을 동적으로 선택
+    // 스크린 스페이스로 가장 가까운 스냅 꼭짓점 반환 (줌 레벨 무관)
+    const findSnapScreenSpace = useCallback((verts) => {
+        let best = null, minDist = 0.07; // NDC 거리 임계값 (화면 폭의 ~3.5%)
+        for (const v of verts) {
+            _proj.set(v[0], v[1], v[2]).project(camera);
+            if (_proj.z > 1) continue; // 카메라 뒤는 무시
+            const d = Math.hypot(_proj.x - mouse.x, _proj.y - mouse.y);
+            if (d < minDist) { minDist = d; best = v; }
+        }
+        return best;
+    }, [camera, mouse, _proj]);
+
     const snapPlane = useMemo(() => {
         if (viewMode !== '3d') return getSnapPlane(viewMode, snapVertices);
         return getDynamicSnapPlane3D(lockedAxes);
@@ -453,27 +501,24 @@ function HoverTracker({ drawHeight, snapVertices, snapEnabled, onHoverPosition, 
             const zl = lockedAxes?.z != null;
 
             if (xl && !yl && !zl) {
-                // X 고정 → 수직 평면: hitPoint에서 높이(Y)·깊이(Z) 읽기
                 ex = lockedAxes.x;
-                ey = hitPoint.y;  // Three.js Y = data Z (높이)
-                ez = hitPoint.z;  // Three.js Z = data Y (깊이)
+                ey = hitPoint.y;
+                ez = hitPoint.z;
             } else if (yl && !xl && !zl) {
-                // Y(data) 고정 → 수직 평면: hitPoint에서 X·높이(Y) 읽기
                 ex = hitPoint.x;
-                ey = hitPoint.y;  // Three.js Y = 높이
+                ey = hitPoint.y;
                 ez = lockedAxes.y;
             } else {
-                // Z 고정 / 미고정 → 수평 평면 (기존 동작 + 스냅)
                 ex = hitPoint.x; ey = zl ? lockedAxes.z : drawHeight; ez = hitPoint.z;
                 if (snapEnabled && snapVertices.length > 0) {
-                    const sv = findSnapVertex(hitPoint.x, hitPoint.z, snapVertices);
+                    // 스크린 스페이스 스냅 — 줌 레벨과 무관하게 작동
+                    const sv = findSnapScreenSpace(snapVertices);
                     if (sv) { ex = sv[0]; ey = sv[1] ?? drawHeight; ez = sv[2]; }
                 }
                 if (xl) ex = lockedAxes.x;
                 if (yl) ez = lockedAxes.y;
             }
         } else {
-            // 2D 직교 뷰 — 기존 로직
             ex = hitPoint.x; ey = drawHeight; ez = hitPoint.z;
             if (snapEnabled && snapVertices.length > 0) {
                 const [wa, wb] = viewMode === 'xz' ? [hitPoint.x, hitPoint.y]
@@ -841,7 +886,7 @@ function MeasureHelper({ pointA, pointB, active, snapVertices, snapEnabled, view
     const previewDotRef  = useRef();
 
     useFrame(() => {
-        if (!active || !pointA || pointB) return;
+        if (!active || pointB) return;
         raycaster.setFromCamera(mouse, camera);
         if (!raycaster.ray.intersectPlane(snapPlane, hitRef)) return;
         let ex = hitRef.x, ey = hitRef.y, ez = hitRef.z;
@@ -851,7 +896,8 @@ function MeasureHelper({ pointA, pointB, active, snapVertices, snapEnabled, view
         }
         // BIM data coords: x=BIM_X, y=BIM_Y(floor), z=BIM_Z(height)
         hoverRef.current = { x: ex, y: ez, z: ey };
-        // Update preview line: pointA → mouse (Three.js coords: [x, z_height, y_floor])
+        // 두 번째 점 대기 중일 때만 프리뷰 선 업데이트
+        if (!pointA) return;
         const pos = previewGeom.attributes.position;
         pos.setXYZ(0, pointA.x, pointA.z, pointA.y);
         pos.setXYZ(1, ex, ey, ez);
@@ -943,6 +989,7 @@ function MeasureHelper({ pointA, pointB, active, snapVertices, snapEnabled, view
 // 치수 표시 (선택된 부재 크기 라벨)
 // ================================================================
 function DimensionLabel({ element }) {
+    const [activeDim, setActiveDim] = React.useState(null);
     if (!element) return null;
     const pX = Number(element.positionX) || 0;
     const pY = Number(element.positionY) || 0;
@@ -950,24 +997,43 @@ function DimensionLabel({ element }) {
     const sX = Number(element.sizeX)     || 0.1;
     const sY = Number(element.sizeY)     || 0.1;
     const sZ = Number(element.sizeZ)     || 0.1;
-    // Three.js center
     const cy = pZ + sZ / 2;
 
-    const base = { background:'rgba(0,0,0,0.78)', padding:'2px 7px', borderRadius:5, fontSize:11,
-                   fontWeight:700, whiteSpace:'nowrap', userSelect:'none', fontFamily:'monospace' };
+    const stopAll = (e) => { e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); };
+    const handleClick = (dim) => (e) => {
+        stopAll(e);
+        setActiveDim(prev => (prev === dim ? null : dim));
+    };
+
+    const dimStyle = (dim, color, border) => ({
+        background: activeDim === dim ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.82)',
+        padding: '3px 9px', borderRadius: 5, fontSize: 11, fontWeight: 700,
+        whiteSpace: 'nowrap', userSelect: 'none', fontFamily: 'monospace',
+        color, border: activeDim === dim ? `2px solid ${color}` : `1px solid ${border}`,
+        cursor: 'pointer', pointerEvents: 'auto',
+        boxShadow: activeDim === dim ? `0 0 8px ${color}80` : 'none',
+        transition: 'all 0.15s',
+    });
+
     return (
         <>
             {/* Width X */}
             <Html position={[pX, pZ - 0.15, pY + sY/2 + 0.45]} center zIndexRange={[9990,9989]}>
-                <div style={{...base, color:'#60a5fa', border:'1px solid #3b82f6'}}>W {sX.toFixed(2)}m</div>
+                <div style={dimStyle('x','#60a5fa','#3b82f6')} onClick={handleClick('x')} onPointerDown={stopAll}>
+                    W {sX.toFixed(2)}m{activeDim==='x' && <span style={{marginLeft:5,opacity:.7,fontSize:10}}>✓</span>}
+                </div>
             </Html>
             {/* Depth Y */}
             <Html position={[pX + sX/2 + 0.45, pZ - 0.15, pY]} center zIndexRange={[9990,9989]}>
-                <div style={{...base, color:'#a78bfa', border:'1px solid #7c3aed'}}>D {sY.toFixed(2)}m</div>
+                <div style={dimStyle('y','#a78bfa','#7c3aed')} onClick={handleClick('y')} onPointerDown={stopAll}>
+                    D {sY.toFixed(2)}m{activeDim==='y' && <span style={{marginLeft:5,opacity:.7,fontSize:10}}>✓</span>}
+                </div>
             </Html>
             {/* Height Z */}
             <Html position={[pX + sX/2 + 0.45, cy, pY]} center zIndexRange={[9990,9989]}>
-                <div style={{...base, color:'#4ade80', border:'1px solid #16a34a'}}>H {sZ.toFixed(2)}m</div>
+                <div style={dimStyle('z','#4ade80','#16a34a')} onClick={handleClick('z')} onPointerDown={stopAll}>
+                    H {sZ.toFixed(2)}m{activeDim==='z' && <span style={{marginLeft:5,opacity:.7,fontSize:10}}>✓</span>}
+                </div>
             </Html>
         </>
     );
@@ -980,11 +1046,11 @@ function SectionCutEffect({ enabled, axis, value }) {
     const { gl } = useThree();
     useEffect(() => {
         if (!enabled) { gl.clippingPlanes = []; return () => { gl.clippingPlanes = []; }; }
-        // 축별 법선 벡터: axis=x → Three.js X, axis=y → Three.js Z(BIM Y), axis=z → Three.js Y(BIM Z)
+        // BIM 좌표: X=동서, Y=남북, Z=높이 / Three.js: X=동서, Y=높이(BIM Z), Z=남북(BIM Y)
         const normals = {
-            x: new THREE.Vector3(-1, 0, 0),
-            y: new THREE.Vector3(0, 0, -1),
-            z: new THREE.Vector3(0, -1, 0),
+            x: new THREE.Vector3(-1, 0,  0),
+            y: new THREE.Vector3( 0, -1, 0),  // BIM Y(높이) → Three.js Y
+            z: new THREE.Vector3( 0,  0, -1), // BIM Z(남북) → Three.js Z
         };
         gl.clippingPlanes = [new THREE.Plane(normals[axis] ?? normals.z, value)];
         return () => { gl.clippingPlanes = []; };
@@ -998,41 +1064,64 @@ function SectionCutEffect({ enabled, axis, value }) {
 // ================================================================
 function WalkController({ active, orbitRef, onExit }) {
     const keysRef = useRef({});
-    const { camera } = useThree();
+    const { camera, gl } = useThree();
+
     useEffect(() => {
         if (!active) return;
+        const prevOrder = camera.rotation.order;
+        // 현재 쿼터니언을 YXZ 오일러로 재분해 — 방향 보존
+        const currentQuat = camera.quaternion.clone();
+        camera.rotation.order = 'YXZ';
+        camera.rotation.setFromQuaternion(currentQuat, 'YXZ');
+        const canvas = gl.domElement;
+
+        // pointer lock 없이 canvas mousemove로 마우스룩
+        const onMouseMove = (e) => {
+            const sens = 0.003;
+            camera.rotation.x = Math.max(
+                -Math.PI * 0.42,
+                Math.min(Math.PI * 0.42, camera.rotation.x + e.movementX * sens)
+            );
+            camera.rotation.y -= e.movementY * sens;
+        };
         const onDown = (e) => {
-            if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
             keysRef.current[e.code] = true;
             if (e.code === 'Escape') onExit?.();
         };
         const onUp = (e) => { keysRef.current[e.code] = false; };
+
+        canvas.addEventListener('mousemove', onMouseMove);
         window.addEventListener('keydown', onDown);
         window.addEventListener('keyup',   onUp);
         return () => {
+            canvas.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('keydown', onDown);
             window.removeEventListener('keyup',   onUp);
             keysRef.current = {};
+            camera.rotation.order = prevOrder;
         };
-    }, [active, onExit]);
+    }, [active, camera, gl, onExit]);
 
     useFrame((_, delta) => {
         if (!active || !orbitRef?.current) return;
-        const speed = 8 * delta;
+        const speed    = 20 * delta;
+        const turnSpeed = 1.2 * delta; // A/D 회전 속도 (rad/s)
         const forward = new THREE.Vector3();
         camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
-        const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
-        const move  = new THREE.Vector3();
-        if (keysRef.current['KeyW'] || keysRef.current['ArrowUp'])    move.addScaledVector(forward,  speed);
-        if (keysRef.current['KeyS'] || keysRef.current['ArrowDown'])   move.addScaledVector(forward, -speed);
-        if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft'])   move.addScaledVector(right,  -speed);
-        if (keysRef.current['KeyD'] || keysRef.current['ArrowRight'])  move.addScaledVector(right,   speed);
-        if (keysRef.current['KeyE'] || keysRef.current['PageUp'])   move.y += speed;
-        if (keysRef.current['KeyQ'] || keysRef.current['PageDown']) move.y -= speed;
-        if (move.lengthSq() > 0) {
-            camera.position.add(move);
-            orbitRef.current.target.add(move);
-            orbitRef.current.update();
+        const move = new THREE.Vector3();
+        if (keysRef.current['KeyW'] || keysRef.current['ArrowUp'])   move.addScaledVector(forward,  speed);
+        if (keysRef.current['KeyS'] || keysRef.current['ArrowDown'])  move.addScaledVector(forward, -speed);
+        if (keysRef.current['KeyQ'] || keysRef.current['ArrowLeft'])  camera.rotation.z += turnSpeed;
+        if (keysRef.current['KeyE'] || keysRef.current['ArrowRight']) camera.rotation.z -= turnSpeed;
+        if (keysRef.current['KeyA'] || keysRef.current['PageUp'])   move.y += speed;  // 위
+        if (keysRef.current['KeyD'] || keysRef.current['PageDown']) move.y -= speed;  // 아래
+        camera.position.add(move);
+        // orbit target만 동기화 (update() 호출 금지 — OrbitControls가 rotation을 덮어씀)
+        if (orbitRef?.current) {
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+            orbitRef.current.target.copy(camera.position).addScaledVector(dir, 10);
         }
     });
     return null;
@@ -1211,9 +1300,10 @@ export default function Scene({
             window.removeEventListener('keyup', handler);
         };
     }, []);
-    // IFC 모드에서 선택이 바뀌면 피벗을 선택 요소들의 무게중심으로 이동
+    // 다중 선택 시 피벗을 선택 요소들의 무게중심으로 이동 (IFC/비IFC 공통)
     useEffect(() => {
-        if (!ifcMeshes?.length || allSelectedIds.size === 0) return;
+        if (allSelectedIds.size === 0) return;
+        if (!ifcMeshes?.length && allSelectedIds.size < 2) return;
         let sumX = 0, sumY = 0, sumZ = 0, count = 0;
         for (const el of modelData) {
             if (!allSelectedIds.has(el.elementId)) continue;
@@ -1236,37 +1326,46 @@ export default function Scene({
     const startPositionsRef = useRef({});
 
     // ── 스냅 꼭짓점 수집 ─────────────────────────────────────────────
-    // 스냅은 부재 배치(pendingElement) 또는 선 작도(lineDrawMode=click) 중에만 활성화
-    // → 일반 선택/편집 중에는 빈 배열을 반환해 인디케이터/핸들 스냅을 완전 비활성화
+    // 스냅: 부재 배치 / 선 작도 / 측정 중에 활성화
     const snapVertices = useMemo(() => {
         if (!snapEnabled) return [];
-        if (!pendingElement && lineDrawMode !== 'click') return [];
+        const inActiveMode = !!pendingElement || lineDrawMode === 'click' || measureMode;
+        // 선택된 부재는 모드 무관하게 항상 스냅 포인트 제공
+        const hasSelectedEl = !!selectedElement?.data;
+        if (!inActiveMode && !hasSelectedEl) return [];
         const verts = [];
+        // 선 꼭짓점: BIM 저장 포맷 [BIM_X, BIM_Y(floor), BIM_Z(height)]
+        //            → Three.js 포맷 [X, Z(height), Y(floor)] 로 변환 필요
+        const lineToThree = (p) => p ? [p[0], p[2] ?? 0, p[1] ?? 0] : null;
         for (const line of lines) {
-            if (line.start) verts.push(line.start);
-            if (line.end)   verts.push(line.end);
+            const sv = lineToThree(line.start); if (sv) verts.push(sv);
+            const ev = lineToThree(line.end);   if (ev) verts.push(ev);
             if (line.pointsJson) {
                 try {
                     const pts = typeof line.pointsJson === 'string'
                         ? JSON.parse(line.pointsJson) : line.pointsJson;
-                    if (Array.isArray(pts)) pts.forEach(p => verts.push(p));
+                    if (Array.isArray(pts)) pts.forEach(p => { const v = lineToThree(p); if (v) verts.push(v); });
                 } catch (_) {}
             }
         }
+        const selectedId = selectedElement?.data?.elementId;
         for (const el of modelData) {
-            // 좌표 규칙: positionX/Y=평면, positionZ=높이 → Three.js: X=posX, Y=posZ, Z=posY
+            // active 모드면 모든 부재, 아니면 선택된 부재만 포함
+            if (!inActiveMode && el.elementId !== selectedId) continue;
             const ex = Number(el.positionX)||0, ey = Number(el.positionY)||0, ez = Number(el.positionZ)||0;
             const esx = (Number(el.sizeX)||1)/2, esy = (Number(el.sizeY)||1)/2, esz = Number(el.sizeZ)||1;
-            // 스냅 꼭짓점: Three.js [X, Y=height, Z=floorY]
-            for (const dx of [-1,1]) for (const dy of [-1,1]) {
-                verts.push([ex+dx*esx, ez,      ey+dy*esy]);  // 바닥 코너
-                verts.push([ex+dx*esx, ez+esz,  ey+dy*esy]);  // 상단 코너
+            for (const dx of [-1,0,1]) for (const dy of [-1,0,1]) {
+                if (dx === 0 && dy === 0) continue;
+                verts.push([ex+dx*esx, ez,      ey+dy*esy]);
+                verts.push([ex+dx*esx, ez+esz,  ey+dy*esy]);
+                verts.push([ex+dx*esx, ez+esz/2, ey+dy*esy]); // 중간 높이 모서리
             }
-            verts.push([ex, ez,      ey]);  // 중심 바닥
-            verts.push([ex, ez+esz,  ey]);  // 중심 상단
+            verts.push([ex, ez,      ey]);
+            verts.push([ex, ez+esz,  ey]);
+            verts.push([ex, ez+esz/2, ey]);
         }
         return verts;
-    }, [snapEnabled, pendingElement, lineDrawMode, lines, modelData]);
+    }, [snapEnabled, pendingElement, lineDrawMode, measureMode, selectedElement, lines, modelData]);
 
     // ── 표준 뷰 프리셋 ────────────────────────────────────────────────
     // viewPreset = { id: 'iso'|'top'|'front'|'right'|'left'|'back', ts: number }
@@ -1348,9 +1447,10 @@ export default function Scene({
     // ── TransformControls 드래그 완료 ────────────────────────────────
     const handleTransformComplete = useCallback(() => {
         const isIfcMode = !!(ifcMeshes?.length);
+        const isMultiSelect = allSelectedIdsRef.current.size > 1;
 
-        // ── IFC 모드: 피벗 델타 기반 ───────────────────────────────────
-        if (isIfcMode) {
+        // ── 피벗 모드: IFC 또는 비-IFC 다중선택 ───────────────────────
+        if (isIfcMode || isMultiSelect) {
             const initial = pivotInitialState.current;
             const ids     = allSelectedIdsRef.current;
             if (!initial || ids.size === 0) return;
@@ -1399,13 +1499,13 @@ export default function Scene({
                         rotationZ: parseFloat(((el.rotationZ ?? 0) + dEuler.z).toFixed(5)),
                     });
                 }
-                ifcMeshGroupRef.current?.applyRotate(ids, centroid, dq);
+                if (isIfcMode) ifcMeshGroupRef.current?.applyRotate(ids, centroid, dq);
                 pivotObj.rotation.set(0, 0, 0);
 
             } else if (transformMode === 'scale') {
                 const sx = pivotObj.scale.x;
-                const sy = pivotObj.scale.y; // Three.js Y scale = data sizeZ
-                const sz = pivotObj.scale.z; // Three.js Z scale = data sizeY
+                const sy = pivotObj.scale.y;
+                const sz = pivotObj.scale.z;
                 const centroid = initial.pos.clone();
 
                 for (const [id, el] of Object.entries(initial.elements)) {
@@ -1424,7 +1524,7 @@ export default function Scene({
                         sizeZ: parseFloat(((el.sizeZ ?? 1) * sy).toFixed(3)),
                     });
                 }
-                ifcMeshGroupRef.current?.applyScale(ids, centroid, sx, sy, sz);
+                if (isIfcMode) ifcMeshGroupRef.current?.applyScale(ids, centroid, sx, sy, sz);
                 pivotObj.scale.set(1, 1, 1);
             }
             return;
@@ -1514,24 +1614,30 @@ export default function Scene({
             setIsDragging(e.value);
             if (e.value) {
                 pushUndo?.();
-                if (ifcMeshes?.length) {
-                    // IFC 모드: 피벗 + 메시 초기 상태 스냅샷
-                    const elements = {}, meshPositions = {};
+                const isMultiSelect = allSelectedIdsRef.current.size > 1;
+                if (ifcMeshes?.length || isMultiSelect) {
+                    // 피벗 모드: IFC 또는 비-IFC 다중선택
+                    const elements = {};
                     for (const id of allSelectedIdsRef.current) {
                         const el = modelData.find(d => d.elementId === id);
                         if (el) elements[id] = { ...el };
-                        const mp = ifcMeshGroupRef.current?.getMeshPosition(id);
-                        if (mp) meshPositions[id] = mp;
+                    }
+                    const meshPositions = {};
+                    if (ifcMeshes?.length) {
+                        for (const id of allSelectedIdsRef.current) {
+                            const mp = ifcMeshGroupRef.current?.getMeshPosition(id);
+                            if (mp) meshPositions[id] = mp;
+                        }
                     }
                     pivotInitialState.current = {
                         pos:   pivotObj.position.clone(),
                         rot:   pivotObj.rotation.clone(),
                         scale: pivotObj.scale.clone(),
                         elements,
-                        meshPositions,
+                        meshPositions: Object.keys(meshPositions).length ? meshPositions : null,
                     };
                 } else {
-                    // 비-IFC 모드: 위치 + 크기 + 회전 스냅샷
+                    // 비-IFC 단일 요소: 메시 직접 조작
                     startPositionsRef.current = {};
                     modelData.forEach(el => {
                         startPositionsRef.current[el.elementId] = {
@@ -1635,11 +1741,11 @@ export default function Scene({
             <primitive object={pivotObj} />
 
             {/* TransformControls
-                - IFC 모드: 선택 요소가 있으면 피벗에 연결 (단일/다중 모두)
-                - 비-IFC 모드: 기존처럼 selectedElement mesh에 연결 */}
+                - IFC 모드 또는 다중선택: 피벗에 연결
+                - 비-IFC 단일선택: selectedElement mesh에 직접 연결 */}
             {!isResizeDragging && (() => {
-                if (ifcMeshes?.length) {
-                    if (allSelectedIds.size === 0) return null;
+                if (allSelectedIds.size === 0) return null;
+                if (ifcMeshes?.length || allSelectedIds.size > 1) {
                     return (
                         <TransformControls
                             ref={transformRef}
@@ -1664,7 +1770,7 @@ export default function Scene({
                     ref={ifcMeshGroupRef}
                     ifcMeshes={ifcMeshes}
                     modelData={modelData}
-                    onElementSelect={onElementSelect}
+                    onElementSelect={(measureMode || lineDrawMode === 'click') ? null : onElementSelect}
                     selectedElement={selectedElement}
                     selectedElements={selectedElements}
                 />
@@ -1679,7 +1785,7 @@ export default function Scene({
                                            selectedElement?.data?.elementId !== element.elementId,
                         }}
                         onElementSelect={onElementSelect}
-                        isPlacementMode={!!pendingElement}
+                        isPlacementMode={!!pendingElement || measureMode || lineDrawMode === 'click'}
                     />
                 ))
             )}
@@ -1696,14 +1802,18 @@ export default function Scene({
                 />
             )}
 
-            {/* 꼭짓점 스냅 인디케이터 — 배치(pendingElement) 또는 선 작도 중에만 표시
-                일반 선택/편집 모드에서는 렌더링 자체를 하지 않아 레이캐스트 간섭 원천 차단 */}
-            {(!!pendingElement || lineDrawMode === 'click') && (
+            {/* 꼭짓점 스냅 인디케이터 (배치·선 작도·측정 중 활성화) */}
+            {(!!pendingElement || lineDrawMode === 'click' || measureMode) && (
                 <VertexSnapIndicator
                     snapVertices={snapVertices}
                     snapEnabled={snapEnabled}
                     viewMode={viewMode}
                 />
+            )}
+
+            {/* 선택된 부재 꼭짓점 스냅 포인트 — 항상 표시 */}
+            {selectedElement?.data && (
+                <ElementSnapPoints element={selectedElement.data} />
             )}
 
             {/* 배치 고스트 */}

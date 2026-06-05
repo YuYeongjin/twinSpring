@@ -814,7 +814,7 @@ function MirrorCopyDialog({ selectedElements, selectedElement, modelData, onAppl
 // PropertyPanel
 // ================================================================
 
-function PropertyPanel({ selectedElement, selectedElements, updateElementData, saveUpdateElement, deleteSelectedElements, elementOpacity, onSetOpacity }) {
+function PropertyPanel({ selectedElement, selectedElements, modelData, updateElementData, saveUpdateElement, deleteSelectedElements, elementOpacity, onSetOpacity }) {
     const t = useT('bimDashboard');
     const [form, setForm] = useState({
         material: '', posX: 0, posY: 0, posZ: 0, sizeX: 1, sizeY: 1, sizeZ: 1,
@@ -873,6 +873,22 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
             positionX: next.posX, positionY: next.posY, positionZ: next.posZ,
             sizeX: next.sizeX, sizeY: next.sizeY, sizeZ: next.sizeZ,
         });
+        // 다중 선택 시 변경된 필드를 모든 선택 부재에 적용
+        if (selectedElements?.size > 0) {
+            const propKeyMap = {
+                material: 'material',
+                posX: 'positionX', posY: 'positionY', posZ: 'positionZ',
+                sizeX: 'sizeX', sizeY: 'sizeY', sizeZ: 'sizeZ',
+            };
+            const propKey = propKeyMap[field];
+            if (propKey) {
+                for (const id of selectedElements) {
+                    if (id === el.elementId) continue;
+                    const target = modelData?.find(e => e.elementId === id);
+                    if (target) updateElementData(id, { ...target, [propKey]: parsed });
+                }
+            }
+        }
     };
 
     const inputCls = "w-full rounded-md border border-space-600 bg-space-700/80 px-2 py-1.5 text-sm text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none";
@@ -1097,11 +1113,24 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         if (lineDrawMode === 'off') setLineLocked({ x: null, y: null, z: null });
     }, [lineDrawMode]);
 
+    // ── 거리/각도 측정 ──
+    const [measureMode, setMeasureMode] = useState(false);
+    const [measurePoints, setMeasurePoints] = useState({ a: null, b: null });
+    const handleMeasureClick = useCallback((pt) => {
+        setMeasurePoints(prev => {
+            if (!prev.a) return { a: pt, b: null };
+            if (!prev.b) return { ...prev, b: pt };
+            return { a: pt, b: null };
+        });
+    }, []);
+
+    // ── Walk / Fly 모드 ──
+    const [walkMode, setWalkMode] = useState(false);
+
     // 부재 배치 / 선 작도 / 측정 / 워크 모드 진입·해제 시 App.js에 알림 (FloatingAgent 숨김)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         onPlacementModeChange?.(pendingElement !== null || lineDrawMode !== 'off' || measureMode || walkMode);
-    }, [pendingElement, lineDrawMode, measureMode, walkMode, onPlacementModeChange]); // eslint-disable-line no-use-before-define
+    }, [pendingElement, lineDrawMode, measureMode, walkMode, onPlacementModeChange]);
 
     const [lineColor, setLineColor] = useState('#60a5fa');
     const [lineWidth, setLineWidth] = useState(2);
@@ -1359,16 +1388,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         // no-op: local state already updated via onVertexUpdate
     }, []);
 
-    // ── 전역 저장 (Save 버튼 / Ctrl+S) ──────────────────────────────
-    const handleGlobalSave = useCallback(() => {
-        if (selectedLineId) {
-            const currentLine = lines.find(l => l.lineId === selectedLineId);
-            if (currentLine) saveUpdateLine(currentLine);
-        } else if (selectedElement) {
-            saveUpdateElement();
-        }
-    }, [selectedLineId, lines, selectedElement, saveUpdateLine, saveUpdateElement]); // eslint-disable-line react-hooks/exhaustive-deps
-
     const saveUpdateLine = useCallback((lineData) => {
         const pointsArr = lineData.pointsJson
             ? (typeof lineData.pointsJson === 'string' ? JSON.parse(lineData.pointsJson) : lineData.pointsJson)
@@ -1394,6 +1413,31 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             .catch(err => console.error('선 수정 실패:', err));
     }, [selectedProject]);
 
+    // ── 전역 저장 (Ctrl+S) — 프로젝트 전체 저장 ─────────────────────
+    const handleGlobalSave = useCallback(() => {
+        const pid = selectedProject?.projectId;
+        let saved = false;
+
+        // 1) 모든 부재 저장
+        if (modelData.length > 0) {
+            for (const el of modelData) {
+                AxiosCustom.put(`${API_BASE}/model/element`, {
+                    ...el,
+                    projectId: pid || el.projectId,
+                }).catch(err => console.error('부재 저장 실패:', el.elementId, err));
+            }
+            saved = true;
+        }
+
+        // 2) 현재 선택된 선 저장
+        if (selectedLineId) {
+            const currentLine = lines.find(l => l.lineId === selectedLineId);
+            if (currentLine) { saveUpdateLine(currentLine); saved = true; }
+        }
+
+        if (saved) setSaveToast(Date.now());
+    }, [modelData, selectedProject, selectedLineId, lines, saveUpdateLine]);
+
     const handleLineClick = useCallback((point) => {
         const pos = [
             parseFloat((point.x ?? 0).toFixed(3)),
@@ -1417,27 +1461,22 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     const [mainCameraYaw, setMainCameraYaw] = useState(0);
 
-    // ── 거리/각도 측정 ──
-    const [measureMode, setMeasureMode] = useState(false);
-    const [measurePoints, setMeasurePoints] = useState({ a: null, b: null });
-    const handleMeasureClick = useCallback((pt) => {
-        setMeasurePoints(prev => {
-            if (!prev.a) return { a: pt, b: null };
-            if (!prev.b) return { ...prev, b: pt };
-            return { a: pt, b: null }; // 세 번째 클릭 → 새 측정 시작
-        });
-    }, []);
-
     // ── 치수 표시 ──
     const [showDimensions, setShowDimensions] = useState(false);
 
     // ── Named View ──
-    const [savedViews, setSavedViews] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('bim_saved_views') || '[]'); }
-        catch { return []; }
-    });
+    const viewsKey = `bim_saved_views_${selectedProject?.projectId ?? 'default'}`;
+    const [savedViews, setSavedViews] = useState([]);
     const [showViewsPanel, setShowViewsPanel] = useState(false);
+    const [viewsDropPos,   setViewsDropPos]   = useState({ top: 0, right: 0 });
+    const viewsBtnRef = useRef(null);
     const orbitTargetRef = useRef(new THREE.Vector3(0, 0, 0));
+
+    // 프로젝트 전환 시 해당 프로젝트의 뷰 목록 로드
+    useEffect(() => {
+        try { setSavedViews(JSON.parse(localStorage.getItem(viewsKey) || '[]')); }
+        catch { setSavedViews([]); }
+    }, [viewsKey]);
 
     const saveCurrentView = useCallback((name) => {
         const cam = cameraRef.current;
@@ -1449,14 +1488,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         };
         const updated = [...savedViews, view];
         setSavedViews(updated);
-        try { localStorage.setItem('bim_saved_views', JSON.stringify(updated)); } catch {}
-    }, [savedViews, cameraRef]);
+        try { localStorage.setItem(viewsKey, JSON.stringify(updated)); } catch {}
+    }, [savedViews, cameraRef, viewsKey]);
 
     const deleteView = useCallback((id) => {
         const updated = savedViews.filter(v => v.id !== id);
         setSavedViews(updated);
-        try { localStorage.setItem('bim_saved_views', JSON.stringify(updated)); } catch {}
-    }, [savedViews]);
+        try { localStorage.setItem(viewsKey, JSON.stringify(updated)); } catch {}
+    }, [savedViews, viewsKey]);
 
     const restoreView = useCallback((view) => {
         setViewPreset({
@@ -1473,8 +1512,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const [sectionCutValue,   setSectionCutValue]   = useState(20);
 
     // ── Walk / Fly 모드 ──
-    const [walkMode, setWalkMode] = useState(false);
-
     // ── 속성 필터 선택 (Quick Select) ──
     const [showQuickSelect, setShowQuickSelect] = useState(false);
 
@@ -1535,6 +1572,13 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     );
 
     const [exporting, setExporting] = useState(false);
+    const [saveToast, setSaveToast] = useState(null);
+
+    useEffect(() => {
+        if (!saveToast) return;
+        const t = setTimeout(() => setSaveToast(null), 2000);
+        return () => clearTimeout(t);
+    }, [saveToast]);
 
     const handleExportExcel = useCallback(() => {
         if (!modelData?.length) return;
@@ -1640,7 +1684,13 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 return;
             }
             if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+            // 워크모드 중에는 WASD 충돌 방지 — Escape만 허용
+            if (walkMode) {
+                if (e.key === 'Escape') setWalkMode(false);
+                return;
+            }
             if (e.key === 't' || e.key === 'T') setTransformMode('translate');
+            if (e.key === 'm' || e.key === 'M') setTransformMode('translate');
             if (e.key === 'r' || e.key === 'R') setTransformMode('rotate');
             if (e.key === 's' || e.key === 'S') setTransformMode('scale');
             if (e.key === 'q' || e.key === 'Q') toggleSelectMode();
@@ -1689,6 +1739,20 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 ? { position: 'fixed', inset: 0, zIndex: 9999, height: '100dvh', width: '100vw' }
                 : { height: '85dvh' }
             }>
+            {/* Ctrl+S 저장 토스트 */}
+            {saveToast && (
+                <div style={{
+                    position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
+                    zIndex: 10001, background: 'rgba(22,163,74,0.95)', color: '#fff',
+                    borderRadius: 10, padding: '8px 20px', fontSize: 13, fontWeight: 600,
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    pointerEvents: 'none',
+                }}>
+                    ✓ 저장됨
+                </div>
+            )}
+
             {showDroneModal && (
                 <DroneAnalysisModal
                     onClose={() => setShowDroneModal(false)}
@@ -1755,7 +1819,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             >{t('structuralAnalysis')}</button>
                             <button onClick={() => setBimSubView('workplan')} className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
                                 style={{ backgroundColor: bimSubView === 'workplan' ? '#1e1a3f' : 'transparent', color: bimSubView === 'workplan' ? '#c084fc' : '#8896a4' }}
-                            >작업계획</button>
+                            >{t('workPlanTab')}</button>
                         </div>
                     </div>
 
@@ -1815,32 +1879,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         <button onClick={() => setSectionCutEnabled(v => !v)}
                             className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 ${sectionCutEnabled?'bg-orange-600/30 text-orange-300 border-orange-500/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
                         >{t('toolSection')}</button>
-                        <button onClick={() => setWalkMode(v => !v)}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 ${walkMode?'bg-green-700/30 text-green-300 border-green-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
-                        >{t('toolWalk')}</button>
-                        <div className="h-4 w-px bg-space-700 shrink-0 mx-0.5" />
-                        <button onClick={() => setShowQuickSelect(true)}
-                            className="px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60"
-                        >{t('toolFilter')}</button>
-                        <button onClick={() => setShowArrayDialog(true)}
-                            className="px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60"
-                        >{t('toolArray')}</button>
-                        <button onClick={() => setShowMirrorDialog(true)}
-                            className="px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60"
-                        >{t('toolMirror')}</button>
-                        <button
-                            onClick={() => {
-                                const ids = new Set([...selectedElements, ...(selectedElement?[selectedElement.data.elementId]:[])]);
-                                if (ids.size === 0) { alert(t('groupNoSelection')); return; }
-                                const name = window.prompt(t('groupNameDefault',{n:''}).trim(), t('groupNameDefault',{n:layers.length+1}));
-                                if (!name) return;
-                                createGroupLayer(name, ids);
-                            }}
-                            className="px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60"
-                        >{t('toolGroup')}</button>
-                        <button onClick={() => setShowViewsPanel(v => !v)}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 ${showViewsPanel?'bg-blue-700/30 text-blue-300 border-blue-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
-                        >{t('toolViews')}{savedViews.length > 0 ? ` (${savedViews.length})` : ''}</button>
                     </div>
                     </>)}
                 </div>
@@ -1863,7 +1901,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         >{t('structuralAnalysis')}</button>
                         <button onClick={() => setBimSubView('workplan')} className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
                             style={{ backgroundColor: bimSubView === 'workplan' ? '#1e1a3f' : 'transparent', color: bimSubView === 'workplan' ? '#c084fc' : '#8896a4' }}
-                        >작업계획</button>
+                        >{t('workPlanTab')}</button>
                     </div>
 
                     {bimSubView === 'editor' && (<>
@@ -1931,14 +1969,14 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     <div className="h-5 w-px bg-space-700 shrink-0" />
 
                     {/* 편집 작업 그룹 */}
-                    <button onClick={() => setShowQuickSelect(true)}
-                        className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-violet-300"
-                        title={t('tooltipFilter')}
-                    >{t('toolFilter')}</button>
-                    <button onClick={() => setShowArrayDialog(true)}
-                        className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-emerald-300"
-                        title={t('tooltipArray')}
-                    >{t('toolArray')}</button>
+                    {/*<button onClick={() => setShowQuickSelect(true)}*/}
+                    {/*    className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-violet-300"*/}
+                    {/*    title={t('tooltipFilter')}*/}
+                    {/*>{t('toolFilter')}</button>*/}
+                    {/*<button onClick={() => setShowArrayDialog(true)}*/}
+                    {/*    className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-emerald-300"*/}
+                    {/*    title={t('tooltipArray')}*/}
+                    {/*>{t('toolArray')}</button>*/}
                     <button onClick={() => setShowMirrorDialog(true)}
                         className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-pink-300"
                         title={t('tooltipMirror')}
@@ -1962,9 +2000,16 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     <div className="h-5 w-px bg-space-700 shrink-0" />
 
                     {/* Named View */}
-                    <div className="relative shrink-0">
+                    <div className="shrink-0">
                         <button
-                            onClick={() => setShowViewsPanel(v => !v)}
+                            ref={viewsBtnRef}
+                            onClick={() => {
+                                if (!showViewsPanel && viewsBtnRef.current) {
+                                    const r = viewsBtnRef.current.getBoundingClientRect();
+                                    setViewsDropPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+                                }
+                                setShowViewsPanel(v => !v);
+                            }}
                             className={`px-2 py-1 rounded-lg text-xs font-semibold border transition ${showViewsPanel?'bg-blue-700/30 text-blue-300 border-blue-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
                             title={t('tooltipViews')}
                         >{t('toolViews')}{savedViews.length > 0 ? ` (${savedViews.length})` : ''}</button>
@@ -1972,8 +2017,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             <>
                                 <div className="fixed inset-0" style={{zIndex:9998}} onClick={() => setShowViewsPanel(false)} />
                                 <div style={{
-                                    position:'absolute', top:'calc(100% + 4px)', right:0, zIndex:9999,
-                                    background:'#0f1c2e', border:'1px solid #1e3a5f',
+                                    position:'fixed', top: viewsDropPos.top, right: viewsDropPos.right,
+                                    zIndex:9999, background:'#0f1c2e', border:'1px solid #1e3a5f',
                                     borderRadius:12, padding:12, minWidth:200, width:'max-content',
                                     maxWidth:'calc(100vw - 2rem)',
                                     boxShadow:'0 8px 32px rgba(0,0,0,0.7)',
@@ -2143,7 +2188,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 <LinePropertyPanel
                                     line={lines.find(l => l.lineId === selectedLineId)}
                                     onUpdate={updateLineData}
-                                    onSave={saveUpdateLine}
+                                    onSave={(ld) => { saveUpdateLine(ld); setSaveToast(Date.now()); }}
                                     onDelete={deleteLine}
                                     onDecompose={decomposeSelectedLine}
                                     onClose={() => setSelectedLineId(null)}
@@ -2163,8 +2208,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             <PropertyPanel
                                 selectedElement={selectedElement}
                                 selectedElements={selectedElements}
+                                modelData={modelData}
                                 updateElementData={updateElementData}
-                                saveUpdateElement={saveUpdateElement}
+                                saveUpdateElement={() => { saveUpdateElement(); setSaveToast(Date.now()); }}
                                 deleteSelectedElements={deleteSelectedElements}
                                 elementOpacity={selectedElement ? (elementOpacities[selectedElement.data.elementId] ?? null) : null}
                                 onSetOpacity={(val) => {
