@@ -533,10 +533,219 @@ function CoordCommandBar({
 }
 
 // ================================================================
+// QuickSelectPanel — 타입/재료로 부재 일괄 선택
+// ================================================================
+function QuickSelectPanel({ modelData, onSelect, onClose }) {
+    const t = useT('bimDashboard');
+    const TYPES = ['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier','IfcRebar'];
+    const [selTypes, setSelTypes] = React.useState([]);
+    const [selMat,   setSelMat]   = React.useState('');
+
+    const allMaterials = React.useMemo(() => {
+        const s = new Set(modelData.map(e => e.material).filter(Boolean));
+        return [...s].sort();
+    }, [modelData]);
+
+    const apply = () => {
+        const result = modelData.filter(el => {
+            const typeOk = selTypes.length === 0 || selTypes.includes(el.elementType);
+            const matOk  = !selMat || el.material === selMat;
+            return typeOk && matOk;
+        });
+        onSelect(new Set(result.map(e => e.elementId)));
+        onClose();
+    };
+
+    const toggleType = (t) => setSelTypes(prev => prev.includes(t) ? prev.filter(x=>x!==t) : [...prev, t]);
+
+    const overlay = {
+        position:'fixed', inset:0, zIndex:10000,
+        background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)',
+        display:'flex', alignItems:'center', justifyContent:'center',
+    };
+    const box = {
+        background:'#0f1c2e', border:'1px solid #1e3a5f', borderRadius:16,
+        padding:24, width:320, maxWidth:'calc(100vw - 2rem)', boxShadow:'0 8px 40px rgba(0,0,0,0.7)',
+    };
+
+    return (
+        <div style={overlay} onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
+            <div style={box}>
+                <div className="flex items-center justify-between mb-4">
+                    <span className="text-sm font-bold text-violet-300">{t('quickSelectTitle')}</span>
+                    <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
+                </div>
+                <p className="text-xs text-gray-400 mb-2">{t('quickSelectTypeLabel')}</p>
+                <div className="grid grid-cols-3 gap-1 mb-4">
+                    {TYPES.map(t => (
+                        <button key={t} onClick={() => toggleType(t)}
+                            className={`px-2 py-1 rounded text-xs font-semibold border transition ${selTypes.includes(t)?'bg-violet-700/50 text-violet-200 border-violet-500':'bg-space-700 text-gray-400 border-space-600'}`}
+                        >{t.replace('Ifc','')}</button>
+                    ))}
+                </div>
+                {allMaterials.length > 0 && (
+                    <>
+                        <p className="text-xs text-gray-400 mb-2">{t('quickSelectMatLabel')}</p>
+                        <select value={selMat} onChange={e => setSelMat(e.target.value)}
+                            className="w-full rounded-md border border-space-600 bg-space-700/80 px-2 py-1.5 text-xs text-white outline-none mb-4">
+                            <option value="">{t('quickSelectAllMat')}</option>
+                            {allMaterials.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                    </>
+                )}
+                <div className="text-xs text-gray-500 mb-3">
+                    {t('quickSelectPreview', { n: modelData.filter(el =>
+                        (selTypes.length===0||selTypes.includes(el.elementType)) &&
+                        (!selMat||el.material===selMat)
+                    ).length })}
+                </div>
+                <button onClick={apply} className="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold transition">{t('quickSelectApply')}</button>
+            </div>
+        </div>
+    );
+}
+
+// ================================================================
+// ArrayCopyDialog — 배열 복사
+// ================================================================
+function ArrayCopyDialog({ selectedElements, selectedElement, onApply, onClose }) {
+    const t = useT('bimDashboard');
+    const [arrayType, setArrayType] = React.useState('grid');
+    const [countX,    setCountX]    = React.useState(3);
+    const [countY,    setCountY]    = React.useState(3);
+    const [spacingX,  setSpacingX]  = React.useState(3);
+    const [spacingY,  setSpacingY]  = React.useState(3);
+    const [linCount,  setLinCount]  = React.useState(5);
+    const [linDx,     setLinDx]     = React.useState(3);
+    const [linDy,     setLinDy]     = React.useState(0);
+    const [linDz,     setLinDz]     = React.useState(0);
+
+    const totalIds = React.useMemo(() => {
+        const ids = new Set([...selectedElements]);
+        if (selectedElement?.data?.elementId) ids.add(selectedElement.data.elementId);
+        return ids;
+    }, [selectedElements, selectedElement]);
+
+    const total = arrayType==='grid' ? countX*countY-1 : linCount-1;
+    const apply = () => {
+        if (totalIds.size === 0) return;
+        if (arrayType === 'grid') {
+            onApply(totalIds, { type:'grid', countX, countY, spacingX, spacingY });
+        } else {
+            onApply(totalIds, { type:'linear', count:linCount, dx:linDx, dy:linDy, dz:linDz });
+        }
+        onClose();
+    };
+
+    const overlay = { position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center' };
+    const box = { background:'#0f1c2e',border:'1px solid #1e3a5f',borderRadius:16,padding:24,width:340,maxWidth:'calc(100vw - 2rem)',boxShadow:'0 8px 40px rgba(0,0,0,0.7)' };
+    const inp = "w-full rounded-md border border-space-600 bg-space-700/80 px-2 py-1.5 text-xs text-white outline-none";
+
+    return (
+        <div style={overlay} onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
+            <div style={box}>
+                <div className="flex items-center justify-between mb-4">
+                    <span className="text-sm font-bold text-emerald-300">{t('arrayCopyTitle')}</span>
+                    <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
+                </div>
+                <div className="flex gap-1 mb-4">
+                    {['grid','linear'].map(tp => (
+                        <button key={tp} onClick={() => setArrayType(tp)}
+                            className={`flex-1 py-1 rounded text-xs font-semibold border transition ${arrayType===tp?'bg-emerald-700/50 text-emerald-200 border-emerald-500':'bg-space-700 text-gray-400 border-space-600'}`}
+                        >{tp==='grid' ? t('arrayTypeGrid') : t('arrayTypeLinear')}</button>
+                    ))}
+                </div>
+                {arrayType==='grid' ? (
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div><p className="text-xs text-gray-400 mb-1">{t('arrayCountX')}</p><input type="number" min={1} max={20} value={countX} onChange={e=>setCountX(Math.max(1,+e.target.value))} className={inp}/></div>
+                        <div><p className="text-xs text-gray-400 mb-1">{t('arrayCountY')}</p><input type="number" min={1} max={20} value={countY} onChange={e=>setCountY(Math.max(1,+e.target.value))} className={inp}/></div>
+                        <div><p className="text-xs text-gray-400 mb-1">{t('arraySpacingX')}</p><input type="number" step={0.1} value={spacingX} onChange={e=>setSpacingX(+e.target.value)} className={inp}/></div>
+                        <div><p className="text-xs text-gray-400 mb-1">{t('arraySpacingY')}</p><input type="number" step={0.1} value={spacingY} onChange={e=>setSpacingY(+e.target.value)} className={inp}/></div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="col-span-2"><p className="text-xs text-gray-400 mb-1">{t('arrayLinCount')}</p><input type="number" min={2} max={50} value={linCount} onChange={e=>setLinCount(Math.max(2,+e.target.value))} className={inp}/></div>
+                        <div><p className="text-xs text-gray-400 mb-1">{t('arrayDeltaX')}</p><input type="number" step={0.1} value={linDx} onChange={e=>setLinDx(+e.target.value)} className={inp}/></div>
+                        <div><p className="text-xs text-gray-400 mb-1">{t('arrayDeltaY')}</p><input type="number" step={0.1} value={linDy} onChange={e=>setLinDy(+e.target.value)} className={inp}/></div>
+                        <div><p className="text-xs text-gray-400 mb-1">{t('arrayDeltaZ')}</p><input type="number" step={0.1} value={linDz} onChange={e=>setLinDz(+e.target.value)} className={inp}/></div>
+                    </div>
+                )}
+                <p className="text-xs text-gray-500 mb-3">
+                    {t('arrayPreview', { sel: totalIds.size, n: total, total: totalIds.size * total })}
+                </p>
+                <button onClick={apply} disabled={totalIds.size===0} className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition disabled:opacity-30">{t('arrayApply')}</button>
+            </div>
+        </div>
+    );
+}
+
+// ================================================================
+// MirrorCopyDialog — 대칭 복사
+// ================================================================
+function MirrorCopyDialog({ selectedElements, selectedElement, modelData, onApply, onClose }) {
+    const t = useT('bimDashboard');
+    const [axis,     setAxis]     = React.useState('x');
+    const [mirrorPos, setMirrorPos] = React.useState(0);
+    const [copyMode, setCopyMode] = React.useState(true);
+
+    const totalIds = React.useMemo(() => {
+        const ids = new Set([...selectedElements]);
+        if (selectedElement?.data?.elementId) ids.add(selectedElement.data.elementId);
+        return ids;
+    }, [selectedElements, selectedElement]);
+
+    // 선택 부재의 중심값을 기본 기준점으로
+    React.useEffect(() => {
+        if (totalIds.size === 0) return;
+        const els = modelData.filter(e => totalIds.has(e.elementId));
+        if (els.length === 0) return;
+        const avg = els.reduce((s, e) => s + (Number(axis==='x'?e.positionX:axis==='y'?e.positionY:e.positionZ)||0), 0) / els.length;
+        setMirrorPos(parseFloat(avg.toFixed(3)));
+    }, [axis]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const apply = () => {
+        if (totalIds.size === 0) return;
+        onApply(totalIds, axis, mirrorPos, copyMode);
+        onClose();
+    };
+
+    const overlay = { position:'fixed',inset:0,zIndex:10000,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center' };
+    const box = { background:'#0f1c2e',border:'1px solid #1e3a5f',borderRadius:16,padding:24,width:320,maxWidth:'calc(100vw - 2rem)',boxShadow:'0 8px 40px rgba(0,0,0,0.7)' };
+    const inp = "w-full rounded-md border border-space-600 bg-space-700/80 px-2 py-1.5 text-xs text-white outline-none";
+
+    return (
+        <div style={overlay} onClick={e => { if (e.target===e.currentTarget) onClose(); }}>
+            <div style={box}>
+                <div className="flex items-center justify-between mb-4">
+                    <span className="text-sm font-bold text-pink-300">{t('mirrorCopyTitle')}</span>
+                    <button onClick={onClose} className="text-gray-500 hover:text-white">✕</button>
+                </div>
+                <p className="text-xs text-gray-400 mb-2">{t('mirrorAxisLabel')}</p>
+                <div className="flex gap-1 mb-4">
+                    {[['x', t('mirrorAxisX')], ['y', t('mirrorAxisY')], ['z', t('mirrorAxisZ')]].map(([a, lbl]) => (
+                        <button key={a} onClick={() => setAxis(a)}
+                            className={`flex-1 py-1 rounded text-xs font-bold border transition ${axis===a?'bg-pink-700/50 text-pink-200 border-pink-500':'bg-space-700 text-gray-400 border-space-600'}`}
+                        >{lbl}</button>
+                    ))}
+                </div>
+                <p className="text-xs text-gray-400 mb-1">{t('mirrorPosLabel')}</p>
+                <input type="number" step={0.1} value={mirrorPos} onChange={e=>setMirrorPos(+e.target.value)} className={`${inp} mb-4`}/>
+                <label className="flex items-center gap-2 cursor-pointer mb-4">
+                    <input type="checkbox" checked={copyMode} onChange={e=>setCopyMode(e.target.checked)} className="accent-pink-500"/>
+                    <span className="text-xs text-gray-300">{t('mirrorKeepOriginal')}</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-3">{t('mirrorPreview', { n: totalIds.size, mode: copyMode ? t('mirrorModeCopy') : t('mirrorModeMove') })}</p>
+                <button onClick={apply} disabled={totalIds.size===0} className="w-full py-2 rounded-lg bg-pink-600 hover:bg-pink-500 text-white text-sm font-bold transition disabled:opacity-30">{t('mirrorApply')}</button>
+            </div>
+        </div>
+    );
+}
+
+// ================================================================
 // PropertyPanel
 // ================================================================
 
-function PropertyPanel({ selectedElement, selectedElements, updateElementData, saveUpdateElement, deleteSelectedElements }) {
+function PropertyPanel({ selectedElement, selectedElements, updateElementData, saveUpdateElement, deleteSelectedElements, elementOpacity, onSetOpacity }) {
     const t = useT('bimDashboard');
     const [form, setForm] = useState({
         material: '', posX: 0, posY: 0, posZ: 0, sizeX: 1, sizeY: 1, sizeZ: 1,
@@ -650,6 +859,20 @@ function PropertyPanel({ selectedElement, selectedElements, updateElementData, s
                 </div>
             </div>
 
+            {/* 투명도 슬라이더 */}
+            <div>
+                <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-gray-400">{t('opacity')}</label>
+                    <span className="text-xs text-gray-500">{Math.round((elementOpacity ?? 0.88) * 100)}%</span>
+                </div>
+                <input
+                    type="range" min="0.05" max="1" step="0.05"
+                    value={elementOpacity ?? 0.88}
+                    onChange={e => onSetOpacity?.(parseFloat(e.target.value))}
+                    className="w-full accent-blue-500"
+                />
+            </div>
+
             <div className="flex gap-2 pt-2">
                 <button onClick={saveUpdateElement}
                         className="flex-1 rounded-md bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-500 transition">
@@ -687,6 +910,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         placeSampleStructure,
         layers, addLayer, deleteLayer, updateLayer, assignToLayer, removeFromLayer,
         elementColors, setElementColor, clearElementColor,
+        elementOpacities, setElementOpacity, clearElementOpacity,
+        createGroupLayer,
+        arrayElements, mirrorElements,
         undo, pushUndo,
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
@@ -802,10 +1028,11 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         if (lineDrawMode === 'off') setLineLocked({ x: null, y: null, z: null });
     }, [lineDrawMode]);
 
-    // 부재 배치 / 선 작도 모드 진입·해제 시 App.js에 알림 (FloatingAgent 숨김)
+    // 부재 배치 / 선 작도 / 측정 / 워크 모드 진입·해제 시 App.js에 알림 (FloatingAgent 숨김)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
-        onPlacementModeChange?.(pendingElement !== null || lineDrawMode !== 'off');
-    }, [pendingElement, lineDrawMode, onPlacementModeChange]);
+        onPlacementModeChange?.(pendingElement !== null || lineDrawMode !== 'off' || measureMode || walkMode);
+    }, [pendingElement, lineDrawMode, measureMode, walkMode, onPlacementModeChange]); // eslint-disable-line no-use-before-define
 
     const [lineColor, setLineColor] = useState('#60a5fa');
     const [lineWidth, setLineWidth] = useState(2);
@@ -976,6 +1203,73 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     const [mainCameraYaw, setMainCameraYaw] = useState(0);
 
+    // ── 거리/각도 측정 ──
+    const [measureMode, setMeasureMode] = useState(false);
+    const [measurePoints, setMeasurePoints] = useState({ a: null, b: null });
+    const handleMeasureClick = useCallback((pt) => {
+        setMeasurePoints(prev => {
+            if (!prev.a) return { a: pt, b: null };
+            if (!prev.b) return { ...prev, b: pt };
+            return { a: pt, b: null }; // 세 번째 클릭 → 새 측정 시작
+        });
+    }, []);
+
+    // ── 치수 표시 ──
+    const [showDimensions, setShowDimensions] = useState(false);
+
+    // ── Named View ──
+    const [savedViews, setSavedViews] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('bim_saved_views') || '[]'); }
+        catch { return []; }
+    });
+    const [showViewsPanel, setShowViewsPanel] = useState(false);
+    const orbitTargetRef = useRef(new THREE.Vector3(0, 0, 0));
+
+    const saveCurrentView = useCallback((name) => {
+        const cam = cameraRef.current;
+        if (!cam) return;
+        const view = {
+            id: Date.now().toString(), name,
+            position: [cam.position.x, cam.position.y, cam.position.z],
+            target:   [orbitTargetRef.current.x, orbitTargetRef.current.y, orbitTargetRef.current.z],
+        };
+        const updated = [...savedViews, view];
+        setSavedViews(updated);
+        try { localStorage.setItem('bim_saved_views', JSON.stringify(updated)); } catch {}
+    }, [savedViews, cameraRef]);
+
+    const deleteView = useCallback((id) => {
+        const updated = savedViews.filter(v => v.id !== id);
+        setSavedViews(updated);
+        try { localStorage.setItem('bim_saved_views', JSON.stringify(updated)); } catch {}
+    }, [savedViews]);
+
+    const restoreView = useCallback((view) => {
+        setViewPreset({
+            id: 'named',
+            position: new THREE.Vector3(...view.position),
+            target:   new THREE.Vector3(...view.target),
+            ts: Date.now(),
+        });
+    }, []);
+
+    // ── 단면 절단 ──
+    const [sectionCutEnabled, setSectionCutEnabled] = useState(false);
+    const [sectionCutAxis,    setSectionCutAxis]    = useState('z');
+    const [sectionCutValue,   setSectionCutValue]   = useState(20);
+
+    // ── Walk / Fly 모드 ──
+    const [walkMode, setWalkMode] = useState(false);
+
+    // ── 속성 필터 선택 (Quick Select) ──
+    const [showQuickSelect, setShowQuickSelect] = useState(false);
+
+    // ── 배열 복사 다이얼로그 ──
+    const [showArrayDialog, setShowArrayDialog] = useState(false);
+
+    // ── 대칭 복사 다이얼로그 ──
+    const [showMirrorDialog, setShowMirrorDialog] = useState(false);
+
     const navigationTargetRef = useRef(null);
     const handleMiniMapNavigate = useCallback((x, z) => {
         navigationTargetRef.current = { x, z };
@@ -1015,10 +1309,11 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         return modelData.map(el => {
             const layer = layers.find(l => l.elementIds.includes(el.elementId));
             const hidden = layer ? !layer.visible : false;
-            const resolvedColor = elementColors[el.elementId] || layer?.color || null;
-            return { ...el, resolvedColor, hidden };
+            const resolvedColor   = elementColors[el.elementId] || layer?.color || null;
+            const resolvedOpacity = elementOpacities[el.elementId] ?? null;
+            return { ...el, resolvedColor, resolvedOpacity, hidden };
         });
-    }, [modelData, layers, elementColors]);
+    }, [modelData, layers, elementColors, elementOpacities]);
 
     const visibleModelData = useMemo(
         () => resolvedModelData.filter(el => !el.hidden),
@@ -1145,9 +1440,13 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 undo();
             }
             if (e.key === 'Escape') {
-                if (lineDrawMode !== 'off') {
-                    finishLineDraw();
-                } else if (pendingElement) { cancelPlacement(); }
+                if (walkMode) { setWalkMode(false); }
+                else if (measureMode) {
+                    if (measurePoints.a && !measurePoints.b) setMeasurePoints({ a: null, b: null });
+                    else { setMeasureMode(false); setMeasurePoints({ a: null, b: null }); }
+                }
+                else if (lineDrawMode !== 'off') { finishLineDraw(); }
+                else if (pendingElement) { cancelPlacement(); }
                 else if (isSelectMode) { toggleSelectMode(); }
                 else {
                     setSelectedElement(null);
@@ -1160,7 +1459,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [selectedElement, pendingElement, isSelectMode, lineDrawMode, deleteSelectedElements,
         cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements,
-        undo, finishLineDraw, selectedLineId, deleteLine, setSelectedLineId]);
+        undo, finishLineDraw, selectedLineId, deleteLine, setSelectedLineId,
+        walkMode, measureMode, measurePoints]);
 
     return (
         <div ref={rootContainerRef} className="w-full bg-space-900 flex flex-col overflow-hidden"
@@ -1177,6 +1477,39 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         setViceComponent('bim-projects');
                         setModelData([]);
                     }}
+                />
+            )}
+
+            {/* 필터 선택 다이얼로그 */}
+            {showQuickSelect && (
+                <QuickSelectPanel
+                    modelData={modelData}
+                    onSelect={(ids) => {
+                        setSelectedElements(ids);
+                        setSelectedElement(null);
+                    }}
+                    onClose={() => setShowQuickSelect(false)}
+                />
+            )}
+
+            {/* 배열 복사 다이얼로그 */}
+            {showArrayDialog && (
+                <ArrayCopyDialog
+                    selectedElements={selectedElements}
+                    selectedElement={selectedElement}
+                    onApply={arrayElements}
+                    onClose={() => setShowArrayDialog(false)}
+                />
+            )}
+
+            {/* 대칭 복사 다이얼로그 */}
+            {showMirrorDialog && (
+                <MirrorCopyDialog
+                    selectedElements={selectedElements}
+                    selectedElement={selectedElement}
+                    modelData={modelData}
+                    onApply={mirrorElements}
+                    onClose={() => setShowMirrorDialog(false)}
                 />
             )}
 
@@ -1246,6 +1579,45 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             >{exporting ? '..' : 'PDF'}</button>
                         </div>
                     </div>
+
+                    {/* 행 4: 신규 도구 (수평 스크롤) */}
+                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+                        <button onClick={() => { setMeasureMode(v => { if (!v) setMeasurePoints({a:null,b:null}); return !v; }); }}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 ${measureMode?'bg-yellow-600/30 text-yellow-300 border-yellow-500/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        >{t('toolMeasure')}</button>
+                        <button onClick={() => setShowDimensions(v => !v)}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 ${showDimensions?'bg-cyan-700/30 text-cyan-300 border-cyan-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        >{t('toolDimensions')}</button>
+                        <button onClick={() => setSectionCutEnabled(v => !v)}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 ${sectionCutEnabled?'bg-orange-600/30 text-orange-300 border-orange-500/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        >{t('toolSection')}</button>
+                        <button onClick={() => setWalkMode(v => !v)}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 ${walkMode?'bg-green-700/30 text-green-300 border-green-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        >{t('toolWalk')}</button>
+                        <div className="h-4 w-px bg-space-700 shrink-0 mx-0.5" />
+                        <button onClick={() => setShowQuickSelect(true)}
+                            className="px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60"
+                        >{t('toolFilter')}</button>
+                        <button onClick={() => setShowArrayDialog(true)}
+                            className="px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60"
+                        >{t('toolArray')}</button>
+                        <button onClick={() => setShowMirrorDialog(true)}
+                            className="px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60"
+                        >{t('toolMirror')}</button>
+                        <button
+                            onClick={() => {
+                                const ids = new Set([...selectedElements, ...(selectedElement?[selectedElement.data.elementId]:[])]);
+                                if (ids.size === 0) { alert(t('groupNoSelection')); return; }
+                                const name = window.prompt(t('groupNameDefault',{n:''}).trim(), t('groupNameDefault',{n:layers.length+1}));
+                                if (!name) return;
+                                createGroupLayer(name, ids);
+                            }}
+                            className="px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60"
+                        >{t('toolGroup')}</button>
+                        <button onClick={() => setShowViewsPanel(v => !v)}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition shrink-0 ${showViewsPanel?'bg-blue-700/30 text-blue-300 border-blue-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        >{t('toolViews')}{savedViews.length > 0 ? ` (${savedViews.length})` : ''}</button>
+                    </div>
                     </>)}
                 </div>
 
@@ -1306,6 +1678,96 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
                     {/* 구분선 */}
                     <div className="h-5 w-px bg-space-700 shrink-0" />
+
+                    {/* 구분선 */}
+                    <div className="h-5 w-px bg-space-700 shrink-0" />
+
+                    {/* 도구 그룹 */}
+                    <button onClick={() => { setMeasureMode(v => { if (!v) setMeasurePoints({a:null,b:null}); return !v; }); }}
+                        className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${measureMode?'bg-yellow-600/30 text-yellow-300 border-yellow-500/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        title={t('tooltipMeasure')}
+                    >{t('toolMeasure')}</button>
+                    <button onClick={() => setShowDimensions(v => !v)}
+                        className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${showDimensions?'bg-cyan-700/30 text-cyan-300 border-cyan-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        title={t('tooltipDimensions')}
+                    >{t('toolDimensions')}</button>
+                    <button onClick={() => setSectionCutEnabled(v => !v)}
+                        className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${sectionCutEnabled?'bg-orange-600/30 text-orange-300 border-orange-500/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        title={t('tooltipSection')}
+                    >{t('toolSection')}</button>
+                    <button onClick={() => setWalkMode(v => !v)}
+                        className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${walkMode?'bg-green-700/30 text-green-300 border-green-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                        title={t('tooltipWalk')}
+                    >{t('toolWalk')}</button>
+
+                    {/* 구분선 */}
+                    <div className="h-5 w-px bg-space-700 shrink-0" />
+
+                    {/* 편집 작업 그룹 */}
+                    <button onClick={() => setShowQuickSelect(true)}
+                        className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-violet-300"
+                        title={t('tooltipFilter')}
+                    >{t('toolFilter')}</button>
+                    <button onClick={() => setShowArrayDialog(true)}
+                        className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-emerald-300"
+                        title={t('tooltipArray')}
+                    >{t('toolArray')}</button>
+                    <button onClick={() => setShowMirrorDialog(true)}
+                        className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-pink-300"
+                        title={t('tooltipMirror')}
+                    >{t('toolMirror')}</button>
+                    <button
+                        onClick={() => {
+                            const ids = new Set([
+                                ...selectedElements,
+                                ...(selectedElement ? [selectedElement.data.elementId] : []),
+                            ]);
+                            if (ids.size === 0) { alert(t('groupNoSelection')); return; }
+                            const name = window.prompt(t('groupNameDefault', { n: '' }).trim(), t('groupNameDefault', { n: layers.length + 1 }));
+                            if (!name) return;
+                            createGroupLayer(name, ids);
+                        }}
+                        className="px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 bg-space-800/40 text-gray-400 border-space-700/60 hover:text-teal-300"
+                        title={t('tooltipGroup')}
+                    >{t('toolGroup')}</button>
+
+                    {/* 구분선 */}
+                    <div className="h-5 w-px bg-space-700 shrink-0" />
+
+                    {/* Named View */}
+                    <div className="relative shrink-0">
+                        <button
+                            onClick={() => setShowViewsPanel(v => !v)}
+                            className={`px-2 py-1 rounded-lg text-xs font-semibold border transition ${showViewsPanel?'bg-blue-700/30 text-blue-300 border-blue-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                            title={t('tooltipViews')}
+                        >{t('toolViews')}{savedViews.length > 0 ? ` (${savedViews.length})` : ''}</button>
+                        {showViewsPanel && (
+                            <>
+                                <div className="fixed inset-0" style={{zIndex:9998}} onClick={() => setShowViewsPanel(false)} />
+                                <div style={{
+                                    position:'absolute', top:'calc(100% + 4px)', right:0, zIndex:9999,
+                                    background:'#0f1c2e', border:'1px solid #1e3a5f',
+                                    borderRadius:12, padding:12, minWidth:200, width:'max-content',
+                                    maxWidth:'calc(100vw - 2rem)',
+                                    boxShadow:'0 8px 32px rgba(0,0,0,0.7)',
+                                }}>
+                                    <p className="text-xs text-gray-500 mb-2 font-medium">{t('savedViewsTitle')}</p>
+                                    {savedViews.length === 0 && <p className="text-xs text-gray-600 mb-2">{t('savedViewsNone')}</p>}
+                                    {savedViews.map(v => (
+                                        <div key={v.id} className="flex items-center gap-1 mb-1">
+                                            <button onClick={() => { restoreView(v); setShowViewsPanel(false); }}
+                                                className="flex-1 text-left text-xs text-gray-300 hover:text-blue-300 truncate">{v.name}</button>
+                                            <button onClick={() => deleteView(v.id)} className="text-gray-600 hover:text-red-400 text-xs">✕</button>
+                                        </div>
+                                    ))}
+                                    <button
+                                        onClick={() => { const name = window.prompt(t('savedViewsNamePrompt'), t('savedViewsDefault', { n: savedViews.length + 1 })); if (name) { saveCurrentView(name); setShowViewsPanel(false); } }}
+                                        className="w-full mt-2 py-1 rounded bg-blue-700/50 text-blue-300 text-xs font-semibold hover:bg-blue-600/60 transition"
+                                    >{t('savedViewsSave')}</button>
+                                </div>
+                            </>
+                        )}
+                    </div>
 
                     {/* 내보내기 그룹 */}
                     <div className="flex items-center bg-space-950 p-0.5 border border-space-800 rounded-lg shrink-0">
@@ -1446,6 +1908,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 updateElementData={updateElementData}
                                 saveUpdateElement={saveUpdateElement}
                                 deleteSelectedElements={deleteSelectedElements}
+                                elementOpacity={selectedElement ? (elementOpacities[selectedElement.data.elementId] ?? null) : null}
+                                onSetOpacity={(val) => {
+                                    if (selectedElement) setElementOpacity(selectedElement.data.elementId, val);
+                                }}
                             />
                         </Card>
                     </div>{/* end content wrapper */}
@@ -1497,7 +1963,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             <div
                                 className="w-full flex-1 relative min-h-0"
                                 style={{
-                                    cursor: pendingElement || isSelectMode || lineDrawMode === 'click' ? 'crosshair' : 'default',
+                                    cursor: pendingElement || isSelectMode || lineDrawMode === 'click' || measureMode ? 'crosshair' : walkMode ? 'move' : 'default',
                                 }}
                             >
                                 <>
@@ -1575,6 +2041,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             fitCameraTrigger={fitCameraTrigger}
                                             viewPreset={viewPreset}
                                             viewMode={viewMode}
+                                            measureMode={measureMode}
+                                            measurePointA={measurePoints.a}
+                                            measurePointB={measurePoints.b}
+                                            onMeasureClick={handleMeasureClick}
+                                            showDimensions={showDimensions}
+                                            sectionCutEnabled={sectionCutEnabled}
+                                            sectionCutAxis={sectionCutAxis}
+                                            sectionCutValue={sectionCutValue}
+                                            walkMode={walkMode}
+                                            onWalkModeExit={() => setWalkMode(false)}
+                                            orbitTargetRef={orbitTargetRef}
                                         />
                                         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
                                             <GizmoViewport axisColors={['#ff4060', '#80ff80', '#2080ff']} labelColor="white"/>
@@ -1651,6 +2128,56 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         <div className="absolute bottom-3 left-3 bg-space-900/80 border border-space-700 rounded-lg px-3 py-2 text-xs text-gray-300 z-20">
                                             <span className="text-orange-400 font-bold">{selectedElement.data.elementType}</span>
                                             <span className="ml-2 text-gray-500">{selectedElement.data.elementId}</span>
+                                        </div>
+                                    )}
+
+                                    {/* 단면 절단 컨트롤 */}
+                                    {sectionCutEnabled && (
+                                        <div className="absolute top-3 left-3 z-30 bg-space-900/95 border border-orange-600/50 rounded-xl px-3 py-2.5 shadow-xl pointer-events-auto"
+                                             style={{ minWidth: 190, maxWidth: 'calc(100% - 1.5rem)' }}>
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="text-orange-300 text-xs font-bold">{t('sectionCutTitle')}</span>
+                                                <button onClick={() => setSectionCutEnabled(false)} className="ml-auto text-gray-500 hover:text-white text-xs">✕</button>
+                                            </div>
+                                            <div className="flex gap-1 mb-2">
+                                                {[['x', t('sectionAxisX')], ['y', t('sectionAxisY')], ['z', t('sectionAxisZ')]].map(([a, lbl]) => (
+                                                    <button key={a} onClick={() => setSectionCutAxis(a)}
+                                                        className={`flex-1 py-0.5 rounded text-xs font-bold border transition ${sectionCutAxis===a?'bg-orange-600/60 text-orange-200 border-orange-500':'bg-space-700 text-gray-400 border-space-600'}`}
+                                                    >{lbl}</button>
+                                                ))}
+                                            </div>
+                                            <input type="range" min="-30" max="30" step="0.1"
+                                                value={sectionCutValue}
+                                                onChange={e => setSectionCutValue(parseFloat(e.target.value))}
+                                                className="w-full accent-orange-500"
+                                            />
+                                            <div className="text-center text-xs text-gray-400 mt-1">{sectionCutValue.toFixed(1)} m</div>
+                                        </div>
+                                    )}
+
+                                    {/* Walk 모드 안내 */}
+                                    {walkMode && (
+                                        <div className="absolute top-3 left-1/2 z-30 -translate-x-1/2 bg-green-900/90 border border-green-600/60 rounded-xl px-3 py-2 shadow-xl pointer-events-auto"
+                                             style={{ maxWidth: 'calc(100% - 1.5rem)', width: 'max-content' }}>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-green-300 text-xs font-bold shrink-0">{t('walkModeTitle')}</span>
+                                                <span className="text-gray-400 text-xs hidden sm:inline">{t('walkModeHint')}</span>
+                                                <button onClick={() => setWalkMode(false)} className="text-gray-500 hover:text-white text-xs shrink-0">✕ ESC</button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 측정 모드 상태 표시 */}
+                                    {measureMode && (
+                                        <div className="absolute top-3 left-1/2 z-30 -translate-x-1/2 bg-yellow-900/90 border border-yellow-600/60 rounded-xl px-3 py-2 shadow-xl pointer-events-auto"
+                                             style={{ maxWidth: 'calc(100% - 1.5rem)', width: 'max-content' }}>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-yellow-300 text-xs font-bold shrink-0">{t('measureModeTitle')}</span>
+                                                <span className="text-gray-400 text-xs">
+                                                    {!measurePoints.a ? t('measureClickFirst') : !measurePoints.b ? t('measureClickSecond') : t('measureDone')}
+                                                </span>
+                                                <button onClick={() => { setMeasureMode(false); setMeasurePoints({a:null,b:null}); }} className="text-gray-500 hover:text-white text-xs shrink-0">✕</button>
+                                            </div>
                                         </div>
                                     )}
 

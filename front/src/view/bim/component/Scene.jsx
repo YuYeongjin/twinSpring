@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, TransformControls, OrthographicCamera } from '@react-three/drei';
+import { OrbitControls, TransformControls, OrthographicCamera, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
 import { BimLine } from '../element/BimLine';
@@ -822,6 +822,223 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
 }
 
 // ================================================================
+// 거리/각도 측정 도구
+// ================================================================
+function MeasureHelper({ pointA, pointB, active, snapVertices, snapEnabled, viewMode, onClickPoint }) {
+    const { camera, raycaster, mouse } = useThree();
+    const snapPlane = useMemo(() => getSnapPlane(viewMode, snapVertices), [viewMode, snapVertices]);
+    const hitRef    = useMemo(() => new THREE.Vector3(), []);
+    const hoverRef  = useRef({ x: 0, y: 0, z: 0 }); // BIM data coords
+
+    const previewPositions = useMemo(() => new Float32Array(6), []);
+    const previewGeom = useMemo(() => {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(previewPositions, 3));
+        return g;
+    }, [previewPositions]);
+    useEffect(() => () => previewGeom.dispose(), [previewGeom]);
+    const previewLineRef = useRef();
+    const previewDotRef  = useRef();
+
+    useFrame(() => {
+        if (!active || !pointA || pointB) return;
+        raycaster.setFromCamera(mouse, camera);
+        if (!raycaster.ray.intersectPlane(snapPlane, hitRef)) return;
+        let ex = hitRef.x, ey = hitRef.y, ez = hitRef.z;
+        if (snapEnabled && snapVertices.length > 0 && viewMode !== 'xz' && viewMode !== 'yz') {
+            const sv = findSnapVertex(hitRef.x, hitRef.z, snapVertices);
+            if (sv) { ex = sv[0]; ey = sv[1] ?? 0; ez = sv[2]; }
+        }
+        // BIM data coords: x=BIM_X, y=BIM_Y(floor), z=BIM_Z(height)
+        hoverRef.current = { x: ex, y: ez, z: ey };
+        // Update preview line: pointA → mouse (Three.js coords: [x, z_height, y_floor])
+        const pos = previewGeom.attributes.position;
+        pos.setXYZ(0, pointA.x, pointA.z, pointA.y);
+        pos.setXYZ(1, ex, ey, ez);
+        pos.needsUpdate = true;
+        previewGeom.computeBoundingSphere();
+        if (previewDotRef.current) previewDotRef.current.position.set(ex, ey, ez);
+    });
+
+    if (!active && (!pointA || !pointB)) return null;
+
+    // BIM 3D distance
+    const dist3D = pointA && pointB
+        ? Math.sqrt((pointB.x-pointA.x)**2 + (pointB.y-pointA.y)**2 + (pointB.z-pointA.z)**2).toFixed(3)
+        : null;
+    // Horizontal distance (BIM XY plane)
+    const distH = pointA && pointB
+        ? Math.sqrt((pointB.x-pointA.x)**2 + (pointB.y-pointA.y)**2).toFixed(3)
+        : null;
+    // Horizontal angle relative to X axis
+    const hAngle = pointA && pointB
+        ? (Math.atan2(pointB.y - pointA.y, pointB.x - pointA.x) * 180 / Math.PI).toFixed(1)
+        : null;
+
+    // Label mid-position in Three.js coords
+    const midPos = pointA && pointB
+        ? [(pointA.x+pointB.x)/2, (pointA.z+pointB.z)/2, (pointA.y+pointB.y)/2]
+        : null;
+
+    return (
+        <>
+            {pointA && (
+                <mesh position={[pointA.x, pointA.z, pointA.y]} renderOrder={1001}>
+                    <sphereGeometry args={[0.18, 12, 12]} />
+                    <meshBasicMaterial color="#ff6b6b" depthTest={false} />
+                </mesh>
+            )}
+            {pointB && (
+                <mesh position={[pointB.x, pointB.z, pointB.y]} renderOrder={1001}>
+                    <sphereGeometry args={[0.18, 12, 12]} />
+                    <meshBasicMaterial color="#ff6b6b" depthTest={false} />
+                </mesh>
+            )}
+            {pointA && pointB && (
+                <line renderOrder={1001}>
+                    <bufferGeometry>
+                        <bufferAttribute attach="attributes-position"
+                            array={new Float32Array([pointA.x,pointA.z,pointA.y, pointB.x,pointB.z,pointB.y])}
+                            count={2} itemSize={3} />
+                    </bufferGeometry>
+                    <lineBasicMaterial color="#ffdd44" depthTest={false} />
+                </line>
+            )}
+            {midPos && dist3D && (
+                <Html position={midPos} center zIndexRange={[9999, 9998]}>
+                    <div style={{
+                        background: 'rgba(0,0,0,0.88)', color: '#ffdd44',
+                        padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                        border: '1.5px solid #ffdd44', whiteSpace: 'nowrap', userSelect: 'none',
+                        fontFamily: 'monospace', boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                    }}>
+                        <div>{dist3D} m</div>
+                        <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 2 }}>H:{distH}m · {hAngle}°</div>
+                    </div>
+                </Html>
+            )}
+            {active && pointA && !pointB && (
+                <>
+                    <line ref={previewLineRef} renderOrder={1000}>
+                        <primitive object={previewGeom} attach="geometry" />
+                        <lineBasicMaterial color="#ffdd44" transparent opacity={0.5} depthTest={false} />
+                    </line>
+                    <mesh ref={previewDotRef} renderOrder={1000}>
+                        <sphereGeometry args={[0.12, 8, 8]} />
+                        <meshBasicMaterial color="#ffdd44" transparent opacity={0.7} depthTest={false} />
+                    </mesh>
+                </>
+            )}
+            {active && !(pointA && pointB) && (
+                <BillboardClickPlane onClick={(e) => {
+                    e.stopPropagation();
+                    onClickPoint?.({ ...hoverRef.current });
+                }} />
+            )}
+        </>
+    );
+}
+
+// ================================================================
+// 치수 표시 (선택된 부재 크기 라벨)
+// ================================================================
+function DimensionLabel({ element }) {
+    if (!element) return null;
+    const pX = Number(element.positionX) || 0;
+    const pY = Number(element.positionY) || 0;
+    const pZ = Number(element.positionZ) || 0;
+    const sX = Number(element.sizeX)     || 0.1;
+    const sY = Number(element.sizeY)     || 0.1;
+    const sZ = Number(element.sizeZ)     || 0.1;
+    // Three.js center
+    const cy = pZ + sZ / 2;
+
+    const base = { background:'rgba(0,0,0,0.78)', padding:'2px 7px', borderRadius:5, fontSize:11,
+                   fontWeight:700, whiteSpace:'nowrap', userSelect:'none', fontFamily:'monospace' };
+    return (
+        <>
+            {/* Width X */}
+            <Html position={[pX, pZ - 0.15, pY + sY/2 + 0.45]} center zIndexRange={[9990,9989]}>
+                <div style={{...base, color:'#60a5fa', border:'1px solid #3b82f6'}}>W {sX.toFixed(2)}m</div>
+            </Html>
+            {/* Depth Y */}
+            <Html position={[pX + sX/2 + 0.45, pZ - 0.15, pY]} center zIndexRange={[9990,9989]}>
+                <div style={{...base, color:'#a78bfa', border:'1px solid #7c3aed'}}>D {sY.toFixed(2)}m</div>
+            </Html>
+            {/* Height Z */}
+            <Html position={[pX + sX/2 + 0.45, cy, pY]} center zIndexRange={[9990,9989]}>
+                <div style={{...base, color:'#4ade80', border:'1px solid #16a34a'}}>H {sZ.toFixed(2)}m</div>
+            </Html>
+        </>
+    );
+}
+
+// ================================================================
+// 단면 절단 — THREE 글로벌 클리핑 평면 설정
+// ================================================================
+function SectionCutEffect({ enabled, axis, value }) {
+    const { gl } = useThree();
+    useEffect(() => {
+        if (!enabled) { gl.clippingPlanes = []; return () => { gl.clippingPlanes = []; }; }
+        // 축별 법선 벡터: axis=x → Three.js X, axis=y → Three.js Z(BIM Y), axis=z → Three.js Y(BIM Z)
+        const normals = {
+            x: new THREE.Vector3(-1, 0, 0),
+            y: new THREE.Vector3(0, 0, -1),
+            z: new THREE.Vector3(0, -1, 0),
+        };
+        gl.clippingPlanes = [new THREE.Plane(normals[axis] ?? normals.z, value)];
+        return () => { gl.clippingPlanes = []; };
+    }, [enabled, axis, value, gl]);
+    return null;
+}
+
+// ================================================================
+// Walk / Fly 모드 컨트롤러 (WASD + QE 상하)
+// OrbitControls는 그대로 유지하면서 카메라+target을 함께 이동
+// ================================================================
+function WalkController({ active, orbitRef, onExit }) {
+    const keysRef = useRef({});
+    const { camera } = useThree();
+    useEffect(() => {
+        if (!active) return;
+        const onDown = (e) => {
+            if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
+            keysRef.current[e.code] = true;
+            if (e.code === 'Escape') onExit?.();
+        };
+        const onUp = (e) => { keysRef.current[e.code] = false; };
+        window.addEventListener('keydown', onDown);
+        window.addEventListener('keyup',   onUp);
+        return () => {
+            window.removeEventListener('keydown', onDown);
+            window.removeEventListener('keyup',   onUp);
+            keysRef.current = {};
+        };
+    }, [active, onExit]);
+
+    useFrame((_, delta) => {
+        if (!active || !orbitRef?.current) return;
+        const speed = 8 * delta;
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
+        const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
+        const move  = new THREE.Vector3();
+        if (keysRef.current['KeyW'] || keysRef.current['ArrowUp'])    move.addScaledVector(forward,  speed);
+        if (keysRef.current['KeyS'] || keysRef.current['ArrowDown'])   move.addScaledVector(forward, -speed);
+        if (keysRef.current['KeyA'] || keysRef.current['ArrowLeft'])   move.addScaledVector(right,  -speed);
+        if (keysRef.current['KeyD'] || keysRef.current['ArrowRight'])  move.addScaledVector(right,   speed);
+        if (keysRef.current['KeyE'] || keysRef.current['PageUp'])   move.y += speed;
+        if (keysRef.current['KeyQ'] || keysRef.current['PageDown']) move.y -= speed;
+        if (move.lengthSq() > 0) {
+            camera.position.add(move);
+            orbitRef.current.target.add(move);
+            orbitRef.current.update();
+        }
+    });
+    return null;
+}
+
+// ================================================================
 // 2D 직교 투영 카메라
 // viewMode: 'xy'=평면도(위), 'xz'=정면도(앞), 'yz'=측면도(옆)
 // BIM 좌표 → Three.js 변환 기준: posX→X, posY→Z, posZ→Y
@@ -945,6 +1162,22 @@ export default function Scene({
     viewPreset = null,
     // 2D 투영 뷰 모드: '3d'|'xy'|'xz'|'yz'
     viewMode = '3d',
+    // 거리/각도 측정 도구
+    measureMode = false,
+    measurePointA = null,
+    measurePointB = null,
+    onMeasureClick = null,
+    // 치수 표시
+    showDimensions = false,
+    // 단면 절단
+    sectionCutEnabled = false,
+    sectionCutAxis = 'z',
+    sectionCutValue = 20,
+    // Walk/Fly 모드
+    walkMode = false,
+    onWalkModeExit = null,
+    // Named view 저장용 orbit target ref (외부에서 inject)
+    orbitTargetRef = null,
 }) {
     const { camera } = useThree();
     const transformRef     = useRef();
@@ -1072,6 +1305,17 @@ export default function Scene({
             left:  new THREE.Vector3(cx-d, cy,  cz),                     // 좌측면도
         };
 
+        // Named view (커스텀 저장 뷰)
+        if (viewPreset.id === 'named') {
+            if (viewPreset.position) camera.position.copy(viewPreset.position);
+            if (viewPreset.target) {
+                orbitRef.current.target.copy(viewPreset.target);
+                camera.lookAt(viewPreset.target);
+            }
+            orbitRef.current.update();
+            return;
+        }
+
         const pos = positions[viewPreset.id];
         if (!pos) return;
 
@@ -1085,6 +1329,8 @@ export default function Scene({
     useFrame(() => {
         setMainCameraPosition(camera.position.clone());
         setMainCameraYaw?.(camera.rotation.y);
+        // Named View 저장용 orbit target 갱신
+        if (orbitTargetRef && orbitRef.current) orbitTargetRef.current = orbitRef.current.target.clone();
         if (navigationTargetRef?.current) {
             const t = navigationTargetRef.current;
             camera.position.lerp(new THREE.Vector3(t.x, camera.position.y, t.z), 0.1);
@@ -1335,8 +1581,8 @@ export default function Scene({
         onLineClick?.({ x: h.x, y: h.y, z: h.z });
     };
 
-    // OrbitControls: 드래그 중 / 리사이즈 핸들 드래그 중 / 선 꼭짓점 드래그 중 / 선택모드 / 선 작도 중 비활성화
-    const orbitEnabled = !isDragging && !isResizeDragging && !isLineVertexDragging && !isSelectMode && lineDrawMode !== 'click';
+    // OrbitControls: 드래그 중 / 리사이즈 핸들 드래그 중 / 선 꼭짓점 드래그 중 / 선택모드 / 선 작도 중 / 워크모드 비활성화
+    const orbitEnabled = !isDragging && !isResizeDragging && !isLineVertexDragging && !isSelectMode && lineDrawMode !== 'click' && !walkMode;
 
     // 리사이즈 핸들 표시 조건
     const showHandles = selectedElement && !pendingElement && !isSelectMode;
@@ -1530,6 +1776,32 @@ export default function Scene({
                     />
                 ) : null;
             })()}
+
+            {/* 거리/각도 측정 도구 */}
+            {measureMode && (
+                <MeasureHelper
+                    pointA={measurePointA}
+                    pointB={measurePointB}
+                    active={measureMode}
+                    snapVertices={snapVertices}
+                    snapEnabled={snapEnabled}
+                    viewMode={viewMode}
+                    onClickPoint={onMeasureClick}
+                />
+            )}
+
+            {/* 치수 표시 */}
+            {showDimensions && selectedElement?.data && (
+                <DimensionLabel element={selectedElement.data} />
+            )}
+
+            {/* 단면 절단 */}
+            <SectionCutEffect enabled={sectionCutEnabled} axis={sectionCutAxis} value={sectionCutValue} />
+
+            {/* Walk / Fly 모드 */}
+            {walkMode && (
+                <WalkController active={walkMode} orbitRef={orbitRef} onExit={onWalkModeExit} />
+            )}
 
             {/* 월드 좌표계 축 (X=빨강, Y=초록, Z=파랑) */}
             <axesHelper args={[5]} />

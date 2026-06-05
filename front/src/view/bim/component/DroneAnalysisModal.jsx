@@ -169,7 +169,7 @@ function padBorder(grid,pad=4){
 function _appendLine(lines,pts,sx,sy,scaleW,scaleH,color='#93c5fd',lineWidth=1){
   if(pts.length<2)return;
   const wpts=pts.map(([cx,cy])=>[
-    +((cx*sx-scaleW/2).toFixed(3)),+((scaleH/2-cy*sy).toFixed(3)),0]);
+    +(( cx*sx).toFixed(3)),+((cy*sy).toFixed(3)),0]);
   const first=wpts[0],last=wpts[wpts.length-1];
   lines.push({startX:first[0],startY:first[1],startZ:0,
     endX:last[0],endY:last[1],endZ:0,
