@@ -145,7 +145,23 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
 
   // Scene이 호출할 imperative API
   useImperativeHandle(ref, () => ({
-    // translate: 선택된 메시들의 position에 델타를 더한다
+    // 현재 메시 position 반환 (드래그 시작 시점 스냅샷용)
+    getMeshPosition(elementId) {
+      const mRef = meshRefsMap.current.get(elementId);
+      if (!mRef?.current) return { x: 0, y: 0, z: 0 };
+      const { x, y, z } = mRef.current.position;
+      return { x, y, z };
+    },
+    // translate: 초기 position + delta로 절대 위치 설정 (드래그 중 연속 호출용)
+    applyTranslateAbsolute(selectedIds, initialMeshPositions, dx, dy, dz) {
+      for (const id of selectedIds) {
+        const mRef = meshRefsMap.current.get(id);
+        if (!mRef?.current) continue;
+        const init = initialMeshPositions[id] ?? { x: 0, y: 0, z: 0 };
+        mRef.current.position.set(init.x + dx, init.y + dy, init.z + dz);
+      }
+    },
+    // translate: 선택된 메시들의 position에 델타를 더한다 (릴리즈 후 1회 호출용)
     applyTranslate(selectedIds, dx, dy, dz) {
       for (const id of selectedIds) {
         const mRef = meshRefsMap.current.get(id);

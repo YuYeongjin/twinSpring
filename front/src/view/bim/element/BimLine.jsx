@@ -2,16 +2,27 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { Line } from '@react-three/drei';
 import * as THREE from 'three';
 
-/**
- * BIM 3D 선 / 폴리라인 / 도형 요소
- *
- * line 데이터 구조:
- *   { lineId, start, end, color, lineWidth,
- *     pointsJson?,   // JSON 문자열 or 배열: [[x,y,z], ...]
- *     closed?,       // boolean — 마지막 점을 첫 점과 연결
- *     shapeHeight?,  // number > 0 이면 closed 도형을 Y축으로 돌출 (3D 솔리드)
- *   }
- */
+/** lineType별 기본 색상 */
+export const LINE_TYPE_COLORS = {
+    rebar:  '#ef4444',
+    wall:   '#94a3b8',
+    slab:   '#60a5fa',
+    beam:   '#a78bfa',
+    column: '#fbbf24',
+    floor:  '#34d399',
+    pipe:   '#22d3ee',
+};
+
+export const LINE_TYPE_LABELS = {
+    line:   '선 (Line)',
+    rebar:  '철근 (Rebar)',
+    wall:   '벽체 (Wall)',
+    slab:   '슬래브 (Slab)',
+    beam:   '보 (Beam)',
+    column: '기둥 (Column)',
+    floor:  '바닥 (Floor)',
+    pipe:   '배관 (Pipe)',
+};
 
 /** line 데이터에서 vertex 배열 추출 */
 function getPoints(line) {
@@ -26,11 +37,16 @@ function getPoints(line) {
     return [line.start, line.end];
 }
 
-export function BimLine({ line, selected, onClick }) {
+export function BimLine({ line, selected, multiSelected, onClick }) {
     const [hovered, setHovered] = useState(false);
 
-    const color   = selected ? '#00e5ff' : hovered ? '#bfdbfe' : (line.color ?? '#60a5fa');
-    const width   = (line.lineWidth ?? 2) + (selected ? 2 : hovered ? 1 : 0);
+    const typeColor = line.lineType ? LINE_TYPE_COLORS[line.lineType] : null;
+    const baseColor = typeColor || (line.color ?? '#60a5fa');
+    const color = selected ? '#00e5ff'
+        : multiSelected ? '#f97316'
+        : hovered ? '#bfdbfe'
+        : baseColor;
+    const width = (line.lineWidth ?? 2) + (selected || multiSelected ? 2 : hovered ? 1 : 0);
     const closed  = !!line.closed;
     const height  = Number(line.shapeHeight ?? 0);
     const points  = useMemo(() => getPoints(line), [line]);
@@ -76,7 +92,7 @@ export function BimLine({ line, selected, onClick }) {
 
     const handleClick = (e) => {
         e.stopPropagation();
-        onClick?.(line.lineId);
+        onClick?.(line.lineId, e.shiftKey);
     };
 
     const handlePointerOver = (e) => {

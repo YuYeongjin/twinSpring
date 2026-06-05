@@ -392,6 +392,8 @@ public class BimServiceImpl implements BimService {
                     Object closed = row.get("closed");
                     dto.setClosed(closed != null && (closed.equals(true) || closed.equals(1) || "1".equals(closed.toString())));
                     dto.setShapeHeight(toDouble(row.getOrDefault("shapeHeight", 0.0)));
+                    String lineType = (String) row.get("lineType");
+                    dto.setLineType(lineType != null ? lineType : "line");
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -442,6 +444,7 @@ public class BimServiceImpl implements BimService {
         params.put("pointsJson",  line.getPointsJson());
         params.put("closed",      line.isClosed());
         params.put("shapeHeight", line.getShapeHeight());
+        params.put("lineType",    line.getLineType() != null ? line.getLineType() : "line");
         return params;
     }
 

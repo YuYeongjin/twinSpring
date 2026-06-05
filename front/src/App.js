@@ -686,8 +686,8 @@ function App() {
 
         {!canvasFullscreen && viewComponent !== 'wbs' && viewComponent !== 'bim' && <Footer />}
 
-        {/* 에이전트: 전체화면·배치모드·agent·wbs 탭에서는 숨김 */}
-        {!canvasFullscreen && !bimPlacementMode && viewComponent !== 'agent' && viewComponent !== 'wbs' && (
+        {/* 에이전트: 전체화면·배치모드·agent·wbs·bim 탭에서는 숨김 (bim은 BimAgentChat이 대체) */}
+        {!canvasFullscreen && !bimPlacementMode && viewComponent !== 'agent' && viewComponent !== 'wbs' && viewComponent !== 'bim' && (
           <FloatingAgent
             viewComponent={viewComponent}
             selectedProject={selectedProject}

@@ -26,6 +26,7 @@ from nodes.responder import responder_node
 from nodes.domain_agents import (
     run_bim_agent, run_sensor_agent, run_simulation_agent,
     run_safe_agent, run_wbs_agent, run_test_agent, run_orchestrator_agent,
+    run_bim_wbs_agent,
 )
 from nodes.tab_guide import tab_guide_node
 
@@ -39,6 +40,7 @@ _DOMAIN_TO_NODE: dict[str, str] = {
     "test":         "test_agent",
     "orchestrator": "orchestrator",
     "tab_guide":    "tab_guide",
+    "bim_wbs":      "bim_wbs_agent",
 }
 
 
@@ -75,6 +77,7 @@ def build_graph():
     builder.add_node("test_agent",       run_test_agent)
     builder.add_node("orchestrator",     run_orchestrator_agent)
     builder.add_node("tab_guide",        tab_guide_node)
+    builder.add_node("bim_wbs_agent",    run_bim_wbs_agent)
     builder.add_node("responder_node",   responder_node)
 
     # ── 엣지 ──────────────────────────────────────────────────────────────────
@@ -91,6 +94,7 @@ def build_graph():
         "test_agent":      "test_agent",
         "orchestrator":    "orchestrator",
         "tab_guide":       "tab_guide",
+        "bim_wbs_agent":   "bim_wbs_agent",
         "responder_node":  "responder_node",  # chat
     }
     builder.add_conditional_edges("router_node", _after_router, _router_targets)
@@ -101,7 +105,8 @@ def build_graph():
 
     # domain agents → responder
     for node in ("bim_agent", "sensor_agent", "simulation_agent",
-                 "safe_agent", "wbs_agent", "test_agent", "orchestrator", "tab_guide"):
+                 "safe_agent", "wbs_agent", "test_agent", "orchestrator", "tab_guide",
+                 "bim_wbs_agent"):
         builder.add_edge(node, "responder_node")
 
     builder.add_edge("responder_node", END)
