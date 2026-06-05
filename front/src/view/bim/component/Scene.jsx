@@ -1120,17 +1120,16 @@ export default function Scene({
                         positionZ: parseFloat(((el.positionZ ?? 0) + dy).toFixed(3)),
                     });
                 }
-                // 선택된 IFC 메시 Three.js 오브젝트를 직접 이동 (baked 지오메트리에 오프셋 추가)
-                ifcMeshGroupRef.current?.applyTranslate(ids, dx, dy, dz);
+                // 메시 최종 위치 확정 (change 이벤트로 이미 연속 업데이트 중이었으므로 절대값으로 확정)
+                if (initial.meshPositions) {
+                    ifcMeshGroupRef.current?.applyTranslateAbsolute(ids, initial.meshPositions, dx, dy, dz);
+                }
 
             } else if (transformMode === 'rotate') {
-                // 피벗의 회전 변화량 계산
-                const dq = new THREE.Quaternion()
-                    .setFromEuler(new THREE.Euler(
-                        pivotObj.rotation.x - initial.rot.x,
-                        pivotObj.rotation.y - initial.rot.y,
-                        pivotObj.rotation.z - initial.rot.z,
-                    ));
+                // 피벗 회전 변화량: q_final * q_initial^-1
+                const qFinal   = new THREE.Quaternion().setFromEuler(pivotObj.rotation);
+                const qInitial = new THREE.Quaternion().setFromEuler(initial.rot);
+                const dq = qFinal.multiply(qInitial.invert());
                 const centroid = initial.pos.clone();
 
                 for (const [id, el] of Object.entries(initial.elements)) {
@@ -1212,58 +1211,117 @@ export default function Scene({
             }
         } else if (transformMode === 'scale') {
             const rawSize = mesh.userData.rawSize ?? [1,1,1];
+            const sx = mesh.scale.x, sy = mesh.scale.y, sz = mesh.scale.z;
             updateElementData(id, {
-                sizeX: parseFloat((rawSize[0]*mesh.scale.x).toFixed(3)),
-                sizeZ: parseFloat((rawSize[1]*mesh.scale.y).toFixed(3)),
-                sizeY: parseFloat((rawSize[2]*mesh.scale.z).toFixed(3)),
+                sizeX: parseFloat((rawSize[0]*sx).toFixed(3)),
+                sizeZ: parseFloat((rawSize[1]*sy).toFixed(3)),
+                sizeY: parseFloat((rawSize[2]*sz).toFixed(3)),
             });
             mesh.scale.set(1,1,1);
+            // 다중 선택: 보조 요소들도 같은 배율로 크기 변경
+            if (selectedElements?.size > 1) {
+                for (const sid of selectedElements) {
+                    if (sid === id) continue;
+                    const s = startPositionsRef.current[sid];
+                    if (!s) continue;
+                    updateElementData(sid, {
+                        sizeX: parseFloat(((s.sizeX??1)*sx).toFixed(3)),
+                        sizeZ: parseFloat(((s.sizeZ??1)*sy).toFixed(3)),
+                        sizeY: parseFloat(((s.sizeY??1)*sz).toFixed(3)),
+                    });
+                }
+            }
         } else if (transformMode === 'rotate') {
+            const rx = mesh.rotation.x, ry = mesh.rotation.y, rz = mesh.rotation.z;
             updateElementData(id, {
-                rotationX: parseFloat(mesh.rotation.x.toFixed(5)),
-                rotationY: parseFloat(mesh.rotation.y.toFixed(5)),
-                rotationZ: parseFloat(mesh.rotation.z.toFixed(5)),
+                rotationX: parseFloat(rx.toFixed(5)),
+                rotationY: parseFloat(ry.toFixed(5)),
+                rotationZ: parseFloat(rz.toFixed(5)),
             });
+            // 다중 선택: 보조 요소들도 같은 회전 델타 적용
+            if (selectedElements?.size > 1) {
+                const s0 = startPositionsRef.current[id];
+                const drx = rx - (s0?.rotationX??0);
+                const dry = ry - (s0?.rotationY??0);
+                const drz = rz - (s0?.rotationZ??0);
+                for (const sid of selectedElements) {
+                    if (sid === id) continue;
+                    const s = startPositionsRef.current[sid];
+                    if (!s) continue;
+                    updateElementData(sid, {
+                        rotationX: parseFloat(((s.rotationX??0)+drx).toFixed(5)),
+                        rotationY: parseFloat(((s.rotationY??0)+dry).toFixed(5)),
+                        rotationZ: parseFloat(((s.rotationZ??0)+drz).toFixed(5)),
+                    });
+                }
+            }
         }
     }, [transformMode, selectedElements, updateElementData, ifcMeshes, pivotObj]);
 
     useEffect(() => {
         const ctrl = transformRef.current;
         if (!ctrl) return;
+
         const onDrag = (e) => {
             setIsDragging(e.value);
             if (e.value) {
                 pushUndo?.();
                 if (ifcMeshes?.length) {
-                    // IFC 모드: 피벗 초기 상태 + 선택 요소 스냅샷 저장
-                    const elements = {};
+                    // IFC 모드: 피벗 + 메시 초기 상태 스냅샷
+                    const elements = {}, meshPositions = {};
                     for (const id of allSelectedIdsRef.current) {
                         const el = modelData.find(d => d.elementId === id);
                         if (el) elements[id] = { ...el };
+                        const mp = ifcMeshGroupRef.current?.getMeshPosition(id);
+                        if (mp) meshPositions[id] = mp;
                     }
                     pivotInitialState.current = {
                         pos:   pivotObj.position.clone(),
                         rot:   pivotObj.rotation.clone(),
                         scale: pivotObj.scale.clone(),
                         elements,
+                        meshPositions,
                     };
                 } else {
-                    // 비-IFC 모드: 시작 위치 스냅샷
+                    // 비-IFC 모드: 위치 + 크기 + 회전 스냅샷
                     startPositionsRef.current = {};
                     modelData.forEach(el => {
                         startPositionsRef.current[el.elementId] = {
                             positionX: el.positionX ?? 0,
                             positionY: el.positionY ?? 0,
                             positionZ: el.positionZ ?? 0,
+                            sizeX: el.sizeX ?? 1,
+                            sizeY: el.sizeY ?? 1,
+                            sizeZ: el.sizeZ ?? 1,
+                            rotationX: el.rotationX ?? 0,
+                            rotationY: el.rotationY ?? 0,
+                            rotationZ: el.rotationZ ?? 0,
                         };
                     });
                 }
             }
             if (!e.value) handleTransformComplete();
         };
+
+        // IFC translate 전용: 드래그 중 메시가 기즈모를 실시간으로 따라오게 한다
+        const onChange = () => {
+            if (!ifcMeshes?.length || transformMode !== 'translate') return;
+            const initial = pivotInitialState.current;
+            if (!initial?.meshPositions) return;
+            const ids = allSelectedIdsRef.current;
+            const dx = pivotObj.position.x - initial.pos.x;
+            const dy = pivotObj.position.y - initial.pos.y;
+            const dz = pivotObj.position.z - initial.pos.z;
+            ifcMeshGroupRef.current?.applyTranslateAbsolute(ids, initial.meshPositions, dx, dy, dz);
+        };
+
         ctrl.addEventListener('dragging-changed', onDrag);
-        return () => ctrl.removeEventListener('dragging-changed', onDrag);
-    }, [transformMode, modelData, updateElementData, selectedElements, handleTransformComplete, pushUndo, ifcMeshes, pivotObj]);
+        ctrl.addEventListener('change', onChange);
+        return () => {
+            ctrl.removeEventListener('dragging-changed', onDrag);
+            ctrl.removeEventListener('change', onChange);
+        };
+    }, [transformMode, modelData, selectedElement, selectedElements, handleTransformComplete, pushUndo, ifcMeshes, pivotObj]);
 
     // HoverTracker가 계산한 최신 선 위치 (스냅·고정축·shift 직교 모두 반영)
     const lineHoverPosRef = useRef({ x: 0, y: 0, z: 0 });
