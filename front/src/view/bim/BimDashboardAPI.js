@@ -19,6 +19,10 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // ── 신규 상태: 배치 모드 ────────────────────────────────────────
     const [pendingElement, setPendingElement] = useState(null);
 
+    // ── 신규 상태: 그룹 이동 모드 ───────────────────────────────────
+    // null | { elements: BimElementData[], pivotX: number, pivotY: number }
+    const [groupMovePending, setGroupMovePending] = useState(null);
+
     // ── 신규 상태: 선택(러버밴드) 모드 ─────────────────────────────
     const [isSelectMode, setIsSelectMode] = useState(false);
 
@@ -217,6 +221,50 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 .catch(err => console.error("저장 실패:", err));
         }
     }
+
+    // ================================================================
+    // 그룹 이동 모드
+    // ================================================================
+    const startGroupMove = useCallback(() => {
+        const allIds = new Set([
+            ...selectedElements,
+            ...(selectedElement ? [selectedElement.data.elementId] : []),
+        ]);
+        if (allIds.size === 0) return;
+        const elems = [...allIds].map(id => modelData.find(e => e.elementId === id)).filter(Boolean);
+        if (elems.length === 0) return;
+        const pivot = selectedElement?.data ?? elems[0];
+        setGroupMovePending({
+            elements: elems,
+            pivotX: Number(pivot.positionX) || 0,
+            pivotY: Number(pivot.positionY) || 0,
+        });
+    }, [selectedElements, selectedElement, modelData]);
+
+    const cancelGroupMove = useCallback(() => {
+        setGroupMovePending(null);
+    }, []);
+
+    const confirmGroupMove = useCallback((newPivotX, newPivotY) => {
+        if (!groupMovePending) return;
+        pushUndo();
+        const { elements, pivotX, pivotY } = groupMovePending;
+        const dx = newPivotX - pivotX;
+        const dy = newPivotY - pivotY;
+        const updates = elements.map(el => ({
+            ...el,
+            positionX: parseFloat((Number(el.positionX) + dx).toFixed(3)),
+            positionY: parseFloat((Number(el.positionY) + dy).toFixed(3)),
+        }));
+        const updateMap = new Map(updates.map(u => [u.elementId, u]));
+        setModelData(prev => prev.map(e => updateMap.has(e.elementId) ? { ...e, ...updateMap.get(e.elementId) } : e));
+        Promise.all(updates.map(u =>
+            AxiosCustom.put(`${API_BASE}/model/element`, {
+                ...u, projectId: selectedProject?.projectId || u.projectId,
+            })
+        )).catch(err => console.error('그룹 이동 저장 실패:', err));
+        setGroupMovePending(null);
+    }, [groupMovePending, pushUndo, selectedProject, setModelData]);
 
     // ================================================================
     // 배치 모드
@@ -568,6 +616,12 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         // Undo
         undo,
         pushUndo,
+
+        // 그룹 이동
+        groupMovePending,
+        startGroupMove,
+        cancelGroupMove,
+        confirmGroupMove,
 
         // 레이어
         layers,
