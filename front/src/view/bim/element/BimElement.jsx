@@ -99,7 +99,10 @@ export function BimElement({ element, onElementSelect, isPlacementMode }) {
         color={faceColor}
         roughness={0.55}
         metalness={0.0}
-        opacity={selected || multiSel ? 0.95 : hovered ? 0.92 : 0.88}
+        opacity={
+          element.resolvedOpacity != null ? element.resolvedOpacity :
+          (selected || multiSel ? 0.95 : hovered ? 0.92 : 0.88)
+        }
         transparent
         emissive={multiSel && !selected ? '#c8a800' : '#000000'}
         emissiveIntensity={multiSel && !selected ? 0.06 : 0}
