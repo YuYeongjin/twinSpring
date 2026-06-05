@@ -278,24 +278,35 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
   }
 
   const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
 
-  // elements 중앙 정렬
+  // Three.js Z(depth) 실제 최솟값을 정점에서 직접 계산
+  // cy(중심) 대신 actualMinZ를 쓰면 건물 앞면이 Z=0(기준 평면)에 딱 붙고
+  // 건물 전체가 Z≥0 쪽(기준 평면 앞)에 위치해 좌표 평면에 가려지지 않는다.
+  let actualMinZ = Infinity;
+  for (const m of ifcMeshes) {
+    const p = m.positions;
+    for (let i = 2; i < p.length; i += 3) {
+      if (p[i] < actualMinZ) actualMinZ = p[i];
+    }
+  }
+  if (!isFinite(actualMinZ)) actualMinZ = (minY + maxY) / 2;
+
+  // elements 정렬 — X 중앙, depth min=0, height base=0
   const centered = elements.map(el => ({
     ...el,
     positionX: parseFloat((el.positionX - cx).toFixed(3)),
-    positionY: parseFloat((el.positionY - cy).toFixed(3)),   // 평면 Y 센터링
-    positionZ: parseFloat((el.positionZ - minZ).toFixed(3)), // 높이 base → 0
+    positionY: parseFloat((el.positionY - actualMinZ).toFixed(3)), // depth min → 0
+    positionZ: parseFloat((el.positionZ - minZ).toFixed(3)),        // height base → 0
   }));
 
-  // ifcMeshes 정점 위치 중앙 정렬 (Three.js 공간 기준)
-  // ThreeX -= cx, ThreeY(height) -= minZ(=DTO positionZ min), ThreeZ(depth) -= cy
+  // ifcMeshes 정점 정렬
+  // ThreeX -= cx, ThreeY(height) -= minZ, ThreeZ(depth) -= actualMinZ
   for (const mesh of ifcMeshes) {
     const pos = mesh.positions;
     for (let i = 0; i < pos.length; i += 3) {
-      pos[i]   -= cx;    // ThreeX
-      pos[i+1] -= minZ;  // ThreeY (height) — minZ는 DTO positionZ의 최솟값 = Three.js Y 최솟값
-      pos[i+2] -= cy;    // ThreeZ (depth) — cy는 DTO positionY의 중심 = Three.js Z 중심
+      pos[i]   -= cx;          // ThreeX
+      pos[i+1] -= minZ;        // ThreeY (height) — base → 0
+      pos[i+2] -= actualMinZ;  // ThreeZ (depth) — minimum → 0, 기준 평면(Z=0) 뒤로
     }
   }
 
