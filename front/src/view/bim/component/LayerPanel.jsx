@@ -26,7 +26,7 @@ function ColorDot({ color, onChange, size = 16 }) {
 function LayerRow({
     layer, elements, isExpanded, onToggleExpand,
     onUpdate, onDelete,
-    onRemoveElement, onSelectElement,
+    onRemoveElement, onSelectElement, onSelectAllInLayer,
     elementColors,
 }) {
     const [isEditingName, setIsEditingName] = useState(false);
@@ -69,12 +69,18 @@ function LayerRow({
                     </span>
                 )}
 
-                {/* 부재 수 뱃지 */}
+                {/* 부재 수 뱃지 — 클릭 시 레이어 전체 선택 */}
                 <span
-                    className="text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                    className="text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 cursor-pointer hover:ring-1 transition"
                     style={{
                         backgroundColor: layer.color + '30',
                         color: layer.visible ? layer.color : '#8896a4',
+                        ringColor: layer.color,
+                    }}
+                    title="클릭: 레이어 전체 선택"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectAllInLayer && onSelectAllInLayer(layer.elementIds);
                     }}
                 >
                     {elements.length}
@@ -132,7 +138,8 @@ function LayerRow({
                             <div
                                 key={el.elementId}
                                 className="flex items-center gap-2 px-4 py-1.5 border-t border-[#1e2d3d] hover:bg-[#1c2a3a] transition group cursor-pointer"
-                                onClick={() => onSelectElement && onSelectElement(el)}
+                                onClick={(e) => onSelectElement && onSelectElement(el, null, e.shiftKey)}
+                                title="클릭: 선택 / Shift+클릭: 다중 선택 추가"
                             >
                                 {/* 개별 색상 or 레이어 색상 */}
                                 <div
@@ -311,6 +318,7 @@ export default function LayerPanel({
     onSetElementColor,
     onClearElementColor,
     onSelectElement,
+    onSelectAllInLayer,
     // ── 도면선 그룹 ──────────────────────────
     lines = [],
     linesVisible = true,
@@ -392,6 +400,7 @@ export default function LayerPanel({
                                 onDelete={onDeleteLayer}
                                 onRemoveElement={onRemoveFromLayer}
                                 onSelectElement={onSelectElement}
+                                onSelectAllInLayer={onSelectAllInLayer}
                                 elementColors={elementColors}
                             />
                         );

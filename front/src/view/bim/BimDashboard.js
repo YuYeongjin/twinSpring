@@ -688,6 +688,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         layers, addLayer, deleteLayer, updateLayer, assignToLayer, removeFromLayer,
         elementColors, setElementColor, clearElementColor,
         undo, pushUndo,
+        groupMovePending, startGroupMove, cancelGroupMove, confirmGroupMove,
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
     const t = useT('bimDashboard');
@@ -1129,6 +1130,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             if (e.key === 'r' || e.key === 'R') setTransformMode('rotate');
             if (e.key === 's' || e.key === 'S') setTransformMode('scale');
             if (e.key === 'q' || e.key === 'Q') toggleSelectMode();
+            if (e.key === 'm' || e.key === 'M') {
+                if (groupMovePending) { cancelGroupMove(); }
+                else if (!pendingElement) { startGroupMove(); }
+            }
             if (e.key === 'l' || e.key === 'L') {
                 if (lineDrawMode !== 'off') { finishLineDraw(); }
                 else { setLineDrawMode('click'); }
@@ -1145,7 +1150,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 undo();
             }
             if (e.key === 'Escape') {
-                if (lineDrawMode !== 'off') {
+                if (groupMovePending) { cancelGroupMove(); }
+                else if (lineDrawMode !== 'off') {
                     finishLineDraw();
                 } else if (pendingElement) { cancelPlacement(); }
                 else if (isSelectMode) { toggleSelectMode(); }
@@ -1160,7 +1166,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [selectedElement, pendingElement, isSelectMode, lineDrawMode, deleteSelectedElements,
         cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements,
-        undo, finishLineDraw, selectedLineId, deleteLine, setSelectedLineId]);
+        undo, finishLineDraw, selectedLineId, deleteLine, setSelectedLineId,
+        groupMovePending, startGroupMove, cancelGroupMove]);
 
     return (
         <div ref={rootContainerRef} className="w-full bg-space-900 flex flex-col overflow-hidden"
@@ -1575,11 +1582,20 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             fitCameraTrigger={fitCameraTrigger}
                                             viewPreset={viewPreset}
                                             viewMode={viewMode}
+                                            groupMovePending={groupMovePending}
+                                            onGroupMoveConfirm={confirmGroupMove}
                                         />
                                         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
                                             <GizmoViewport axisColors={['#ff4060', '#80ff80', '#2080ff']} labelColor="white"/>
                                         </GizmoHelper>
                                     </Canvas>
+
+                                    {groupMovePending && (
+                                        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none
+                                            bg-black/75 text-white text-xs px-4 py-2 rounded-xl border border-blue-500/60 whitespace-nowrap">
+                                            클릭하여 <span className="text-blue-300 font-bold">{groupMovePending.elements.length}개</span> 부재 배치 &nbsp;·&nbsp; Esc 또는 M 취소
+                                        </div>
+                                    )}
 
                                     {viewMode === '3d' && (
                                         <div className="absolute bottom-16 left-3 z-20 pointer-events-auto flex flex-col gap-1 hidden sm:flex">
@@ -1785,7 +1801,15 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 onRemoveFromLayer={removeFromLayer}
                                 onSetElementColor={setElementColor}
                                 onClearElementColor={clearElementColor}
-                                onSelectElement={(el) => handleElementSelectAndClearLine(el, null)}
+                                onSelectElement={(el, ref, shiftKey) => handleElementSelectAndClearLine(el, null, shiftKey)}
+                                onSelectAllInLayer={(ids) => {
+                                    const validIds = ids.filter(id => modelData.some(e => e.elementId === id));
+                                    if (validIds.length === 0) return;
+                                    setSelectedElements(new Set(validIds));
+                                    const first = modelData.find(e => e.elementId === validIds[0]);
+                                    if (first) setSelectedElement({ data: first, meshRef: null });
+                                    setSelectedLineId(null);
+                                }}
                                 lines={lines}
                                 linesVisible={linesVisible}
                                 onToggleLinesVisible={() => setLinesVisible(v => !v)}
