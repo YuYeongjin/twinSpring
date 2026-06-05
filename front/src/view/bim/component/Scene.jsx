@@ -73,6 +73,39 @@ function findSmartSnap(mA, mB, sA, sB, verts, viewMode) {
 }
 
 // ================================================================
+// 3D 모드에서 잠긴 축에 따른 동적 스냅 평면 반환
+// - X 고정: Three.js X=val 수직 평면 (Y·Z 자유)
+// - Y 고정: Three.js Z=val 수직 평면 (X·Z 자유)
+// - Z 고정 / 미고정: 수평 평면 at height (기존 동작)
+// ================================================================
+function getDynamicSnapPlane3D(lockedAxes) {
+    const xl = lockedAxes?.x != null;
+    const yl = lockedAxes?.y != null;
+    const zl = lockedAxes?.z != null;
+    if (xl && !yl && !zl)
+        return new THREE.Plane(new THREE.Vector3(1, 0, 0), -(lockedAxes.x));
+    if (yl && !xl && !zl)
+        return new THREE.Plane(new THREE.Vector3(0, 0, 1), -(lockedAxes.y));
+    return new THREE.Plane(new THREE.Vector3(0, 1, 0), -(lockedAxes?.z ?? 0));
+}
+
+// ================================================================
+// 카메라를 항상 바라보는 투명 클릭 평면
+// 수직/수평 구분 없이 어느 시점에서도 클릭을 캡처한다.
+// ================================================================
+function BillboardClickPlane({ onClick }) {
+    const ref = useRef();
+    const { camera } = useThree();
+    useFrame(() => { if (ref.current) ref.current.quaternion.copy(camera.quaternion); });
+    return (
+        <mesh ref={ref} onClick={onClick} renderOrder={-1}>
+            <planeGeometry args={[2000, 2000]} />
+            <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+    );
+}
+
+// ================================================================
 // 카메라 ref 주입
 // ================================================================
 function CameraSync({ cameraRef }) {
@@ -400,33 +433,65 @@ function VertexSnapIndicator({ snapVertices, snapEnabled, viewMode = '3d' }) {
 // ================================================================
 function HoverTracker({ drawHeight, snapVertices, snapEnabled, onHoverPosition, lockedAxes, shiftRef, lineStart, viewMode = '3d' }) {
     const { camera, raycaster, mouse } = useThree();
-    const snapPlane = useMemo(() => getSnapPlane(viewMode, snapVertices), [viewMode, snapVertices]);
     const hitPoint = useMemo(() => new THREE.Vector3(), []);
+
+    // 3D 모드: 잠긴 축에 따라 스냅 평면을 동적으로 선택
+    const snapPlane = useMemo(() => {
+        if (viewMode !== '3d') return getSnapPlane(viewMode, snapVertices);
+        return getDynamicSnapPlane3D(lockedAxes);
+    }, [viewMode, snapVertices, lockedAxes]);
 
     useFrame(() => {
         raycaster.setFromCamera(mouse, camera);
         if (!raycaster.ray.intersectPlane(snapPlane, hitPoint)) return;
 
-        let ex = hitPoint.x, ey = drawHeight, ez = hitPoint.z;
+        let ex, ey, ez;
 
-        if (snapEnabled && snapVertices.length > 0) {
-            const [wa, wb] = viewMode === 'xz' ? [hitPoint.x, hitPoint.y]
-                           : viewMode === 'yz' ? [hitPoint.z, hitPoint.y]
-                           : [hitPoint.x, hitPoint.z];
-            const sv = findSnapVertex(wa, wb, snapVertices, viewMode);
-            if (sv) { ex = sv[0]; ey = sv[1] ?? drawHeight; ez = sv[2]; }
+        if (viewMode === '3d') {
+            const xl = lockedAxes?.x != null;
+            const yl = lockedAxes?.y != null;
+            const zl = lockedAxes?.z != null;
+
+            if (xl && !yl && !zl) {
+                // X 고정 → 수직 평면: hitPoint에서 높이(Y)·깊이(Z) 읽기
+                ex = lockedAxes.x;
+                ey = hitPoint.y;  // Three.js Y = data Z (높이)
+                ez = hitPoint.z;  // Three.js Z = data Y (깊이)
+            } else if (yl && !xl && !zl) {
+                // Y(data) 고정 → 수직 평면: hitPoint에서 X·높이(Y) 읽기
+                ex = hitPoint.x;
+                ey = hitPoint.y;  // Three.js Y = 높이
+                ez = lockedAxes.y;
+            } else {
+                // Z 고정 / 미고정 → 수평 평면 (기존 동작 + 스냅)
+                ex = hitPoint.x; ey = zl ? lockedAxes.z : drawHeight; ez = hitPoint.z;
+                if (snapEnabled && snapVertices.length > 0) {
+                    const sv = findSnapVertex(hitPoint.x, hitPoint.z, snapVertices);
+                    if (sv) { ex = sv[0]; ey = sv[1] ?? drawHeight; ez = sv[2]; }
+                }
+                if (xl) ex = lockedAxes.x;
+                if (yl) ez = lockedAxes.y;
+            }
+        } else {
+            // 2D 직교 뷰 — 기존 로직
+            ex = hitPoint.x; ey = drawHeight; ez = hitPoint.z;
+            if (snapEnabled && snapVertices.length > 0) {
+                const [wa, wb] = viewMode === 'xz' ? [hitPoint.x, hitPoint.y]
+                               : viewMode === 'yz' ? [hitPoint.z, hitPoint.y]
+                               : [hitPoint.x, hitPoint.z];
+                const sv = findSnapVertex(wa, wb, snapVertices, viewMode);
+                if (sv) { ex = sv[0]; ey = sv[1] ?? drawHeight; ez = sv[2]; }
+            }
+            if (viewMode === 'xz' || viewMode === 'yz') ey = hitPoint.y;
+            if (lockedAxes?.x != null) ex = lockedAxes.x;
+            if (lockedAxes?.y != null) ez = lockedAxes.y;
+            if (lockedAxes?.z != null) ey = lockedAxes.z;
         }
 
-        // XZ/YZ 뷰에서는 hit.y = Three.js Y = BIM 높이
-        if (viewMode === 'xz' || viewMode === 'yz') ey = hitPoint.y;
-
-        if (lockedAxes?.x != null) ex = lockedAxes.x;
-        if (lockedAxes?.y != null) ez = lockedAxes.y;
-        if (lockedAxes?.z != null) ey = lockedAxes.z;
-
         if (shiftRef?.current && lineStart) {
+            const xl = lockedAxes?.x != null, yl = lockedAxes?.y != null;
             const dx = ex - lineStart[0], dz = ez - (lineStart[1] ?? 0);
-            if (lockedAxes?.x == null && lockedAxes?.y == null) {
+            if (!xl && !yl) {
                 if (Math.abs(dx) >= Math.abs(dz)) ez = lineStart[1] ?? 0;
                 else ex = lineStart[0];
             }
@@ -446,20 +511,18 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHove
     const snapRef    = useRef();
     const { camera, raycaster, mouse } = useThree();
 
-    const snapPlane = useMemo(() => getSnapPlane(viewMode, snapVertices), [viewMode, snapVertices]);
+    // 3D 모드: 잠긴 축에 따라 스냅 평면을 동적으로 선택
+    const snapPlane = useMemo(() => {
+        if (viewMode !== '3d') return getSnapPlane(viewMode, snapVertices);
+        return getDynamicSnapPlane3D(lockedAxes);
+    }, [viewMode, snapVertices, lockedAxes]);
+
     const hitPoint  = useMemo(() => new THREE.Vector3(), []);
     const snappedPos = useRef({ x: 0, y: 0, z: 0 }); // BIM data coords
 
     const sizeX = template.sizeX ?? 1;
     const sizeY = template.sizeY ?? 1;
     const sizeZ = template.sizeZ ?? 1;
-
-    // 클릭 평면 rotation — viewMode에 따라 수직/수평 전환
-    const clickPlaneRotation = useMemo(() => {
-        if (viewMode === 'xz') return [0, 0, 0];              // XY 수직 평면 (Z축 기준)
-        if (viewMode === 'yz') return [0, Math.PI / 2, 0];   // ZY 수직 평면 (X축 기준)
-        return [-Math.PI / 2, 0, 0];                          // XZ 수평 평면 (바닥)
-    }, [viewMode]);
 
     useFrame(() => {
         raycaster.setFromCamera(mouse, camera);
@@ -481,21 +544,38 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHove
             [snapA, snapB] = snapResult ?? [snapA, snapB];
             px = hitPoint.x; py = snapB; pz = snapA;
         } else {
-            snapA = hitPoint.x; snapB = hitPoint.z;
-            snapResult = snapEnabled && snapVertices.length
-                ? findSmartSnap(snapA, snapB, sizeX, sizeY, snapVertices, viewMode) : null;
-            [snapA, snapB] = snapResult ?? [snapA, snapB];
-            if (shiftRef?.current) {
-                if (lockedAxes?.x == null) snapA = Math.round(snapA * 2) / 2;
-                if (lockedAxes?.y == null) snapB = Math.round(snapB * 2) / 2;
+            // 3D 모드: 잠긴 축에 따라 hit 좌표 추출 방식 변경
+            const xl = lockedAxes?.x != null;
+            const yl = lockedAxes?.y != null;
+            const zl = lockedAxes?.z != null;
+
+            if (xl && !yl && !zl) {
+                // X 고정 → 수직 평면에서 Y(깊이)·Z(높이) 읽기
+                px = lockedAxes.x;
+                py = hitPoint.y;   // 높이 (Three.js Y = data Z)
+                pz = hitPoint.z;   // 깊이 (Three.js Z = data Y)
+            } else if (yl && !xl && !zl) {
+                // Y(data) 고정 → 수직 평면에서 X·Z(높이) 읽기
+                px = hitPoint.x;
+                py = hitPoint.y;   // 높이
+                pz = lockedAxes.y;
+            } else {
+                // Z 고정 / 미고정 → 수평 평면 (기존 동작 + 스냅)
+                snapA = hitPoint.x; snapB = hitPoint.z;
+                snapResult = snapEnabled && snapVertices.length
+                    ? findSmartSnap(snapA, snapB, sizeX, sizeY, snapVertices, viewMode) : null;
+                [snapA, snapB] = snapResult ?? [snapA, snapB];
+                if (shiftRef?.current) {
+                    if (!xl) snapA = Math.round(snapA * 2) / 2;
+                    if (!yl) snapB = Math.round(snapB * 2) / 2;
+                }
+                px = xl ? lockedAxes.x : snapA;
+                py = zl ? lockedAxes.z : 0;
+                pz = yl ? lockedAxes.y : snapB;
             }
-            px = snapA; py = lockedAxes?.z ?? 0; pz = snapB;
         }
 
-        if (lockedAxes?.x != null) px = lockedAxes.x;
-        if (lockedAxes?.y != null) pz = lockedAxes.y;
-        if (lockedAxes?.z != null) py = lockedAxes.z;
-
+        // snappedPos: BIM data coords { x=dataX, y=dataY, z=dataZ(height) }
         snappedPos.current = { x: px, y: pz, z: py };
         onHoverPosition?.({ x: px, y: pz, z: py });
 
@@ -522,10 +602,8 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHove
                 <sphereGeometry args={[0.22, 16, 16]} />
                 <meshBasicMaterial color="#fbbf24" transparent opacity={0.85} />
             </mesh>
-            {/* 클릭 평면 — viewMode에 따라 수평/수직 전환 */}
-            <mesh
-                rotation={clickPlaneRotation}
-                position={[0, 0.001, 0]}
+            {/* 클릭 평면 — 카메라를 항상 바라보는 빌보드 (수직/수평 제한 없음) */}
+            <BillboardClickPlane
                 onClick={e => {
                     e.stopPropagation();
                     const s = snappedPos.current;
@@ -535,10 +613,7 @@ function PlacementGhost({ template, onConfirm, snapVertices, snapEnabled, onHove
                         z: lockedAxes?.z ?? s.z,
                     });
                 }}
-            >
-                <planeGeometry args={[500, 500]} />
-                <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} />
-            </mesh>
+            />
         </>
     );
 }
@@ -935,6 +1010,22 @@ export default function Scene({
     const transformRef     = useRef();
     const orbitRef         = useRef();
     const shiftRef         = useRef(false);
+    const ifcMeshGroupRef  = useRef();
+
+    // IFC 다중 선택 트랜스폼용 피벗 객체 (가시성 없는 Object3D, TransformControls의 attach 대상)
+    const pivotObj = useMemo(() => new THREE.Object3D(), []);
+    const pivotInitialState = useRef(null); // { pos, rot, scale, elements: {id → elementData} }
+
+    // 현재 선택된 모든 elementId Set (primary + multiSelected)
+    const allSelectedIds = useMemo(() => {
+        const ids = new Set(selectedElements);
+        if (selectedElement?.data?.elementId) ids.add(selectedElement.data.elementId);
+        return ids;
+    }, [selectedElements, selectedElement]);
+
+    // 클로저 안에서 최신 allSelectedIds를 쓰기 위한 ref
+    const allSelectedIdsRef = useRef(allSelectedIds);
+    useEffect(() => { allSelectedIdsRef.current = allSelectedIds; }, [allSelectedIds]);
 
     useEffect(() => {
         const handler = (e) => { shiftRef.current = e.shiftKey; };
@@ -945,6 +1036,25 @@ export default function Scene({
             window.removeEventListener('keyup', handler);
         };
     }, []);
+    // IFC 모드에서 선택이 바뀌면 피벗을 선택 요소들의 무게중심으로 이동
+    useEffect(() => {
+        if (!ifcMeshes?.length || allSelectedIds.size === 0) return;
+        let sumX = 0, sumY = 0, sumZ = 0, count = 0;
+        for (const el of modelData) {
+            if (!allSelectedIds.has(el.elementId)) continue;
+            // Three.js: X=posX, Y=posZ+sizeZ/2(높이 중심), Z=posY
+            sumX += Number(el.positionX) || 0;
+            sumY += (Number(el.positionZ) || 0) + (Number(el.sizeZ) || 0) / 2;
+            sumZ += Number(el.positionY) || 0;
+            count++;
+        }
+        if (count > 0) {
+            pivotObj.position.set(sumX / count, sumY / count, sumZ / count);
+            pivotObj.rotation.set(0, 0, 0);
+            pivotObj.scale.set(1, 1, 1);
+        }
+    }, [allSelectedIds, modelData, ifcMeshes, pivotObj]);
+
     const [isDragging,            setIsDragging]            = useState(false);
     const [isResizeDragging,      setIsResizeDragging]      = useState(false);
     const [isLineVertexDragging,  setIsLineVertexDragging]  = useState(false);
@@ -1047,20 +1157,107 @@ export default function Scene({
         }
     });
 
-    // ── TransformControls 드래그 ──────────────────────────────────────
-    const handleTransformComplete = useCallback((mesh) => {
+    // ── TransformControls 드래그 완료 ────────────────────────────────
+    const handleTransformComplete = useCallback(() => {
+        const isIfcMode = !!(ifcMeshes?.length);
+
+        // ── IFC 모드: 피벗 델타 기반 ───────────────────────────────────
+        if (isIfcMode) {
+            const initial = pivotInitialState.current;
+            const ids     = allSelectedIdsRef.current;
+            if (!initial || ids.size === 0) return;
+
+            if (transformMode === 'translate') {
+                // Three.js X = data X, Three.js Y = data Z (높이), Three.js Z = data Y (깊이)
+                const dx = pivotObj.position.x - initial.pos.x;
+                const dy = pivotObj.position.y - initial.pos.y; // data Z 방향
+                const dz = pivotObj.position.z - initial.pos.z; // data Y 방향
+
+                for (const [id, el] of Object.entries(initial.elements)) {
+                    updateElementData(id, {
+                        positionX: parseFloat(((el.positionX ?? 0) + dx).toFixed(3)),
+                        positionY: parseFloat(((el.positionY ?? 0) + dz).toFixed(3)),
+                        positionZ: parseFloat(((el.positionZ ?? 0) + dy).toFixed(3)),
+                    });
+                }
+                // 선택된 IFC 메시 Three.js 오브젝트를 직접 이동 (baked 지오메트리에 오프셋 추가)
+                ifcMeshGroupRef.current?.applyTranslate(ids, dx, dy, dz);
+
+            } else if (transformMode === 'rotate') {
+                // 피벗의 회전 변화량 계산
+                const dq = new THREE.Quaternion()
+                    .setFromEuler(new THREE.Euler(
+                        pivotObj.rotation.x - initial.rot.x,
+                        pivotObj.rotation.y - initial.rot.y,
+                        pivotObj.rotation.z - initial.rot.z,
+                    ));
+                const centroid = initial.pos.clone();
+
+                for (const [id, el] of Object.entries(initial.elements)) {
+                    // Three.js 공간에서 원래 중심 좌표
+                    const origCenter = new THREE.Vector3(
+                        el.positionX ?? 0,
+                        (el.positionZ ?? 0) + (el.sizeZ ?? 0) / 2,
+                        el.positionY ?? 0,
+                    );
+                    // 무게중심 기준으로 회전
+                    const newCenter = origCenter.clone().sub(centroid).applyQuaternion(dq).add(centroid);
+                    const dEuler = new THREE.Euler().setFromQuaternion(dq);
+                    updateElementData(id, {
+                        positionX: parseFloat(newCenter.x.toFixed(3)),
+                        positionY: parseFloat(newCenter.z.toFixed(3)),
+                        positionZ: parseFloat((newCenter.y - (el.sizeZ ?? 0) / 2).toFixed(3)),
+                        rotationX: parseFloat(((el.rotationX ?? 0) + dEuler.x).toFixed(5)),
+                        rotationY: parseFloat(((el.rotationY ?? 0) + dEuler.y).toFixed(5)),
+                        rotationZ: parseFloat(((el.rotationZ ?? 0) + dEuler.z).toFixed(5)),
+                    });
+                }
+                ifcMeshGroupRef.current?.applyRotate(ids, centroid, dq);
+                pivotObj.rotation.set(0, 0, 0);
+
+            } else if (transformMode === 'scale') {
+                const sx = pivotObj.scale.x;
+                const sy = pivotObj.scale.y; // Three.js Y scale = data sizeZ
+                const sz = pivotObj.scale.z; // Three.js Z scale = data sizeY
+                const centroid = initial.pos.clone();
+
+                for (const [id, el] of Object.entries(initial.elements)) {
+                    const origCenter = new THREE.Vector3(
+                        el.positionX ?? 0,
+                        (el.positionZ ?? 0) + (el.sizeZ ?? 0) / 2,
+                        el.positionY ?? 0,
+                    );
+                    const newCenter = origCenter.clone().sub(centroid).multiply(new THREE.Vector3(sx, sy, sz)).add(centroid);
+                    updateElementData(id, {
+                        positionX: parseFloat(newCenter.x.toFixed(3)),
+                        positionY: parseFloat(newCenter.z.toFixed(3)),
+                        positionZ: parseFloat((newCenter.y - (el.sizeZ ?? 0) * sy / 2).toFixed(3)),
+                        sizeX: parseFloat(((el.sizeX ?? 1) * sx).toFixed(3)),
+                        sizeY: parseFloat(((el.sizeY ?? 1) * sz).toFixed(3)),
+                        sizeZ: parseFloat(((el.sizeZ ?? 1) * sy).toFixed(3)),
+                    });
+                }
+                ifcMeshGroupRef.current?.applyScale(ids, centroid, sx, sy, sz);
+                pivotObj.scale.set(1, 1, 1);
+            }
+            return;
+        }
+
+        // ── 비-IFC 모드 (BimElement 박스): 기존 로직 ──────────────────
+        const ctrl = transformRef.current;
+        const mesh = ctrl?.object;
         if (!mesh?.userData?.elementId) return;
         const id = mesh.userData.elementId;
+
         if (transformMode === 'translate') {
-            // rawSize = [sizeX, sizeZ, sizeY] (Three.js [X, height, depth])
             const rawSize = mesh.userData.rawSize ?? [1,1,1];
-            const baseZ = mesh.position.y - rawSize[1] / 2;   // Three.js Y - sizeZ/2 = data Z base
-            const nx = parseFloat(mesh.position.x.toFixed(3));        // data X
-            const ny = parseFloat(mesh.position.z.toFixed(3));        // data Y = Three.js Z
-            const nz = parseFloat(baseZ.toFixed(3));                   // data Z = Three.js Y - half
+            const baseZ   = mesh.position.y - rawSize[1] / 2;
+            const nx = parseFloat(mesh.position.x.toFixed(3));
+            const ny = parseFloat(mesh.position.z.toFixed(3));
+            const nz = parseFloat(baseZ.toFixed(3));
             const sp = startPositionsRef.current[id];
             const dx = nx-(sp?.positionX??nx), dy = ny-(sp?.positionY??ny), dz = nz-(sp?.positionZ??nz);
-            updateElementData(id, { positionX:nx, positionY:ny, positionZ:nz });
+            updateElementData(id, { positionX: nx, positionY: ny, positionZ: nz });
             if (selectedElements?.size > 1) {
                 for (const sid of selectedElements) {
                     if (sid === id) continue;
@@ -1074,12 +1271,11 @@ export default function Scene({
                 }
             }
         } else if (transformMode === 'scale') {
-            // rawSize = [sizeX, sizeZ(height), sizeY(floorY)] → Three.js scale X/Y/Z
             const rawSize = mesh.userData.rawSize ?? [1,1,1];
             updateElementData(id, {
                 sizeX: parseFloat((rawSize[0]*mesh.scale.x).toFixed(3)),
-                sizeZ: parseFloat((rawSize[1]*mesh.scale.y).toFixed(3)),  // Three.js Y scale = data sizeZ
-                sizeY: parseFloat((rawSize[2]*mesh.scale.z).toFixed(3)),  // Three.js Z scale = data sizeY
+                sizeZ: parseFloat((rawSize[1]*mesh.scale.y).toFixed(3)),
+                sizeY: parseFloat((rawSize[2]*mesh.scale.z).toFixed(3)),
             });
             mesh.scale.set(1,1,1);
         } else if (transformMode === 'rotate') {
@@ -1089,53 +1285,56 @@ export default function Scene({
                 rotationZ: parseFloat(mesh.rotation.z.toFixed(5)),
             });
         }
-    }, [transformMode, selectedElements, updateElementData]);
+    }, [transformMode, selectedElements, updateElementData, ifcMeshes, pivotObj]);
 
     useEffect(() => {
         const ctrl = transformRef.current;
         if (!ctrl) return;
         const onDrag = (e) => {
             setIsDragging(e.value);
-            if (e.value && ctrl.object) {
+            if (e.value) {
                 pushUndo?.();
-                startPositionsRef.current = {};
-                modelData.forEach(el => {
-                    startPositionsRef.current[el.elementId] = {
-                        positionX: el.positionX ?? 0,
-                        positionY: el.positionY ?? 0,
-                        positionZ: el.positionZ ?? 0,
+                if (ifcMeshes?.length) {
+                    // IFC 모드: 피벗 초기 상태 + 선택 요소 스냅샷 저장
+                    const elements = {};
+                    for (const id of allSelectedIdsRef.current) {
+                        const el = modelData.find(d => d.elementId === id);
+                        if (el) elements[id] = { ...el };
+                    }
+                    pivotInitialState.current = {
+                        pos:   pivotObj.position.clone(),
+                        rot:   pivotObj.rotation.clone(),
+                        scale: pivotObj.scale.clone(),
+                        elements,
                     };
-                });
+                } else {
+                    // 비-IFC 모드: 시작 위치 스냅샷
+                    startPositionsRef.current = {};
+                    modelData.forEach(el => {
+                        startPositionsRef.current[el.elementId] = {
+                            positionX: el.positionX ?? 0,
+                            positionY: el.positionY ?? 0,
+                            positionZ: el.positionZ ?? 0,
+                        };
+                    });
+                }
             }
-            if (!e.value && ctrl.object) handleTransformComplete(ctrl.object);
+            if (!e.value) handleTransformComplete();
         };
         ctrl.addEventListener('dragging-changed', onDrag);
         return () => ctrl.removeEventListener('dragging-changed', onDrag);
-    }, [transformMode, modelData, updateElementData, selectedElements, handleTransformComplete, pushUndo]);
+    }, [transformMode, modelData, updateElementData, selectedElements, handleTransformComplete, pushUndo, ifcMeshes, pivotObj]);
 
-    // ── 선 클릭 (스냅 + locked + shift 직교 적용) ───────────────────────
+    // HoverTracker가 계산한 최신 선 위치 (스냅·고정축·shift 직교 모두 반영)
+    const lineHoverPosRef = useRef({ x: 0, y: 0, z: 0 });
+
+    // ── 선 클릭: HoverTracker가 이미 처리한 좌표를 그대로 사용 ──────
     const handleLinePlaneClick = (e) => {
         e.stopPropagation();
-        // Three.js hit: X=dataX, Y=height(≈0), Z=dataY
-        let threeX = e.point.x, threeY = e.point.y, threeZ = e.point.z;
-        if (snapEnabled && snapVertices.length > 0) {
-            const sv = findSnapVertex(threeX, threeZ, snapVertices);
-            if (sv) { threeX = sv[0]; threeY = sv[1] ?? lineDrawHeight; threeZ = sv[2]; }
-        }
-        // lockedAxes: data 좌표 적용 (x=dataX→Three.jsX, y=dataY→Three.jsZ, z=dataZ→Three.jsY)
-        if (lineLockedAxes?.x != null) threeX = lineLockedAxes.x;
-        if (lineLockedAxes?.y != null) threeZ = lineLockedAxes.y;
-        if (lineLockedAxes?.z != null) threeY = lineLockedAxes.z;
-        // Shift 직교: lineStart=[dataX,dataY,dataZ]
-        if (shiftRef.current && lineStart) {
-            const dx = threeX - lineStart[0], dz = threeZ - (lineStart[1] ?? 0);
-            if (!lineLockedAxes?.x && !lineLockedAxes?.y) {
-                if (Math.abs(dx) >= Math.abs(dz)) threeZ = lineStart[1] ?? 0;
-                else threeX = lineStart[0];
-            }
-        }
-        // data 좌표로 emit: x=dataX, y=dataY(Three.jsZ), z=dataZ(Three.jsY=height)
-        onLineClick?.({ x: threeX, y: threeZ, z: threeY });
+        // lineHoverPosRef는 HoverTracker의 onHoverPosition에서 data 좌표로 갱신됨
+        // { x=dataX, y=dataY, z=dataZ(height) }
+        const h = lineHoverPosRef.current;
+        onLineClick?.({ x: h.x, y: h.y, z: h.z });
     };
 
     // OrbitControls: 드래그 중 / 리사이즈 핸들 드래그 중 / 선 꼭짓점 드래그 중 / 선택모드 / 선 작도 중 비활성화
@@ -1186,18 +1385,37 @@ export default function Scene({
             />
             <directionalLight position={[-10,5,-10]} intensity={(envPreset?.light?.dirIntensity??0.7)*0.35} />
 
-            {/* TransformControls */}
-            {selectedElement?.meshRef?.current && !isResizeDragging && (
-                <TransformControls
-                    ref={transformRef}
-                    object={selectedElement.meshRef.current}
-                    mode={transformMode}
-                />
-            )}
+            {/* 피벗 Object3D — IFC 다중 선택 트랜스폼의 attach 대상 (렌더링 없음) */}
+            <primitive object={pivotObj} />
+
+            {/* TransformControls
+                - IFC 모드: 선택 요소가 있으면 피벗에 연결 (단일/다중 모두)
+                - 비-IFC 모드: 기존처럼 selectedElement mesh에 연결 */}
+            {!isResizeDragging && (() => {
+                if (ifcMeshes?.length) {
+                    if (allSelectedIds.size === 0) return null;
+                    return (
+                        <TransformControls
+                            ref={transformRef}
+                            object={pivotObj}
+                            mode={transformMode}
+                        />
+                    );
+                }
+                if (!selectedElement?.meshRef?.current) return null;
+                return (
+                    <TransformControls
+                        ref={transformRef}
+                        object={selectedElement.meshRef.current}
+                        mode={transformMode}
+                    />
+                );
+            })()}
 
             {/* BIM 부재 — IFC 실제 지오메트리가 있으면 대체 렌더링 */}
             {ifcMeshes && ifcMeshes.length > 0 ? (
                 <IFCMeshGroup
+                    ref={ifcMeshGroupRef}
                     ifcMeshes={ifcMeshes}
                     modelData={modelData}
                     onElementSelect={onElementSelect}
@@ -1271,20 +1489,18 @@ export default function Scene({
                         drawHeight={lineDrawHeight}
                         snapVertices={snapVertices}
                         snapEnabled={snapEnabled}
-                        onHoverPosition={onHoverPosition}
+                        onHoverPosition={(pos) => {
+                            // lineHoverPosRef 갱신 (클릭 핸들러에서 사용)
+                            lineHoverPosRef.current = pos;
+                            onHoverPosition?.(pos);
+                        }}
                         lockedAxes={lineLockedAxes}
                         shiftRef={shiftRef}
                         lineStart={lineStart}
                         viewMode={viewMode}
                     />
-                    <mesh
-                        rotation={[-Math.PI/2, 0, 0]}
-                        position={[0, lineDrawHeight, 0]}
-                        onClick={handleLinePlaneClick}
-                    >
-                        <planeGeometry args={[500,500]} />
-                        <meshBasicMaterial transparent opacity={0} side={THREE.DoubleSide} />
-                    </mesh>
+                    {/* 카메라 방향 빌보드: 잠긴 축(수직 평면)에서도 클릭 캡처 가능 */}
+                    <BillboardClickPlane onClick={handleLinePlaneClick} />
                 </>
             )}
 
