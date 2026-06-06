@@ -28,7 +28,8 @@ Building a Kubernetes CICD Environment on a Private Server
 Project Architecture
 </p>
 
-<img width="727" height="534" alt="아키텍처" src="https://github.com/user-attachments/assets/51c593c3-a5b9-41cc-8512-66295dd25afc" />
+<img width="3390" height="2475" alt="그림1" src="https://github.com/user-attachments/assets/a1dcb2d1-93f5-469f-8077-fa89eb5a9480" />
+
 
 <img width="1789" height="1237" alt="image" src="https://github.com/user-attachments/assets/7200ad1b-3eea-4ef2-b65b-8aa6d5cc575a" />
 <img width="1812" height="1245" alt="image" src="https://github.com/user-attachments/assets/9659bf90-c487-44a2-8ac4-883adc929538" />
