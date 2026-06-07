@@ -597,6 +597,7 @@ function App() {
           modelData={modelData}
           selectedSimulationProject={selectedSimulationProject}
           agentAvailable={agentAvailable}
+          onOpenSettings={() => setViceComponent('settings')}
         />
       );
     }

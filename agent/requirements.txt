@@ -13,6 +13,7 @@ langchain-ollama>=0.2.0          # Ollama LLM integration
 langchain-postgres>=0.0.9        # PGVector (PostgreSQL pgvector) integration
 langchain-community>=0.3.0       # Community tools & utilities
 langchain-huggingface>=0.1.0     # HuggingFace 임베딩 (RAG 벡터화)
+langchain-text-splitters>=0.3.0  # RecursiveCharacterTextSplitter (RAG 청크 분할)
 
 # ── Web framework ──────────────────────────────────────────────
 fastapi>=0.115.0

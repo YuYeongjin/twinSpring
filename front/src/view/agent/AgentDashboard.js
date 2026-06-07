@@ -71,7 +71,7 @@ const COUNT_OPTIONS = [10, 20, 50, 100];
 // ────────────────────────────────────────────────────
 // Main component
 // ────────────────────────────────────────────────────
-export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject, agentAvailable }) {
+export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject, agentAvailable, onOpenSettings }) {
   const t = useT('agent');
   const { lang } = useLanguage();
   // ── Chat state ──
@@ -684,7 +684,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             {activeTab === 'report' && (
               <ReportPanel reportData={reportData} />
             )}
-            {activeTab === 'caps' && <CapsPanel />}
+            {activeTab === 'caps' && <CapsPanel onOpenSettings={onOpenSettings} />}
             {activeTab === 'export' && (
               <ExportPanel
                 onExportChat={exportChat}
@@ -854,7 +854,7 @@ function KpiCard({ label, value, unit, color }) {
 // ────────────────────────────────────────────────────
 // Capabilities panel
 // ────────────────────────────────────────────────────
-function CapsPanel() {
+function CapsPanel({ onOpenSettings }) {
   const t = useT('agent');
   const CAPABILITIES = [
     { icon: '🌡', title: t('cap1Title'), desc: t('cap1Desc') },
@@ -878,6 +878,19 @@ function CapsPanel() {
           </div>
         </div>
       ))}
+
+      {onOpenSettings && (
+        <button
+          onClick={onOpenSettings}
+          className="w-full flex gap-3 items-start bg-[#162032] rounded-xl px-3 py-3 border border-[#253347] hover:border-accent-blue/40 transition-colors text-left"
+        >
+          <span className="text-xl shrink-0">⚙️</span>
+          <div>
+            <p className="text-xs font-semibold text-gray-200">{t('settingsTitle')}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{t('settingsDesc')}</p>
+          </div>
+        </button>
+      )}
     </div>
   );
 }
