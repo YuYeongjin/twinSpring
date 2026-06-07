@@ -671,7 +671,7 @@ function App() {
       }>
         {/* 캔버스 전체화면 모드에서는 헤더 숨김 */}
         {!canvasFullscreen && (
-          <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} />
+          <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} settingsAllowed={settingsAllowed} />
         )}
 
         <main className={
