@@ -660,6 +660,8 @@ export const translations = {
       cap7Desc: 'Ask questions via microphone and listen to answers via TTS',
       cap8Title: 'Document Export',
       cap8Desc: 'Download conversation, sensor, and BIM data as CSV/TXT',
+      settingsTitle: 'System Settings',
+      settingsDesc: 'Server monitoring, RAG index, and environment configuration',
     },
     simProjectList: {
       title: '🚜 Simulation Projects',
@@ -2018,6 +2020,8 @@ export const translations = {
       cap7Desc: '마이크로 질문하고 TTS로 답변 청취',
       cap8Title: '문서 내보내기',
       cap8Desc: '대화, 센서, BIM 데이터를 CSV/TXT로 다운로드',
+      settingsTitle: '환경설정',
+      settingsDesc: '서버 모니터링, RAG 인덱스, 시스템 설정',
     },
     simProjectList: {
       title: '🚜 시뮬레이션 프로젝트',
@@ -3369,6 +3373,8 @@ export const translations = {
       cap7Desc: 'マイクで質問してTTSで回答を聴く',
       cap8Title: 'ドキュメントエクスポート',
       cap8Desc: '会話、センサー、BIMデータをCSV/TXTでダウンロード',
+      settingsTitle: 'システム設定',
+      settingsDesc: 'サーバー監視、RAGインデックス、環境設定',
     },
     simProjectList: {
       title: '🚜 シミュレーションプロジェクト',
