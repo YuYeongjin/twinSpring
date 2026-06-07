@@ -244,11 +244,6 @@ export default function TotpModal({ onSuccess }) {
               ← QR 코드로 돌아가기
             </button>
           )}
-          {!isSetupConfirm && !isReset && (
-            <button style={{ ...btn(false), fontSize: 11 }} onClick={() => { setCode(''); setError(''); setStep('reset-confirm'); }}>
-              앱을 바꿨나요? OTP 재설정
-            </button>
-          )}
           {isReset && (
             <button style={{ ...btn(false), fontSize: 11 }} onClick={() => { setCode(''); setError(''); setStep('verify'); }}>
               ← 취소
