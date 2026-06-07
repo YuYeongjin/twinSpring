@@ -13,7 +13,7 @@ const NAV_IDS = [
 
 const LANGS = ['en', 'ko', 'ja'];
 
-export default function Header({ viewComponent, setViceComponent, agentAvailable, settingsAllowed }) {
+export default function Header({ viewComponent, setViceComponent, agentAvailable }) {
   const { lang, setLang } = useLanguage();
   const t = useT('header');
 
@@ -42,7 +42,6 @@ export default function Header({ viewComponent, setViceComponent, agentAvailable
   }, []);
 
   const NAV_ITEMS = NAV_IDS
-    .filter(({ id }) => id !== 'settings' || settingsAllowed)
     .map(({ id, key, icon }) => ({ id, label: t(key), icon }));
 
   const TZ_MAP = { ko: { label: "KST", offset: 9 }, ja: { label: "JST", offset: 9 }, en: { label: "UST", offset: 0 } };
