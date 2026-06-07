@@ -19,6 +19,7 @@ import AgentWbsPopup from './component/AgentWbsPopup';
 import WbsProjectSelectModal from './component/WbsProjectSelectModal';
 import { CrackMonitorProvider } from './context/CrackMonitorContext';
 import SettingsPanel from './view/settings/SettingsPanel';
+import TotpModal from './view/settings/TotpModal';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // ── 모바일 가로 회전 차단 오버레이 ──────────────────────────────
@@ -170,8 +171,8 @@ function App() {
   // ── Agent health check ────────────────────────────────────────
   const [agentAvailable, setAgentAvailable] = useState(null);
 
-  // ── 환경설정 탭 IP 접근 권한 ──────────────────────────────────
-  const [settingsAllowed, setSettingsAllowed] = useState(false);
+  // ── 환경설정 탭 TOTP 인증 상태 (페이지 새로고침 시 초기화) ──────
+  const [settingsVerified, setSettingsVerified] = useState(false);
 
   // ── IoT 센서 연결 (앱 수명 동안 유지 → Simulation 탭에 props로 전달) ──
   const { latest: sensorLatest, wsStatus: sensorWsStatus } = SatelliteAPI();
@@ -494,11 +495,6 @@ function App() {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    AxiosCustom.get('/api/auth/ip-allowed')
-      .then(res => setSettingsAllowed(res.data.allowed === true))
-      .catch(() => setSettingsAllowed(false));
-  }, []);
 
   if (loading) {
     return (
@@ -585,6 +581,9 @@ function App() {
       );
     }
     if (viewComponent === 'settings') {
+      if (!settingsVerified) {
+        return <TotpModal onSuccess={() => setSettingsVerified(true)} />;
+      }
       return <SettingsPanel />;
     }
     if (viewComponent === 'test') {
@@ -671,7 +670,7 @@ function App() {
       }>
         {/* 캔버스 전체화면 모드에서는 헤더 숨김 */}
         {!canvasFullscreen && (
-          <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} settingsAllowed={settingsAllowed} />
+          <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} />
         )}
 
         <main className={
