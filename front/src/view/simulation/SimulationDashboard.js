@@ -97,6 +97,32 @@ const MACHINE_CONFIGS = {
 };
 const DEFAULT_MACHINE = MACHINE_CONFIGS['0.6W'];
 
+// ── 불도저 사양 ────────────────────────────────────────────────────────────────
+const BULLDOZER_CONFIGS = {
+  'D4': { id: 'D4', label: 'D4 Small', weight: '8 ton', bodyScale: 0.70, bladeW: 2.4, digRate: 0.055, digRadius: 2.2, fillRate: 0.11, fillRadius: 2.2, bucketCapacity: 0.8 },
+  'D6': { id: 'D6', label: 'D6 Medium', weight: '20 ton', bodyScale: 0.95, bladeW: 3.4, digRate: 0.095, digRadius: 3.0, fillRate: 0.19, fillRadius: 3.0, bucketCapacity: 1.5 },
+  'D9': { id: 'D9', label: 'D9 Large', weight: '50 ton', bodyScale: 1.25, bladeW: 4.8, digRate: 0.155, digRadius: 4.0, fillRate: 0.31, fillRadius: 4.0, bucketCapacity: 2.5 },
+};
+
+// ── 덤프트럭 사양 ──────────────────────────────────────────────────────────────
+const DUMPTRUCK_CONFIGS = {
+  '15T': { id: '15T', label: '15T Truck', weight: '15 ton', bodyScale: 0.85, digRate: 0, digRadius: 0, fillRate: 0.14, fillRadius: 3.0, bucketCapacity: 8.0 },
+  '32T': { id: '32T', label: '32T Truck', weight: '32 ton', bodyScale: 1.10, digRate: 0, digRadius: 0, fillRate: 0.24, fillRadius: 3.8, bucketCapacity: 18.0 },
+};
+
+// ── 장비 유형 레지스트리 ──────────────────────────────────────────────────────
+const EQUIP_TYPE_INFO = {
+  excavator: { label: 'Excavator', icon: '🚜', color: '#f5a623', configs: MACHINE_CONFIGS },
+  bulldozer:  { label: 'Bulldozer',  icon: '🚧', color: '#60a5fa', configs: BULLDOZER_CONFIGS },
+  dumptruck:  { label: 'Dump Truck', icon: '🚛', color: '#a78bfa', configs: DUMPTRUCK_CONFIGS },
+};
+
+function getEquipConfig(type, machineId) {
+  const info = EQUIP_TYPE_INFO[type];
+  if (!info) return DEFAULT_MACHINE;
+  return info.configs[machineId] ?? Object.values(info.configs)[0];
+}
+
 // ── 토질 다짐 계수 ─────────────────────────────────────────────────────────────
 // Lf: Loose Factor (Bank → Loose), Cf: Compaction Factor (Bank → Compacted)
 // digHardness: 굴착 속도 역수 배율 (1.0 = 기본, 2.0 = 2배 어려움)
@@ -223,6 +249,148 @@ function generateRandomTerrain(hm, zm) {
       }
     }
   }
+}
+
+// ── 지형 프리셋 생성 함수들 ────────────────────────────────────────────────────
+function generateFlatTerrain(hm, zm) {
+  hm.fill(0);
+  zm.fill(ZONE.SOIL);
+}
+
+function generateRockyTerrain(hm, zm) {
+  hm.fill(0);
+  zm.fill(ZONE.ROCK);
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      const wx = col - HALF_C + 0.5;
+      const wz = row - HALF_R + 0.5;
+      const ridge = 2.8 * Math.exp(-((wz + wx * 0.3) ** 2) / 90)
+                  + 2.0 * Math.exp(-((wx - wz * 0.4) ** 2) / 70)
+                  + 1.2 * Math.exp(-((wx + 10) ** 2 + (wz - 12) ** 2) / 55);
+      const noise  = Math.sin(wx * 0.9) * Math.cos(wz * 0.7) * 0.45;
+      const h = ridge + noise;
+      hm[row * GRID_COLS + col] = Math.max(0, h);
+      if      (h < 0.5) zm[row * GRID_COLS + col] = ZONE.SOIL;
+      else if (h < 1.2) zm[row * GRID_COLS + col] = ZONE.GRAVEL;
+      // else stays ROCK
+    }
+  }
+}
+
+function generateWatersideTerrain(hm, zm) {
+  hm.fill(0);
+  zm.fill(ZONE.SAND);
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      const wx = col - HALF_C + 0.5;
+      const wz = row - HALF_R + 0.5;
+      const riverDist = Math.abs(wz - wx * 0.35 + 2);
+      if (riverDist < 13) {
+        hm[row * GRID_COLS + col] = -(0.8 + (13 - riverDist) / 13 * 0.8);
+        zm[row * GRID_COLS + col] = ZONE.WATER;
+      } else if (riverDist < 20) {
+        hm[row * GRID_COLS + col] = 0.04;
+        zm[row * GRID_COLS + col] = ZONE.SAND;
+      } else {
+        const bankH = Math.min(0.9, (riverDist - 20) * 0.045);
+        hm[row * GRID_COLS + col] = bankH;
+        zm[row * GRID_COLS + col] = riverDist < 28 ? ZONE.GRAVEL : ZONE.SOIL;
+      }
+    }
+  }
+}
+
+function generateMountainTerrain(hm, zm) {
+  hm.fill(0);
+  zm.fill(ZONE.SOIL);
+  const peaks = [
+    { cx: -10, cz: -8,  r: 24, h: 4.8 },
+    { cx:  16, cz: 10,  r: 20, h: 4.0 },
+    { cx: -26, cz: 16,  r: 17, h: 3.2 },
+    { cx:  28, cz: -20, r: 15, h: 2.8 },
+  ];
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      const wx = col - HALF_C + 0.5;
+      const wz = row - HALF_R + 0.5;
+      let h = 0;
+      for (const pk of peaks) {
+        const d = Math.sqrt((wx - pk.cx) ** 2 + (wz - pk.cz) ** 2);
+        if (d < pk.r) h += pk.h * (1 - d / pk.r) ** 1.7;
+      }
+      h += Math.sin(wx * 0.5) * Math.cos(wz * 0.6) * 0.35;
+      hm[row * GRID_COLS + col] = Math.max(0, h);
+      if      (h > 3.0) zm[row * GRID_COLS + col] = ZONE.ROCK;
+      else if (h > 1.6) zm[row * GRID_COLS + col] = ZONE.GRAVEL;
+    }
+  }
+}
+
+// ── 현장 유형 프리셋 레지스트리 ────────────────────────────────────────────────
+const TERRAIN_PRESETS = [
+  { id: 'flat',      label: '평지 공사현장', icon: '🏗', color: '#a3a3a3',
+    desc: '완전 평탄한 흙 지형\n기초 토공에 적합',      hasWater: false, generate: generateFlatTerrain },
+  { id: 'hilly',     label: '구릉지 현장',   icon: '⛰', color: '#4ade80',
+    desc: '언덕·강·자갈·암반\n혼재한 일반 현장',       hasWater: true,  generate: generateRandomTerrain },
+  { id: 'rocky',     label: '암반 현장',     icon: '🪨', color: '#94a3b8',
+    desc: '암반 능선 주체\n발파·굴착 난공사 현장',     hasWater: false, generate: generateRockyTerrain },
+  { id: 'waterside', label: '수변 현장',     icon: '🌊', color: '#38bdf8',
+    desc: '넓은 수계 인접\n모래·자갈 둑 구조',         hasWater: true,  generate: generateWatersideTerrain },
+  { id: 'mountain',  label: '산악 현장',     icon: '🏔', color: '#a78bfa',
+    desc: '가파른 봉우리·암반\n고지 절개 시뮬레이션', hasWater: false, generate: generateMountainTerrain },
+];
+
+// ── 현장 선택 모달 컴포넌트 ────────────────────────────────────────────────────
+function SceneSetupModal({ onSelect }) {
+  const [hovered, setHovered] = React.useState(null);
+  const t = useT('simDashboard');
+  // 번역 키 → TERRAIN_PRESETS labelKey/descKey 매핑
+  const PRESET_I18N = {
+    flat:      { label: t('terrainFlat'),     desc: t('terrainFlatDesc') },
+    hilly:     { label: t('terrainHilly'),    desc: t('terrainHillyDesc') },
+    rocky:     { label: t('terrainRocky'),    desc: t('terrainRockyDesc') },
+    waterside: { label: t('terrainWater'),    desc: t('terrainWaterDesc') },
+    mountain:  { label: t('terrainMountain'), desc: t('terrainMountainDesc') },
+  };
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 200,
+      background: 'rgba(4,12,22,0.97)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      backdropFilter: 'blur(4px)',
+    }}>
+      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <div style={{ fontSize: '36px', marginBottom: '10px' }}>🏗</div>
+        <div style={{ color: '#e2e8f0', fontSize: '20px', fontWeight: 800, letterSpacing: '-0.5px' }}>{t('terrainSetupTitle')}</div>
+        <div style={{ color: '#3a5a7a', fontSize: '12px', marginTop: '6px' }}>{t('terrainSetupSub')}</div>
+      </div>
+      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '780px', padding: '0 20px' }}>
+        {TERRAIN_PRESETS.map(preset => {
+          const i18n = PRESET_I18N[preset.id] ?? { label: preset.label, desc: preset.desc };
+          return (
+            <div
+              key={preset.id}
+              onClick={() => onSelect(preset)}
+              onMouseEnter={() => setHovered(preset.id)}
+              onMouseLeave={() => setHovered(null)}
+              style={{
+                background: hovered === preset.id ? `${preset.color}14` : '#0b1825',
+                border: `2px solid ${hovered === preset.id ? preset.color : preset.color + '40'}`,
+                borderRadius: '14px', padding: '22px 18px', cursor: 'pointer',
+                width: '128px', textAlign: 'center',
+                transition: 'all 0.15s', transform: hovered === preset.id ? 'translateY(-3px)' : 'none',
+                boxShadow: hovered === preset.id ? `0 8px 24px ${preset.color}22` : 'none',
+              }}
+            >
+              <div style={{ fontSize: '32px', marginBottom: '10px' }}>{preset.icon}</div>
+              <div style={{ color: preset.color, fontSize: '11px', fontWeight: 800, marginBottom: '8px', lineHeight: 1.3 }}>{i18n.label}</div>
+              <div style={{ color: '#3a5a7a', fontSize: '9px', lineHeight: 1.7, whiteSpace: 'pre-line' }}>{i18n.desc}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // ── 날씨 모드 ──────────────────────────────────────────────────────────────────
@@ -1424,6 +1592,406 @@ function SoilParticles({ particlesRef }) {
   );
 }
 
+// ── 불도저 3D 모델 ─────────────────────────────────────────────────────────────
+function BulldozerModel({ eqObj, heightMapRef }) {
+  const groupRef    = useRef();
+  const bladeRef    = useRef();
+  const ripperRef   = useRef();
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const h = heightMapRef?.current ? sampleH(heightMapRef.current, eqObj.posX, eqObj.posZ) : 0;
+    groupRef.current.position.set(eqObj.posX, h, eqObj.posZ);
+    groupRef.current.rotation.y = (eqObj.bodyRot ?? 0) * D2R;
+    if (bladeRef.current) {
+      bladeRef.current.position.y = 0.55 + Math.sin((eqObj.bladeAngle ?? 0) * D2R) * 0.28;
+    }
+  });
+
+  const s = eqObj.bodyScale ?? 0.95;
+  return (
+    <group ref={groupRef}>
+      <group scale={[s, s, s]}>
+        {/* 언더캐리지 */}
+        <mesh position={[0, 0.32, 0]} castShadow receiveShadow>
+          <boxGeometry args={[2.8, 0.52, 4.5]} />
+          <meshStandardMaterial color="#2a3a5a" roughness={0.8} />
+        </mesh>
+        {/* 트랙 좌우 */}
+        {[-1, 1].map((sx, i) => (
+          <group key={i}>
+            <mesh position={[sx * 1.62, 0.30, 0]} castShadow>
+              <boxGeometry args={[0.6, 0.48, 4.8]} />
+              <meshStandardMaterial color="#111" roughness={0.95} />
+            </mesh>
+            {Array.from({ length: 8 }, (_, k) => k - 3.5).map(zOff => (
+              <mesh key={zOff} position={[sx * 1.62, 0.05, zOff * 0.58]} castShadow>
+                <boxGeometry args={[0.72, 0.1, 0.48]} />
+                <meshStandardMaterial color="#0d0d0d" metalness={0.5} roughness={0.8} />
+              </mesh>
+            ))}
+          </group>
+        ))}
+        {/* 메인 차체 */}
+        <mesh position={[0, 1.08, 0.1]} castShadow>
+          <boxGeometry args={[2.8, 1.18, 3.6]} />
+          <meshStandardMaterial color="#4a6fa5" roughness={0.55} metalness={0.2} />
+        </mesh>
+        {/* 운전석 캡 */}
+        <mesh position={[0, 2.02, -0.55]} castShadow>
+          <boxGeometry args={[2.2, 1.42, 2.2]} />
+          <meshStandardMaterial color="#3a5f90" roughness={0.5} metalness={0.15} />
+        </mesh>
+        {/* 앞 유리 */}
+        <mesh position={[0, 2.08, 0.56]}>
+          <boxGeometry args={[2.0, 1.0, 0.07]} />
+          <meshStandardMaterial color="#9dd8ff" transparent opacity={0.4} roughness={0.05} metalness={0.1} />
+        </mesh>
+        {/* 배기관 */}
+        <mesh position={[0.9, 2.9, -0.6]} castShadow>
+          <cylinderGeometry args={[0.09, 0.11, 0.85, 8]} />
+          <meshStandardMaterial color="#333" metalness={0.88} roughness={0.3} />
+        </mesh>
+        {/* 블레이드 그룹 */}
+        <group ref={bladeRef} position={[0, 0.55, 2.42]}>
+          <mesh castShadow>
+            <boxGeometry args={[3.6, 1.3, 0.22]} />
+            <meshStandardMaterial color="#7a8a9a" metalness={0.75} roughness={0.25} />
+          </mesh>
+          {/* 절삭날 */}
+          <mesh position={[0, -0.70, 0.09]}>
+            <boxGeometry args={[3.6, 0.16, 0.18]} />
+            <meshStandardMaterial color="#aaa" metalness={0.92} roughness={0.08} />
+          </mesh>
+          {/* 블레이드 암 좌우 */}
+          {[-1, 1].map((sx, i) => (
+            <mesh key={i} position={[sx * 1.25, -0.1, -0.85]} rotation={[0.1, 0, 0]} castShadow>
+              <boxGeometry args={[0.2, 0.22, 1.7]} />
+              <meshStandardMaterial color="#555" metalness={0.7} roughness={0.4} />
+            </mesh>
+          ))}
+          {/* 유압 실린더 */}
+          {[-0.5, 0.5].map((sx, i) => (
+            <mesh key={i} position={[sx, 0.52, -0.62]} rotation={[0.3, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.09, 0.09, 1.22, 8]} />
+              <meshStandardMaterial color="#999" metalness={0.85} roughness={0.2} />
+            </mesh>
+          ))}
+        </group>
+        {/* 리퍼 (후방) */}
+        <group ref={ripperRef} position={[0, 0.48, -2.55]}>
+          <mesh castShadow>
+            <boxGeometry args={[0.28, 0.82, 0.15]} />
+            <meshStandardMaterial color="#666" metalness={0.7} roughness={0.4} />
+          </mesh>
+          <mesh position={[0, -0.52, -0.02]} castShadow>
+            <coneGeometry args={[0.08, 0.55, 6]} />
+            <meshStandardMaterial color="#888" metalness={0.85} roughness={0.2} />
+          </mesh>
+        </group>
+      </group>
+    </group>
+  );
+}
+
+// ── 덤프트럭 3D 모델 ──────────────────────────────────────────────────────────
+function DumpTruckModel({ eqObj, heightMapRef }) {
+  const groupRef = useRef();
+  const bedRef   = useRef();
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    const h = heightMapRef?.current ? sampleH(heightMapRef.current, eqObj.posX, eqObj.posZ) : 0;
+    groupRef.current.position.set(eqObj.posX, h, eqObj.posZ);
+    groupRef.current.rotation.y = (eqObj.bodyRot ?? 0) * D2R;
+    if (bedRef.current) bedRef.current.rotation.x = -(eqObj.bedAngle ?? 0) * D2R;
+  });
+
+  const s = eqObj.bodyScale ?? 0.85;
+  return (
+    <group ref={groupRef}>
+      <group scale={[s, s, s]}>
+        {/* 섀시 */}
+        <mesh position={[0, 0.55, 0]} castShadow receiveShadow>
+          <boxGeometry args={[2.6, 0.5, 7.5]} />
+          <meshStandardMaterial color="#2a2a3a" roughness={0.7} metalness={0.3} />
+        </mesh>
+        {/* 전축 바퀴 */}
+        {[-1, 1].map((sx, i) => (
+          <mesh key={`fw${i}`} position={[sx * 1.42, 0.46, 2.8]} rotation={[0, 0, Math.PI / 2]} castShadow>
+            <cylinderGeometry args={[0.46, 0.46, 0.42, 12]} />
+            <meshStandardMaterial color="#111" roughness={0.9} />
+          </mesh>
+        ))}
+        {/* 후축 바퀴 2쌍 */}
+        {[-1.5, -2.8].map((z, ai) =>
+          [-1, 1].map((sx, i) => (
+            <mesh key={`rw${ai}${i}`} position={[sx * 1.42, 0.46, z]} rotation={[0, 0, Math.PI / 2]} castShadow>
+              <cylinderGeometry args={[0.46, 0.46, 0.42, 12]} />
+              <meshStandardMaterial color="#111" roughness={0.9} />
+            </mesh>
+          ))
+        )}
+        {/* 운전석 캡 */}
+        <mesh position={[0, 1.72, 2.85]} castShadow>
+          <boxGeometry args={[2.5, 2.22, 2.2]} />
+          <meshStandardMaterial color="#a06020" roughness={0.55} metalness={0.2} />
+        </mesh>
+        {/* 앞 유리 */}
+        <mesh position={[0, 1.95, 1.76]}>
+          <boxGeometry args={[2.3, 1.22, 0.07]} />
+          <meshStandardMaterial color="#9dd8ff" transparent opacity={0.4} roughness={0.05} metalness={0.1} />
+        </mesh>
+        {/* 덤프 베드 (후방 피벗) */}
+        <group ref={bedRef} position={[0, 1.15, -0.2]}>
+          <mesh position={[0, 0, 0]} castShadow>
+            <boxGeometry args={[2.5, 0.2, 5.2]} />
+            <meshStandardMaterial color="#7a4825" roughness={0.7} metalness={0.2} />
+          </mesh>
+          {[-1, 1].map((sx, i) => (
+            <mesh key={i} position={[sx * 1.28, 0.65, 0]} castShadow>
+              <boxGeometry args={[0.12, 1.22, 5.2]} />
+              <meshStandardMaterial color="#6a3820" roughness={0.7} metalness={0.2} />
+            </mesh>
+          ))}
+          <mesh position={[0, 0.65, 2.62]} castShadow>
+            <boxGeometry args={[2.5, 1.22, 0.12]} />
+            <meshStandardMaterial color="#6a3820" roughness={0.7} metalness={0.2} />
+          </mesh>
+          <mesh position={[0, 0.65, -2.62]} castShadow>
+            <boxGeometry args={[2.5, 1.22, 0.12]} />
+            <meshStandardMaterial color="#6a3820" roughness={0.7} metalness={0.2} />
+          </mesh>
+        </group>
+        {/* 유압 리프트 실린더 */}
+        <mesh position={[0, 0.92, 0.85]} rotation={[-0.22, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.12, 0.12, 2.0, 8]} />
+          <meshStandardMaterial color="#888" metalness={0.85} roughness={0.2} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+// ── 장비 선택 표시링 (선택된 장비 아래에 렌더링) ────────────────────────────────
+function SelectionRing({ eqObj, color }) {
+  const ringRef = useRef();
+  const timeRef = useRef(0);
+
+  useFrame((_, delta) => {
+    if (!ringRef.current) return;
+    timeRef.current += delta;
+    const h = eqObj ? sampleH({ length: 1, [0]: 0 }, 0, 0) : 0; // fallback
+    // 맥동 효과
+    const pulse = 0.9 + Math.sin(timeRef.current * 3.5) * 0.12;
+    ringRef.current.scale.set(pulse, 1, pulse);
+    ringRef.current.position.set(eqObj.posX, (eqObj.posY ?? 0) + 0.08, eqObj.posZ);
+  });
+
+  return (
+    <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[2.8, 3.4, 36]} />
+      <meshBasicMaterial color={color ?? '#60a5fa'} transparent opacity={0.55} depthWrite={false} />
+    </mesh>
+  );
+}
+
+// ── 자동 굴착기 모델 (플레이어 외 자동 작업용) ─────────────────────────────────
+function AutoExcavatorModel({ eqObj, heightMapRef }) {
+  const groupRef   = useRef();
+  const upperRef   = useRef();
+  const boomGRef   = useRef();
+  const armGRef    = useRef();
+  const bucketGRef = useRef();
+
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    const h = heightMapRef?.current ? sampleH(heightMapRef.current, eqObj.posX, eqObj.posZ) : 0;
+    groupRef.current.position.set(eqObj.posX, h, eqObj.posZ);
+    groupRef.current.rotation.y = (eqObj.bodyRot ?? 0) * D2R;
+
+    // 페이즈 타겟 각도로 보간
+    const ph = AUTO_SIM_PHASES[eqObj.phase ?? 0] ?? AUTO_SIM_PHASES[0];
+    const LERP = 0.055;
+    eqObj.boomAngle   = (eqObj.boomAngle   ?? 35) + (ph.boomAngle   - (eqObj.boomAngle   ?? 35))   * LERP;
+    eqObj.armAngle    = (eqObj.armAngle    ?? 60) + (ph.armAngle    - (eqObj.armAngle    ?? 60))    * LERP;
+    eqObj.bucketAngle = (eqObj.bucketAngle ?? -25) + (ph.bucketAngle - (eqObj.bucketAngle ?? -25))  * LERP;
+    eqObj.swingAngle  = (eqObj.swingAngle  ?? 0) + (ph.swingAngle  - (eqObj.swingAngle  ?? 0))    * LERP;
+
+    if (upperRef.current)   upperRef.current.rotation.y   = eqObj.swingAngle * D2R;
+    if (boomGRef.current)   boomGRef.current.rotation.x   = -eqObj.boomAngle * D2R;
+    if (armGRef.current)    armGRef.current.rotation.x    = eqObj.armAngle * D2R;
+    if (bucketGRef.current) bucketGRef.current.rotation.x = eqObj.bucketAngle * D2R;
+  });
+
+  const cfg = getEquipConfig('excavator', eqObj.machineId);
+  const s   = cfg.bodyScale;
+  const BL  = cfg.boomLen / s;
+  const AL  = cfg.armLen  / s;
+  const buL = cfg.bucketLen / s;
+
+  return (
+    <group ref={groupRef}>
+      <group scale={[s, s, s]}>
+        {/* 언더캐리지 */}
+        <mesh position={[0, 0.38, 0]} castShadow receiveShadow>
+          <boxGeometry args={[3.6, 0.68, 5.2]} />
+          <meshStandardMaterial color="#2a3525" roughness={0.88} metalness={0.12} />
+        </mesh>
+        {[-1, 1].map((sx, i) => (
+          <mesh key={i} position={[sx * 2.05, 0.38, 0]} castShadow>
+            <boxGeometry args={[0.58, 0.62, 5.9]} />
+            <meshStandardMaterial color="#111" roughness={0.95} />
+          </mesh>
+        ))}
+        {/* 상부 선회체 */}
+        <group ref={upperRef} position={[0, 0.72, 0]}>
+          <mesh position={[0, 0.74, 0.1]} castShadow receiveShadow>
+            <boxGeometry args={[3.2, 1.38, 3.8]} />
+            <meshStandardMaterial color="#1a4a8a" roughness={0.5} metalness={0.22} />
+          </mesh>
+          <mesh position={[-0.62, 2.0, 0.45]} castShadow>
+            <boxGeometry args={[1.82, 1.72, 1.95]} />
+            <meshStandardMaterial color="#1a4a8a" roughness={0.46} metalness={0.2} />
+          </mesh>
+          <mesh position={[0.2, 0.72, -2.4]} castShadow>
+            <boxGeometry args={[3.0, 0.9, 1.2]} />
+            <meshStandardMaterial color="#181818" metalness={0.58} roughness={0.6} />
+          </mesh>
+          {/* 붐 */}
+          <group position={[0, 1.4, 1.9]}>
+            <group ref={boomGRef}>
+              <mesh position={[0, 0, BL / 2]} castShadow>
+                <boxGeometry args={[0.38, 0.52, BL]} />
+                <meshStandardMaterial color="#1060c0" roughness={0.45} metalness={0.40} />
+              </mesh>
+              {/* 암 */}
+              <group position={[0, 0, BL]}>
+                <group ref={armGRef}>
+                  <mesh position={[0, 0, AL / 2]} castShadow>
+                    <boxGeometry args={[0.32, 0.40, AL]} />
+                    <meshStandardMaterial color="#0e50a8" roughness={0.48} metalness={0.36} />
+                  </mesh>
+                  {/* 버킷 */}
+                  <group position={[0, 0, AL]}>
+                    <group ref={bucketGRef}>
+                      <mesh position={[0, -0.42, -buL * 0.50]} castShadow>
+                        <boxGeometry args={[2.10, 1.00, buL * 1.02]} />
+                        <meshStandardMaterial color="#3a3a3a" metalness={0.76} roughness={0.28} />
+                      </mesh>
+                      <mesh position={[0, -0.92, -(buL * 0.97 + 0.06)]} castShadow>
+                        <boxGeometry args={[2.12, 0.18, 0.14]} />
+                        <meshStandardMaterial color="#aaa" metalness={0.96} roughness={0.07} />
+                      </mesh>
+                    </group>
+                  </group>
+                </group>
+              </group>
+            </group>
+          </group>
+        </group>
+      </group>
+    </group>
+  );
+}
+
+// ── 장비 추가 모달 ──────────────────────────────────────────────────────────────
+function AddEquipmentModal({ onAdd, onClose }) {
+  const [type, setType]       = useState('excavator');
+  const [machineId, setMachineId] = useState('0.6W');
+  const [posX, setPosX]       = useState(10);
+  const [posZ, setPosZ]       = useState(10);
+  const [autoRun, setAutoRun] = useState(true);
+
+  const configs = EQUIP_TYPE_INFO[type]?.configs ?? MACHINE_CONFIGS;
+
+  const handleTypeChange = (t) => {
+    setType(t);
+    setMachineId(Object.keys(EQUIP_TYPE_INFO[t]?.configs ?? {})[0] ?? '0.6W');
+  };
+
+  const overlay = { position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.72)', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+  const box     = { background: '#0f1e2d', border: '1px solid #253347', borderRadius: '14px', padding: '24px', width: '360px', maxWidth: '95vw' };
+  const label   = { color: '#8896a4', fontSize: '11px', marginBottom: '5px' };
+  const inp     = { width: '100%', background: '#0d1b2a', border: '1px solid #253347', borderRadius: '6px', color: '#e2e8f0', padding: '6px 8px', fontSize: '12px', boxSizing: 'border-box' };
+
+  return (
+    <div style={overlay} onClick={onClose}>
+      <div style={box} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div style={{ color: '#60a5fa', fontWeight: 700, fontSize: '15px' }}>+ 장비 추가</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8896a4', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {/* 장비 타입 */}
+        <div style={{ marginBottom: '14px' }}>
+          <div style={label}>장비 종류</div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {Object.entries(EQUIP_TYPE_INFO).map(([key, info]) => (
+              <button key={key} onClick={() => handleTypeChange(key)} style={{
+                flex: 1, padding: '8px 4px', borderRadius: '8px', cursor: 'pointer',
+                background: type === key ? `${info.color}18` : '#162032',
+                border: `1px solid ${type === key ? info.color : '#253347'}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
+              }}>
+                <span style={{ fontSize: '18px' }}>{info.icon}</span>
+                <span style={{ color: type === key ? info.color : '#8896a4', fontSize: '10px', fontWeight: 700 }}>{info.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 사이즈 선택 */}
+        <div style={{ marginBottom: '14px' }}>
+          <div style={label}>사이즈 / 등급</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            {Object.values(configs).map(cfg => (
+              <button key={cfg.id} onClick={() => setMachineId(cfg.id)} style={{
+                padding: '7px 12px', borderRadius: '7px', cursor: 'pointer',
+                background: machineId === cfg.id ? '#0f2a18' : '#162032',
+                border: `1px solid ${machineId === cfg.id ? '#22c55e' : '#253347'}`,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <span style={{ color: machineId === cfg.id ? '#4ade80' : '#e2e8f0', fontWeight: 700, fontSize: '12px' }}>{cfg.label}</span>
+                <span style={{ color: '#8896a4', fontSize: '10px' }}>{cfg.weight} · {cfg.bucketCapacity} m³</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 초기 위치 */}
+        <div style={{ marginBottom: '14px' }}>
+          <div style={label}>초기 위치 (X, Z)</div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...label, marginBottom: '3px' }}>X</div>
+              <input type="number" value={posX} onChange={e => setPosX(parseFloat(e.target.value) || 0)} style={inp} min={-38} max={38} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ ...label, marginBottom: '3px' }}>Z</div>
+              <input type="number" value={posZ} onChange={e => setPosZ(parseFloat(e.target.value) || 0)} style={inp} min={-38} max={38} />
+            </div>
+          </div>
+        </div>
+
+        {/* 자동 작업 */}
+        <div style={{ marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <input type="checkbox" id="autorun" checked={autoRun} onChange={e => setAutoRun(e.target.checked)}
+            style={{ accentColor: '#4ade80', width: '15px', height: '15px', cursor: 'pointer' }} />
+          <label htmlFor="autorun" style={{ color: '#e2e8f0', fontSize: '12px', cursor: 'pointer' }}>즉시 자동 작업 시작</label>
+        </div>
+
+        <button
+          onClick={() => { onAdd(type, machineId, posX, posZ, autoRun); onClose(); }}
+          style={{ width: '100%', background: '#0d2420', border: '1px solid #22c55e', borderRadius: '8px', color: '#4ade80', padding: '10px', fontSize: '13px', cursor: 'pointer', fontWeight: 700 }}
+        >
+          배치하기
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 대시보드 ──────────────────────────────────────────────────────────────
 export default function SimulationDashboard({ selectedProject, modelData, setViceComponent, sensorLatest, sensorWsStatus }) {
 
@@ -1449,6 +2017,28 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
   // setInterval 클로저에서 stale closure 방지 — 항상 최신 hasRandomTerrain 값을 참조
   const hasRandomTerrainRef = useRef(false);
   useEffect(() => { hasRandomTerrainRef.current = hasRandomTerrain; }, [hasRandomTerrain]);
+
+  // ── 현장 선택 & 장비 가드 ──
+  const [terrainType, setTerrainType]   = useState(null); // null = 미선택
+  const [equipNotice, setEquipNotice]   = useState('');
+  const equipNoticeTimer                = useRef(null);
+  const showEquipNotice = useCallback((msg = '먼저 장비를 추가해주세요') => {
+    setEquipNotice(msg);
+    if (equipNoticeTimer.current) clearTimeout(equipNoticeTimer.current);
+    equipNoticeTimer.current = setTimeout(() => setEquipNotice(''), 3000);
+  }, []);
+  const handleTerrainSelect = useCallback((preset) => {
+    setTerrainType(preset.id);
+    preset.generate(heightMapRef.current, terrainZoneMapRef.current);
+    terrainDirtyRef.current = true;
+    setHasRandomTerrain(preset.hasWater);
+    hasRandomTerrainRef.current = preset.hasWater;
+    soilInBucketRef.current = 0; setSoilDisplay(0);
+    totalExcavRef.current = 0; totalFillRef.current = 0;
+    setAutoEquipList([]);
+    autoEquipRefs.current.clear();
+    setSelectedEquipUid(null);
+  }, []);
 
   // BEPUphysics2 / rapier 물리 시스템
   // wobbleRef: ExcavatorModel이 직접 읽어 진동 애니메이션에 적용
@@ -1489,6 +2079,21 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
   // 흙 파티클 풀
   const particlesRef = useRef([]);
+
+  // ── 다중 자동 장비 ──────────────────────────────────────────────────────────
+  // autoEquipList: React state (UI 렌더링용)
+  // autoEquipRefs: Map<uid, mutableState> (애니메이션/시뮬레이션용, React 렌더링 없음)
+  const [autoEquipList, setAutoEquipList] = useState([]);
+  const autoEquipRefs = useRef(new Map());
+  const [showAddEquipModal, setShowAddEquipModal] = useState(false);
+  const uidCounterRef = useRef(1);
+  // selectedEquipUid: null=플레이어 굴착기 / uid=선택한 자동장비 직접제어 모드
+  const [selectedEquipUid, setSelectedEquipUid] = useState(null);
+  const selectedEquipUidRef = useRef(null);
+  const setSelectedEquipUidRef = useRef(null);
+  useEffect(() => { selectedEquipUidRef.current = selectedEquipUid; }, [selectedEquipUid]);
+  // ESC 등에서 클로저 없이 최신 setter 사용
+  setSelectedEquipUidRef.current = setSelectedEquipUid;
 
   // 자동 시뮬레이션
   const [autoSim, setAutoSim] = useState(false);
@@ -1662,7 +2267,11 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           terrainDirtyRef.current = true;        // zoneMap 변경 → 지형 색상 즉시 반영
         }
         if (res.data.hasRandomTerrain != null) {
-          setHasRandomTerrain(res.data.hasRandomTerrain); // false→true 변화 → WaterSurface useMemo 재실행
+          setHasRandomTerrain(res.data.hasRandomTerrain);
+        }
+        // 저장된 지형 데이터가 있으면 terrainType을 복원해 모달을 띄우지 않음
+        if (res.data.heightMapData || res.data.zoneMapData || res.data.hasRandomTerrain != null) {
+          setTerrainType(res.data.hasRandomTerrain ? 'hilly' : 'flat');
         }
         if (res.data.soilInBucket != null) {
           soilInBucketRef.current = res.data.soilInBucket;
@@ -1687,10 +2296,16 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     ]);
     const onDown = e => {
       if (gpsActiveRef.current) return; // GPS 활성 시 키보드 무시
+      // ESC = 자동 장비 선택 해제 → 플레이어 굴착기로 복귀
+      if (e.key === 'Escape' && selectedEquipUidRef.current) {
+        e.preventDefault();
+        setSelectedEquipUidRef.current(null);
+        return;
+      }
       if (CONTROLLED.has(e.key)) {
         e.preventDefault();
-        // 키 입력 시 자동 시뮬레이션 중지
-        if (autoSimRef.current) { autoSimRef.current = false; setAutoSim(false); }
+        // 키 입력 시 자동 시뮬레이션 중지 (플레이어 굴착기 모드에서만)
+        if (!selectedEquipUidRef.current && autoSimRef.current) { autoSimRef.current = false; setAutoSim(false); }
       }
       keysRef.current.add(e.key);
       setKeysDisplay(new Set(keysRef.current));
@@ -1709,28 +2324,70 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
     const tick = () => {
       const keys = keysRef.current;
+      const selUid = selectedEquipUidRef.current;
+
       if (keys.size > 0) {
-        setState(prev => {
-          const s = { ...prev };
-          const cos = Math.cos(s.bodyRotation * D2R);
-          const sin = Math.sin(s.bodyRotation * D2R);
-          if (keys.has('w') || keys.has('W') || keys.has('ArrowUp'))    { s.positionX += sin * MOVE_SPEED; s.positionZ += cos * MOVE_SPEED; }
-          if (keys.has('s') || keys.has('S') || keys.has('ArrowDown'))  { s.positionX -= sin * MOVE_SPEED; s.positionZ -= cos * MOVE_SPEED; }
-          // 후진 시 좌우 방향 반전 (실제 차량과 동일한 조작감)
-          const isReverse = keys.has('s') || keys.has('S') || keys.has('ArrowDown');
-          const turnDir = isReverse ? -1 : 1;
-          if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft'))  s.bodyRotation += ROT_SPEED * turnDir;
-          if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) s.bodyRotation -= ROT_SPEED * turnDir;
-          if (keys.has('q') || keys.has('Q')) s.swingAngle += JOINT_SPEED * 1.8;
-          if (keys.has('e') || keys.has('E')) s.swingAngle -= JOINT_SPEED * 1.8;
-          if (keys.has('r') || keys.has('R')) s.boomAngle = clamp(s.boomAngle + JOINT_SPEED, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
-          if (keys.has('f') || keys.has('F')) s.boomAngle = clamp(s.boomAngle - JOINT_SPEED, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
-          if (keys.has('t') || keys.has('T')) s.armAngle = clamp(s.armAngle + JOINT_SPEED, JOINT_LIMITS.armAngle.min, JOINT_LIMITS.armAngle.max);
-          if (keys.has('g') || keys.has('G')) s.armAngle = clamp(s.armAngle - JOINT_SPEED, JOINT_LIMITS.armAngle.min, JOINT_LIMITS.armAngle.max);
-          if (keys.has('y') || keys.has('Y')) s.bucketAngle = clamp(s.bucketAngle + JOINT_SPEED, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
-          if (keys.has('h') || keys.has('H')) s.bucketAngle = clamp(s.bucketAngle - JOINT_SPEED, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
-          return s;
-        });
+        // ── 선택된 자동 장비 직접 제어 ──
+        if (selUid) {
+          const eq = autoEquipRefs.current.get(selUid);
+          if (eq) {
+            const cos = Math.cos((eq.bodyRot ?? 0) * D2R);
+            const sin = Math.sin((eq.bodyRot ?? 0) * D2R);
+            if (keys.has('w') || keys.has('W') || keys.has('ArrowUp')) {
+              eq.posX = Math.max(-38, Math.min(38, eq.posX + sin * MOVE_SPEED));
+              eq.posZ = Math.max(-38, Math.min(38, eq.posZ + cos * MOVE_SPEED));
+            }
+            if (keys.has('s') || keys.has('S') || keys.has('ArrowDown')) {
+              eq.posX = Math.max(-38, Math.min(38, eq.posX - sin * MOVE_SPEED));
+              eq.posZ = Math.max(-38, Math.min(38, eq.posZ - cos * MOVE_SPEED));
+            }
+            const isRev = keys.has('s') || keys.has('S') || keys.has('ArrowDown');
+            const td = isRev ? -1 : 1;
+            if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft'))  eq.bodyRot = ((eq.bodyRot ?? 0) + ROT_SPEED * td + 360) % 360;
+            if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) eq.bodyRot = ((eq.bodyRot ?? 0) - ROT_SPEED * td + 360) % 360;
+
+            if (eq.type === 'excavator') {
+              if (keys.has('q') || keys.has('Q')) eq.swingAngle = (eq.swingAngle ?? 0) + JOINT_SPEED * 1.8;
+              if (keys.has('e') || keys.has('E')) eq.swingAngle = (eq.swingAngle ?? 0) - JOINT_SPEED * 1.8;
+              if (keys.has('r') || keys.has('R')) eq.boomAngle   = clamp((eq.boomAngle ?? 35)   + JOINT_SPEED, JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
+              if (keys.has('f') || keys.has('F')) eq.boomAngle   = clamp((eq.boomAngle ?? 35)   - JOINT_SPEED, JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
+              if (keys.has('t') || keys.has('T')) eq.armAngle    = clamp((eq.armAngle ?? 60)    + JOINT_SPEED, JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
+              if (keys.has('g') || keys.has('G')) eq.armAngle    = clamp((eq.armAngle ?? 60)    - JOINT_SPEED, JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
+              if (keys.has('y') || keys.has('Y')) eq.bucketAngle = clamp((eq.bucketAngle ?? -25) + JOINT_SPEED, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+              if (keys.has('h') || keys.has('H')) eq.bucketAngle = clamp((eq.bucketAngle ?? -25) - JOINT_SPEED, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+            } else if (eq.type === 'bulldozer') {
+              // R/F = 블레이드 각도 조절
+              if (keys.has('r') || keys.has('R')) eq.bladeAngle = clamp((eq.bladeAngle ?? 0) + JOINT_SPEED * 0.8, -30, 25);
+              if (keys.has('f') || keys.has('F')) eq.bladeAngle = clamp((eq.bladeAngle ?? 0) - JOINT_SPEED * 0.8, -30, 25);
+            } else if (eq.type === 'dumptruck') {
+              // R = 베드 올리기, F = 내리기
+              if (keys.has('r') || keys.has('R')) eq.bedAngle = clamp((eq.bedAngle ?? 0) + JOINT_SPEED * 0.7, 0, 50);
+              if (keys.has('f') || keys.has('F')) eq.bedAngle = clamp((eq.bedAngle ?? 0) - JOINT_SPEED * 0.7, 0, 50);
+            }
+          }
+        } else {
+          // ── 플레이어 굴착기 제어 (기존 로직) ──
+          setState(prev => {
+            const s = { ...prev };
+            const cos = Math.cos(s.bodyRotation * D2R);
+            const sin = Math.sin(s.bodyRotation * D2R);
+            if (keys.has('w') || keys.has('W') || keys.has('ArrowUp'))    { s.positionX += sin * MOVE_SPEED; s.positionZ += cos * MOVE_SPEED; }
+            if (keys.has('s') || keys.has('S') || keys.has('ArrowDown'))  { s.positionX -= sin * MOVE_SPEED; s.positionZ -= cos * MOVE_SPEED; }
+            const isReverse = keys.has('s') || keys.has('S') || keys.has('ArrowDown');
+            const turnDir = isReverse ? -1 : 1;
+            if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft'))  s.bodyRotation += ROT_SPEED * turnDir;
+            if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) s.bodyRotation -= ROT_SPEED * turnDir;
+            if (keys.has('q') || keys.has('Q')) s.swingAngle += JOINT_SPEED * 1.8;
+            if (keys.has('e') || keys.has('E')) s.swingAngle -= JOINT_SPEED * 1.8;
+            if (keys.has('r') || keys.has('R')) s.boomAngle = clamp(s.boomAngle + JOINT_SPEED, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
+            if (keys.has('f') || keys.has('F')) s.boomAngle = clamp(s.boomAngle - JOINT_SPEED, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
+            if (keys.has('t') || keys.has('T')) s.armAngle = clamp(s.armAngle + JOINT_SPEED, JOINT_LIMITS.armAngle.min, JOINT_LIMITS.armAngle.max);
+            if (keys.has('g') || keys.has('G')) s.armAngle = clamp(s.armAngle - JOINT_SPEED, JOINT_LIMITS.armAngle.min, JOINT_LIMITS.armAngle.max);
+            if (keys.has('y') || keys.has('Y')) s.bucketAngle = clamp(s.bucketAngle + JOINT_SPEED, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+            if (keys.has('h') || keys.has('H')) s.bucketAngle = clamp(s.bucketAngle - JOINT_SPEED, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+            return s;
+          });
+        }
       }
       animRef.current = requestAnimationFrame(tick);
     };
@@ -1992,6 +2649,65 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     }
   }, [state, calcKinematics, scheduleColliderRebuild]);
 
+  // ── 선택된 자동 굴착기 직접 굴착/덤핑 ──────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedEquipUid) return;
+    const eq = autoEquipRefs.current.get(selectedEquipUid);
+    if (!eq || eq.type !== 'excavator') return;
+
+    const cfg = getEquipConfig('excavator', eq.machineId);
+    if (!cfg) return;
+
+    const fakeState = {
+      positionX: eq.posX, positionY: 0, positionZ: eq.posZ,
+      bodyRotation: eq.bodyRot ?? 0,
+      swingAngle: eq.swingAngle ?? 0,
+      boomAngle: eq.boomAngle ?? 35,
+      armAngle: eq.armAngle ?? 60,
+      bucketAngle: eq.bucketAngle ?? -25,
+    };
+    const km = calcKinematics(fakeState, cfg);
+    const tipX = parseFloat(km.tipX);
+    const tipY = parseFloat(km.tipY);
+    const tipZ = parseFloat(km.tipZ);
+    const terrH = sampleH(heightMapRef.current, tipX, tipZ);
+    const digDepth = Math.max(0, terrH - tipY);
+
+    if (digDepth > 0.05 && (eq.soilInBucket ?? 0) < cfg.bucketCapacity) {
+      const cell = worldToCell(tipX, tipZ);
+      if (cell.valid) {
+        const rate = Math.min(cfg.digRate * (WEATHER_MODES[weatherModeRef.current]?.digMod ?? 1.0), digDepth * 0.055);
+        applyExcavation(heightMapRef.current, cell.col, cell.row, rate, cfg.digRadius);
+        eq.soilInBucket = Math.min(cfg.bucketCapacity, (eq.soilInBucket ?? 0) + rate * 0.9);
+        totalExcavRef.current += rate * 0.9;
+        setTotalExcavDisplay(parseFloat(totalExcavRef.current.toFixed(3)));
+        terrainDirtyRef.current = true;
+        scheduleColliderRebuild();
+        if (particlesRef.current.length < MAX_PARTICLES) {
+          for (let i = 0; i < 4; i++)
+            particlesRef.current.push(createParticle(tipX, Math.max(tipY, 0.1), tipZ, 'dig'));
+        }
+      }
+    }
+
+    if ((eq.bucketAngle ?? -25) < -65 && tipY > 0.4 && (eq.soilInBucket ?? 0) > 0.01) {
+      const cell = worldToCell(tipX, tipZ);
+      if (cell.valid) {
+        const amount = Math.min(cfg.fillRate, eq.soilInBucket);
+        applyFill(heightMapRef.current, cell.col, cell.row, amount * 0.92, cfg.fillRadius ?? 2.6);
+        eq.soilInBucket = Math.max(0, eq.soilInBucket - amount);
+        totalFillRef.current += amount;
+        setTotalFillDisplay(parseFloat(totalFillRef.current.toFixed(3)));
+        terrainDirtyRef.current = true;
+        scheduleColliderRebuild();
+        if (particlesRef.current.length < MAX_PARTICLES) {
+          for (let i = 0; i < 5; i++)
+            particlesRef.current.push(createParticle(tipX, tipY, tipZ, 'dump'));
+        }
+      }
+    }
+  }); // 매 렌더마다 실행 (프레임 동기)
+
   // ── UI 핸들러 ──
   const applyPreset = (name) => setState(prev => ({ ...prev, ...PRESETS[name], operationMode: name }));
   const setJoint    = (key, value) => { const lim = JOINT_LIMITS[key]; setState(prev => ({ ...prev, [key]: lim ? clamp(value, lim.min, lim.max) : value })); };
@@ -2004,6 +2720,49 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     soilInBucketRef.current = 0;
     setSoilDisplay(0);
   };
+
+  // ── 다중 장비 핸들러 ────────────────────────────────────────────────────────
+  const handleAddEquip = useCallback((type, machineId, posX, posZ, autoRun) => {
+    const uid = `auto-${++uidCounterRef.current}-${Date.now()}`;
+    const cfg = getEquipConfig(type, machineId);
+    const typeInfo = EQUIP_TYPE_INFO[type];
+    const label = `${typeInfo?.label ?? type} #${uidCounterRef.current}`;
+
+    setAutoEquipList(prev => [...prev, { uid, type, machineId, label, isAutoRunning: !!autoRun }]);
+
+    autoEquipRefs.current.set(uid, {
+      uid, type, machineId, label,
+      posX: parseFloat(posX) || 10,
+      posZ: parseFloat(posZ) || 10,
+      homeX: parseFloat(posX) || 10,
+      homeZ: parseFloat(posZ) || 10,
+      bodyRot: Math.random() * 360,
+      bodyScale: cfg?.bodyScale ?? 1.0,
+      phase: 0,
+      phaseTimer: 0,
+      soilInBucket: 0,
+      bladeAngle: 0,
+      bedAngle: 0,
+      boomAngle: 35, armAngle: 60, bucketAngle: -25, swingAngle: 0,
+      isAutoRunning: !!autoRun,
+    });
+  }, []);
+
+  const handleRemoveEquip = useCallback((uid) => {
+    setAutoEquipList(prev => prev.filter(e => e.uid !== uid));
+    autoEquipRefs.current.delete(uid);
+  }, []);
+
+  const handleToggleAutoEquip = useCallback((uid) => {
+    setAutoEquipList(prev => prev.map(e =>
+      e.uid === uid ? { ...e, isAutoRunning: !e.isAutoRunning } : e
+    ));
+    const eq = autoEquipRefs.current.get(uid);
+    if (eq) {
+      eq.isAutoRunning = !eq.isAutoRunning;
+      if (eq.isAutoRunning) eq.phaseTimer = 0;
+    }
+  }, []);
 
   // ── 굴착 시방서 RAG 조회 ─────────────────────────────────────────────────────
   const fetchExcavSpec = useCallback(async () => {
@@ -2055,41 +2814,78 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     setObjectResetSignal(v => v + 1);
   };
 
-  // ── GPS 데이터 → 굴착기 상태 변환 ─────────────────────────────────────────
+  // ── GPS 데이터 → 장비 상태 변환 (선택된 자동 장비 또는 플레이어 굴착기) ──
   const handleGpsData = useCallback((packet) => {
     if (gpsOriginRef.current === null && packet.lat != null && packet.lng != null)
       gpsOriginRef.current = { lat: packet.lat, lng: packet.lng };
 
-    let posX = stateRef.current.positionX;
-    let posZ = stateRef.current.positionZ;
-    if (packet.lat != null && packet.lng != null && gpsOriginRef.current) {
-      const { x, z } = latLngToXZ(packet.lat, packet.lng, gpsOriginRef.current.lat, gpsOriginRef.current.lng);
-      posX = x; posZ = z;
+    const selUid = selectedEquipUidRef.current;
+    const autoEq = selUid ? autoEquipRefs.current.get(selUid) : null;
+
+    if (autoEq) {
+      // ── 선택된 자동 장비 GPS 제어 ──
+      if (packet.lat != null && packet.lng != null && gpsOriginRef.current) {
+        const { x, z } = latLngToXZ(packet.lat, packet.lng, gpsOriginRef.current.lat, gpsOriginRef.current.lng);
+        autoEq.posX = Math.max(-38, Math.min(38, x));
+        autoEq.posZ = Math.max(-38, Math.min(38, z));
+      }
+      if      (packet.heading != null) autoEq.bodyRot = packet.heading;
+      else if (packet.alpha   != null) autoEq.bodyRot = packet.alpha;
+
+      // 굴착기 타입만 관절 각도 적용
+      if (autoEq.type === 'excavator') {
+        if      (packet.boomAngle   != null) autoEq.boomAngle   = clamp(packet.boomAngle,   JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
+        else if (packet.beta        != null) autoEq.boomAngle   = clamp(packet.beta * 0.6 + 35, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
+        if      (packet.armAngle    != null) autoEq.armAngle    = clamp(packet.armAngle,    JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
+        if      (packet.bucketAngle != null) autoEq.bucketAngle = clamp(packet.bucketAngle, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+        if      (packet.swingAngle  != null) autoEq.swingAngle  = packet.swingAngle;
+        else if (packet.gamma       != null) autoEq.swingAngle  = clamp(packet.gamma * 1.33, -120, 120);
+      } else if (autoEq.type === 'bulldozer') {
+        // 불도저: beta(기울기)→블레이드 각도 매핑
+        if (packet.bladeAngle != null) autoEq.bladeAngle = clamp(packet.bladeAngle, -30, 25);
+        else if (packet.beta  != null) autoEq.bladeAngle = clamp(packet.beta * 0.4, -30, 25);
+      } else if (autoEq.type === 'dumptruck') {
+        // 덤프트럭: bedAngle 직접 또는 gamma 매핑
+        if (packet.bedAngle   != null) autoEq.bedAngle = clamp(packet.bedAngle, 0, 50);
+        else if (packet.gamma != null) autoEq.bedAngle = clamp(Math.abs(packet.gamma) * 0.5, 0, 50);
+      }
+    } else {
+      // ── 플레이어 굴착기 GPS 제어 (기존 로직) ──
+      let posX = stateRef.current.positionX;
+      let posZ = stateRef.current.positionZ;
+      if (packet.lat != null && packet.lng != null && gpsOriginRef.current) {
+        const { x, z } = latLngToXZ(packet.lat, packet.lng, gpsOriginRef.current.lat, gpsOriginRef.current.lng);
+        posX = x; posZ = z;
+      }
+      let bodyRot = stateRef.current.bodyRotation;
+      if      (packet.heading != null) bodyRot = packet.heading;
+      else if (packet.alpha   != null) bodyRot = packet.alpha;
+
+      let boom   = stateRef.current.boomAngle;
+      let arm    = stateRef.current.armAngle;
+      let bucket = stateRef.current.bucketAngle;
+      let swing  = stateRef.current.swingAngle;
+
+      if      (packet.boomAngle   != null) boom   = clamp(packet.boomAngle,   JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
+      else if (packet.beta        != null) boom   = clamp(packet.beta * 0.6 + 35, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
+      if      (packet.armAngle    != null) arm    = clamp(packet.armAngle,    JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
+      if      (packet.bucketAngle != null) bucket = clamp(packet.bucketAngle, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
+      if      (packet.swingAngle  != null) swing  = packet.swingAngle;
+      else if (packet.gamma       != null) swing  = clamp(packet.gamma * 1.33, -120, 120);
+
+      stateRef.current = { ...stateRef.current, positionX: posX, positionZ: posZ, bodyRotation: bodyRot, swingAngle: swing, boomAngle: boom, armAngle: arm, bucketAngle: bucket };
+      setState({ ...stateRef.current });
     }
 
-    let bodyRot = stateRef.current.bodyRotation;
-    if      (packet.heading != null) bodyRot = packet.heading;
-    else if (packet.alpha   != null) bodyRot = packet.alpha;
-
-    let boom   = stateRef.current.boomAngle;
-    let arm    = stateRef.current.armAngle;
-    let bucket = stateRef.current.bucketAngle;
-    let swing  = stateRef.current.swingAngle;
-
-    if      (packet.boomAngle   != null) boom   = clamp(packet.boomAngle,   JOINT_LIMITS.boomAngle.min,   JOINT_LIMITS.boomAngle.max);
-    else if (packet.beta        != null) boom   = clamp(packet.beta * 0.6 + 35, JOINT_LIMITS.boomAngle.min, JOINT_LIMITS.boomAngle.max);
-    if      (packet.armAngle    != null) arm    = clamp(packet.armAngle,    JOINT_LIMITS.armAngle.min,    JOINT_LIMITS.armAngle.max);
-    if      (packet.bucketAngle != null) bucket = clamp(packet.bucketAngle, JOINT_LIMITS.bucketAngle.min, JOINT_LIMITS.bucketAngle.max);
-    if      (packet.swingAngle  != null) swing  = packet.swingAngle;
-    else if (packet.gamma       != null) swing  = clamp(packet.gamma * 1.33, -120, 120);
-
-    stateRef.current = { ...stateRef.current, positionX: posX, positionZ: posZ, bodyRotation: bodyRot, swingAngle: swing, boomAngle: boom, armAngle: arm, bucketAngle: bucket };
-    setState({ ...stateRef.current });
     gpsHzCountRef.current++;
     setGpsPacketCount(c => c + 1);
   }, []);
 
   const connectGps = useCallback(() => {
+    if (autoEquipList.length === 0) {
+      showEquipNotice(t('equipNoticeGps'));
+      return;
+    }
     if (gpsStompRef.current) return;
     setGpsError('');
     setAutoSim(false); autoSimRef.current = false;
@@ -2159,6 +2955,212 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
     }, 500);
     return () => clearInterval(id);
   }, []);
+
+  // ── 다중 자동 장비 시뮬레이션 루프 (100ms 간격) ────────────────────────────────
+  useEffect(() => {
+    const TICK = 100;
+    const PHASE_DURS = [1600, 1800, 1200, 1000, 1200, 1400]; // excavator cycle durations
+    const CYCLE_EX = PHASE_DURS.reduce((a, b) => a + b, 0);
+
+    const id = setInterval(() => {
+      const hm = heightMapRef.current;
+      const zm = terrainZoneMapRef.current;
+      let anyChange = false;
+
+      autoEquipRefs.current.forEach((eq) => {
+        if (!eq.isAutoRunning) return;
+        const cfg = getEquipConfig(eq.type, eq.machineId);
+        if (!cfg) return;
+        eq.phaseTimer = (eq.phaseTimer ?? 0) + TICK;
+
+        // ── 굴착기 자동 사이클 ──
+        if (eq.type === 'excavator') {
+          const t = eq.phaseTimer % CYCLE_EX;
+          let acc = 0;
+          for (let i = 0; i < PHASE_DURS.length; i++) {
+            if (t < acc + PHASE_DURS[i]) { eq.phase = i; break; }
+            acc += PHASE_DURS[i];
+          }
+          // 전진 (Approach 페이즈)
+          if (eq.phase === 0) {
+            const cos = Math.cos((eq.bodyRot ?? 0) * D2R);
+            const sin = Math.sin((eq.bodyRot ?? 0) * D2R);
+            eq.posX = Math.max(-38, Math.min(38, eq.posX + sin * 0.06));
+            eq.posZ = Math.max(-38, Math.min(38, eq.posZ + cos * 0.06));
+          }
+          // 굴착 (DIG 페이즈)
+          if (eq.phase === 1 && eq.soilInBucket < cfg.bucketCapacity) {
+            const cell = worldToCell(eq.posX, eq.posZ);
+            if (cell.valid) {
+              const digH = sampleH(hm, eq.posX, eq.posZ);
+              if (digH > -MAX_DIG + 0.5) {
+                const rate = cfg.digRate * 0.18;
+                applyExcavation(hm, cell.col, cell.row, rate, cfg.digRadius ?? 3.0);
+                eq.soilInBucket = Math.min(cfg.bucketCapacity, (eq.soilInBucket ?? 0) + rate * 0.85);
+                totalExcavRef.current += rate * 0.85;
+                excavLogRef.current.push({
+                  seq: excavLogRef.current.length + 1,
+                  time: new Date().toLocaleTimeString(),
+                  posX: eq.posX.toFixed(2), posZ: eq.posZ.toFixed(2),
+                  volume: parseFloat((rate * 0.85).toFixed(4)),
+                  type: 'DIG', machine: eq.label, weather: weatherModeRef.current,
+                });
+                anyChange = true;
+              }
+            }
+          }
+          // 덤핑 (DUMP 페이즈)
+          if (eq.phase === 4 && (eq.soilInBucket ?? 0) > 0.01) {
+            const dumpX = eq.posX + Math.sin(((eq.bodyRot ?? 0) + 90) * D2R) * 3.5;
+            const dumpZ = eq.posZ + Math.cos(((eq.bodyRot ?? 0) + 90) * D2R) * 3.5;
+            const cell = worldToCell(dumpX, dumpZ);
+            if (cell.valid) {
+              const amount = Math.min(cfg.fillRate * 0.18, eq.soilInBucket);
+              applyFill(hm, cell.col, cell.row, amount * 0.88, cfg.digRadius ?? 2.6);
+              eq.soilInBucket = Math.max(0, eq.soilInBucket - amount);
+              totalFillRef.current += amount * 0.88;
+              excavLogRef.current.push({
+                seq: excavLogRef.current.length + 1,
+                time: new Date().toLocaleTimeString(),
+                posX: dumpX.toFixed(2), posZ: dumpZ.toFixed(2),
+                volume: parseFloat((amount * 0.88).toFixed(4)),
+                type: 'FILL', machine: eq.label, weather: weatherModeRef.current,
+              });
+              anyChange = true;
+            }
+          }
+          // Return 페이즈: 원래 방향으로 후진
+          if (eq.phase === 5) {
+            const cos = Math.cos((eq.bodyRot ?? 0) * D2R);
+            const sin = Math.sin((eq.bodyRot ?? 0) * D2R);
+            eq.posX = Math.max(-38, Math.min(38, eq.posX - sin * 0.04));
+            eq.posZ = Math.max(-38, Math.min(38, eq.posZ - cos * 0.04));
+          }
+        }
+
+        // ── 불도저 자동 사이클 (밀기 → 후진) ──
+        else if (eq.type === 'bulldozer') {
+          const PUSH_DUR = 3500, REV_DUR = 2200, TURN_DUR = 800;
+          const CYCLE = PUSH_DUR + REV_DUR + TURN_DUR;
+          const t = eq.phaseTimer % CYCLE;
+          const isPush = t < PUSH_DUR;
+          const isRev  = t >= PUSH_DUR && t < PUSH_DUR + REV_DUR;
+          const isTurn = t >= PUSH_DUR + REV_DUR;
+
+          const speed = 0.045;
+          const cos = Math.cos((eq.bodyRot ?? 0) * D2R);
+          const sin = Math.sin((eq.bodyRot ?? 0) * D2R);
+
+          if (isPush) {
+            eq.posX = Math.max(-38, Math.min(38, eq.posX + sin * speed));
+            eq.posZ = Math.max(-38, Math.min(38, eq.posZ + cos * speed));
+            eq.bladeAngle = -18;
+            const cell = worldToCell(eq.posX, eq.posZ);
+            if (cell.valid) {
+              const h = sampleH(hm, eq.posX, eq.posZ);
+              if (h > 0.08) {
+                const scraped = Math.min(cfg.digRate * 0.22, h - 0.02);
+                if (scraped > 0) {
+                  applyExcavation(hm, cell.col, cell.row, scraped, cfg.digRadius ?? 2.5);
+                  const depX = eq.posX + sin * 2.2;
+                  const depZ = eq.posZ + cos * 2.2;
+                  const depCell = worldToCell(depX, depZ);
+                  if (depCell.valid) {
+                    applyFill(hm, depCell.col, depCell.row, scraped * 0.82, cfg.fillRadius ?? 2.5);
+                    totalFillRef.current += scraped * 0.82;
+                  }
+                  totalExcavRef.current += scraped;
+                  excavLogRef.current.push({
+                    seq: excavLogRef.current.length + 1,
+                    time: new Date().toLocaleTimeString(),
+                    posX: eq.posX.toFixed(2), posZ: eq.posZ.toFixed(2),
+                    volume: parseFloat(scraped.toFixed(4)),
+                    type: 'DIG', machine: eq.label, weather: weatherModeRef.current,
+                  });
+                  anyChange = true;
+                }
+              }
+            }
+          } else if (isRev) {
+            eq.posX = Math.max(-38, Math.min(38, eq.posX - sin * speed * 0.72));
+            eq.posZ = Math.max(-38, Math.min(38, eq.posZ - cos * speed * 0.72));
+            eq.bladeAngle = 22;
+          } else if (isTurn) {
+            eq.bodyRot = ((eq.bodyRot ?? 0) + 2.5) % 360;
+          }
+        }
+
+        // ── 덤프트럭 자동 사이클 (적재지→덤프지→복귀) ──
+        else if (eq.type === 'dumptruck') {
+          const LOAD_DUR = 4200, LOADING_DUR = 2800, DUMP_DUR = 4200, DUMPING_DUR = 2200;
+          const CYCLE = LOAD_DUR + LOADING_DUR + DUMP_DUR + DUMPING_DUR;
+          const t = eq.phaseTimer % CYCLE;
+
+          const loadX = (eq.homeX ?? 0) - 6;
+          const loadZ = (eq.homeZ ?? 0) - 6;
+          const dumpX = (eq.homeX ?? 0) + 10;
+          const dumpZ = (eq.homeZ ?? 0) + 10;
+
+          const moveTo = (tx, tz, speed = 0.08) => {
+            const dx = tx - eq.posX, dz = tz - eq.posZ;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist > 0.5) {
+              eq.posX += (dx / dist) * speed;
+              eq.posZ += (dz / dist) * speed;
+              eq.bodyRot = Math.atan2(dx, dz) * 180 / Math.PI;
+            }
+            eq.posX = Math.max(-38, Math.min(38, eq.posX));
+            eq.posZ = Math.max(-38, Math.min(38, eq.posZ));
+          };
+
+          if (t < LOAD_DUR) {
+            moveTo(loadX, loadZ, 0.09);
+            eq.bedAngle = 0;
+          } else if (t < LOAD_DUR + LOADING_DUR) {
+            moveTo(loadX, loadZ, 0.02);
+            const prog = (t - LOAD_DUR) / LOADING_DUR;
+            if (prog > 0.2 && (eq.soilInBucket ?? 0) < cfg.bucketCapacity) {
+              eq.soilInBucket = Math.min(cfg.bucketCapacity, (eq.soilInBucket ?? 0) + cfg.bucketCapacity * 0.008);
+              totalExcavRef.current += cfg.bucketCapacity * 0.008;
+              anyChange = true;
+            }
+          } else if (t < LOAD_DUR + LOADING_DUR + DUMP_DUR) {
+            moveTo(dumpX, dumpZ, 0.09);
+            eq.bedAngle = 0;
+          } else {
+            moveTo(dumpX, dumpZ, 0.01);
+            const prog = (t - LOAD_DUR - LOADING_DUR - DUMP_DUR) / DUMPING_DUR;
+            eq.bedAngle = Math.min(45, prog * 55);
+            if (prog > 0.3 && (eq.soilInBucket ?? 0) > 0) {
+              const cell = worldToCell(eq.posX, eq.posZ);
+              if (cell.valid) {
+                const amount = Math.min(cfg.fillRate * 0.22, eq.soilInBucket);
+                applyFill(hm, cell.col, cell.row, amount, cfg.fillRadius ?? 3.2);
+                eq.soilInBucket = Math.max(0, eq.soilInBucket - amount);
+                totalFillRef.current += amount;
+                excavLogRef.current.push({
+                  seq: excavLogRef.current.length + 1,
+                  time: new Date().toLocaleTimeString(),
+                  posX: eq.posX.toFixed(2), posZ: eq.posZ.toFixed(2),
+                  volume: parseFloat(amount.toFixed(4)),
+                  type: 'FILL', machine: eq.label, weather: weatherModeRef.current,
+                });
+                anyChange = true;
+              }
+            }
+          }
+        }
+      });
+
+      if (anyChange) {
+        terrainDirtyRef.current = true;
+        setTotalExcavDisplay(parseFloat(totalExcavRef.current.toFixed(3)));
+        setTotalFillDisplay(parseFloat(totalFillRef.current.toFixed(3)));
+      }
+    }, TICK);
+
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReset = () => {
     const excavatorId = selectedProject?.projectId || 'EX-001';
@@ -2355,6 +3357,14 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         <WeatherSafetyModal weatherKey={weatherMode} onClose={() => setShowSafetyModal(false)} />
       )}
 
+      {/* 장비 추가 모달 */}
+      {showAddEquipModal && (
+        <AddEquipmentModal
+          onAdd={handleAddEquip}
+          onClose={() => setShowAddEquipModal(false)}
+        />
+      )}
+
       {/* ── 프로젝트 헤더 ── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '12px',
@@ -2377,6 +3387,14 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
         }}>
           Excavator
         </span>
+        {autoEquipList.length > 0 && (
+          <span style={{
+            fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
+            backgroundColor: '#0a1a3a', color: '#60a5fa', border: '1px solid #60a5fa40',
+          }}>
+            +{autoEquipList.length} 장비
+          </span>
+        )}
         {gpsConnected && (
           <span style={{
             background: 'rgba(4,47,46,0.9)', border: '1px solid #4ade80',
@@ -2392,8 +3410,8 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
       {/* ── 왼쪽 상태 패널 ── */}
       <div style={{
-        width: '210px', flexShrink: 0, background: panelBg, border: panelBorder,
-        borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
+        width: '190px', flexShrink: 0, background: panelBg, border: panelBorder,
+        borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column',
         gap: '10px', overflowY: 'auto', fontSize: '12px',
       }}>
         <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2708,35 +3726,98 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
       {/* ── 중앙 3D 캔버스 ── */}
       <div style={{ flex: 1, height: '100%', borderRadius: '12px', overflow: 'hidden', border: panelBorder, position: 'relative' }}>
-        {/* 키보드 가이드 */}
-        <div style={{
-          position: 'absolute', top: '12px', left: '12px', zIndex: 10,
-          background: 'rgba(13,27,42,0.88)', border: '1px solid #253347',
-          borderRadius: '10px', padding: '10px 14px', fontSize: '11px',
-          color: secColor, lineHeight: 1.7, pointerEvents: 'none',
-        }}>
-          <div style={{ color: accentBlue, fontWeight: 700, marginBottom: '4px', fontSize: '12px' }}>⌨ Keyboard Controls</div>
-          {[['W / S','Forward / Backward'],['A / D','Body Rotation'],['Q / E','Swing ±'],['R / F','Boom Up/Down'],['T / G','Arm Bend'],['Y / H','Bucket Rotate']].map(([k,v]) => (
-            <div key={k} style={{ display: 'flex', gap: '6px' }}>
-              <span style={{ color: '#e2e8f0', minWidth: '60px', fontFamily: 'monospace' }}>{k}</span>
-              <span>{v}</span>
-            </div>
-          ))}
-          <div style={{ marginTop: '6px', borderTop: '1px solid #253347', paddingTop: '6px', fontSize: '10px', color: '#fbbf24' }}>
-            Press T/G with bucket on ground → Dig<br/>
-            Swing with Q/E then open bucket with H → Dump
-          </div>
-        </div>
 
-        {/* 장비 배지 */}
-        <div style={{
-          position: 'absolute', top: '12px', right: '12px', zIndex: 10,
-          background: 'rgba(13,27,42,0.88)', border: '1px solid #253347',
-          borderRadius: '8px', padding: '6px 12px', fontSize: '12px',
-          color: '#f5a623', fontWeight: 700, pointerEvents: 'none',
-        }}>
-          🚜 {MACHINE_CONFIGS[selectedMachineId].label} Excavator
-        </div>
+        {/* 현장 선택 모달 — 최초 진입 시 */}
+        {!terrainType && <SceneSetupModal onSelect={handleTerrainSelect} />}
+
+        {/* 장비 미등록 안내 토스트 */}
+        {equipNotice && (
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 150, pointerEvents: 'none',
+            background: 'rgba(10,20,35,0.96)',
+            border: '1px solid #f59e0b',
+            borderRadius: '12px', padding: '18px 28px',
+            textAlign: 'center', minWidth: '260px',
+          }}>
+            <div style={{ fontSize: '26px', marginBottom: '8px' }}>🚧</div>
+            <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '13px', marginBottom: '4px' }}>{t('equipNoticeTitle')}</div>
+            <div style={{ color: '#94a3b8', fontSize: '11px', lineHeight: 1.6 }}>{equipNotice}</div>
+            <div style={{ color: '#4a6a8a', fontSize: '10px', marginTop: '8px' }}>{t('equipNoticeSub')}</div>
+          </div>
+        )}
+
+        {/* 키보드 가이드 — 선택된 장비 타입에 따라 동적 변경 */}
+        {(() => {
+          const selAutoEq = selectedEquipUid ? autoEquipRefs.current.get(selectedEquipUid) : null;
+          const selType   = selAutoEq ? selAutoEq.type : 'excavator';
+          const selInfo   = selAutoEq ? EQUIP_TYPE_INFO[selType] : null;
+          const hudColor  = selInfo?.color ?? accentBlue;
+
+          const KEY_MAPS = {
+            excavator: [
+              ['W / S', t('hudForward')], ['A / D', t('hudRotate')], ['Q / E', t('hudSwing')],
+              ['R / F', t('hudBoom')],    ['T / G', t('hudArm')],    ['Y / H', t('hudBucket')],
+            ],
+            bulldozer: [
+              ['W / S', t('hudForward')], ['A / D', t('hudRotate')],
+              ['R', `${t('hudBulldozerBlade')} ↑`], ['F', `${t('hudBulldozerBlade')} ↓`],
+            ],
+            dumptruck: [
+              ['W / S', t('hudForward')], ['A / D', t('hudRotate')],
+              ['R', `${t('hudDumpBed')} ↑`], ['F', `${t('hudDumpBed')} ↓`],
+            ],
+          };
+          const TIPS = {
+            excavator: <>{t('hudTipExcav').split('\n').map((l, i) => <React.Fragment key={i}>{l}{i === 0 && <br/>}</React.Fragment>)}</>,
+            bulldozer: <>{t('hudTipBulldozer').split('\n').map((l, i) => <React.Fragment key={i}>{l}{i === 0 && <br/>}</React.Fragment>)}</>,
+            dumptruck: <>{t('hudTipDump').split('\n').map((l, i) => <React.Fragment key={i}>{l}{i === 0 && <br/>}</React.Fragment>)}</>,
+          };
+
+          return (
+            <div style={{
+              position: 'absolute', top: '12px', left: '12px', zIndex: 10,
+              background: 'rgba(13,27,42,0.92)', border: `1px solid ${hudColor}44`,
+              borderRadius: '10px', padding: '10px 14px', fontSize: '11px',
+              color: secColor, lineHeight: 1.7, pointerEvents: 'none',
+              transition: 'border-color 0.25s',
+            }}>
+              <div style={{ color: hudColor, fontWeight: 700, marginBottom: '4px', fontSize: '12px' }}>
+                {selAutoEq ? `${selInfo?.icon ?? ''} ${selAutoEq.label}` : t('hudKeyboard')}
+              </div>
+              {(KEY_MAPS[selType] ?? KEY_MAPS.excavator).map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', gap: '6px' }}>
+                  <span style={{ color: '#e2e8f0', minWidth: '60px', fontFamily: 'monospace' }}>{k}</span>
+                  <span>{v}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: '6px', borderTop: `1px solid ${hudColor}33`, paddingTop: '6px', fontSize: '10px', color: '#fbbf24' }}>
+                {TIPS[selType] ?? TIPS.excavator}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* 제어 중 장비 배지 */}
+        {(() => {
+          const selAutoEq = selectedEquipUid ? autoEquipRefs.current.get(selectedEquipUid) : null;
+          const selInfo   = selAutoEq ? EQUIP_TYPE_INFO[selAutoEq.type] : null;
+          return (
+            <div style={{
+              position: 'absolute', top: '12px', right: '12px', zIndex: 10,
+              background: 'rgba(13,27,42,0.88)', border: `1px solid ${selInfo?.color ? selInfo.color + '66' : '#253347'}`,
+              borderRadius: '8px', padding: '6px 12px', fontSize: '12px',
+              color: selInfo?.color ?? '#f5a623', fontWeight: 700, pointerEvents: 'none',
+              transition: 'all 0.25s',
+            }}>
+              {selAutoEq
+                ? <>{selInfo?.icon} {selAutoEq.label} <span style={{ fontSize: '9px', opacity: 0.7 }}>{t('fleetCtrlBadge')}</span></>
+                : <>🚜 {MACHINE_CONFIGS[selectedMachineId].label} Excavator</>
+              }
+            </div>
+          );
+        })()}
 
         {/* 이상 감지 알림 오버레이 */}
         {activeAlerts.length > 0 && (
@@ -2848,7 +3929,7 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           </div>
         )}
 
-        <Canvas shadows camera={{ position: [22, 14, 28], fov: 52 }}
+        <Canvas shadows camera={{ position: [25, 16, 32], fov: 60 }}
           style={{
             background: weatherMode === 'heavy-rain' ? '#1a1f2e' : weatherMode === 'light-rain' ? '#1e2a3a' : '#1a2a3a',
             width: '100%', height: '100%',
@@ -2897,6 +3978,21 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
               heightMapRef={heightMapRef}
               wobbleRef={wobbleRef}
             />
+            {/* ── 자동 장비 3D 렌더링 ── */}
+            {autoEquipList.map(({ uid, type }) => {
+              const eqObj = autoEquipRefs.current.get(uid);
+              if (!eqObj) return null;
+              const isSelected = uid === selectedEquipUid;
+              const typeColor  = EQUIP_TYPE_INFO[type]?.color ?? '#60a5fa';
+              return (
+                <group key={uid}>
+                  {isSelected && <SelectionRing eqObj={eqObj} color={typeColor} />}
+                  {type === 'excavator' && <AutoExcavatorModel eqObj={eqObj} heightMapRef={heightMapRef} />}
+                  {type === 'bulldozer'  && <BulldozerModel    eqObj={eqObj} heightMapRef={heightMapRef} />}
+                  {type === 'dumptruck'  && <DumpTruckModel    eqObj={eqObj} heightMapRef={heightMapRef} />}
+                </group>
+              );
+            })}
             {/* 흙 파티클 */}
             <SoilParticles particlesRef={particlesRef} />
 
@@ -2910,9 +4006,9 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
 
       {/* ── 오른쪽 조작 패널 ── */}
       <div style={{
-        width: '250px', flexShrink: 0, background: panelBg, border: panelBorder,
-        borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
-        gap: '14px', overflowY: 'auto', fontSize: '12px',
+        width: '230px', flexShrink: 0, background: panelBg, border: panelBorder,
+        borderRadius: '12px', padding: '12px', display: 'flex', flexDirection: 'column',
+        gap: '12px', overflowY: 'auto', fontSize: '12px',
       }}>
         <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
           🎮 Manual Control
@@ -3077,6 +4173,10 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           <button
             onClick={() => {
               if (gpsConnected) return;
+              if (autoEquipList.length === 0 && !autoSim) {
+                showEquipNotice(t('equipNoticeAuto'));
+                return;
+              }
               const next = !autoSim;
               setAutoSim(next);
               autoSimRef.current = next;
@@ -3127,6 +4227,222 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
           )}
         </div>
 
+        {/* ── 다중 장비 관리 (Fleet Manager) ── */}
+        <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '12px' }}>
+          {/* 현재 현장 유형 표시 */}
+          {terrainType && (() => {
+            const preset = TERRAIN_PRESETS.find(p => p.id === terrainType);
+            return preset ? (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                background: `${preset.color}0e`, border: `1px solid ${preset.color}33`,
+                borderRadius: '6px', padding: '5px 8px', marginBottom: '8px',
+              }}>
+                <span style={{ color: preset.color, fontSize: '10px', fontWeight: 700 }}>
+                  {preset.icon} {t('terrain' + preset.id.charAt(0).toUpperCase() + preset.id.slice(1)) || preset.label}
+                </span>
+                <button
+                  onClick={() => setTerrainType(null)}
+                  style={{ background: 'none', border: 'none', color: '#3a5a7a', fontSize: '9px', cursor: 'pointer', padding: 0 }}
+                >
+                  {t('terrainChange')}
+                </button>
+              </div>
+            ) : null;
+          })()}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ color: '#60a5fa', fontSize: '12px', fontWeight: 700 }}>{t('fleetTitle')}</div>
+            <button
+              onClick={() => setShowAddEquipModal(true)}
+              style={{ background: '#0a1a3a', border: '1px solid #3a6aaa', borderRadius: '6px', color: '#60a5fa', padding: '3px 10px', fontSize: '11px', cursor: 'pointer', fontWeight: 700 }}
+            >
+              {t('fleetAddBtn')}
+            </button>
+          </div>
+
+          {/* 플레이어 굴착기 (항상 표시) */}
+          <div
+            onClick={() => setSelectedEquipUid(null)}
+            style={{
+              background: selectedEquipUid === null ? '#0f2a18' : '#111e2e',
+              border: `1px solid ${selectedEquipUid === null ? '#22c55e' : '#22c55e33'}`,
+              borderRadius: '8px', padding: '8px 10px', marginBottom: '6px',
+              cursor: 'pointer', transition: 'all 0.15s',
+            }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '14px' }}>🚜</span>
+                <div>
+                  <div style={{ color: '#4ade80', fontSize: '11px', fontWeight: 700 }}>Player · {MACHINE_CONFIGS[selectedMachineId]?.label}</div>
+                  <div style={{ color: '#3a5a3a', fontSize: '9px' }}>{t('fleetPlayerLabel')}</div>
+                </div>
+              </div>
+              {selectedEquipUid === null
+                ? <span style={{ background: '#0d3820', border: '1px solid #22c55e44', borderRadius: '4px', color: '#86efac', padding: '2px 7px', fontSize: '9px', fontWeight: 700 }}>{t('fleetCtrlBadge')}</span>
+                : <span style={{ color: '#3a5a3a', fontSize: '9px' }}>{t('fleetClickSelect')}</span>
+              }
+            </div>
+          </div>
+
+          {/* 자동 장비 목록 */}
+          {autoEquipList.length === 0 ? (
+            <div
+              onClick={() => setShowAddEquipModal(true)}
+              style={{
+                background: '#0a1520', border: '1px dashed #253347',
+                borderRadius: '8px', padding: '16px 10px', textAlign: 'center',
+                cursor: 'pointer', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#60a5fa'; e.currentTarget.style.background = '#0d1a2e'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#253347'; e.currentTarget.style.background = '#0a1520'; }}
+            >
+              <div style={{ fontSize: '22px', marginBottom: '6px' }}>🚧</div>
+              <div style={{ color: '#4a6a8a', fontSize: '10px', lineHeight: 1.7 }}>
+                {t('fleetEmptyTitle')}<br/>
+                <span style={{ color: '#60a5fa', fontWeight: 700 }}>{t('fleetEmptyAction')}</span>
+              </div>
+              <div style={{ color: '#253347', fontSize: '9px', marginTop: '6px' }}>
+                {t('fleetEmptySub')}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '220px', overflowY: 'auto' }}>
+              {autoEquipList.map(eq => {
+                const info     = EQUIP_TYPE_INFO[eq.type];
+                const cfg      = getEquipConfig(eq.type, eq.machineId);
+                const eqState  = autoEquipRefs.current.get(eq.uid);
+                const isActive = selectedEquipUid === eq.uid;
+                const borderCol = isActive ? (info?.color ?? '#60a5fa') : (eq.isAutoRunning ? (info?.color ?? '#60a5fa') + '55' : '#253347');
+
+                const CTRL_HINTS = {
+                  excavator: 'W/S 이동 · A/D 회전 · Q/E 스윙 · R/F 붐 · T/G 암 · Y/H 버킷',
+                  bulldozer:  'W/S 이동 · A/D 회전 · R/F 블레이드 각도',
+                  dumptruck:  'W/S 이동 · A/D 회전 · R 베드↑ · F 베드↓',
+                };
+
+                return (
+                  <div key={eq.uid} style={{
+                    background: isActive ? `${info?.color ?? '#60a5fa'}10` : (eq.isAutoRunning ? '#0d1a2a' : '#111e2e'),
+                    border: `1px solid ${borderCol}`,
+                    borderRadius: '8px', padding: '7px 9px',
+                    transition: 'all 0.15s',
+                  }}>
+                    {/* 헤더 행 */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <span style={{ fontSize: '14px' }}>{info?.icon ?? '⚙'}</span>
+                        <div>
+                          <div style={{ color: isActive ? (info?.color ?? '#e2e8f0') : (info?.color ?? '#e2e8f0'), fontSize: '10px', fontWeight: 700 }}>{eq.label}</div>
+                          <div style={{ color: '#3a4a5a', fontSize: '8px' }}>{cfg?.label} · {cfg?.weight}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => handleRemoveEquip(eq.uid)}
+                        style={{ background: 'none', border: 'none', color: '#5a3a3a', fontSize: '13px', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+                    </div>
+
+                    {/* 적재량 게이지 */}
+                    {eqState && (
+                      <div style={{ marginBottom: '5px' }}>
+                        <div style={{ background: '#1e2e3e', borderRadius: '3px', height: '4px', overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${Math.min(100, ((eqState.soilInBucket ?? 0) / (cfg?.bucketCapacity ?? 1)) * 100)}%`,
+                            height: '100%', background: info?.color ?? '#60a5fa',
+                            transition: 'width 0.3s', borderRadius: '3px',
+                          }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px', fontSize: '8px', color: '#3a4a5a' }}>
+                          <span>{eq.type === 'dumptruck' ? '적재량' : eq.type === 'bulldozer' ? '밀기' : '버킷'}</span>
+                          <span style={{ color: info?.color, fontFamily: 'monospace' }}>
+                            {(eqState.soilInBucket ?? 0).toFixed(2)} / {cfg?.bucketCapacity} m³
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 직접 제어 / 자동 버튼 행 */}
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {/* 선택/제어 버튼 */}
+                      <button
+                        onClick={() => {
+                          if (isActive) {
+                            setSelectedEquipUid(null);
+                          } else {
+                            setSelectedEquipUid(eq.uid);
+                            // 선택 시 자동 작업 일시정지
+                            const ref = autoEquipRefs.current.get(eq.uid);
+                            if (ref) ref.isAutoRunning = false;
+                            setAutoEquipList(prev => prev.map(e =>
+                              e.uid === eq.uid ? { ...e, isAutoRunning: false } : e
+                            ));
+                          }
+                        }}
+                        style={{
+                          flex: 1, padding: '4px 2px', borderRadius: '5px', cursor: 'pointer', fontSize: '10px', fontWeight: 700,
+                          background: isActive ? `${info?.color ?? '#60a5fa'}22` : '#162032',
+                          border: `1px solid ${isActive ? (info?.color ?? '#60a5fa') : '#3a6aaa'}`,
+                          color: isActive ? (info?.color ?? '#60a5fa') : '#60a5fa',
+                        }}
+                      >
+                        {isActive ? '✦ 제어 중' : '🎮 선택'}
+                      </button>
+                      {/* 자동/수동 토글 */}
+                      <button
+                        onClick={() => {
+                          if (isActive) setSelectedEquipUid(null);
+                          handleToggleAutoEquip(eq.uid);
+                        }}
+                        style={{
+                          flex: 1, padding: '4px 2px', borderRadius: '5px', cursor: 'pointer', fontSize: '10px', fontWeight: 700,
+                          background: eq.isAutoRunning ? '#0a2010' : '#1a1200',
+                          border: `1px solid ${eq.isAutoRunning ? '#22c55e' : '#4a3000'}`,
+                          color: eq.isAutoRunning ? '#4ade80' : '#fbbf24',
+                        }}
+                      >
+                        {eq.isAutoRunning ? '⏹ Auto' : '▶ Auto'}
+                      </button>
+                    </div>
+
+                    {/* 직접 제어 중 조작 안내 */}
+                    {isActive && (
+                      <div style={{
+                        marginTop: '5px', background: '#0a1a2e',
+                        border: `1px solid ${info?.color ?? '#60a5fa'}33`,
+                        borderRadius: '5px', padding: '5px 7px',
+                        fontSize: '9px', color: '#8896a4', lineHeight: 1.6,
+                      }}>
+                        <div style={{ color: info?.color ?? '#60a5fa', fontWeight: 700, marginBottom: '2px' }}>⌨ {t('fleetCtrlMode')}</div>
+                        {CTRL_HINTS[eq.type]}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 전체 장비 합산 요약 */}
+          {autoEquipList.length > 0 && (
+            <div style={{ marginTop: '8px', background: '#111e2e', borderRadius: '6px', padding: '7px 9px', fontSize: '10px' }}>
+              <div style={{ color: '#8896a4', marginBottom: '4px' }}>전체 장비 작업량</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#8896a4' }}>총 굴착</span>
+                <span style={{ color: '#fb923c', fontFamily: 'monospace' }}>{totalExcavDisplay.toFixed(2)} m³</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#8896a4' }}>총 성토</span>
+                <span style={{ color: '#34d399', fontFamily: 'monospace' }}>{totalFillDisplay.toFixed(2)} m³</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#8896a4' }}>활성 장비</span>
+                <span style={{ color: '#60a5fa', fontFamily: 'monospace' }}>
+                  {autoEquipList.filter(e => e.isAutoRunning).length + 1} / {autoEquipList.length + 1}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* ── GPS 실시간 제어 ── */}
         <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: '10px' }}>
           <div style={{ color: '#a78bfa', fontSize: '11px', fontWeight: 700, marginBottom: '8px' }}>{t('gpsTitle')}</div>
@@ -3144,6 +4460,24 @@ export default function SimulationDashboard({ selectedProject, modelData, setVic
             </div>
             {gpsConnected && (
               <>
+                {/* 제어 대상 장비 표시 */}
+                {(() => {
+                  const selAutoEq = selectedEquipUid ? autoEquipRefs.current.get(selectedEquipUid) : null;
+                  const selInfo   = selAutoEq ? EQUIP_TYPE_INFO[selAutoEq.type] : null;
+                  return (
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      marginTop: '6px', background: selAutoEq ? `${selInfo?.color}15` : '#0a1a0a',
+                      border: `1px solid ${selAutoEq ? (selInfo?.color + '55') : '#22c55e33'}`,
+                      borderRadius: '5px', padding: '4px 6px',
+                    }}>
+                      <span style={{ color: secColor, fontSize: '10px' }}>{t('fleetGpstarget')}</span>
+                      <span style={{ color: selAutoEq ? selInfo?.color : accentGreen, fontSize: '10px', fontWeight: 700 }}>
+                        {selAutoEq ? `${selInfo?.icon} ${selAutoEq.label}` : `🚜 ${t('fleetPlayerLabel')}`}
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
                   <span style={{ color: secColor, fontSize: '10px' }}>{t('gpsFreq')}</span>
                   <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>

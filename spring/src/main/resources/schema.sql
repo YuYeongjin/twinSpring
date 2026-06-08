@@ -458,6 +458,24 @@ CREATE TABLE IF NOT EXISTS agent_query_log
 CREATE INDEX IF NOT EXISTS idx_agent_query_log_session ON agent_query_log (session_id);
 CREATE INDEX IF NOT EXISTS idx_agent_query_log_time    ON agent_query_log (created_at DESC);
 
+-- ================================================================
+-- 통합관제 프로젝트 테이블
+-- WBS 하나에 여러 Integration 프로젝트가 연결될 수 있음
+-- sim_config : JSON (작업자/장비/위험구역 설정)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS integration_project
+(
+    project_id     TEXT        NOT NULL PRIMARY KEY,
+    project_name   TEXT        NOT NULL,
+    wbs_project_id TEXT        NULL,    -- WBS 연결 (nullable)
+    bim_project_id TEXT        NULL,    -- BIM 연결 (nullable)
+    description    TEXT        NULL,
+    sim_config     TEXT        NULL,    -- JSON 시뮬레이션 설정
+    status         TEXT        NOT NULL DEFAULT 'ACTIVE',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- DELETE를 시도하면 예외 발생 (행 단위)
 -- ※ Spring Boot ScriptUtils는 $$ dollar-quote를 파싱하지 못하므로 단일 따옴표 + '' 이스케이프 사용
 CREATE OR REPLACE FUNCTION _prevent_agent_query_log_delete()
