@@ -3,10 +3,10 @@ import { useLanguage, useT } from "../i18n/LanguageContext";
 
 const NAV_IDS = [
   { id: "wbs",                 key: "wbs",         icon: "📊" },
+  { id: "integration-projects", key: "integration", icon: "🔗" },
   { id: "bim-projects",        key: "bim",         icon: "🏗" },
   { id: "simulation-projects", key: "simulation",  icon: "🚜" },
   { id: "safe-projects",       key: "safe",        icon: "🦺" },
-  { id: "integration-projects", key: "integration", icon: "🔗" },
   { id: "test",                key: "test",        icon: "🧪" },
   { id: "agent",               key: "agent",       icon: "🤖" },
 ];

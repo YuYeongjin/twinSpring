@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
+import { useT } from '../../../i18n/LanguageContext';
 
 const TYPES = [
-  { value: 'excavator', label: '굴착기',   icon: '🚜' },
-  { value: 'dump',      label: '덤프트럭', icon: '🚛' },
-  { value: 'crane',     label: '크레인',   icon: '🏗' },
-  { value: 'vehicle',   label: '차량',     icon: '🚗' },
-  { value: 'other',     label: '기타',     icon: '🔧' },
+  { value: 'excavator', tKey: 'equipExcavator', icon: '🚜' },
+  { value: 'dump',      tKey: 'equipDump',      icon: '🚛' },
+  { value: 'crane',     tKey: 'equipCrane',     icon: '🏗' },
+  { value: 'vehicle',   tKey: 'equipVehicle',   icon: '🚗' },
+  { value: 'other',     tKey: 'equipOther',     icon: '🔧' },
 ];
 
 const TYPE_DEFAULT_SIZE = {
@@ -17,10 +18,10 @@ const TYPE_DEFAULT_SIZE = {
   other:     [1.5, 1.5, 1.5],
 };
 
-const MODE_OPTIONS = [
-  { value: 'auto',    label: '자동',   desc: '경로 자동 순환' },
-  { value: 'standby', label: '대기',   desc: '정지 대기' },
-  { value: 'gps',     label: 'GPS',    desc: '센서 데이터 수신' },
+const MODE_KEYS = [
+  { value: 'auto',    labelKey: 'modeAuto',    descKey: 'modeAutoDesc' },
+  { value: 'standby', labelKey: 'modeStandby', descKey: 'modeStandbyDesc' },
+  { value: 'gps',     labelKey: null,          descKey: 'modeGpsDesc' },
 ];
 
 function Label({ children }) {
@@ -50,6 +51,7 @@ function Input({ value, onChange, type = 'text', step, min, placeholder }) {
 }
 
 export default function EquipmentOptionsPanel() {
+  const t = useT('integrationProject');
   const { equipment, selectedEquipId } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
@@ -117,7 +119,7 @@ export default function EquipmentOptionsPanel() {
       {/* 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontSize: 10, fontWeight: 800, color: '#60a5fa', letterSpacing: '0.06em' }}>
-          ⚙ 장비 설정
+          ⚙ {t('equipSetting')}
         </div>
         <button
           onClick={() => dispatch({ type: 'SELECT_EQUIPMENT', id: null })}
@@ -127,27 +129,27 @@ export default function EquipmentOptionsPanel() {
 
       {/* 이름 */}
       <div style={{ marginBottom: 8 }}>
-        <Label>이름</Label>
+        <Label>{t('equipNameLabel')}</Label>
         <Input value={form.name} onChange={e => set('name', e.target.value)} />
       </div>
 
       {/* 종류 */}
       <div style={{ marginBottom: 8 }}>
-        <Label>종류</Label>
+        <Label>{t('equipTypeLabel')}</Label>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {TYPES.map(t => (
+          {TYPES.map(tp => (
             <button
-              key={t.value}
-              onClick={() => handleTypeChange(t.value)}
+              key={tp.value}
+              onClick={() => handleTypeChange(tp.value)}
               style={{
-                background: form.type === t.value ? '#1e3a5f' : '#0a1525',
-                border: `1px solid ${form.type === t.value ? '#60a5fa' : '#1e3a5f'}`,
+                background: form.type === tp.value ? '#1e3a5f' : '#0a1525',
+                border: `1px solid ${form.type === tp.value ? '#60a5fa' : '#1e3a5f'}`,
                 borderRadius: 4, padding: '3px 7px', cursor: 'pointer',
-                color: form.type === t.value ? '#60a5fa' : '#6b7280',
+                color: form.type === tp.value ? '#60a5fa' : '#6b7280',
                 fontSize: 10, fontWeight: 700,
               }}
             >
-              {t.icon} {t.label}
+              {tp.icon} {t(tp.tKey)}
             </button>
           ))}
         </div>
@@ -155,7 +157,7 @@ export default function EquipmentOptionsPanel() {
 
       {/* 사이즈 */}
       <div style={{ marginBottom: 8 }}>
-        <Label>사이즈 (W × H × D, m)</Label>
+        <Label>{t('equipSizeLabel')}</Label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
           <Input type="number" value={form.sizeW} min="0.1" step="0.1" placeholder="W" onChange={e => set('sizeW', e.target.value)} />
           <Input type="number" value={form.sizeH} min="0.1" step="0.1" placeholder="H" onChange={e => set('sizeH', e.target.value)} />
@@ -165,13 +167,13 @@ export default function EquipmentOptionsPanel() {
 
       {/* 모드 */}
       <div style={{ marginBottom: 8 }}>
-        <Label>작동 모드</Label>
+        <Label>{t('equipModeLabel')}</Label>
         <div style={{ display: 'flex', gap: 4 }}>
-          {MODE_OPTIONS.map(m => (
+          {MODE_KEYS.map(m => (
             <button
               key={m.value}
               onClick={() => set('mode', m.value)}
-              title={m.desc}
+              title={t(m.descKey)}
               style={{
                 flex: 1,
                 background: form.mode === m.value ? '#1e3a5f' : '#0a1525',
@@ -181,22 +183,22 @@ export default function EquipmentOptionsPanel() {
                 fontSize: 10, fontWeight: 700,
               }}
             >
-              {m.label}
+              {m.labelKey ? t(m.labelKey) : 'GPS'}
             </button>
           ))}
         </div>
         <div style={{ fontSize: 9, color: '#374151', marginTop: 3 }}>
-          {MODE_OPTIONS.find(m => m.value === form.mode)?.desc}
+          {t(MODE_KEYS.find(m => m.value === form.mode)?.descKey)}
         </div>
       </div>
 
       {/* 자동 모드: 속도 */}
       {form.mode === 'auto' && (
         <div style={{ marginBottom: 8 }}>
-          <Label>속도 (m/s)</Label>
+          <Label>{t('equipSpeedLabel')}</Label>
           <Input type="number" value={form.speed} min="0" step="0.1" onChange={e => set('speed', e.target.value)} />
           <div style={{ fontSize: 9, color: '#374151', marginTop: 3 }}>
-            경로: {equip.route?.length ?? 0}개 웨이포인트
+            {t('waypointCount', { n: equip.route?.length ?? 0 })}
           </div>
         </div>
       )}
@@ -204,18 +206,18 @@ export default function EquipmentOptionsPanel() {
       {/* GPS 모드: 디바이스 ID */}
       {form.mode === 'gps' && (
         <div style={{ marginBottom: 8 }}>
-          <Label>GPS 디바이스 ID</Label>
+          <Label>{t('gpsDeviceLabel')}</Label>
           <Input
             value={form.gpsDeviceId}
-            placeholder="예: excavator"
+            placeholder="excavator"
             onChange={e => set('gpsDeviceId', e.target.value)}
           />
           <div style={{ fontSize: 9, color: '#374151', marginTop: 3 }}>
-            /topic/excavator WebSocket으로 수신
+            {t('gpsWsNote')}
           </div>
           {equip.gpsPos && (
             <div style={{ fontSize: 9, color: '#22c55e', marginTop: 3 }}>
-              GPS 수신 중: [{equip.gpsPos.map(v => v.toFixed(1)).join(', ')}]
+              {t('gpsReceiving', { pos: equip.gpsPos.map(v => v.toFixed(1)).join(', ') })}
             </div>
           )}
         </div>
@@ -230,7 +232,7 @@ export default function EquipmentOptionsPanel() {
           fontSize: 11, fontWeight: 700, cursor: 'pointer',
         }}
       >
-        적용
+        {t('equipApply')}
       </button>
     </div>
   );
