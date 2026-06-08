@@ -9,6 +9,7 @@ import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import { useCrackMonitor } from '../../context/CrackMonitorContext';
 import MonitoringGallery from './MonitoringGallery';
 import ProgressMonitoringPanel from './ProgressMonitoringPanel';
+import PhotoDiffPanel from './PhotoDiffPanel';
 import WeatherWidget from '../../component/WeatherWidget';
 import SensorPanel from '../../component/SensorPanel';
 
@@ -1689,7 +1690,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   const mode = selectedProject?.mode || 'SAFETY';
   const isCrackMode     = mode === 'CRACK';
   const isProgressMode  = mode === 'PROGRESS';
-  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'monitoring' | 'progress'
+  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'monitoring' | 'progress' | 'diff'
 
   // 프로젝트가 바뀌면 실시간 탭으로 초기화
   useEffect(() => { setActiveTab('live'); }, [selectedProject?.projectId]);
@@ -1773,12 +1774,27 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
               📐 진도 분석
             </button>
           )}
+          <button
+            onClick={() => setActiveTab('diff')}
+            className="text-xs px-4 py-1.5 rounded-lg"
+            style={{
+              background: activeTab === 'diff' ? '#1a2a10' : '#0d1b2a',
+              border: `1px solid ${activeTab === 'diff' ? '#4ade80' : '#253347'}`,
+              color: activeTab === 'diff' ? '#86efac' : '#6b7280',
+            }}>
+            {t('diffTab')}
+          </button>
         </div>
       )}
 
       {/* ── 진도 분석 탭 (PROGRESS 모드) ── */}
       {selectedProject && activeTab === 'progress' && (
         <ProgressMonitoringPanel selectedProject={selectedProject} />
+      )}
+
+      {/* ── 변화 비교 탭 ── */}
+      {selectedProject && activeTab === 'diff' && (
+        <PhotoDiffPanel selectedProject={selectedProject} />
       )}
 
       {/* ── 모니터링 기록 탭 ── */}
