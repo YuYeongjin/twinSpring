@@ -7,22 +7,19 @@ function CreateModal({ onClose, onCreate }) {
   const t = useT('integrationProject');
   const [name, setName]           = useState('');
   const [wbsId, setWbsId]         = useState('');
-  const [bimId, setBimId]         = useState('');
   const [desc, setDesc]           = useState('');
   const [wbsProjects, setWbsProjects] = useState([]);
-  const [bimProjects, setBimProjects] = useState([]);
   const [saving, setSaving]       = useState(false);
 
   useEffect(() => {
     AxiosCustom.get('/api/wbs/projects').then(r => setWbsProjects(r.data || [])).catch(() => {});
-    AxiosCustom.get('/api/bim/projects').then(r => setBimProjects(r.data || [])).catch(() => {});
   }, []);
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await onCreate({ projectName: name.trim(), wbsProjectId: wbsId || null, bimProjectId: bimId || null, description: desc || null });
+      await onCreate({ projectName: name.trim(), wbsProjectId: wbsId || null, bimProjectId: null, description: desc || null });
       onClose();
     } finally {
       setSaving(false);
@@ -65,14 +62,11 @@ function CreateModal({ onClose, onCreate }) {
               ))}
             </select>
           </div>
-          <div>
-            <label style={labelStyle}>{t('fieldBim')}</label>
-            <select style={inputStyle} value={bimId} onChange={e => setBimId(e.target.value)}>
-              <option value="">{t('linkNone')}</option>
-              {bimProjects.map(p => (
-                <option key={p.projectId} value={p.projectId}>{p.projectName}</option>
-              ))}
-            </select>
+          <div style={{
+            fontSize: 11, color: '#4b5563', background: '#071323',
+            border: '1px solid #1e3a5f', borderRadius: 8, padding: '8px 12px', lineHeight: 1.6,
+          }}>
+            🏗 {t('bimAddLater')}
           </div>
           <div>
             <label style={labelStyle}>{t('fieldDesc')}</label>

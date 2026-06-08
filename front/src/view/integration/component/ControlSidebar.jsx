@@ -49,6 +49,7 @@ export default function ControlSidebar() {
   const dispatch = useIntegrationDispatch();
 
   const [showAddStructure, setShowAddStructure] = useState(false);
+  const [expandedStructId, setExpandedStructId] = useState(null);
   const terrainInputRef = useRef(null);
 
   const letters = 'ABCDEFGHIJKLMN';
@@ -182,32 +183,75 @@ export default function ControlSidebar() {
             {t('structHint')}
           </div>
         )}
-        {structures.map(s => (
-          <Row key={s.id}>
-            <span style={{ fontSize: 11 }}>{s.type === 'bim' ? '🏗' : '📂'}</span>
-            <span style={{ flex: 1, fontSize: 10, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {s.name}
-            </span>
-            <span style={{ fontSize: 9, color: s.elements?.length > 0 ? '#22c55e' : '#f59e0b', flexShrink: 0 }}>
-              {s.elements === null ? t('structLoading') : s.elements.length > 0 ? `${s.elements.length}ea` : t('structEmpty')}
-            </span>
-            <button
-              onClick={() => dispatch({ type: 'TOGGLE_STRUCTURE', id: s.id })}
-              style={{
-                background: 'none', border: `1px solid ${s.visible !== false ? '#22c55e' : '#374151'}`,
-                borderRadius: 3, cursor: 'pointer',
-                color: s.visible !== false ? '#22c55e' : '#4b5563',
-                fontSize: 9, fontWeight: 700, padding: '0 4px', flexShrink: 0,
-              }}
-            >
-              {s.visible !== false ? 'ON' : 'OFF'}
-            </button>
-            <button
-              onClick={() => dispatch({ type: 'REMOVE_STRUCTURE', id: s.id })}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
-            >✕</button>
-          </Row>
-        ))}
+        {structures.map(s => {
+          const isExpanded = expandedStructId === s.id;
+          const offset = s.offset || [0, 0, 0];
+          return (
+            <div key={s.id} style={{ marginBottom: 5 }}>
+              <Row>
+                <span style={{ fontSize: 11 }}>{s.type === 'bim' ? '🏗' : '📂'}</span>
+                <span style={{ flex: 1, fontSize: 10, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.name}
+                </span>
+                <span style={{ fontSize: 9, color: s.elements?.length > 0 ? '#22c55e' : '#f59e0b', flexShrink: 0 }}>
+                  {s.elements === null ? t('structLoading') : s.elements.length > 0 ? `${s.elements.length}ea` : t('structEmpty')}
+                </span>
+                <button
+                  onClick={() => setExpandedStructId(isExpanded ? null : s.id)}
+                  style={{
+                    background: 'none', border: `1px solid ${isExpanded ? '#60a5fa' : '#1e3a5f'}`,
+                    borderRadius: 3, cursor: 'pointer',
+                    color: isExpanded ? '#60a5fa' : '#4b5563',
+                    fontSize: 9, fontWeight: 700, padding: '0 4px', flexShrink: 0,
+                  }}
+                >XYZ</button>
+                <button
+                  onClick={() => dispatch({ type: 'TOGGLE_STRUCTURE', id: s.id })}
+                  style={{
+                    background: 'none', border: `1px solid ${s.visible !== false ? '#22c55e' : '#374151'}`,
+                    borderRadius: 3, cursor: 'pointer',
+                    color: s.visible !== false ? '#22c55e' : '#4b5563',
+                    fontSize: 9, fontWeight: 700, padding: '0 4px', flexShrink: 0,
+                  }}
+                >
+                  {s.visible !== false ? 'ON' : 'OFF'}
+                </button>
+                <button
+                  onClick={() => dispatch({ type: 'REMOVE_STRUCTURE', id: s.id })}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
+                >✕</button>
+              </Row>
+              {isExpanded && (
+                <div style={{ paddingLeft: 4, marginBottom: 4 }}>
+                  <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 3 }}>{t('structPositionLabel')}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                    {['X', 'Y', 'Z'].map((axis, i) => (
+                      <div key={axis}>
+                        <div style={{ fontSize: 9, color: '#4b5563', marginBottom: 2, textAlign: 'center' }}>{axis}</div>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={offset[i]}
+                          onChange={e => {
+                            const val = parseFloat(e.target.value) || 0;
+                            const next = [...offset];
+                            next[i] = val;
+                            dispatch({ type: 'UPDATE_STRUCTURE_OFFSET', id: s.id, offset: next });
+                          }}
+                          style={{
+                            width: '100%', background: '#0d1b2a', border: '1px solid #1e3a5f',
+                            borderRadius: 4, color: '#d1d5db', fontSize: 11,
+                            padding: '3px 5px', boxSizing: 'border-box', outline: 'none',
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
         <Btn small onClick={() => setShowAddStructure(true)}>{t('addStructure')}</Btn>
       </Section>
 
@@ -284,14 +328,14 @@ export default function ControlSidebar() {
         <Btn small onClick={() => {
           const types = ['excavator', 'dump', 'crane'];
           const type  = types[equipment.length % types.length];
-          const icons = { excavator: '굴착기', dump: '덤프트럭', crane: '크레인' };
+          const typeKeys = { excavator: 'equipExcavator', dump: 'equipDump', crane: 'equipCrane' };
           const defSizes = { excavator: [2.8,2.5,3.5], dump: [2.8,2.5,3.5], crane: [1.5,9.0,1.5] };
           dispatch({
             type: 'ADD_EQUIPMENT',
             equipment: {
               id:          `eq_${Date.now()}`,
               type,
-              name:        `${icons[type]}-${equipment.length + 1}`,
+              name:        `${t(typeKeys[type])}-${equipment.length + 1}`,
               initialPos:  [(Math.random()-0.5)*20, 0, (Math.random()-0.5)*20],
               route:       [],
               speed:       1.0,
@@ -302,7 +346,7 @@ export default function ControlSidebar() {
             },
           });
         }}>
-          {t('addEquipment') || '+ 장비 추가'}
+          {t('addEquipment')}
         </Btn>
       </Section>
 

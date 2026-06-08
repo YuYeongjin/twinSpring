@@ -4,6 +4,7 @@ import { OrbitControls, Grid, Html, GizmoHelper, GizmoViewport } from '@react-th
 import * as THREE from 'three';
 import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
 import { BimElement } from '../../bim/element/BimElement';
+import { useT } from '../../../i18n/LanguageContext';
 
 // ── 상수 ────────────────────────────────────────────────────────
 const STATUS_COLOR = {
@@ -11,12 +12,6 @@ const STATUS_COLOR = {
   danger_zone:    '#f59e0b',
   collision_risk: '#ef4444',
   no_gear:        '#a855f7',
-};
-const STATUS_LABEL = {
-  normal:         '정상',
-  danger_zone:    '위험구역',
-  collision_risk: '충돌위험',
-  no_gear:        '장비미착',
 };
 const EQUIP_COLOR = { excavator: '#f97316', dump: '#3b82f6', crane: '#eab308' };
 const EQUIP_ICON  = { excavator: '🚜',      dump: '🚛',       crane: '🏗'  };
@@ -164,6 +159,10 @@ function DangerZoneMarker({ zone }) {
 
 // ── 시뮬레이션 관리자 ─────────────────────────────────────────────
 function SimulationManager({ running }) {
+  const t = useT('integrationProject');
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
+
   const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
@@ -292,7 +291,7 @@ function SimulationManager({ running }) {
           st = 'danger_zone';
           throttledCall(throttleMap.current, `zone_${z.id}_${w.id}`, 5000, () => {
             dispatch({ type: 'LOG_EVENT', event: { type: 'zone_violation', severity: 'warning',
-              description: `${w.name}이(가) "${z.name}"에 진입했습니다` } });
+              description: tRef.current('evtZoneEnter', { worker: w.name, zone: z.name }) } });
           });
           break;
         }
@@ -307,7 +306,7 @@ function SimulationManager({ running }) {
             st = 'collision_risk';
             throttledCall(throttleMap.current, `coll_${e.id}_${w.id}`, 5000, () => {
               dispatch({ type: 'LOG_EVENT', event: { type: 'collision_risk', severity: 'critical',
-                description: `${w.name}과(와) ${e.name} 충돌 위험 감지!` } });
+                description: tRef.current('evtCollision', { worker: w.name, equip: e.name }) } });
             });
             break;
           }
@@ -317,7 +316,7 @@ function SimulationManager({ running }) {
       if (!w.gear) {
         throttledCall(throttleMap.current, `gear_${w.id}`, 12000, () => {
           dispatch({ type: 'LOG_EVENT', event: { type: 'no_gear', severity: 'warning',
-            description: `${w.name}이(가) 보호장비를 미착용 중입니다` } });
+            description: tRef.current('evtNoGear', { worker: w.name }) } });
         });
       }
 
@@ -339,7 +338,13 @@ function SimulationManager({ running }) {
   });
 
   const modeColor = { auto: '#22c55e', standby: '#f59e0b', gps: '#a78bfa' };
-  const modeLabel = { auto: '자동', standby: '대기', gps: 'GPS' };
+  const modeLabel = { auto: t('modeAuto'), standby: t('modeStandby'), gps: 'GPS' };
+  const statusLabel = {
+    normal:         t('legendNormal'),
+    danger_zone:    t('legendHazard'),
+    collision_risk: t('legendCollision'),
+    no_gear:        t('legendNoGear'),
+  };
 
   return (
     <>
@@ -361,7 +366,7 @@ function SimulationManager({ running }) {
                 border: `1px solid ${STATUS_COLOR[status] || STATUS_COLOR.normal}`,
                 whiteSpace: 'nowrap', pointerEvents: 'none',
               }}>
-                👷 {w.name} · {STATUS_LABEL[status] || ''}
+                👷 {w.name} · {statusLabel[status] || ''}
               </div>
             </Html>
           </group>
