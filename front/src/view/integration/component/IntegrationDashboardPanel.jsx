@@ -27,14 +27,16 @@ function StatCard({ label, value, unit, color, icon }) {
 
 export default function IntegrationDashboardPanel() {
   const t = useT('integrationProject');
-  const { workers, equipment, events, wbsProgress } = useIntegration();
+  const { workers, equipment, events, wbsTasks } = useIntegration();
 
   const workerCount    = workers.length;
   const equipCount     = equipment.filter(e => e.speed > 0).length;
   const eventCount     = events.length;
   const collisions     = events.filter(e => e.type === 'collision_risk').length;
   const zoneViolations = events.filter(e => e.type === 'zone_violation').length;
-  const overall        = Math.round(wbsProgress.overall);
+  const overall        = wbsTasks.length > 0
+    ? Math.round(wbsTasks.reduce((sum, t) => sum + (t.progress || 0), 0) / wbsTasks.length)
+    : 0;
 
   return (
     <div style={{ padding: '12px 12px 8px' }}>
