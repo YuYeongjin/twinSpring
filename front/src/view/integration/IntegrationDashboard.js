@@ -1,4 +1,4 @@
-import { useEffect, useRef }                from 'react';
+import { useEffect, useRef, useState }      from 'react';
 import SockJS                              from 'sockjs-client';
 import { Client }                          from '@stomp/stompjs';
 import AxiosCustom                          from '../../axios/AxiosCustom';
@@ -133,6 +133,14 @@ function StructureLoader() {
 // ── 메인 대시보드 레이아웃 ─────────────────────────────────
 function DashboardLayout({ selectedProject }) {
   const t = useT('integrationProject');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [showPanel, setShowPanel] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   return (
     <div style={{
@@ -143,7 +151,7 @@ function DashboardLayout({ selectedProject }) {
       background: '#060f18',
     }}>
 
-      <ControlSidebar />
+      {!isMobile && <ControlSidebar />}
 
       <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
         <IntegrationScene />
@@ -177,23 +185,63 @@ function DashboardLayout({ selectedProject }) {
         }}>
           {t('overlayHint')}
         </div>
+
+        {/* 모바일: 패널 토글 버튼 */}
+        {isMobile && (
+          <button
+            onClick={() => setShowPanel(v => !v)}
+            style={{
+              position: 'absolute',
+              top: 12,
+              right: 12,
+              background: '#0d1b2acc',
+              border: '1px solid #1e3a5f',
+              borderRadius: 10,
+              padding: '5px 10px',
+              fontSize: 11,
+              color: '#60a5fa',
+              fontWeight: 700,
+              backdropFilter: 'blur(4px)',
+              cursor: 'pointer',
+              zIndex: 10,
+            }}
+          >
+            {showPanel ? '✕' : '📊'}
+          </button>
+        )}
       </div>
 
-      <div style={{
-        width: 290,
-        flexShrink: 0,
-        background: '#0a1525',
-        borderLeft: '1px solid #111e2d',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}>
-        <IntegrationDashboardPanel />
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #111e2d' }}>
-          <IntegrationEventLog />
+      {/* 데스크톱: 오른쪽 고정 패널 / 모바일: 오버레이 패널 */}
+      {(!isMobile || showPanel) && (
+        <div style={isMobile ? {
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: '75vw',
+          maxWidth: 280,
+          height: '100%',
+          zIndex: 20,
+          background: '#0a1525',
+          borderLeft: '1px solid #111e2d',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        } : {
+          width: 290,
+          flexShrink: 0,
+          background: '#0a1525',
+          borderLeft: '1px solid #111e2d',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          <IntegrationDashboardPanel />
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #111e2d' }}>
+            <IntegrationEventLog />
+          </div>
+          <WbsProgressPanel />
         </div>
-        <WbsProgressPanel />
-      </div>
+      )}
 
     </div>
   );
