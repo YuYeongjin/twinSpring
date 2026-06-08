@@ -15,6 +15,8 @@ import SafeDashboard from './view/safe/SafeDashboard';
 import SafeProjectList from './view/safe/SafeProjectList';
 import TestDashboard from './view/test/TestDashboard';
 import WbsDashboard from './view/wbs/WbsDashboard';
+import IntegrationDashboard from './view/integration/IntegrationDashboard';
+import IntegrationProjectList from './view/integration/IntegrationProjectList';
 import AgentWbsPopup from './component/AgentWbsPopup';
 import WbsProjectSelectModal from './component/WbsProjectSelectModal';
 import { CrackMonitorProvider } from './context/CrackMonitorContext';
@@ -106,6 +108,9 @@ function App() {
   // ── Safe projects ─────────────────────────────────────────────
   const [safeProjectList, setSafeProjectList] = useState([]);
   const [selectedSafeProject, setSelectedSafeProject] = useState(null);
+
+  // ── Integration (WBS 프로젝트가 앵커) ──────────────────────────
+  const [selectedIntegrationProject, setSelectedIntegrationProject] = useState(null);
 
   // ── Agent WBS 자동 수정 요청 ──────────────────────────────────
   // { eventType, title, detail, ts, targetProjectId? } — WbsDashboard로 전달되어 자동 수정을 실행한다.
@@ -601,6 +606,22 @@ function App() {
         />
       );
     }
+    if (viewComponent === 'integration-projects') {
+      return (
+        <IntegrationProjectList
+          setViceComponent={setViceComponent}
+          onProjectSelect={setSelectedIntegrationProject}
+        />
+      );
+    }
+    if (viewComponent === 'integration') {
+      return (
+        <IntegrationDashboard
+          selectedProject={selectedIntegrationProject}
+          onBack={() => setViceComponent('integration-projects')}
+        />
+      );
+    }
     if (viewComponent === 'bim') {
       // IFC 세션 캐시에서 현재 프로젝트의 실제 지오메트리 조회
       const currentIfcMeshes = selectedProject
@@ -655,7 +676,8 @@ function App() {
     );
   };
 
-  const isWbs = viewComponent === 'wbs';
+  const isWbs         = viewComponent === 'wbs';
+  const isIntegration = viewComponent === 'integration' || viewComponent === 'integration-projects';
 
   return (
     <CrackMonitorProvider>
@@ -665,7 +687,7 @@ function App() {
       <div className={
         canvasFullscreen
           ? "fixed inset-0 z-40 bg-space-900 text-gray-200 flex flex-col"
-          : isWbs
+          : (isWbs || isIntegration)
             ? "h-screen flex flex-col bg-space-900 text-gray-200 overflow-hidden"
             : "min-h-screen bg-space-900 text-gray-200"
       }>
@@ -677,17 +699,17 @@ function App() {
         <main className={
           canvasFullscreen
             ? "flex-1 min-h-0 flex flex-col overflow-hidden"
-            : isWbs
+            : (isWbs || isIntegration)
               ? "flex-1 min-h-0 flex flex-col overflow-hidden"
               : "w-full px-2 sm:px-4 py-4 sm:py-6 pb-4 sm:pb-6 overflow-x-hidden"
         }>
           {renderView()}
         </main>
 
-        {!canvasFullscreen && viewComponent !== 'wbs' && viewComponent !== 'bim' && <Footer />}
+        {!canvasFullscreen && viewComponent !== 'wbs' && viewComponent !== 'bim' && viewComponent !== 'integration' && viewComponent !== 'integration-projects' && <Footer />}
 
-        {/* 에이전트: 전체화면·배치모드·agent·wbs·bim 탭에서는 숨김 (bim은 BimAgentChat이 대체) */}
-        {!canvasFullscreen && !bimPlacementMode && viewComponent !== 'agent' && viewComponent !== 'wbs' && viewComponent !== 'bim' && (
+        {/* 에이전트: 전체화면·배치모드·agent·wbs·bim·integration 탭에서는 숨김 */}
+        {!canvasFullscreen && !bimPlacementMode && viewComponent !== 'agent' && viewComponent !== 'wbs' && viewComponent !== 'bim' && viewComponent !== 'integration' && viewComponent !== 'integration-projects' && (
           <FloatingAgent
             viewComponent={viewComponent}
             selectedProject={selectedProject}
