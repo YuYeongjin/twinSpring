@@ -191,6 +191,13 @@ export default function IntegrationProjectList({ setViceComponent, onProjectSele
   const [error, setError]       = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch]     = useState('');
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const loadProjects = async () => {
     setLoading(true);
@@ -227,19 +234,22 @@ export default function IntegrationProjectList({ setViceComponent, onProjectSele
   );
 
   return (
-    <div style={{ padding: '32px 24px', maxWidth: 1020, margin: '0 auto' }}>
+    <div style={{ padding: isMobile ? '16px 12px' : '32px 24px', maxWidth: 1020, margin: '0 auto' }}>
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}>
+      <div style={{
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'stretch' : 'flex-start',
+        justifyContent: 'space-between',
+        gap: isMobile ? 10 : 16,
+        marginBottom: 20,
+      }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 800, color: '#e2e8f0', marginBottom: 6 }}>
+          <h2 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: '#e2e8f0', marginBottom: 0 }}>
             {t('pageTitle')}
           </h2>
-          <p style={{ fontSize: 13, color: '#4b5563', lineHeight: 1.6 }}>
-            {t('subtitle')}<br />
-            {t('subtitle2')}
-          </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: isMobile ? 1 : 0 }}>
           <input
             type="text"
             value={search}
@@ -247,7 +257,9 @@ export default function IntegrationProjectList({ setViceComponent, onProjectSele
             placeholder={t('searchPlaceholder')}
             style={{
               background: '#1c2a3a', border: '1px solid #253347', color: '#e2e8f0',
-              borderRadius: 8, padding: '7px 12px', fontSize: 13, outline: 'none', width: 140,
+              borderRadius: 8, padding: '7px 12px', fontSize: 13, outline: 'none',
+              flex: isMobile ? 1 : 'none',
+              width: isMobile ? '100%' : 140,
             }}
           />
           <button onClick={() => setShowCreate(true)} style={{
