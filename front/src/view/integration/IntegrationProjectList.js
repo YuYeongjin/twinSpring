@@ -62,12 +62,6 @@ function CreateModal({ onClose, onCreate }) {
               ))}
             </select>
           </div>
-          <div style={{
-            fontSize: 11, color: '#4b5563', background: '#071323',
-            border: '1px solid #1e3a5f', borderRadius: 8, padding: '8px 12px', lineHeight: 1.6,
-          }}>
-            🏗 {t('bimAddLater')}
-          </div>
           <div>
             <label style={labelStyle}>{t('fieldDesc')}</label>
             <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }}

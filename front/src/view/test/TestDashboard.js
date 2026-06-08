@@ -757,10 +757,12 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                 borderRadius: '12px', padding: '14px', display: 'flex', flexDirection: 'column',
                 gap: '10px', overflowY: 'auto', fontSize: '12px',
               }}>
-                <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px' }}>
+                <div style={{ color: accentBlue, fontSize: '13px', fontWeight: 700, borderBottom: '1px solid #1e3a5f', paddingBottom: '8px', flexShrink: 0 }}>
                   🏗 BIM Project
                 </div>
 
+                {/* BIM 목록: 최대 50% 높이로 제한, 내부 스크롤 */}
+                <div style={{ maxHeight: '50%', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
                 {bimProjects.length === 0 ? (
                     <div style={{ color: '#3a4a5a', textAlign: 'center', padding: '20px 0', fontSize: '11px' }}>
                       No BIM Projects
@@ -788,6 +790,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                       );
                     })
                 )}
+                </div>{/* BIM 목록 스크롤 영역 끝 */}
 
                 {selectedProject && (
                     <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
@@ -809,7 +812,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                     border: `1px solid ${gpsConnected ? '#4ade8040' : '#253347'}`,
                     borderRadius: '8px', padding: '8px', marginBottom: '6px',
                   }}>
-                    <div style={{ display: 'flex', justifycontent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: secColor, fontSize: '10px' }}>{t('statusLabel')}</span>
                       <span style={{ color: gpsColor, fontWeight: 700, fontSize: '11px' }}>
                     {gpsConnected ? t('connected') : t('standby')}
@@ -817,11 +820,11 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                     </div>
                     {gpsConnected && (
                         <>
-                          <div style={{ display: 'flex', justifycontent: 'space-between', marginTop: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
                             <span style={{ color: secColor, fontSize: '10px' }}>{t('rxFreq')}</span>
                             <span style={{ color: accentGreen, fontFamily: 'monospace', fontSize: '10px' }}>{gpsHz} Hz</span>
                           </div>
-                          <div style={{ display: 'flex', justifycontent: 'space-between', marginTop: '2px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
                             <span style={{ color: secColor, fontSize: '10px' }}>{t('totalPackets')}</span>
                             <span style={{ color: '#e2e8f0', fontFamily: 'monospace', fontSize: '10px' }}>{gpsPacketCount}</span>
                           </div>
@@ -1017,7 +1020,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                     }}>
                       <div style={{ color: accentGreen, fontWeight: 700, marginBottom: '3px' }}>📡 GPS Live</div>
                       {lastGpsPacket.lat != null && (
-                          <div style={{ display: 'flex', justifycontent: 'space-between', gap: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                             <span>Lat / Lng</span>
                             <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>
                       {lastGpsPacket.lat.toFixed(5)}, {lastGpsPacket.lng?.toFixed(5)}
@@ -1025,7 +1028,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                           </div>
                       )}
                       {lastGpsPacket.heading != null && (
-                          <div style={{ display: 'flex', justifycontent: 'space-between', gap: '8px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
                             <span>Heading</span>
                             <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{lastGpsPacket.heading?.toFixed(1)}°</span>
                           </div>
@@ -1061,7 +1064,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                 <div style={{ background: '#111e2e', borderRadius: '8px', padding: '9px' }}>
                   <div style={{ color: secColor, fontSize: '10px', marginBottom: '6px' }}>Excavator Position (m)</div>
                   {[['X', state.positionX], ['Y', state.positionY], ['Z', state.positionZ]].map(([l, v]) => (
-                      <div key={l} style={{ display: 'flex', justifycontent: 'space-between', marginBottom: '3px' }}>
+                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                         <span style={{ color: secColor }}>{l}</span>
                         <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{Number(v).toFixed(1)}</span>
                       </div>
@@ -1077,7 +1080,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                     ['Arm',    state.armAngle,     '#34d399'],
                     ['Bucket', state.bucketAngle,  '#fb923c'],
                   ].map(([l, v, c]) => (
-                      <div key={l} style={{ display: 'flex', justifycontent: 'space-between', marginBottom: '3px' }}>
+                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                         <span style={{ color: secColor }}>{l}</span>
                         <span style={{ color: c, fontFamily: 'monospace', fontWeight: 600 }}>{Math.round(v)}°</span>
                       </div>
@@ -1275,7 +1278,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                 background: colliding ? (alertPulse ? 'rgba(127,29,29,0.55)' : 'rgba(90,15,15,0.45)') : '#0d1e10',
                 border: `1px solid ${colliding ? '#ef4444' : '#1a4a1a'}`,
                 borderRadius: '10px', padding: '10px 14px',
-                display: 'flex', alignItems: 'center', justifycontent: 'space-between',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 transition: 'all 0.35s',
               }}>
                 <div>
