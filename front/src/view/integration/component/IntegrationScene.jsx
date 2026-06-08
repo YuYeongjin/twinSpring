@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useMemo } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, memo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid, Html, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
@@ -157,6 +157,92 @@ function DangerZoneMarker({ zone }) {
   );
 }
 
+// ── 장비 모드 색 (정적 상수 — 렌더마다 새 객체 생성 방지) ────────
+const EQUIP_MODE_COLOR = { auto: '#22c55e', standby: '#f59e0b', gps: '#a78bfa' };
+
+// ── 작업자 메시 ─────────────────────────────────────────────────
+// statusKey가 바뀔 때만 리렌더 (다른 작업자 상태 변화 무시)
+const WorkerItem = memo(function WorkerItem({ worker, statusKey, statusLabel, workerMeshes }) {
+  const groupRef = useRef(null);
+
+  // 마운트 시 공유 meshes 맵에 등록, 언마운트 시 정리
+  useLayoutEffect(() => {
+    workerMeshes.current[worker.id] = groupRef.current;
+    if (groupRef.current)
+      groupRef.current.position.set(...(worker.initialPos || [0, 0, 0]));
+    return () => { workerMeshes.current[worker.id] = null; };
+  }, []); // eslint-disable-line
+
+  const color = STATUS_COLOR[statusKey] || STATUS_COLOR.normal;
+  return (
+    <group ref={groupRef}>
+      <mesh position={[0, 0.85, 0]}>
+        <capsuleGeometry args={[0.35, 1.0, 4, 8]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      <Html center distanceFactor={30} position={[0, 2.1, 0]}>
+        <div style={{
+          background: '#0d1b2acc', color,
+          padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 700,
+          border: `1px solid ${color}`, whiteSpace: 'nowrap', pointerEvents: 'none',
+        }}>
+          👷 {worker.name} · {statusLabel[statusKey] || ''}
+        </div>
+      </Html>
+    </group>
+  );
+});
+
+// ── 장비 메시 ────────────────────────────────────────────────────
+// 작업자 상태 변화와 완전히 독립 — isSelected·modeLabel 바뀔 때만 리렌더
+const EquipItem = memo(function EquipItem({ equip, isSelected, modeLabel, equipStateRef, equipMeshes }) {
+  const groupRef = useRef(null);
+
+  useLayoutEffect(() => {
+    equipMeshes.current[equip.id] = groupRef.current;
+    if (groupRef.current) {
+      const pos = equipStateRef.current[equip.id]?.pos || equip.initialPos || [0, 0, 0];
+      groupRef.current.position.set(...pos);
+    }
+    return () => { equipMeshes.current[equip.id] = null; };
+  }, []); // eslint-disable-line
+
+  const [bw, bh, bd] = equip.size || [2.8, 2.5, 3.5];
+  const labelY = bh + 1.0;
+  const color  = EQUIP_COLOR[equip.type] || '#888888';
+  return (
+    <group ref={groupRef}>
+      <mesh position={[0, bh / 2, 0]} castShadow>
+        <boxGeometry args={[bw, bh, bd]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={isSelected ? '#ffffff' : '#000000'}
+          emissiveIntensity={isSelected ? 0.15 : 0}
+        />
+      </mesh>
+      {isSelected && (
+        <mesh position={[0, bh / 2, 0]}>
+          <boxGeometry args={[bw + 0.15, bh + 0.15, bd + 0.15]} />
+          <meshStandardMaterial color="#60a5fa" transparent opacity={0.18} wireframe />
+        </mesh>
+      )}
+      <Html center distanceFactor={30} position={[0, labelY, 0]}>
+        <div style={{
+          background: '#0d1b2acc', color,
+          padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 700,
+          border: `1px solid ${isSelected ? '#60a5fa' : color}`,
+          whiteSpace: 'nowrap', pointerEvents: 'none',
+        }}>
+          {EQUIP_ICON[equip.type] || '🔧'} {equip.name}
+          <span style={{ color: EQUIP_MODE_COLOR[equip.mode] || '#6b7280', marginLeft: 4 }}>
+            [{modeLabel[equip.mode] || equip.mode}]
+          </span>
+        </div>
+      </Html>
+    </group>
+  );
+});
+
 // ── 시뮬레이션 관리자 ─────────────────────────────────────────────
 function SimulationManager({ running }) {
   const t = useT('integrationProject');
@@ -166,28 +252,25 @@ function SimulationManager({ running }) {
   const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
-  // ID 기반 위치/경로 상태 (추가/제거 동기화)
-  const equipStateRef = useRef({}); // { [id]: { pos, routeIdx, t } }
+  const equipStateRef = useRef({});
+  const workerStateRef = useRef({});
+  const equipMeshes   = useRef({});
+  const workerMeshes  = useRef({});
+  const throttleMap   = useRef({});
+  const wbsTickRef    = useRef(0);
 
-  // 추가된 장비 초기화, 제거된 장비 정리
+  // 장비 추가/제거 동기화
   useEffect(() => {
     const existingIds = new Set(Object.keys(equipStateRef.current));
     const storeIds    = new Set(initEquip.map(e => e.id));
-
-    // 새 장비 추가
     initEquip.forEach(e => {
-      if (!existingIds.has(e.id)) {
+      if (!existingIds.has(e.id))
         equipStateRef.current[e.id] = { pos: [...(e.initialPos || [0, 0, 0])], routeIdx: 0, t: 0 };
-      }
     });
-    // 삭제된 장비 제거
-    existingIds.forEach(id => {
-      if (!storeIds.has(id)) delete equipStateRef.current[id];
-    });
+    existingIds.forEach(id => { if (!storeIds.has(id)) delete equipStateRef.current[id]; });
   }, [initEquip]);
 
-  // 작업자 내부 위치 상태
-  const workerStateRef = useRef({});
+  // 작업자 추가/제거 동기화
   useEffect(() => {
     const existingIds = new Set(Object.keys(workerStateRef.current));
     const storeIds    = new Set(initWorkers.map(w => w.id));
@@ -198,87 +281,108 @@ function SimulationManager({ running }) {
     existingIds.forEach(id => { if (!storeIds.has(id)) delete workerStateRef.current[id]; });
   }, [initWorkers]);
 
-  const zonesRef    = useRef(dangerZones);
+  const zonesRef  = useRef(dangerZones);
   useEffect(() => { zonesRef.current = dangerZones; }, [dangerZones]);
-
-  const equipRef    = useRef(initEquip);
+  const equipRef  = useRef(initEquip);
   useEffect(() => { equipRef.current = initEquip; }, [initEquip]);
-
-  const workerRef   = useRef(initWorkers);
+  const workerRef = useRef(initWorkers);
   useEffect(() => { workerRef.current = initWorkers; }, [initWorkers]);
 
-  const equipMeshes  = useRef({});  // { [id]: THREE.Group ref }
-  const workerMeshes = useRef({});  // { [id]: THREE.Group ref }
-  const throttleMap  = useRef({});
-  const wbsTickRef   = useRef(0);
-  const frameCounter = useRef(0);
+  // ── stale-closure 방지: 작업자 상태를 ref로 관리 ────────────────
+  // useState 대신 ref + tick 패턴 → useFrame 안에서 항상 최신 값 읽기
+  const workerStatusesRef = useRef(
+    Object.fromEntries(initWorkers.map(w => [w.id, w.gear ? 'normal' : 'no_gear']))
+  );
+  const [statusTick, setStatusTick] = useState(0);
 
-  const [workerStatuses, setWorkerStatuses] = useState(() => {
-    const s = {};
-    initWorkers.forEach(w => { s[w.id] = w.gear ? 'normal' : 'no_gear'; });
-    return s;
-  });
-
-  // 작업자 추가/제거 시 statuses 동기화
+  // 작업자 추가/제거 시 ref 동기화
   useEffect(() => {
-    setWorkerStatuses(prev => {
-      const next = {};
-      initWorkers.forEach(w => { next[w.id] = prev[w.id] || (w.gear ? 'normal' : 'no_gear'); });
-      return next;
+    const next = {};
+    initWorkers.forEach(w => {
+      next[w.id] = workerStatusesRef.current[w.id] || (w.gear ? 'normal' : 'no_gear');
     });
+    workerStatusesRef.current = next;
+    setStatusTick(n => n + 1);
   }, [initWorkers]);
 
   useFrame((_, delta) => {
     if (!running) return;
-    frameCounter.current++;
 
     const equips  = equipRef.current;
     const workers = workerRef.current;
     const zones   = zonesRef.current;
 
-    // 장비 이동 (mode 기반)
+    // 장비 이동
     equips.forEach(e => {
       const st = equipStateRef.current[e.id];
       if (!st) return;
-
-      if (e.mode === 'standby') {
-        // 대기: 초기 위치 유지
-      } else if (e.mode === 'gps' && e.gpsPos) {
-        // GPS: 스토어의 gpsPos로 이동
+      if (e.mode === 'gps' && e.gpsPos) {
         st.pos = [e.gpsPos[0], e.gpsPos[1] || 0, e.gpsPos[2]];
-        if (equipMeshes.current[e.id]) equipMeshes.current[e.id].position.set(...st.pos);
+        equipMeshes.current[e.id]?.position.set(...st.pos);
       } else if (e.mode === 'auto' && e.speed > 0 && e.route?.length >= 2) {
-        // 자동: 경로 순환
-        const fi = st.routeIdx % e.route.length;
-        const ti = (st.routeIdx + 1) % e.route.length;
-        const fr = e.route[fi], to = e.route[ti];
-        const dx = to[0] - fr[0], dz = to[2] - fr[2];
-        const len = Math.sqrt(dx * dx + dz * dz) || 0.001;
+        const n = e.route.length;
+        // 현재 구간 길이 계산
+        let fi = st.routeIdx % n;
+        let ti = (fi + 1) % n;
+        let fr = e.route[fi], to = e.route[ti];
+        let dx = to[0] - fr[0], dz = to[2] - fr[2];
+        let len = Math.sqrt(dx * dx + dz * dz);
+
+        // 길이가 0인 구간(중복 포인트) 은 건너뜀
+        if (len < 0.01) {
+          st.routeIdx = ti;
+          fi = ti; ti = (ti + 1) % n;
+          fr = e.route[fi]; to = e.route[ti];
+          dx = to[0] - fr[0]; dz = to[2] - fr[2];
+          len = Math.sqrt(dx * dx + dz * dz) || 0.001;
+        }
+
         st.t += (e.speed * delta) / len;
-        if (st.t >= 1) { st.t -= 1; st.routeIdx = ti; }
-        const f2 = e.route[st.routeIdx % e.route.length];
-        const t2 = e.route[(st.routeIdx + 1) % e.route.length];
-        st.pos = [f2[0] + (t2[0] - f2[0]) * st.t, f2[1] || 0, f2[2] + (t2[2] - f2[2]) * st.t];
-        if (equipMeshes.current[e.id]) equipMeshes.current[e.id].position.set(...st.pos);
+
+        // t >= 1 을 while 로 처리 — 한 프레임에 여러 구간 통과해도 안전
+        while (st.t >= 1) {
+          st.t -= 1;
+          st.routeIdx = (st.routeIdx + 1) % n;
+          // 다음 구간도 0-길이면 건너뜀
+          const nfi = st.routeIdx, nti = (nfi + 1) % n;
+          const nlen = Math.hypot(
+            e.route[nti][0] - e.route[nfi][0],
+            e.route[nti][2] - e.route[nfi][2]
+          );
+          if (nlen < 0.01) { st.routeIdx = nti; st.t = 0; break; }
+        }
+
+        const f2 = e.route[st.routeIdx % n];
+        const t2 = e.route[(st.routeIdx + 1) % n];
+        st.pos = [
+          f2[0] + (t2[0] - f2[0]) * st.t,
+          f2[1] || 0,
+          f2[2] + (t2[2] - f2[2]) * st.t,
+        ];
+        equipMeshes.current[e.id]?.position.set(...st.pos);
       }
     });
 
-    // 작업자 랜덤워크 (~30프레임마다)
-    if (frameCounter.current % 30 === 0) {
-      const STEP = 0.5;
-      workers.forEach(w => {
-        const ws = workerStateRef.current[w.id];
-        if (!ws) return;
-        ws.pos = [
-          Math.max(-28, Math.min(28, ws.pos[0] + (Math.random() - 0.5) * STEP)),
-          0,
-          Math.max(-28, Math.min(28, ws.pos[2] + (Math.random() - 0.5) * STEP)),
-        ];
-        if (workerMeshes.current[w.id]) workerMeshes.current[w.id].position.set(...ws.pos);
-      });
-    }
+    // 작업자 랜덤워크 — 매 프레임 delta 기반으로 부드럽게 이동
+    // 방향은 ~2초마다 랜덤 변경 (순간이동 없음)
+    workers.forEach(w => {
+      const ws = workerStateRef.current[w.id];
+      if (!ws) return;
+      ws.dirTimer = (ws.dirTimer || 0) + delta;
+      if (!ws.dir || ws.dirTimer > 2.0) {
+        const angle = Math.random() * Math.PI * 2;
+        ws.dir = [Math.cos(angle), Math.sin(angle)];
+        ws.dirTimer = 0;
+      }
+      ws.pos = [
+        Math.max(-28, Math.min(28, ws.pos[0] + ws.dir[0] * 1.2 * delta)),
+        0,
+        Math.max(-28, Math.min(28, ws.pos[2] + ws.dir[1] * 1.2 * delta)),
+      ];
+      workerMeshes.current[w.id]?.position.set(...ws.pos);
+    });
 
-    // 충돌·구역 감지
+    // 충돌·구역 감지 — workerStatusesRef 로 비교 (stale closure 없음)
     let changed = false;
     const newStatuses = {};
     workers.forEach(w => {
@@ -296,7 +400,6 @@ function SimulationManager({ running }) {
           break;
         }
       }
-
       if (st === 'normal' || st === 'no_gear') {
         for (const e of equips) {
           const es = equipStateRef.current[e.id];
@@ -312,7 +415,6 @@ function SimulationManager({ running }) {
           }
         }
       }
-
       if (!w.gear) {
         throttledCall(throttleMap.current, `gear_${w.id}`, 12000, () => {
           dispatch({ type: 'LOG_EVENT', event: { type: 'no_gear', severity: 'warning',
@@ -321,97 +423,57 @@ function SimulationManager({ running }) {
       }
 
       newStatuses[w.id] = st;
-      if (st !== workerStatuses[w.id]) changed = true;
+      if (st !== workerStatusesRef.current[w.id]) changed = true;  // ref 비교 → stale 없음
     });
 
-    if (changed) setWorkerStatuses(prev => ({ ...prev, ...newStatuses }));
+    if (changed) {
+      Object.assign(workerStatusesRef.current, newStatuses);
+      setStatusTick(n => n + 1);  // 최소한의 리렌더만 유발
+    }
 
     // WBS 공정률 자동 증가 (60초마다)
     wbsTickRef.current += delta;
     if (wbsTickRef.current > 60) {
       wbsTickRef.current = 0;
       const active = equips.filter(e => e.mode === 'auto' && e.speed > 0).length;
-      if (active > 0) {
+      if (active > 0)
         dispatch({ type: 'UPDATE_TASK_PROGRESS', delta: 0.05 * active, taskIndex: Math.floor(Math.random() * 4) });
-      }
     }
   });
 
-  const modeColor = { auto: '#22c55e', standby: '#f59e0b', gps: '#a78bfa' };
-  const modeLabel = { auto: t('modeAuto'), standby: t('modeStandby'), gps: 'GPS' };
-  const statusLabel = {
+  // useMemo → 언어 바뀔 때만 새 객체, 매 렌더 재생성 방지
+  const modeLabel = useMemo(
+    () => ({ auto: t('modeAuto'), standby: t('modeStandby'), gps: 'GPS' }),
+    [t]
+  );
+  const statusLabel = useMemo(() => ({
     normal:         t('legendNormal'),
     danger_zone:    t('legendHazard'),
     collision_risk: t('legendCollision'),
     no_gear:        t('legendNoGear'),
-  };
+  }), [t]);
 
   return (
     <>
-      {initWorkers.map(w => {
-        const ws = workerStateRef.current[w.id];
-        const status = workerStatuses[w.id] || 'normal';
-        if (!ws) return null;
-        return (
-          <group key={w.id} ref={el => { workerMeshes.current[w.id] = el; }} position={ws.pos}>
-            <mesh position={[0, 0.85, 0]}>
-              <capsuleGeometry args={[0.35, 1.0, 4, 8]} />
-              <meshStandardMaterial color={STATUS_COLOR[status] || STATUS_COLOR.normal} />
-            </mesh>
-            <Html center distanceFactor={30} position={[0, 2.1, 0]}>
-              <div style={{
-                background: '#0d1b2acc',
-                color: STATUS_COLOR[status] || STATUS_COLOR.normal,
-                padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 700,
-                border: `1px solid ${STATUS_COLOR[status] || STATUS_COLOR.normal}`,
-                whiteSpace: 'nowrap', pointerEvents: 'none',
-              }}>
-                👷 {w.name} · {statusLabel[status] || ''}
-              </div>
-            </Html>
-          </group>
-        );
-      })}
-
-      {initEquip.map(e => {
-        const es = equipStateRef.current[e.id];
-        if (!es) return null;
-        const [bw, bh, bd] = e.size || [2.8, 2.5, 3.5];
-        const labelY   = bh + 1.0;
-        const isSelected = e.id === selectedEquipId;
-        return (
-          <group key={e.id} ref={el => { equipMeshes.current[e.id] = el; }} position={es.pos}>
-            <mesh position={[0, bh / 2, 0]} castShadow>
-              <boxGeometry args={[bw, bh, bd]} />
-              <meshStandardMaterial
-                color={EQUIP_COLOR[e.type] || '#888888'}
-                emissive={isSelected ? '#ffffff' : '#000000'}
-                emissiveIntensity={isSelected ? 0.15 : 0}
-              />
-            </mesh>
-            {isSelected && (
-              <mesh position={[0, bh / 2, 0]}>
-                <boxGeometry args={[bw + 0.15, bh + 0.15, bd + 0.15]} />
-                <meshStandardMaterial color="#60a5fa" transparent opacity={0.18} wireframe />
-              </mesh>
-            )}
-            <Html center distanceFactor={30} position={[0, labelY, 0]}>
-              <div style={{
-                background: '#0d1b2acc',
-                color: EQUIP_COLOR[e.type] || '#888888',
-                padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 700,
-                border: `1px solid ${isSelected ? '#60a5fa' : (EQUIP_COLOR[e.type] || '#888888')}`,
-                whiteSpace: 'nowrap', pointerEvents: 'none',
-              }}>
-                {EQUIP_ICON[e.type] || '🔧'} {e.name}
-                <span style={{ color: modeColor[e.mode] || '#6b7280', marginLeft: 4 }}>
-                  [{modeLabel[e.mode] || e.mode}]
-                </span>
-              </div>
-            </Html>
-          </group>
-        );
-      })}
+      {initWorkers.map(w => (
+        <WorkerItem
+          key={w.id}
+          worker={w}
+          statusKey={workerStatusesRef.current[w.id] || 'normal'}
+          statusLabel={statusLabel}
+          workerMeshes={workerMeshes}
+        />
+      ))}
+      {initEquip.map(e => (
+        <EquipItem
+          key={e.id}
+          equip={e}
+          isSelected={e.id === selectedEquipId}
+          modeLabel={modeLabel}
+          equipStateRef={equipStateRef}
+          equipMeshes={equipMeshes}
+        />
+      ))}
     </>
   );
 }
@@ -426,14 +488,6 @@ function SceneInner() {
       <directionalLight position={[30, 40, 20]} intensity={1.1} castShadow
         shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
       <directionalLight position={[-15, 10, -10]} intensity={0.3} />
-
-      {/* 드론 지형이 없을 때만 기본 지면 표시 */}
-      {!terrain && (
-        <mesh  position={[0, -0.02, 0]} receiveShadow>
-          <planeGeometry args={[80, 80]} />
-          <meshStandardMaterial color="#0a1f0f" />
-        </mesh>
-      )}
 
       {/* 드론 지형 텍스처 */}
       <TerrainLayer />
