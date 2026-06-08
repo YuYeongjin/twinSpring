@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
 import AddStructureModal, { resizeImageDataUrl } from './AddStructureModal';
+import EquipmentOptionsPanel from './EquipmentOptionsPanel';
 import { useT } from '../../../i18n/LanguageContext';
 
 const EQUIP_ICON = { excavator: '🚜', dump: '🚛', crane: '🏗' };
@@ -43,7 +44,7 @@ export default function ControlSidebar() {
   const {
     workers, equipment, dangerZones, simulationRunning,
     referencePoint, bimElements, isLoading, projectMeta,
-    structures, terrain,
+    structures, terrain, selectedEquipId,
   } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
@@ -128,8 +129,28 @@ export default function ControlSidebar() {
       <Section title={t('sectionDroneTerrain')}>
         {terrain ? (
           <>
-            <div style={{ fontSize: 9, color: '#22c55e', marginBottom: 6 }}>
-              {t('terrainSet', { w: terrain.width, h: terrain.height })}
+            {/* 가로/세로 크기 조절 */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 6 }}>
+              {[['W', 'width'], ['H', 'height']].map(([label, key]) => (
+                <div key={key}>
+                  <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 2 }}>{label} (m)</div>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={terrain[key]}
+                    onChange={e => {
+                      const val = parseFloat(e.target.value) || 1;
+                      dispatch({ type: 'SET_TERRAIN', terrain: { ...terrain, [key]: val } });
+                    }}
+                    style={{
+                      width: '100%', background: '#0d1b2a', border: '1px solid #1e3a5f',
+                      borderRadius: 4, color: '#d1d5db', fontSize: 11,
+                      padding: '3px 5px', boxSizing: 'border-box', outline: 'none',
+                    }}
+                  />
+                </div>
+              ))}
             </div>
             <div style={{ display: 'flex', gap: 5 }}>
               <Btn small onClick={() => terrainInputRef.current?.click()} color="#0c2233" textColor="#38bdf8">
@@ -228,17 +249,61 @@ export default function ControlSidebar() {
 
       {/* 장비 */}
       <Section title={t('sectionEquipment', { n: equipment.length })}>
-        {equipment.map(e => (
-          <Row key={e.id}>
-            <span style={{ fontSize: 11 }}>{EQUIP_ICON[e.type] || '🔧'}</span>
-            <span style={{ flex: 1, fontSize: 11, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {e.name}
-            </span>
-            <span style={{ fontSize: 9, color: e.speed > 0 ? '#22c55e' : '#f59e0b', fontWeight: 700, flexShrink: 0 }}>
-              {e.speed > 0 ? t('equipRunning') : t('equipIdle')}
-            </span>
-          </Row>
-        ))}
+        {/* 선택된 장비 옵션 패널 */}
+        <EquipmentOptionsPanel />
+
+        {equipment.map(e => {
+          const isSelected = e.id === selectedEquipId;
+          const modeColor  = e.mode === 'gps' ? '#a78bfa' : e.mode === 'standby' ? '#f59e0b' : '#22c55e';
+          const modeLabel  = e.mode === 'gps' ? 'GPS' : e.mode === 'standby' ? t('equipIdle') : t('equipRunning');
+          return (
+            <div
+              key={e.id}
+              onClick={() => dispatch({ type: 'SELECT_EQUIPMENT', id: isSelected ? null : e.id })}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5,
+                padding: '3px 5px', borderRadius: 4, cursor: 'pointer',
+                background: isSelected ? '#0c2040' : 'transparent',
+                border: `1px solid ${isSelected ? '#1e3a5f' : 'transparent'}`,
+              }}
+            >
+              <span style={{ fontSize: 11 }}>{EQUIP_ICON[e.type] || '🔧'}</span>
+              <span style={{ flex: 1, fontSize: 11, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {e.name}
+              </span>
+              <span style={{ fontSize: 9, color: modeColor, fontWeight: 700, flexShrink: 0 }}>
+                {modeLabel}
+              </span>
+              <button
+                onClick={ev => { ev.stopPropagation(); dispatch({ type: 'REMOVE_EQUIPMENT', id: e.id }); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
+              >✕</button>
+            </div>
+          );
+        })}
+        <Btn small onClick={() => {
+          const types = ['excavator', 'dump', 'crane'];
+          const type  = types[equipment.length % types.length];
+          const icons = { excavator: '굴착기', dump: '덤프트럭', crane: '크레인' };
+          const defSizes = { excavator: [2.8,2.5,3.5], dump: [2.8,2.5,3.5], crane: [1.5,9.0,1.5] };
+          dispatch({
+            type: 'ADD_EQUIPMENT',
+            equipment: {
+              id:          `eq_${Date.now()}`,
+              type,
+              name:        `${icons[type]}-${equipment.length + 1}`,
+              initialPos:  [(Math.random()-0.5)*20, 0, (Math.random()-0.5)*20],
+              route:       [],
+              speed:       1.0,
+              mode:        'standby',
+              size:        defSizes[type],
+              gpsDeviceId: null,
+              gpsPos:      null,
+            },
+          });
+        }}>
+          {t('addEquipment') || '+ 장비 추가'}
+        </Btn>
       </Section>
 
       {/* 위험구역 */}

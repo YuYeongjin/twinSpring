@@ -1,4 +1,6 @@
-import { useEffect }                        from 'react';
+import { useEffect, useRef }                from 'react';
+import SockJS                              from 'sockjs-client';
+import { Client }                          from '@stomp/stompjs';
 import AxiosCustom                          from '../../axios/AxiosCustom';
 import { IntegrationProvider,
          useIntegration,
@@ -9,6 +11,54 @@ import IntegrationEventLog             from './component/IntegrationEventLog';
 import WbsProgressPanel                from './component/WbsProgressPanel';
 import ControlSidebar                  from './component/ControlSidebar';
 import { useT }                        from '../../i18n/LanguageContext';
+
+// ── GPS WebSocket 구독 ──────────────────────────────────────
+function GpsLoader() {
+  const { equipment, referencePoint } = useIntegration();
+  const dispatch = useIntegrationDispatch();
+  const stompRef = useRef(null);
+
+  const hasGps = equipment.some(e => e.mode === 'gps' && e.gpsDeviceId);
+
+  useEffect(() => {
+    if (!hasGps) return;
+
+    function buildWsUrl() {
+      if (process.env.REACT_APP_API_URL)
+        return `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/ws/sensor`;
+      if (process.env.NODE_ENV === 'development')
+        return `${window.location.protocol}//${window.location.hostname}:8080/ws/sensor`;
+      return `${window.location.origin}/ws/sensor`;
+    }
+
+    const client = new Client({
+      webSocketFactory: () => new SockJS(buildWsUrl()),
+      reconnectDelay: 5000,
+      onConnect: () => {
+        client.subscribe('/topic/excavator', (msg) => {
+          try {
+            const data = JSON.parse(msg.body);
+            if (data.lat == null || data.lng == null) return;
+            const refLat = referencePoint.lat;
+            const refLng = referencePoint.lng;
+            const x = (data.lng - refLng) * 111320 * Math.cos(refLat * Math.PI / 180);
+            const z = -(data.lat - refLat) * 110540;
+            const pos = [x, 0, z];
+            // gpsDeviceId === 'excavator' 인 장비에 위치 적용
+            equipment
+              .filter(e => e.mode === 'gps' && e.gpsDeviceId === 'excavator')
+              .forEach(e => dispatch({ type: 'SET_EQUIP_GPS_POS', id: e.id, pos }));
+          } catch { /* parse 실패 무시 */ }
+        });
+      },
+    });
+    client.activate();
+    stompRef.current = client;
+    return () => { client.deactivate(); };
+  }, [hasGps]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
 
 // ── 실제 API 데이터를 로드하는 내부 컴포넌트 ───────────────
 function DataLoader({ selectedProject }) {
@@ -155,6 +205,7 @@ export default function IntegrationDashboard({ selectedProject, onBack }) {
     <IntegrationProvider projectId={selectedProject?.projectId}>
       <DataLoader selectedProject={selectedProject} />
       <StructureLoader />
+      <GpsLoader />
       <DashboardLayout selectedProject={selectedProject} />
     </IntegrationProvider>
   );
