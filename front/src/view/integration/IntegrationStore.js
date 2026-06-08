@@ -15,9 +15,9 @@ const DEFAULT_WORKERS = [
   { id: 'w3', name: '작업자 C', initialPos: [10, 0, -5], gear: false },
 ];
 const DEFAULT_EQUIPMENT = [
-  { id: 'e1', type: 'excavator', name: '굴착기-1', initialPos: [0,0,0],   route: [[0,0,0],[10,0,0],[10,0,10],[0,0,10],[0,0,0]], speed: 1.5 },
-  { id: 'e2', type: 'dump',      name: '덤프트럭-1', initialPos: [-8,0,-8], route: [[-8,0,-8],[8,0,-8],[8,0,-2],[-8,0,-2],[-8,0,-8]], speed: 2.5 },
-  { id: 'e3', type: 'crane',     name: '크레인-1',  initialPos: [15,0,5],  route: [[15,0,5]], speed: 0 },
+  { id: 'e1', type: 'excavator', name: '굴착기-1',  initialPos: [0,0,0],   route: [[0,0,0],[10,0,0],[10,0,10],[0,0,10],[0,0,0]], speed: 1.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null },
+  { id: 'e2', type: 'dump',      name: '덤프트럭-1', initialPos: [-8,0,-8], route: [[-8,0,-8],[8,0,-8],[8,0,-2],[-8,0,-2],[-8,0,-8]], speed: 2.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null },
+  { id: 'e3', type: 'crane',     name: '크레인-1',   initialPos: [15,0,5],  route: [[15,0,5]], speed: 0, mode: 'standby', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null },
 ];
 const DEFAULT_ZONES = [
   { id: 'z1', name: '굴착 위험구역', center: [5,  2, 5], halfSize: [4, 4, 4], type: 'excavation', active: true },
@@ -42,6 +42,7 @@ function makeInitial() {
     isLoading:         false,
     simulationRunning: true,
     referencePoint:    { lat: 37.5665, lng: 126.9780 },
+    selectedEquipId:   null,
   };
 }
 
@@ -123,7 +124,23 @@ function reducer(state, action) {
     case 'ADD_EQUIPMENT':
       return { ...state, equipment: [...state.equipment, action.equipment] };
     case 'REMOVE_EQUIPMENT':
-      return { ...state, equipment: state.equipment.filter(e => e.id !== action.id) };
+      return {
+        ...state,
+        equipment: state.equipment.filter(e => e.id !== action.id),
+        selectedEquipId: state.selectedEquipId === action.id ? null : state.selectedEquipId,
+      };
+    case 'SELECT_EQUIPMENT':
+      return { ...state, selectedEquipId: action.id };
+    case 'UPDATE_EQUIPMENT':
+      return {
+        ...state,
+        equipment: state.equipment.map(e => e.id === action.id ? { ...e, ...action.updates } : e),
+      };
+    case 'SET_EQUIP_GPS_POS':
+      return {
+        ...state,
+        equipment: state.equipment.map(e => e.id === action.id ? { ...e, gpsPos: action.pos } : e),
+      };
 
     // ── 위험구역 ─────────────────────────────────────────────────
     case 'ADD_ZONE':
