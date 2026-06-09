@@ -42,7 +42,10 @@ function makeInitial() {
     isLoading:         false,
     simulationRunning: true,
     referencePoint:    { lat: 37.5665, lng: 126.9780 },
+    surveyOrigin:      null,   // { label, x, y, z } — 측량 기준점 (scene 원점의 실좌표)
     selectedEquipId:   null,
+    selectedWorkerId:  null,
+    selectedZoneId:    null,
   };
 }
 
@@ -89,11 +92,12 @@ function reducer(state, action) {
     case 'LOAD_SIM_CONFIG':
       return {
         ...state,
-        workers:     action.config.workers     || state.workers,
-        equipment:   action.config.equipment   || state.equipment,
-        dangerZones: action.config.dangerZones || state.dangerZones,
-        structures:  deserializeStructures(action.config.structures),
-        terrain:     action.config.terrain !== undefined ? action.config.terrain : state.terrain,
+        workers:      action.config.workers     || state.workers,
+        equipment:    action.config.equipment   || state.equipment,
+        dangerZones:  action.config.dangerZones || state.dangerZones,
+        structures:   deserializeStructures(action.config.structures),
+        terrain:      action.config.terrain !== undefined ? action.config.terrain : state.terrain,
+        surveyOrigin: action.config.surveyOrigin !== undefined ? action.config.surveyOrigin : state.surveyOrigin,
       };
 
     case 'LOG_EVENT':
@@ -114,11 +118,32 @@ function reducer(state, action) {
       return { ...state, wbsTasks: updated };
     }
 
+    case 'SET_TASK_PROGRESS': {
+      // 절댓값으로 진도를 설정 (실시간 날짜 계산 결과 반영)
+      const updated = state.wbsTasks.map(t =>
+        t.taskId === action.taskId
+          ? { ...t, progress: Math.min(100, Math.max(0, action.progress)) }
+          : t
+      );
+      return { ...state, wbsTasks: updated };
+    }
+
     // ── 작업자 ──────────────────────────────────────────────────
     case 'ADD_WORKER':
       return { ...state, workers: [...state.workers, action.worker] };
     case 'REMOVE_WORKER':
-      return { ...state, workers: state.workers.filter(w => w.id !== action.id) };
+      return {
+        ...state,
+        workers: state.workers.filter(w => w.id !== action.id),
+        selectedWorkerId: state.selectedWorkerId === action.id ? null : state.selectedWorkerId,
+      };
+    case 'SELECT_WORKER':
+      return { ...state, selectedWorkerId: action.id };
+    case 'UPDATE_WORKER':
+      return {
+        ...state,
+        workers: state.workers.map(w => w.id === action.id ? { ...w, ...action.updates } : w),
+      };
 
     // ── 장비 ────────────────────────────────────────────────────
     case 'ADD_EQUIPMENT':
@@ -148,7 +173,18 @@ function reducer(state, action) {
     case 'TOGGLE_ZONE':
       return { ...state, dangerZones: state.dangerZones.map(z => z.id === action.id ? { ...z, active: !z.active } : z) };
     case 'REMOVE_ZONE':
-      return { ...state, dangerZones: state.dangerZones.filter(z => z.id !== action.id) };
+      return {
+        ...state,
+        dangerZones: state.dangerZones.filter(z => z.id !== action.id),
+        selectedZoneId: state.selectedZoneId === action.id ? null : state.selectedZoneId,
+      };
+    case 'SELECT_ZONE':
+      return { ...state, selectedZoneId: action.id };
+    case 'UPDATE_ZONE':
+      return {
+        ...state,
+        dangerZones: state.dangerZones.map(z => z.id === action.id ? { ...z, ...action.updates } : z),
+      };
 
     // ── 구조물 ───────────────────────────────────────────────────
     case 'ADD_STRUCTURE':
@@ -182,6 +218,10 @@ function reducer(state, action) {
 
     case 'CLEAR_TERRAIN':
       return { ...state, terrain: null };
+
+    // ── 측량 기준점 ──────────────────────────────────────────────
+    case 'SET_SURVEY_ORIGIN':
+      return { ...state, surveyOrigin: action.origin }; // null이면 해제
 
     // ── 시뮬레이션 ───────────────────────────────────────────────
     case 'TOGGLE_SIM':
@@ -235,17 +275,18 @@ export function IntegrationProvider({ projectId, children }) {
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const simConfig = JSON.stringify({
-        workers:     state.workers,
-        equipment:   state.equipment,
-        dangerZones: state.dangerZones,
-        structures:  serializeStructures(state.structures),
-        terrain:     state.terrain,
+        workers:      state.workers,
+        equipment:    state.equipment,
+        dangerZones:  state.dangerZones,
+        structures:   serializeStructures(state.structures),
+        terrain:      state.terrain,
+        surveyOrigin: state.surveyOrigin,
       });
       AxiosCustom.put(`/api/integration/project/${projectId}/sim-config`, { simConfig })
         .catch(() => {});
     }, 1500);
     return () => clearTimeout(saveTimer.current);
-  }, [projectId, state.workers, state.equipment, state.dangerZones, state.structures, state.terrain]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, state.workers, state.equipment, state.dangerZones, state.structures, state.terrain, state.surveyOrigin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <IntegrationCtx.Provider value={state}>

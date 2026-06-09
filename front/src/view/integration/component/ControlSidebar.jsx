@@ -1,7 +1,9 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
 import AddStructureModal, { resizeImageDataUrl } from './AddStructureModal';
 import EquipmentOptionsPanel from './EquipmentOptionsPanel';
+import WorkerOptionsPanel from './WorkerOptionsPanel';
+import ZoneOptionsPanel from './ZoneOptionsPanel';
 import { useT } from '../../../i18n/LanguageContext';
 
 const EQUIP_ICON = { excavator: '🚜', dump: '🚛', crane: '🏗' };
@@ -44,13 +46,28 @@ export default function ControlSidebar() {
   const {
     workers, equipment, dangerZones, simulationRunning,
     referencePoint, bimElements, isLoading, projectMeta,
-    structures, terrain, selectedEquipId,
+    structures, terrain, selectedEquipId, selectedWorkerId, selectedZoneId,
+    surveyOrigin,
   } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   const [showAddStructure, setShowAddStructure] = useState(false);
   const [expandedStructId, setExpandedStructId] = useState(null);
   const terrainInputRef = useRef(null);
+
+  // 측량 기준점 폼
+  const [surveyForm, setSurveyForm] = useState({ label: '', x: '0', y: '0', z: '0' });
+  const [surveyApplied, setSurveyApplied] = useState(false);
+  useEffect(() => {
+    if (surveyOrigin) {
+      setSurveyForm({
+        label: surveyOrigin.label || '',
+        x: surveyOrigin.x.toString(),
+        y: surveyOrigin.y.toString(),
+        z: surveyOrigin.z.toString(),
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const letters = 'ABCDEFGHIJKLMN';
 
@@ -271,23 +288,137 @@ export default function ControlSidebar() {
         </div>
       </Section>
 
+      {/* 측량 기준점 */}
+      <Section title="측량 기준점">
+        {surveyOrigin && (
+          <div style={{
+            background: '#12110a', border: '1px solid #facc1555', borderRadius: 5,
+            padding: '5px 8px', marginBottom: 8, fontSize: 9,
+          }}>
+            <div style={{ color: '#facc15', fontWeight: 700, marginBottom: 2 }}>
+              📍 {surveyOrigin.label || '기준점'} 적용 중
+            </div>
+            <div style={{ color: '#a09060' }}>
+              X:{surveyOrigin.x.toFixed(3)} Y:{surveyOrigin.y.toFixed(3)} Z:{surveyOrigin.z.toFixed(3)}
+            </div>
+          </div>
+        )}
+
+        {/* 이름 */}
+        <div style={{ marginBottom: 5 }}>
+          <div style={{ fontSize: 9, color: '#6b7280', fontWeight: 700, marginBottom: 3 }}>이름 (선택)</div>
+          <input
+            type="text"
+            value={surveyForm.label}
+            onChange={e => setSurveyForm(f => ({ ...f, label: e.target.value }))}
+            placeholder="예: 기준점A"
+            style={{
+              width: '100%', background: '#0d1b2a', border: '1px solid #1e3a5f',
+              borderRadius: 4, color: '#d1d5db', fontSize: 11,
+              padding: '4px 7px', boxSizing: 'border-box', outline: 'none',
+            }}
+          />
+        </div>
+
+        {/* 원점의 측량 XYZ */}
+        <div style={{ marginBottom: 5 }}>
+          <div style={{ fontSize: 9, color: '#6b7280', fontWeight: 700, marginBottom: 3 }}>
+            씬 원점(0,0,0)의 측량 좌표
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+            {[['X', 'x'], ['Y(고)', 'y'], ['Z', 'z']].map(([lbl, key]) => (
+              <div key={key}>
+                <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 2, textAlign: 'center' }}>{lbl}</div>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={surveyForm[key]}
+                  onChange={e => setSurveyForm(f => ({ ...f, [key]: e.target.value }))}
+                  style={{
+                    width: '100%', background: '#0d1b2a', border: '1px solid #1e3a5f',
+                    borderRadius: 4, color: '#d1d5db', fontSize: 11,
+                    padding: '4px 5px', boxSizing: 'border-box', outline: 'none',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 5 }}>
+          <button
+            onClick={() => {
+              const ox = parseFloat(surveyForm.x) || 0;
+              const oy = parseFloat(surveyForm.y) || 0;
+              const oz = parseFloat(surveyForm.z) || 0;
+              dispatch({ type: 'SET_SURVEY_ORIGIN', origin: { label: surveyForm.label, x: ox, y: oy, z: oz } });
+              setSurveyApplied(true);
+              setTimeout(() => setSurveyApplied(false), 1200);
+            }}
+            style={{
+              flex: 1,
+              background: surveyApplied ? '#1a2a00' : '#1e3a5f',
+              border: `1px solid ${surveyApplied ? '#facc15' : '#60a5fa'}`,
+              borderRadius: 5, padding: '5px 0',
+              color: surveyApplied ? '#facc15' : '#60a5fa',
+              fontSize: 10, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            {surveyApplied ? '✓ 적용됨' : '기준점 설정'}
+          </button>
+          {surveyOrigin && (
+            <button
+              onClick={() => {
+                dispatch({ type: 'SET_SURVEY_ORIGIN', origin: null });
+                setSurveyForm({ label: '', x: '0', y: '0', z: '0' });
+              }}
+              style={{
+                background: '#1a0a0a', border: '1px solid #374151', borderRadius: 5,
+                padding: '5px 8px', color: '#6b7280', fontSize: 10, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              해제
+            </button>
+          )}
+        </div>
+      </Section>
+
       {/* 작업자 */}
       <Section title={t('sectionWorkers', { n: workers.length })}>
-        {workers.map(w => (
-          <Row key={w.id}>
-            <span style={{ fontSize: 11 }}>👷</span>
-            <span style={{ flex: 1, fontSize: 11, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {w.name}
-            </span>
-            <span style={{ fontSize: 9, color: w.gear ? '#22c55e' : '#a855f7', fontWeight: 700, flexShrink: 0 }}>
-              {w.gear ? 'O' : t('noGear')}
-            </span>
-            <button
-              onClick={() => dispatch({ type: 'REMOVE_WORKER', id: w.id })}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0 }}
-            >✕</button>
-          </Row>
-        ))}
+        {/* 선택된 작업자 설정 패널 */}
+        <WorkerOptionsPanel />
+
+        {workers.map(w => {
+          const isSelected = w.id === selectedWorkerId;
+          return (
+            <div
+              key={w.id}
+              onClick={() => {
+                dispatch({ type: 'SELECT_WORKER',    id: isSelected ? null : w.id });
+                dispatch({ type: 'SELECT_EQUIPMENT', id: null });
+                dispatch({ type: 'SELECT_ZONE',      id: null });
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5,
+                padding: '3px 5px', borderRadius: 4, cursor: 'pointer',
+                background: isSelected ? '#0c2a1a' : 'transparent',
+                border: `1px solid ${isSelected ? '#1e4a2a' : 'transparent'}`,
+              }}
+            >
+              <span style={{ fontSize: 11 }}>👷</span>
+              <span style={{ flex: 1, fontSize: 11, color: isSelected ? '#22c55e' : '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {w.name}
+              </span>
+              <span style={{ fontSize: 9, color: w.gear ? '#22c55e' : '#a855f7', fontWeight: 700, flexShrink: 0 }}>
+                {w.gear ? 'O' : t('noGear')}
+              </span>
+              <button
+                onClick={ev => { ev.stopPropagation(); dispatch({ type: 'REMOVE_WORKER', id: w.id }); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
+              >✕</button>
+            </div>
+          );
+        })}
         <Btn small onClick={handleAddWorker}>{t('addWorker')}</Btn>
       </Section>
 
@@ -352,26 +483,46 @@ export default function ControlSidebar() {
 
       {/* 위험구역 */}
       <Section title={t('sectionHazardZones', { n: dangerZones.length })}>
-        {dangerZones.map(z => (
-          <Row key={z.id}>
-            <span style={{ fontSize: 10 }}>⚠</span>
-            <span style={{ flex: 1, fontSize: 10, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {z.name}
-            </span>
-            <button
-              onClick={() => dispatch({ type: 'TOGGLE_ZONE', id: z.id })}
-              style={{
-                background: 'none', border: `1px solid ${z.active ? '#22c55e' : '#374151'}`,
-                borderRadius: 3, cursor: 'pointer', color: z.active ? '#22c55e' : '#4b5563',
-                fontSize: 9, fontWeight: 700, padding: '0 4px',
+        {/* 선택된 위험구역 설정 패널 */}
+        <ZoneOptionsPanel />
+
+        {dangerZones.map(z => {
+          const isSelected = z.id === selectedZoneId;
+          const zoneColor = z.type === 'restricted' ? '#f97316' : '#ef4444';
+          return (
+            <div
+              key={z.id}
+              onClick={() => {
+                dispatch({ type: 'SELECT_ZONE',      id: isSelected ? null : z.id });
+                dispatch({ type: 'SELECT_WORKER',    id: null });
+                dispatch({ type: 'SELECT_EQUIPMENT', id: null });
               }}
-            >{z.active ? 'ON' : 'OFF'}</button>
-            <button
-              onClick={() => dispatch({ type: 'REMOVE_ZONE', id: z.id })}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0 }}
-            >✕</button>
-          </Row>
-        ))}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5,
+                padding: '3px 5px', borderRadius: 4, cursor: 'pointer',
+                background: isSelected ? `${zoneColor}15` : 'transparent',
+                border: `1px solid ${isSelected ? `${zoneColor}55` : 'transparent'}`,
+              }}
+            >
+              <span style={{ fontSize: 10, color: zoneColor }}>⚠</span>
+              <span style={{ flex: 1, fontSize: 10, color: isSelected ? zoneColor : '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {z.name}
+              </span>
+              <button
+                onClick={ev => { ev.stopPropagation(); dispatch({ type: 'TOGGLE_ZONE', id: z.id }); }}
+                style={{
+                  background: 'none', border: `1px solid ${z.active ? '#22c55e' : '#374151'}`,
+                  borderRadius: 3, cursor: 'pointer', color: z.active ? '#22c55e' : '#4b5563',
+                  fontSize: 9, fontWeight: 700, padding: '0 4px', flexShrink: 0,
+                }}
+              >{z.active ? 'ON' : 'OFF'}</button>
+              <button
+                onClick={ev => { ev.stopPropagation(); dispatch({ type: 'REMOVE_ZONE', id: z.id }); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
+              >✕</button>
+            </div>
+          );
+        })}
         <Btn small onClick={handleAddZone}>{t('addZone')}</Btn>
       </Section>
 

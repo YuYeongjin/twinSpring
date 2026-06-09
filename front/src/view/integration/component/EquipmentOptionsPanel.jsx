@@ -58,6 +58,7 @@ export default function EquipmentOptionsPanel() {
   const equip = equipment.find(e => e.id === selectedEquipId);
 
   const [form, setForm] = useState(null);
+  const [applied, setApplied] = useState(false);
 
   useEffect(() => {
     if (!equip) { setForm(null); return; }
@@ -71,6 +72,7 @@ export default function EquipmentOptionsPanel() {
       speed:       (equip.speed      ?? 1.5).toString(),
       gpsDeviceId: equip.gpsDeviceId || '',
     });
+    setApplied(false);
   }, [selectedEquipId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!equip || !form) return null;
@@ -95,6 +97,11 @@ export default function EquipmentOptionsPanel() {
         gpsDeviceId: form.gpsDeviceId || null,
       },
     });
+    setApplied(true);
+    setTimeout(() => {
+      setApplied(false);
+      dispatch({ type: 'SELECT_EQUIPMENT', id: null });
+    }, 800);
   };
 
   const handleTypeChange = (newType) => {
@@ -226,13 +233,19 @@ export default function EquipmentOptionsPanel() {
       {/* 적용 버튼 */}
       <button
         onClick={apply}
+        disabled={applied}
         style={{
-          width: '100%', background: '#1e3a5f', border: '1px solid #60a5fa',
-          borderRadius: 5, padding: '5px 0', color: '#60a5fa',
-          fontSize: 11, fontWeight: 700, cursor: 'pointer',
+          width: '100%',
+          background: applied ? '#1a3a1a' : '#1e3a5f',
+          border: `1px solid ${applied ? '#22c55e' : '#60a5fa'}`,
+          borderRadius: 5, padding: '6px 0',
+          color: applied ? '#22c55e' : '#60a5fa',
+          fontSize: 11, fontWeight: 700,
+          cursor: applied ? 'default' : 'pointer',
+          transition: 'all 0.2s',
         }}
       >
-        {t('equipApply')}
+        {applied ? '✓ 적용됨' : t('equipApply')}
       </button>
     </div>
   );

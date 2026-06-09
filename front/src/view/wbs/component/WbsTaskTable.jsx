@@ -16,10 +16,12 @@ const AUTHOR_MAP = {
   AGENT_CPM:   "agent",
   AGENT_CRACK: "agent",
   AGENT_AUTO:  "agent",
+  BIM_AUTO:    "bim",
 };
 const AUTHOR_STYLE = {
   user:  { color: "#93c5fd", bg: "#1e3a5f" },
   agent: { color: "#fbbf24", bg: "#292524" },
+  bim:   { color: "#4ade80", bg: "#0c2a1a" },
 };
 
 const EMPTY_TASK = {
@@ -482,7 +484,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
   function renderAuthorBadge(source) {
     const type  = AUTHOR_MAP[source] || "user";
     const style = AUTHOR_STYLE[type];
-    const label = type === "user" ? t('authorUser') : t('authorAgent');
+    const label = type === "bim" ? "🏗 BIM" : type === "user" ? t('authorUser') : t('authorAgent');
     return (
       <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap"
             style={{ backgroundColor: style.bg, color: style.color }}>
@@ -543,6 +545,27 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
       return (
         <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap"
               style={{ backgroundColor: s.bg, color: s.color }}>{t(s.tKey)}</span>
+      );
+    }
+    if (col.key === "notes") {
+      const val = task[col.key];
+      return (
+        <span
+          className="text-xs text-gray-300"
+          style={{
+            display: "block",
+            maxWidth: 200,
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
+            textDecoration: val ? "underline" : "none",
+            textDecorationColor: "#475569",
+            textDecorationStyle: "dotted",
+          }}
+          title={val || ""}
+        >
+          {val || "—"}
+        </span>
       );
     }
     return <span className="text-xs text-gray-300 break-all">{task[col.key] ?? ""}</span>;
