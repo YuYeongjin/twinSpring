@@ -1,5 +1,5 @@
 import { useIntegration } from '../IntegrationStore';
-import { useT } from '../../../i18n/LanguageContext';
+import { useT, useLanguage } from '../../../i18n/LanguageContext';
 
 const SEV_COLOR = { critical: '#ef4444', warning: '#f59e0b', info: '#60a5fa' };
 const TYPE_ICON  = {
@@ -10,7 +10,8 @@ const TYPE_ICON  = {
 };
 
 function EventRow({ event }) {
-  const time  = new Date(event.timestamp).toLocaleTimeString('ko-KR', {
+  const { lang } = useLanguage();
+  const time  = new Date(event.timestamp).toLocaleTimeString(lang, {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
   const color = SEV_COLOR[event.severity] || '#8896a4';

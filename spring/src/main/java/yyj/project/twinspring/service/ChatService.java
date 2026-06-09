@@ -61,6 +61,12 @@ public interface ChatService {
      */
     Map<String, Object> excavationSpec(Map<String, Object> request);
 
+    /**
+     * BIM 공종(elementType) 또는 일반 WBS 태스크명 기반 KCS/KDS 시방서 RAG 검색.
+     * 통합관제 WbsProgressPanel 의 공종별 시방서 조회에서 사용.
+     */
+    Map<String, Object> wbsTaskSpec(Map<String, Object> request);
+
     /** RAG 인덱스 현황 조회 (청크 수, 빌드 상태) */
     Map<String, Object> ragStatus();
 

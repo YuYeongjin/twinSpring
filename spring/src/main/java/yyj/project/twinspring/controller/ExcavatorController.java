@@ -1,24 +1,21 @@
 package yyj.project.twinspring.controller;
 
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 import yyj.project.twinspring.dto.ExcavatorGpsDTO;
 
 /**
- * 굴착기 실시간 GPS / IMU 제어 컨트롤러
+ * 실시간 GPS / IMU 컨트롤러
  *
- * 외부 센서(모바일 앱, IoT 기기 등)에서 전송한 GPS/IMU 데이터를
- * WebSocket 토픽 /topic/excavator 로 브로드캐스트한다.
+ * ① 레거시 (단일 굴착기)
+ *    REST : POST /api/excavator/gps          → /topic/excavator
+ *    STOMP: /app/excavator/gps               → /topic/excavator
  *
- * ① REST: POST /api/excavator/gps
- *    - HTTP를 선호하는 클라이언트(모바일 앱, 서버 → 서버)용
- *    - Content-Type: application/json
- *
- * ② STOMP: /app/excavator/gps  (WebSocket /ws/sensor 연결 후)
- *    - 프론트엔드 또는 IoT 기기가 STOMP로 직접 발행할 때 사용
- *
- * 두 경로 모두 동일한 /topic/excavator 토픽에 브로드캐스트한다.
+ * ② 장비 ID 별 (다중 장비 지원)
+ *    REST : POST /api/excavator/gps/{deviceId} → /topic/gps/{deviceId}
+ *    STOMP: /app/gps/{deviceId}               → /topic/gps/{deviceId}
  */
 @RestController
 @RequestMapping("/api/excavator")
@@ -30,21 +27,31 @@ public class ExcavatorController {
         this.messaging = messaging;
     }
 
-    /**
-     * REST 방식으로 GPS/IMU 패킷을 수신하여 WebSocket 브로드캐스트.
-     * POST /api/excavator/gps
-     */
+    // ── 레거시 (단일 토픽) ────────────────────────────────────────────────
+
     @PostMapping("/gps")
     public void receiveGpsHttp(@RequestBody ExcavatorGpsDTO dto) {
         messaging.convertAndSend("/topic/excavator", dto);
     }
 
-    /**
-     * STOMP 방식으로 GPS/IMU 패킷을 수신하여 WebSocket 브로드캐스트.
-     * 클라이언트에서 stompClient.publish({ destination: '/app/excavator/gps', body: JSON.stringify(dto) })
-     */
     @MessageMapping("/excavator/gps")
     public void receiveGpsWs(ExcavatorGpsDTO dto) {
         messaging.convertAndSend("/topic/excavator", dto);
+    }
+
+    // ── 장비 ID 별 (다중 장비) ────────────────────────────────────────────
+
+    /** REST: POST /api/excavator/gps/{deviceId} */
+    @PostMapping("/gps/{deviceId}")
+    public void receiveGpsByIdHttp(@PathVariable String deviceId,
+                                   @RequestBody ExcavatorGpsDTO dto) {
+        messaging.convertAndSend("/topic/gps/" + deviceId, dto);
+    }
+
+    /** STOMP: /app/gps/{deviceId} */
+    @MessageMapping("/gps/{deviceId}")
+    public void receiveGpsByIdWs(@DestinationVariable String deviceId,
+                                 ExcavatorGpsDTO dto) {
+        messaging.convertAndSend("/topic/gps/" + deviceId, dto);
     }
 }

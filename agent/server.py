@@ -524,6 +524,63 @@ def rebuild_rag():
     return {"queued": True, "message": "RAG 인덱스 빌드를 시작했습니다. 386개 HWP 파일 처리 중..."}
 
 
+# ── WBS 공종별 시방서 RAG (BIM 공종 + 일반 WBS 태스크) ───────────────────────────
+
+class WbsTaskSpecRequest(BaseModel):
+    taskName: str
+    elementType: str = ""   # IfcSlab | IfcColumn | IfcBeam | IfcWall | IfcPier
+    status: str = ""        # IN_PROGRESS | DELAYED | NOT_STARTED | COMPLETED
+    detail: str = ""
+
+_TASK_ELEM_QUERIES: dict[str, str] = {
+    "IfcSlab":   "슬래브 기초 콘크리트 타설 거푸집 철근 배근 시공기준 양생 KCS 14 20 슬래브",
+    "IfcColumn": "기둥 콘크리트 타설 철근 배근 시공기준 KCS 14 20 기둥 축력",
+    "IfcBeam":   "보 콘크리트 철근 배근 시공기준 처짐 허용응력 KCS 14 20 보",
+    "IfcWall":   "벽체 콘크리트 거푸집 조적 시공기준 KCS 14 20 벽체 전단",
+    "IfcPier":   "교각 기초 콘크리트 내진설계 교각 공사 KCS 24 교량",
+}
+
+_TASK_STATUS_QUERIES: dict[str, str] = {
+    "DELAYED":     "공정 지연 원인 만회 방안 공기 단축 시공관리 KCS",
+    "IN_PROGRESS": "공정 진행 중 품질관리 검사 기준 시공 품질 KCS KDS",
+    "NOT_STARTED": "공사 착수 전 준비사항 시공계획 착수계 KCS",
+    "COMPLETED":   "공사 완료 검사 인수 검수 품질시험 KCS",
+}
+
+
+@app.post("/wbs-task-spec")
+def wbs_task_spec(req: WbsTaskSpecRequest):
+    """BIM 공종 및 WBS 태스크의 공종별 시방서 RAG 검색."""
+    from tools.construction_rag_tool import search_construction_docs
+    parts: list[str] = []
+    if req.elementType and req.elementType in _TASK_ELEM_QUERIES:
+        parts.append(_TASK_ELEM_QUERIES[req.elementType])
+    else:
+        parts.append(f"{req.taskName} 공종 시공기준 KCS KDS 시방서")
+    if req.status and req.status in _TASK_STATUS_QUERIES:
+        parts.append(_TASK_STATUS_QUERIES[req.status])
+    if req.detail:
+        parts.append(req.detail.strip()[:100])
+    full_query = " ".join(parts)[:300]
+    try:
+        docs = search_construction_docs(full_query, k=4)
+    except Exception:
+        logger.error("[wbs_task_spec] RAG 검색 실패", exc_info=True)
+        docs = []
+    citations: list[SpecCitation] = []
+    seen_texts: set[str] = set()
+    for doc in docs:
+        text = doc.page_content.strip()
+        if not text or text in seen_texts:
+            continue
+        seen_texts.add(text)
+        meta   = doc.metadata
+        source = f"{meta.get('code', '')} {meta.get('title', '')}".strip() or meta.get("source", "알 수 없음")
+        series = meta.get("series", "") or meta.get("category", "")
+        citations.append(SpecCitation(source=source, series=series, content=text[:500]))
+    return {"citations": [c.dict() for c in citations], "hasData": len(citations) > 0, "query": full_query}
+
+
 @app.post("/wbs-rag-suggest", response_model=WbsRagResponse)
 def wbs_rag_suggest(req: WbsRagRequest):
     from tools.construction_rag_tool import search_construction_docs
