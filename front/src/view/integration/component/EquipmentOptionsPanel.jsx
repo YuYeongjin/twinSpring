@@ -210,23 +210,45 @@ export default function EquipmentOptionsPanel() {
         </div>
       )}
 
-      {/* GPS 모드: 디바이스 ID */}
+      {/* GPS 모드: 장비 ID 입력 */}
       {form.mode === 'gps' && (
         <div style={{ marginBottom: 8 }}>
           <Label>{t('gpsDeviceLabel')}</Label>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>
+            {[
+              { id: 'excavator', label: '🚜 굴착기' },
+              { id: 'dump-1',    label: '🚛 덤프' },
+              { id: 'crane-1',   label: '🏗 크레인' },
+            ].map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => set('gpsDeviceId', opt.id)}
+                style={{
+                  background: form.gpsDeviceId === opt.id ? '#1e3a5f' : '#0a1525',
+                  border: `1px solid ${form.gpsDeviceId === opt.id ? '#60a5fa' : '#1e3a5f'}`,
+                  borderRadius: 4, padding: '3px 7px', cursor: 'pointer',
+                  color: form.gpsDeviceId === opt.id ? '#60a5fa' : '#6b7280',
+                  fontSize: 9, fontWeight: 700,
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
           <Input
             value={form.gpsDeviceId}
-            placeholder="excavator"
+            placeholder={t('gpsDeviceIdPlaceholder')}
             onChange={e => set('gpsDeviceId', e.target.value)}
           />
-          <div style={{ fontSize: 9, color: '#374151', marginTop: 3 }}>
-            {t('gpsWsNote')}
+          <div style={{ fontSize: 9, marginTop: 3 }}>
+            {equip.gpsPos ? (
+              <span style={{ color: '#22c55e' }}>
+                {t('gpsStatusReceiving', { x: equip.gpsPos[0].toFixed(1), z: equip.gpsPos[2].toFixed(1) })}
+              </span>
+            ) : (
+              <span style={{ color: '#4b5563' }}>{t('gpsStatusWaiting')}</span>
+            )}
           </div>
-          {equip.gpsPos && (
-            <div style={{ fontSize: 9, color: '#22c55e', marginTop: 3 }}>
-              {t('gpsReceiving', { pos: equip.gpsPos.map(v => v.toFixed(1)).join(', ') })}
-            </div>
-          )}
         </div>
       )}
 
