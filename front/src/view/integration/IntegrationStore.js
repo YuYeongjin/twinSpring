@@ -17,7 +17,7 @@ const DEFAULT_WORKERS = [
 const DEFAULT_EQUIPMENT = [
   { id: 'e1', type: 'excavator', name: '굴착기-1',  initialPos: [0,0,0],   route: [[0,0,0],[10,0,0],[10,0,10],[0,0,10]], speed: 1.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null },
   { id: 'e2', type: 'dump',      name: '덤프트럭-1', initialPos: [-8,0,-8], route: [[-8,0,-8],[8,0,-8],[8,0,-2],[-8,0,-2]], speed: 2.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null },
-  { id: 'e3', type: 'crane',     name: '크레인-1',   initialPos: [15,0,5],  route: [[15,0,5]], speed: 0, mode: 'standby', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null },
+  { id: 'e3', type: 'crane',     name: '크레인-1',   initialPos: [15,0,5],  route: [[15,0,5],[15,0,-5],[20,0,-5],[20,0,5]], speed: 1.0, mode: 'auto', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null },
 ];
 const DEFAULT_ZONES = [
   { id: 'z1', name: '굴착 위험구역', center: [5,  2, 5], halfSize: [4, 4, 4], type: 'excavation', active: true },
@@ -42,7 +42,12 @@ function makeInitial() {
     isLoading:         false,
     simulationRunning: true,
     referencePoint:    { lat: 37.5665, lng: 126.9780 },
+    surveyOrigin:      null,   // { label, x, y, z } — 측량 기준점 (scene 원점의 실좌표)
     selectedEquipId:   null,
+    selectedWorkerId:  null,
+    selectedZoneId:    null,
+    // ── 런타임 전용 (저장 안 됨) ─────────────────────────────────
+    livePositions:     { workers: {}, equipment: {} },
   };
 }
 
@@ -89,11 +94,12 @@ function reducer(state, action) {
     case 'LOAD_SIM_CONFIG':
       return {
         ...state,
-        workers:     action.config.workers     || state.workers,
-        equipment:   action.config.equipment   || state.equipment,
-        dangerZones: action.config.dangerZones || state.dangerZones,
-        structures:  deserializeStructures(action.config.structures),
-        terrain:     action.config.terrain !== undefined ? action.config.terrain : state.terrain,
+        workers:      action.config.workers     || state.workers,
+        equipment:    action.config.equipment   || state.equipment,
+        dangerZones:  action.config.dangerZones || state.dangerZones,
+        structures:   deserializeStructures(action.config.structures),
+        terrain:      action.config.terrain !== undefined ? action.config.terrain : state.terrain,
+        surveyOrigin: action.config.surveyOrigin !== undefined ? action.config.surveyOrigin : state.surveyOrigin,
       };
 
     case 'LOG_EVENT':
@@ -114,11 +120,32 @@ function reducer(state, action) {
       return { ...state, wbsTasks: updated };
     }
 
+    case 'SET_TASK_PROGRESS': {
+      // 절댓값으로 진도를 설정 (실시간 날짜 계산 결과 반영)
+      const updated = state.wbsTasks.map(t =>
+        t.taskId === action.taskId
+          ? { ...t, progress: Math.min(100, Math.max(0, action.progress)) }
+          : t
+      );
+      return { ...state, wbsTasks: updated };
+    }
+
     // ── 작업자 ──────────────────────────────────────────────────
     case 'ADD_WORKER':
       return { ...state, workers: [...state.workers, action.worker] };
     case 'REMOVE_WORKER':
-      return { ...state, workers: state.workers.filter(w => w.id !== action.id) };
+      return {
+        ...state,
+        workers: state.workers.filter(w => w.id !== action.id),
+        selectedWorkerId: state.selectedWorkerId === action.id ? null : state.selectedWorkerId,
+      };
+    case 'SELECT_WORKER':
+      return { ...state, selectedWorkerId: action.id };
+    case 'UPDATE_WORKER':
+      return {
+        ...state,
+        workers: state.workers.map(w => w.id === action.id ? { ...w, ...action.updates } : w),
+      };
 
     // ── 장비 ────────────────────────────────────────────────────
     case 'ADD_EQUIPMENT':
@@ -148,7 +175,18 @@ function reducer(state, action) {
     case 'TOGGLE_ZONE':
       return { ...state, dangerZones: state.dangerZones.map(z => z.id === action.id ? { ...z, active: !z.active } : z) };
     case 'REMOVE_ZONE':
-      return { ...state, dangerZones: state.dangerZones.filter(z => z.id !== action.id) };
+      return {
+        ...state,
+        dangerZones: state.dangerZones.filter(z => z.id !== action.id),
+        selectedZoneId: state.selectedZoneId === action.id ? null : state.selectedZoneId,
+      };
+    case 'SELECT_ZONE':
+      return { ...state, selectedZoneId: action.id };
+    case 'UPDATE_ZONE':
+      return {
+        ...state,
+        dangerZones: state.dangerZones.map(z => z.id === action.id ? { ...z, ...action.updates } : z),
+      };
 
     // ── 구조물 ───────────────────────────────────────────────────
     case 'ADD_STRUCTURE':
@@ -182,6 +220,14 @@ function reducer(state, action) {
 
     case 'CLEAR_TERRAIN':
       return { ...state, terrain: null };
+
+    // ── 측량 기준점 ──────────────────────────────────────────────
+    case 'SET_SURVEY_ORIGIN':
+      return { ...state, surveyOrigin: action.origin }; // null이면 해제
+
+    // ── 실시간 위치 (저장 안 됨, Canvas → 사이드바용) ─────────────
+    case 'SET_LIVE_POSITIONS':
+      return { ...state, livePositions: { workers: action.workers, equipment: action.equipment } };
 
     // ── 시뮬레이션 ───────────────────────────────────────────────
     case 'TOGGLE_SIM':
@@ -235,17 +281,18 @@ export function IntegrationProvider({ projectId, children }) {
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       const simConfig = JSON.stringify({
-        workers:     state.workers,
-        equipment:   state.equipment,
-        dangerZones: state.dangerZones,
-        structures:  serializeStructures(state.structures),
-        terrain:     state.terrain,
+        workers:      state.workers,
+        equipment:    state.equipment,
+        dangerZones:  state.dangerZones,
+        structures:   serializeStructures(state.structures),
+        terrain:      state.terrain,
+        surveyOrigin: state.surveyOrigin,
       });
       AxiosCustom.put(`/api/integration/project/${projectId}/sim-config`, { simConfig })
         .catch(() => {});
     }, 1500);
     return () => clearTimeout(saveTimer.current);
-  }, [projectId, state.workers, state.equipment, state.dangerZones, state.structures, state.terrain]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, state.workers, state.equipment, state.dangerZones, state.structures, state.terrain, state.surveyOrigin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <IntegrationCtx.Provider value={state}>

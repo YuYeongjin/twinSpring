@@ -134,3 +134,16 @@ input[type="range"]::-moz-range-thumb {
 .bim-panel-right-out { animation: slideOutToRight  0.22s cubic-bezier(0.4,0,0.2,1) both; }
 .bim-panel-dim       { animation: fadeInDim        0.22s ease both; }
 .bim-panel-dim-out   { animation: fadeOutDim       0.18s ease both; }
+
+/* ── 모바일 최소 터치 영역 ─────────────────────────────────── */
+@media (max-width: 768px) {
+  /* 통합관제 사이드바 버튼 최소 높이 */
+  .int-sidebar button {
+    min-height: 36px;
+  }
+  /* 통합관제 옵션 패널 숫자 input — iOS 자동 확대 방지 이미 적용됨 */
+  /* 패널 내 전체 폰트 약간 상향 */
+  .int-option-panel {
+    font-size: 11px;
+  }
+}

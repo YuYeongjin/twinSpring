@@ -5,6 +5,7 @@ import WbsTaskTable from "./component/WbsTaskTable";
 import ProjectLinkPanel from "./component/ProjectLinkPanel";
 import WbsAlertLogPanel from "./component/WbsAlertLogPanel";
 import WbsAgentChat from "../../component/WbsAgentChat";
+import BimLinkedPanel from "./component/BimLinkedPanel";
 import { useT } from "../../i18n/LanguageContext";
 import { unreadCount, ALERT_EVENT } from "../../utils/alertStore";
 
@@ -468,6 +469,15 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
     await loadAllTasks();
   }, [selectedProject, loadAllTasks, t]);
 
+  // BimLinkedPanel에서 자동 생성 후 목록 갱신용
+  const reloadTasks = useCallback(async () => {
+    if (!selectedProject) return;
+    const r = await AxiosCustom.get(`/api/wbs/project/${selectedProject.projectId}/tasks`);
+    setTasks(sortByStartDate(r.data));
+    await loadProjects();
+    await loadAllTasks();
+  }, [selectedProject, loadProjects, loadAllTasks]);
+
   const handleAddTask = useCallback(async (taskData) => {
     const r = await AxiosCustom.post(`/api/wbs/project/${selectedProject.projectId}/task`, taskData);
     setTasks(prev => sortByStartDate([...prev, r.data]));
@@ -890,6 +900,14 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
 
                   {detailTab === "table" && (
                     <>
+                      {/* BIM 연동 패널 — BIM 프로젝트가 링크된 경우 자동 표시 */}
+                      <BimLinkedPanel
+                        wbsProjectId={selectedProject.projectId}
+                        tasks={tasks}
+                        onReload={reloadTasks}
+                        projectStartDate={selectedProject.startDate}
+                      />
+
                       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                         <h3 className="text-sm font-semibold text-gray-300">
                           {t('wbsListTitle', { n: tasks.length })}

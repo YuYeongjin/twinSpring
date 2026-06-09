@@ -441,6 +441,25 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> wbsTaskSpec(Map<String, Object> request) {
+        try {
+            String raw = agentClient.post()
+                    .uri("/wbs-task-spec")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(30))
+                    .block();
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[WbsTaskSpec] RAG 검색 실패: {}", e.getMessage());
+            return Map.of("citations", List.of(), "hasData", false, "query", "");
+        }
+    }
+
+    @Override
     public Map<String, Object> ragStatus() {
         try {
             String raw = agentClient.get()

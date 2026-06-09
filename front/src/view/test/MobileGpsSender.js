@@ -54,9 +54,16 @@ function accuracyColor(acc) {
   return '#f87171';
 }
 
+const GPS_PRESETS = [
+  { id: 'excavator', label: '🚜 굴착기' },
+  { id: 'dump-1',    label: '🚛 덤프트럭' },
+  { id: 'crane-1',   label: '🏗 크레인' },
+];
+
 // ═══════════════════════════════════════════════════════════════════════════
 export default function MobileGpsSender() {
   const t = useT('gpsControl');
+  const [deviceId,    setDeviceId]    = useState('excavator');
   const [status,      setStatus]      = useState('idle');
   const [geoData,     setGeoData]     = useState(null);
   const [imuData,     setImuData]     = useState(null);
@@ -189,7 +196,7 @@ export default function MobileGpsSender() {
         // 첫 GPS 성공 → WebSocket 연결 시작
         if (!gpsGranted) {
           gpsGranted = true;
-          connectWebSocket();
+          connectWebSocket(deviceId);
         }
       },
       (err) => {
@@ -216,7 +223,7 @@ export default function MobileGpsSender() {
   }, [failWith]);
 
   // ── WebSocket 연결 (GPS 권한 승인 후 호출) ────────────────────────────
-  const connectWebSocket = useCallback(() => {
+  const connectWebSocket = useCallback((devId) => {
     setStatus('connecting');
 
     // 15초 내에 연결 안 되면 오류 처리
@@ -225,6 +232,8 @@ export default function MobileGpsSender() {
         failWith(t('errWsTimeout', { url: buildWsUrl() }));
       }
     }, 15000);
+
+    const dest = `/app/gps/${devId}`;
 
     const client = new Client({
       webSocketFactory: () => new SockJS(buildWsUrl()),
@@ -245,7 +254,7 @@ export default function MobileGpsSender() {
             gamma:   imuRef.current?.gamma   ?? null,
           });
           try {
-            client.publish({ destination: '/app/excavator/gps', body });
+            client.publish({ destination: dest, body });
             txCountRef.current++;
             setTxCount(c => c + 1);
           } catch (_) {}
@@ -280,7 +289,7 @@ export default function MobileGpsSender() {
       txCountRef.current = 0;
     }, 1000);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [failWith]);
+  }, [failWith, deviceId]);
 
   // 언마운트 정리
   useEffect(() => () => stopAll(), [stopAll]);
@@ -303,6 +312,45 @@ export default function MobileGpsSender() {
       transition: 'background 0.35s, border-color 0.35s',
     }}>
 
+      {/* ── 장비 선택 (대기 중에만 표시) ── */}
+      {!isRunning && status === 'idle' && (
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ fontSize: '10px', color: '#8896a4', marginBottom: '6px', fontWeight: 700 }}>
+            {t('deviceSelectLabel')}
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '7px' }}>
+            {GPS_PRESETS.map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setDeviceId(opt.id)}
+                style={{
+                  background: deviceId === opt.id ? '#1e3a5f' : '#111e2e',
+                  border: `1.5px solid ${deviceId === opt.id ? '#60a5fa' : '#253347'}`,
+                  borderRadius: '10px', padding: '7px 14px', cursor: 'pointer',
+                  color: deviceId === opt.id ? '#60a5fa' : '#8896a4',
+                  fontSize: '12px', fontWeight: 700, transition: 'all 0.15s',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <input
+            value={deviceId}
+            onChange={e => setDeviceId(e.target.value)}
+            placeholder={t('deviceSelectPlaceholder')}
+            style={{
+              background: '#0d1b2a', border: '1px solid #253347', borderRadius: '8px',
+              color: '#d1d5db', fontSize: '11px', padding: '6px 10px', width: '100%',
+              boxSizing: 'border-box', outline: 'none',
+            }}
+          />
+          <div style={{ fontSize: '9px', color: '#374151', marginTop: '4px' }}>
+            {t('deviceSelectHint')}
+          </div>
+        </div>
+      )}
+
       {/* ── 헤더 ── */}
       <div style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -311,7 +359,7 @@ export default function MobileGpsSender() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <span style={{ color: ap, fontWeight: 700, fontSize: '13px' }}>{t('title')}</span>
           <span style={{ color: stColor, fontWeight: 600, fontSize: '11px' }}>
-            ● {stLabel}{isActive ? ` — ${txHz} Hz` : ''}
+            ● {stLabel}{isActive ? ` — ${txHz} Hz · ${deviceId}` : ''}
           </span>
         </div>
 
@@ -469,7 +517,7 @@ export default function MobileGpsSender() {
             <div style={{ width: '1px', height: '28px', background: '#1a3a5f' }} />
             <StatChip label={t('totalPackets')} value={txCount.toLocaleString()} color="#e2e8f0" />
             <div style={{ width: '1px', height: '28px', background: '#1a3a5f' }} />
-            <StatChip label={t('route')}        value="/app/excavator/gps"       color={ab} mono />
+            <StatChip label={t('route')}        value={`/app/gps/${deviceId}`}   color={ab} mono />
           </div>
 
           <div style={{
