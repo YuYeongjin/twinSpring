@@ -6,7 +6,11 @@ import WorkerOptionsPanel from './WorkerOptionsPanel';
 import ZoneOptionsPanel from './ZoneOptionsPanel';
 import { useT } from '../../../i18n/LanguageContext';
 
-const EQUIP_ICON = { excavator: '🚜', dump: '🚛', crane: '🏗' };
+const EQUIP_ICON = { excavator: '🚜', dump: '🚛', crane: '🏗', vehicle: '🚗', other: '🔧' };
+const EQUIP_TYPE_KEY = {
+  excavator: 'equipExcavator', dump: 'equipDump', crane: 'equipCrane',
+  vehicle:   'equipVehicle',   other: 'equipOther',
+};
 
 // ── 공통 서브 컴포넌트 ────────────────────────────────────────────
 function Section({ title, children }) {
@@ -27,9 +31,10 @@ function Btn({ onClick, children, color, textColor = '#93c5fd', small, disabled 
   return (
     <button onClick={onClick} disabled={disabled} style={{
       background: color || '#1e3a5f', color: textColor, border: 'none',
-      borderRadius: 5, padding: small ? '3px 8px' : '5px 10px',
+      borderRadius: 5, padding: small ? '5px 10px' : '7px 12px',
       fontSize: small ? 10 : 11, cursor: disabled ? 'not-allowed' : 'pointer',
       fontWeight: 600, opacity: disabled ? 0.5 : 1,
+      minHeight: 32, touchAction: 'manipulation',
     }}>
       {children}
     </button>
@@ -111,8 +116,9 @@ export default function ControlSidebar() {
 
   return (
     <div style={{
-      width: 220, flexShrink: 0, background: '#0a1525',
+      width: '100%', minWidth: 200, flexShrink: 0, background: '#0a1525',
       borderRight: '1px solid #111e2d', overflowY: 'auto', padding: '14px 12px',
+      boxSizing: 'border-box', height: '100%',
     }}>
 
       <div style={{ fontSize: 12, fontWeight: 800, color: '#60a5fa', marginBottom: 16, letterSpacing: 0.5 }}>
@@ -289,14 +295,14 @@ export default function ControlSidebar() {
       </Section>
 
       {/* 측량 기준점 */}
-      <Section title="측량 기준점">
+      <Section title={t('sectionSurveyOrigin')}>
         {surveyOrigin && (
           <div style={{
             background: '#12110a', border: '1px solid #facc1555', borderRadius: 5,
             padding: '5px 8px', marginBottom: 8, fontSize: 9,
           }}>
             <div style={{ color: '#facc15', fontWeight: 700, marginBottom: 2 }}>
-              📍 {surveyOrigin.label || '기준점'} 적용 중
+              {t('surveyAppliedText', { label: surveyOrigin.label || t('surveyDefaultLabel') })}
             </div>
             <div style={{ color: '#a09060' }}>
               X:{surveyOrigin.x.toFixed(3)} Y:{surveyOrigin.y.toFixed(3)} Z:{surveyOrigin.z.toFixed(3)}
@@ -306,12 +312,12 @@ export default function ControlSidebar() {
 
         {/* 이름 */}
         <div style={{ marginBottom: 5 }}>
-          <div style={{ fontSize: 9, color: '#6b7280', fontWeight: 700, marginBottom: 3 }}>이름 (선택)</div>
+          <div style={{ fontSize: 9, color: '#6b7280', fontWeight: 700, marginBottom: 3 }}>{t('surveyNameLabel')}</div>
           <input
             type="text"
             value={surveyForm.label}
             onChange={e => setSurveyForm(f => ({ ...f, label: e.target.value }))}
-            placeholder="예: 기준점A"
+            placeholder={t('surveyNamePlaceholder')}
             style={{
               width: '100%', background: '#0d1b2a', border: '1px solid #1e3a5f',
               borderRadius: 4, color: '#d1d5db', fontSize: 11,
@@ -323,10 +329,10 @@ export default function ControlSidebar() {
         {/* 원점의 측량 XYZ */}
         <div style={{ marginBottom: 5 }}>
           <div style={{ fontSize: 9, color: '#6b7280', fontWeight: 700, marginBottom: 3 }}>
-            씬 원점(0,0,0)의 측량 좌표
+            {t('surveyCoordLabel')}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
-            {[['X', 'x'], ['Y(고)', 'y'], ['Z', 'z']].map(([lbl, key]) => (
+            {[['X', 'x'], ['Y(H)', 'y'], ['Z', 'z']].map(([lbl, key]) => (
               <div key={key}>
                 <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 2, textAlign: 'center' }}>{lbl}</div>
                 <input
@@ -364,7 +370,7 @@ export default function ControlSidebar() {
               fontSize: 10, fontWeight: 700, cursor: 'pointer',
             }}
           >
-            {surveyApplied ? '✓ 적용됨' : '기준점 설정'}
+            {surveyApplied ? t('applied') : t('surveySetBtn')}
           </button>
           {surveyOrigin && (
             <button
@@ -377,7 +383,7 @@ export default function ControlSidebar() {
                 padding: '5px 8px', color: '#6b7280', fontSize: 10, fontWeight: 700, cursor: 'pointer',
               }}
             >
-              해제
+              {t('surveyReleaseBtn')}
             </button>
           )}
         </div>
@@ -443,6 +449,13 @@ export default function ControlSidebar() {
               }}
             >
               <span style={{ fontSize: 11 }}>{EQUIP_ICON[e.type] || '🔧'}</span>
+              <span style={{
+                fontSize: 8, color: '#4b6a8a', flexShrink: 0,
+                background: '#0a1830', border: '1px solid #1e3a5f',
+                borderRadius: 3, padding: '0 4px', lineHeight: '16px',
+              }}>
+                {t(EQUIP_TYPE_KEY[e.type] || 'equipOther')}
+              </span>
               <span style={{ flex: 1, fontSize: 11, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {e.name}
               </span>

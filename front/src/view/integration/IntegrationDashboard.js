@@ -158,15 +158,17 @@ function StructureLoader() {
 }
 
 // ── 개발 중 배너 ────────────────────────────────────────────
-function DevBanner() {
+function DevBanner({ isMobile }) {
+  const t = useT('integrationProject');
   const [closed, setClosed] = useState(false);
   if (closed) return null;
   return (
     <div style={{
       position: 'absolute',
       top: 12,
-      right: 12,
-      zIndex: 20,
+      left: isMobile ? 12 : undefined,
+      right: isMobile ? undefined : 12,
+      zIndex: 11,
       display: 'flex',
       alignItems: 'center',
       gap: 7,
@@ -180,7 +182,7 @@ function DevBanner() {
       backdropFilter: 'blur(6px)',
       whiteSpace: 'nowrap',
     }}>
-      🚧 개발 중
+      {t('devBanner')}
       <button
         onClick={() => setClosed(true)}
         style={{
@@ -193,11 +195,29 @@ function DevBanner() {
   );
 }
 
+const PANEL_BTN = {
+  background: '#0d1b2acc',
+  border: '1px solid #1e3a5f',
+  borderRadius: 10,
+  padding: '7px 13px',
+  fontSize: 16,
+  color: '#60a5fa',
+  backdropFilter: 'blur(4px)',
+  cursor: 'pointer',
+  lineHeight: 1,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 40,
+  minHeight: 40,
+};
+
 // ── 메인 대시보드 레이아웃 ─────────────────────────────────
 function DashboardLayout({ selectedProject }) {
   const t = useT('integrationProject');
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [showPanel, setShowPanel] = useState(false);
+  const [showPanel,   setShowPanel]   = useState(false); // 오른쪽 대시보드
+  const [showSidebar, setShowSidebar] = useState(false); // 왼쪽 컨트롤
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
@@ -205,100 +225,101 @@ function DashboardLayout({ selectedProject }) {
     return () => window.removeEventListener('resize', handler);
   }, []);
 
+  // ESC 키로 열린 패널 닫기
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { setShowPanel(false); setShowSidebar(false); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const closeAll = () => { setShowPanel(false); setShowSidebar(false); };
+
+  const mobileAnyOpen = isMobile && (showPanel || showSidebar);
+
   return (
-    <div style={{
-      display: 'flex',
-      height: '100%',
-      minHeight: 0,
-      overflow: 'hidden',
-      background: '#060f18',
-    }}>
+    <div style={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden', background: '#060f18', position: 'relative' }}>
 
-      {!isMobile && <ControlSidebar />}
+      {/* 데스크톱: 왼쪽 고정 사이드바 */}
+      {!isMobile && (
+        <div style={{ width: 220, flexShrink: 0 }}>
+          <ControlSidebar />
+        </div>
+      )}
 
-      <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+      {/* 3D 씬 — z-index:0 으로 stacking context 격리 (drei Html 라벨이 패널 위로 튀어나오지 않도록) */}
+      <div style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 0 }}>
         <IntegrationScene />
-        <DevBanner />
+        <DevBanner isMobile={isMobile} />
 
+        {/* 프로젝트명 배지 */}
         <div style={{
-          position: 'absolute',
-          top: 12,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#0d1b2acc',
-          border: '1px solid #1e3a5f',
-          borderRadius: 20,
-          padding: '4px 18px',
-          fontSize: 11,
-          color: '#60a5fa',
-          fontWeight: 700,
-          pointerEvents: 'none',
-          whiteSpace: 'nowrap',
-          backdropFilter: 'blur(4px)',
+          position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+          background: '#0d1b2acc', border: '1px solid #1e3a5f', borderRadius: 20,
+          padding: '4px 18px', fontSize: 11, color: '#60a5fa', fontWeight: 700,
+          pointerEvents: 'none', whiteSpace: 'nowrap', backdropFilter: 'blur(4px)',
+          zIndex: 5,
         }}>
           🔗 {selectedProject?.projectName || t('pageTitle')} · BIM · WBS
         </div>
 
-        <div style={{
-          position: 'absolute',
-          bottom: 10,
-          left: 10,
-          fontSize: 9,
-          color: '#374151',
-          pointerEvents: 'none',
-        }}>
+        {/* 힌트 */}
+        <div style={{ position: 'absolute', bottom: 10, left: 10, fontSize: 9, color: '#374151', pointerEvents: 'none' }}>
           {t('overlayHint')}
         </div>
 
-        {/* 모바일: 패널 토글 버튼 */}
+        {/* 모바일 토글 버튼 */}
         {isMobile && (
-          <button
-            onClick={() => setShowPanel(v => !v)}
-            style={{
-              position: 'absolute',
-              top: 12,
-              right: 12,
-              background: '#0d1b2acc',
-              border: '1px solid #1e3a5f',
-              borderRadius: 10,
-              padding: '5px 10px',
-              fontSize: 11,
-              color: '#60a5fa',
-              fontWeight: 700,
-              backdropFilter: 'blur(4px)',
-              cursor: 'pointer',
-              zIndex: 10,
-            }}
-          >
-            {showPanel ? '✕' : '📊'}
-          </button>
+          <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
+            <button
+              onClick={() => { setShowSidebar(v => !v); setShowPanel(false); }}
+              style={{ ...PANEL_BTN, color: showSidebar ? '#22c55e' : '#60a5fa' }}
+            >⚙</button>
+            <button
+              onClick={() => { setShowPanel(v => !v); setShowSidebar(false); }}
+              style={{ ...PANEL_BTN, color: showPanel ? '#22c55e' : '#60a5fa' }}
+            >📊</button>
+          </div>
         )}
       </div>
 
-      {/* 데스크톱: 오른쪽 고정 패널 / 모바일: 오버레이 패널 */}
+      {/* 딤 오버레이 (모바일, 패널 열렸을 때) */}
+      {mobileAnyOpen && (
+        <div
+          onClick={closeAll}
+          style={{
+            position: 'absolute', inset: 0, background: 'rgba(3,10,20,0.65)',
+            zIndex: 19, backdropFilter: 'blur(2px)',
+          }}
+        />
+      )}
+
+      {/* 모바일: 왼쪽 ControlSidebar 오버레이 */}
+      {isMobile && showSidebar && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0,
+          width: 'min(82vw, 280px)', height: '100%',
+          zIndex: 20, overflow: 'hidden',
+        }} className="bim-panel-left">
+          <ControlSidebar />
+        </div>
+      )}
+
+      {/* 데스크톱: 오른쪽 고정 / 모바일: 오버레이 */}
       {(!isMobile || showPanel) && (
-        <div style={isMobile ? {
-          position: 'absolute',
-          top: 0,
-          right: 0,
-          width: '75vw',
-          maxWidth: 280,
-          height: '100%',
-          zIndex: 20,
-          background: '#0a1525',
-          borderLeft: '1px solid #111e2d',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        } : {
-          width: 290,
-          flexShrink: 0,
-          background: '#0a1525',
-          borderLeft: '1px solid #111e2d',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}>
+        <div
+          className={isMobile ? 'bim-panel-right' : undefined}
+          style={isMobile ? {
+            position: 'absolute', top: 0, right: 0,
+            width: 'min(88vw, 320px)', height: '100%',
+            zIndex: 20, background: '#0a1525',
+            borderLeft: '1px solid #111e2d',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          } : {
+            width: 290, flexShrink: 0, background: '#0a1525',
+            borderLeft: '1px solid #111e2d',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}
+        >
           <IntegrationDashboardPanel />
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #111e2d' }}>
             <IntegrationEventLog />
