@@ -192,4 +192,22 @@ public class ChatController {
         Map<String, Object> result = chatService.excavationSpec(request);
         return ResponseEntity.ok(result);
     }
+
+    /**
+     * BIM 공종(elementType) 또는 WBS 태스크명 기반 KCS/KDS 시방서 RAG 검색
+     * 통합관제 WbsProgressPanel 공종별 시방서 조회에서 사용
+     *
+     * Body 예시:
+     * {
+     *   "taskName": "기둥 공사",
+     *   "elementType": "IfcColumn",
+     *   "status": "IN_PROGRESS",
+     *   "detail": ""
+     * }
+     */
+    @PostMapping("/wbs-task-spec")
+    public ResponseEntity<Map<String, Object>> wbsTaskSpec(@RequestBody Map<String, Object> request) {
+        Map<String, Object> result = chatService.wbsTaskSpec(request);
+        return ResponseEntity.ok(result);
+    }
 }

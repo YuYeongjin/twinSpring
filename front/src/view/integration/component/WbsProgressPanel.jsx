@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useIntegration } from '../IntegrationStore';
 import { useT } from '../../../i18n/LanguageContext';
 import { calcProgressRate, predictCompletion, getRecommendations } from '../progressEngine';
+import AxiosCustom from '../../../axios/AxiosCustom';
 
 const TASK_STATUS_META = {
   NOT_STARTED: { labelKey: 'taskNotStarted', color: '#94a3b8' },
@@ -24,28 +25,110 @@ function fmtDate(d) {
   return `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// ── 시방서 인용 패널 ──────────────────────────────────────────
+function SpecPanel({ citations, loading, hasData }) {
+  if (loading) return (
+    <div style={{ fontSize: 9, color: '#60a5fa', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
+      시방서 검색 중...
+    </div>
+  );
+  if (!hasData || !citations?.length) return (
+    <div style={{ fontSize: 9, color: '#374151', padding: '4px 0' }}>관련 시방서 없음</div>
+  );
+  return (
+    <div style={{ marginTop: 4 }}>
+      {citations.map((c, i) => (
+        <div key={i} style={{
+          marginBottom: 5, padding: '5px 7px',
+          background: '#060f18', borderRadius: 3, border: '1px solid #1e3a5f',
+        }}>
+          <div style={{ fontSize: 8, color: '#60a5fa', fontWeight: 700, marginBottom: 2 }}>
+            📋 {c.source}
+            {c.series && <span style={{ color: '#4b5563', fontWeight: 400 }}> · {c.series}</span>}
+          </div>
+          <div style={{ fontSize: 8, color: '#6b7280', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+            {c.content.length > 200 ? c.content.slice(0, 200) + '…' : c.content}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── RAG 시방서 조회 훅 ────────────────────────────────────────
+function useSpecQuery(taskName, elementType, status) {
+  const [open, setOpen]       = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]       = useState(null);
+
+  const toggle = async (e) => {
+    e && e.stopPropagation();
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (data) return;
+    setLoading(true);
+    try {
+      const res = await AxiosCustom.post('/api/chat/wbs-task-spec', {
+        taskName: taskName || '',
+        elementType: elementType || '',
+        status: status || '',
+      });
+      setData(res.data);
+    } catch {
+      setData({ citations: [], hasData: false });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { open, loading, data, toggle };
+}
+
 // ── 일반 WBS 진도 바 ──────────────────────────────────────────
 function Bar({ label, value, color, status, tWbs }) {
   const sm = TASK_STATUS_META[status];
+  const spec = useSpecQuery(label, '', status);
+
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-        <span style={{ fontSize: 10, color: '#8896a4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+        <span style={{ fontSize: 10, color: '#8896a4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130 }}>
           {label}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           {sm && <span style={{ fontSize: 8, color: sm.color, fontWeight: 700 }}>{tWbs(sm.labelKey) || sm.labelKey}</span>}
           <span style={{ fontSize: 10, fontWeight: 700, color }}>{Math.round(value ?? 0)}%</span>
+          <button
+            onClick={spec.toggle}
+            title="관련 시방서 조회"
+            style={{
+              background: spec.open ? '#1e3a5f' : 'none',
+              border: '1px solid #1e3a5f',
+              borderRadius: 3,
+              cursor: 'pointer',
+              color: spec.open ? '#93c5fd' : '#4b6a8a',
+              fontSize: 8,
+              padding: '1px 4px',
+              lineHeight: 1.4,
+              transition: 'color 0.15s, background 0.15s',
+            }}
+          >
+            📋
+          </button>
         </div>
       </div>
       <div style={{ background: '#111e2d', borderRadius: 4, height: 5, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${Math.min(100, value ?? 0)}%`, background: color, borderRadius: 4, transition: 'width 1.2s ease' }} />
       </div>
+      {spec.open && (
+        <SpecPanel citations={spec.data?.citations} loading={spec.loading} hasData={spec.data?.hasData} />
+      )}
     </div>
   );
 }
 
-// ── BIM 공종 행 (클릭하면 추천 펼침) ─────────────────────────
+// ── BIM 공종 행 (클릭하면 추천 + 시방서 펼침) ─────────────────
 function BimPredRow({ task, workers, equipment }) {
   const [open, setOpen] = useState(false);
 
@@ -65,7 +148,12 @@ function BimPredRow({ task, workers, equipment }) {
     [elementType, workers, equipment]
   );
 
-  // 오른쪽 상태 텍스트 (텍스트만, 박스 없음)
+  const spec = useSpecQuery(
+    task.taskName || ELEM_LABEL[elementType] || elementType,
+    elementType,
+    task.status || ''
+  );
+
   let statusText, statusColor;
   if (progress >= 100) {
     statusText = '완료';       statusColor = '#60a5fa';
@@ -88,8 +176,7 @@ function BimPredRow({ task, workers, equipment }) {
         onClick={() => setOpen(v => !v)}
         style={{
           width: '100%', background: 'none', border: 'none',
-          cursor: recs.length > 0 ? 'pointer' : 'default',
-          padding: 0, textAlign: 'left',
+          cursor: 'pointer', padding: 0, textAlign: 'left',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -111,14 +198,37 @@ function BimPredRow({ task, workers, equipment }) {
         </div>
       </button>
 
-      {/* 추천 목록 (펼침) */}
-      {open && recs.length > 0 && (
+      {/* 펼침 패널: 자원 추천 + 시방서 조회 */}
+      {open && (
         <div style={{ paddingLeft: 8, marginTop: 2, borderLeft: '1px solid #1e3a5f' }}>
           {recs.map((rec, i) => (
             <div key={i} style={{ fontSize: 9, color: '#6b7280', lineHeight: 1.6 }}>
               {rec.text}
             </div>
           ))}
+
+          {/* 시방서 조회 버튼 */}
+          <div style={{ marginTop: recs.length > 0 ? 6 : 2, borderTop: recs.length > 0 ? '1px solid #0d1b2a' : 'none', paddingTop: recs.length > 0 ? 5 : 0 }}>
+            <button
+              onClick={spec.toggle}
+              style={{
+                background: spec.open ? '#1e3a5f' : 'none',
+                border: '1px solid #1e3a5f',
+                borderRadius: 3,
+                cursor: 'pointer',
+                color: spec.open ? '#93c5fd' : '#4b6a8a',
+                fontSize: 8,
+                padding: '2px 7px',
+                lineHeight: 1.5,
+                transition: 'color 0.15s, background 0.15s',
+              }}
+            >
+              {spec.open ? '▲ 시방서 닫기' : '📋 관련 시방서 조회'}
+            </button>
+            {spec.open && (
+              <SpecPanel citations={spec.data?.citations} loading={spec.loading} hasData={spec.data?.hasData} />
+            )}
+          </div>
         </div>
       )}
     </div>
