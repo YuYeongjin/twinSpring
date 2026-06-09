@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
+import { useT } from '../../../i18n/LanguageContext';
 
-// survey ↔ local 변환 (surveyOrigin이 scene origin [0,0,0]의 실좌표)
 function toSurvey(local, o) { return o ? [local[0] + o.x, local[1] + o.y, local[2] + o.z] : local; }
 function toLocal(survey, o) { return o ? [survey[0] - o.x, survey[1] - o.y, survey[2] - o.z] : survey; }
 
@@ -32,8 +32,38 @@ function NumInput({ value, onChange, step = '0.5' }) {
   );
 }
 
+function LivePosBox({ pos, surveyOrigin, t }) {
+  if (!pos) return null;
+  const hasSurvey = !!surveyOrigin;
+  const [dx, dy, dz] = hasSurvey
+    ? [pos[0] + surveyOrigin.x, pos[1] + surveyOrigin.y, pos[2] + surveyOrigin.z]
+    : pos;
+  const badge = hasSurvey ? t('surveyCoordBadge') : t('currentPosLabel');
+  return (
+    <div style={{
+      background: '#0a1a0a', border: '1px solid #facc1555',
+      borderRadius: 5, padding: '6px 9px', marginBottom: 9,
+    }}>
+      <div style={{ fontSize: 8, color: '#facc15', fontWeight: 700, marginBottom: 4, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+        📍 {badge}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+        {[['X', dx], ['Y', dy], ['Z', dz]].map(([axis, val]) => (
+          <div key={axis} style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 1 }}>{axis}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#facc15', letterSpacing: '0.02em' }}>
+              {val.toFixed(1)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function WorkerOptionsPanel() {
-  const { workers, selectedWorkerId, surveyOrigin } = useIntegration();
+  const t = useT('integrationProject');
+  const { workers, selectedWorkerId, surveyOrigin, livePositions } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   const worker = workers.find(w => w.id === selectedWorkerId);
@@ -56,6 +86,7 @@ export default function WorkerOptionsPanel() {
 
   if (!worker || !form) return null;
 
+  const livePos = livePositions?.workers?.[worker.id] ?? (worker.initialPos || [0, 0, 0]);
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const apply = () => {
@@ -88,7 +119,7 @@ export default function WorkerOptionsPanel() {
       {/* 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontSize: 10, fontWeight: 800, color: '#22c55e', letterSpacing: '0.06em' }}>
-          👷 작업자 설정
+          👷 {t('workerSetting')}
         </div>
         <button
           onClick={() => dispatch({ type: 'SELECT_WORKER', id: null })}
@@ -96,9 +127,12 @@ export default function WorkerOptionsPanel() {
         >✕</button>
       </div>
 
+      {/* 실시간 현재 좌표 */}
+      <LivePosBox pos={livePos} surveyOrigin={surveyOrigin} t={t} />
+
       {/* 이름 */}
       <div style={{ marginBottom: 8 }}>
-        <Label>이름</Label>
+        <Label>{t('nameLabel')}</Label>
         <input
           type="text"
           value={form.name}
@@ -114,10 +148,10 @@ export default function WorkerOptionsPanel() {
       {/* 시작 위치 */}
       <div style={{ marginBottom: 8 }}>
         <Label>
-          시작 위치
+          {t('startPosLabel')}
           {surveyOrigin && (
             <span style={{ color: '#facc15', marginLeft: 5, fontSize: 8, fontWeight: 700, letterSpacing: 0 }}>
-              측량좌표
+              {t('surveyCoordBadge')}
             </span>
           )}
         </Label>
@@ -133,11 +167,11 @@ export default function WorkerOptionsPanel() {
 
       {/* 보호장비 */}
       <div style={{ marginBottom: 10 }}>
-        <Label>보호장비</Label>
+        <Label>{t('gearLabel')}</Label>
         <div style={{ display: 'flex', gap: 4 }}>
           {[
-            { val: true,  label: '✓ 착용',   active: '#1a3a1a', border: '#22c55e', color: '#22c55e' },
-            { val: false, label: '✗ 미착용', active: '#3a1a1a', border: '#ef4444', color: '#ef4444' },
+            { val: true,  label: t('gearOn'),  active: '#1a3a1a', border: '#22c55e', color: '#22c55e' },
+            { val: false, label: t('gearOff'), active: '#3a1a1a', border: '#ef4444', color: '#ef4444' },
           ].map(opt => (
             <button
               key={String(opt.val)}
@@ -172,7 +206,7 @@ export default function WorkerOptionsPanel() {
           transition: 'all 0.2s',
         }}
       >
-        {applied ? '✓ 적용됨' : '적용'}
+        {applied ? t('applied') : t('equipApply')}
       </button>
     </div>
   );

@@ -6,6 +6,45 @@ import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
 import { BimElement, getBaseColor } from '../../bim/element/BimElement';
 import { useT } from '../../../i18n/LanguageContext';
 
+// ── 선택된 엔티티의 실시간 좌표 툴팁 ──────────────────────────
+// groupRef: Three.js Group ref (position이 매 프레임 업데이트됨)
+// surveyOriginRef: surveyOrigin의 ref (stale-closure 방지)
+// labelY: Html position Y
+function LiveCoordLabel({ groupRef, surveyOriginRef, labelY }) {
+  const t = useT('integrationProject');
+  const tRef = useRef(t);
+  useEffect(() => { tRef.current = t; }, [t]);
+  const divRef = useRef(null);
+
+  useFrame(() => {
+    if (!groupRef.current || !divRef.current) return;
+    const p = groupRef.current.position;
+    const o = surveyOriginRef.current;
+    const x = o ? p.x + o.x : p.x;
+    const y = o ? p.y + o.y : p.y;
+    const z = o ? p.z + o.z : p.z;
+    const badge = o ? tRef.current('surveyCoordBadge') : tRef.current('currentPosLabel');
+    divRef.current.textContent = `📍 ${badge}  X:${x.toFixed(1)}  Y:${y.toFixed(1)}  Z:${z.toFixed(1)}`;
+  });
+
+  return (
+    <Html center distanceFactor={30} position={[0, labelY, 0]}>
+      <div ref={divRef} style={{
+        background: '#12100add',
+        color: '#facc15',
+        padding: '2px 8px',
+        borderRadius: 3,
+        fontSize: 8,
+        fontWeight: 700,
+        border: '1px solid #facc1540',
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+        letterSpacing: '0.03em',
+      }} />
+    </Html>
+  );
+}
+
 // ── 상수 ────────────────────────────────────────────────────────
 const STATUS_COLOR = {
   normal:         '#22c55e',
@@ -13,8 +52,8 @@ const STATUS_COLOR = {
   collision_risk: '#ef4444',
   no_gear:        '#a855f7',
 };
-const EQUIP_COLOR = { excavator: '#f97316', dump: '#3b82f6', crane: '#eab308' };
-const EQUIP_ICON  = { excavator: '🚜',      dump: '🚛',       crane: '🏗'  };
+const EQUIP_COLOR = { excavator: '#f97316', dump: '#3b82f6', crane: '#eab308', vehicle: '#22c55e', other: '#a855f7' };
+const EQUIP_ICON  = { excavator: '🚜',      dump: '🚛',       crane: '🏗',     vehicle: '🚗',      other: '🔧'  };
 const ZONE_COLOR  = { excavation: '#ef4444', restricted: '#f97316' };
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────
@@ -161,7 +200,9 @@ function BimProgressFill({ localPosition, size, elementType, progress, offsetY =
 
 // ── 구조물 레이어 (여러 BIM/IFC 구조물) ──────────────────────────
 function StructuresLayer() {
-  const { structures, wbsTasks } = useIntegration();
+  const t = useT('integrationProject');
+  const { structures, wbsTasks, surveyOrigin } = useIntegration();
+  const [selectedStructId, setSelectedStructId] = useState(null);
 
   const progressMap = useMemo(() => buildProgressMap(wbsTasks), [wbsTasks]);
 
@@ -175,9 +216,40 @@ function StructuresLayer() {
         const offset  = s.offset || [0, 0, 0];
         const offsetY = offset[1];
         const isBim   = s.type === 'bim';
+        const isStructSelected = selectedStructId === s.id;
+
+        // 기준좌표 기준 오프셋 표시
+        const dispX = surveyOrigin ? offset[0] + surveyOrigin.x : offset[0];
+        const dispY = surveyOrigin ? offset[1] + surveyOrigin.y : offset[1];
+        const dispZ = surveyOrigin ? offset[2] + surveyOrigin.z : offset[2];
+        const coordBadge = surveyOrigin ? t('surveyCoordBadge') : t('currentPosLabel');
 
         return (
           <group key={s.id} position={offset}>
+            {/* 구조물 클릭 레이블 (항상 표시, 클릭 시 좌표 토글) */}
+            <Html center position={[0, 0.4, 0]} distanceFactor={40}>
+              <div
+                onClick={() => setSelectedStructId(isStructSelected ? null : s.id)}
+                style={{
+                  background: isStructSelected ? '#1a1500dd' : '#0d1b2acc',
+                  color: isStructSelected ? '#facc15' : '#60a5fa',
+                  padding: '2px 7px', borderRadius: 3, fontSize: 8, fontWeight: 700,
+                  border: `1px solid ${isStructSelected ? '#facc1588' : '#1e3a5f'}`,
+                  whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
+                  lineHeight: 1.6,
+                }}
+              >
+                🏗 {s.name}
+                {isStructSelected && (
+                  <>
+                    <br />
+                    <span style={{ fontSize: 7, color: '#facc15' }}>
+                      📍 {coordBadge}  X:{dispX.toFixed(1)}  Y:{dispY.toFixed(1)}  Z:{dispZ.toFixed(1)}
+                    </span>
+                  </>
+                )}
+              </div>
+            </Html>
             {elems.map(el => {
               if (isBim) {
                 // BIM 구조물: 공정율 채우기 렌더
@@ -238,11 +310,18 @@ function LinkedBimElements() {
 }
 
 // ── 위험구역 마커 ────────────────────────────────────────────────
-function DangerZoneMarker({ zone, isSelected, onSelect }) {
+function DangerZoneMarker({ zone, isSelected, onSelect, surveyOrigin }) {
+  const t = useT('integrationProject');
   const [hx, hy, hz] = zone.halfSize;
   const color = ZONE_COLOR[zone.type] || '#ef4444';
   const boxGeo = useMemo(() => new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2), [hx, hy, hz]);
   if (!zone.active) return null;
+
+  const cx = zone.center[0], cy = zone.center[1], cz = zone.center[2];
+  const dispX = surveyOrigin ? cx + surveyOrigin.x : cx;
+  const dispY = surveyOrigin ? cy + surveyOrigin.y : cy;
+  const dispZ = surveyOrigin ? cz + surveyOrigin.z : cz;
+  const coordBadge = surveyOrigin ? t('surveyCoordBadge') : t('currentPosLabel');
 
   return (
     <group position={zone.center}>
@@ -272,6 +351,18 @@ function DangerZoneMarker({ zone, isSelected, onSelect }) {
           ⚠ {zone.name}
         </div>
       </Html>
+      {isSelected && (
+        <Html center position={[0, hy + 1.5, 0]} distanceFactor={35}>
+          <div style={{
+            background: '#12100add', color: '#facc15',
+            padding: '2px 8px', borderRadius: 3, fontSize: 8, fontWeight: 700,
+            border: '1px solid #facc1540', whiteSpace: 'nowrap', pointerEvents: 'none',
+            letterSpacing: '0.03em',
+          }}>
+            📍 {coordBadge}  X:{dispX.toFixed(1)}  Y:{dispY.toFixed(1)}  Z:{dispZ.toFixed(1)}
+          </div>
+        </Html>
+      )}
     </group>
   );
 }
@@ -281,7 +372,7 @@ const EQUIP_MODE_COLOR = { auto: '#22c55e', standby: '#f59e0b', gps: '#a78bfa' }
 
 // ── 작업자 메시 ─────────────────────────────────────────────────
 // statusKey·isSelected가 바뀔 때만 리렌더
-const WorkerItem = memo(function WorkerItem({ worker, statusKey, statusLabel, workerMeshes, isSelected, onSelect }) {
+const WorkerItem = memo(function WorkerItem({ worker, statusKey, statusLabel, workerMeshes, isSelected, onSelect, surveyOriginRef }) {
   const groupRef = useRef(null);
 
   useLayoutEffect(() => {
@@ -356,6 +447,9 @@ const WorkerItem = memo(function WorkerItem({ worker, statusKey, statusLabel, wo
           👷 {worker.name} · {statusLabel[statusKey] || ''}
         </div>
       </Html>
+      {isSelected && surveyOriginRef && (
+        <LiveCoordLabel groupRef={groupRef} surveyOriginRef={surveyOriginRef} labelY={2.75} />
+      )}
     </group>
   );
 });
@@ -591,7 +685,7 @@ function GenericEquipShape({ bw, bh, bd, color, em, emI }) {
 
 // ── 장비 메시 ────────────────────────────────────────────────────
 // 작업자 상태 변화와 완전히 독립 — isSelected·modeLabel 바뀔 때만 리렌더
-const EquipItem = memo(function EquipItem({ equip, isSelected, modeLabel, equipStateRef, equipMeshes, onSelect }) {
+const EquipItem = memo(function EquipItem({ equip, isSelected, modeLabel, equipStateRef, equipMeshes, onSelect, surveyOriginRef }) {
   const groupRef = useRef(null);
 
   useLayoutEffect(() => {
@@ -656,6 +750,9 @@ const EquipItem = memo(function EquipItem({ equip, isSelected, modeLabel, equipS
           </span>
         </div>
       </Html>
+      {isSelected && surveyOriginRef && (
+        <LiveCoordLabel groupRef={groupRef} surveyOriginRef={surveyOriginRef} labelY={labelY + 0.65} />
+      )}
     </group>
   );
 });
@@ -666,7 +763,7 @@ function SimulationManager({ running }) {
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
 
-  const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId, selectedWorkerId } = useIntegration();
+  const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId, selectedWorkerId, surveyOrigin } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   // stale-closure 없이 선택 상태를 읽기 위한 ref
@@ -674,6 +771,10 @@ function SimulationManager({ running }) {
   const selectedWorkerIdRef = useRef(selectedWorkerId);
   useEffect(() => { selectedEquipIdRef.current  = selectedEquipId;  }, [selectedEquipId]);
   useEffect(() => { selectedWorkerIdRef.current = selectedWorkerId; }, [selectedWorkerId]);
+
+  // surveyOrigin ref — LiveCoordLabel이 stale closure 없이 최신값 읽음
+  const surveyOriginRef = useRef(surveyOrigin);
+  useEffect(() => { surveyOriginRef.current = surveyOrigin; }, [surveyOrigin]);
 
   // 3D 클릭 핸들러 (stable — 의존성 없이 ref 사용)
   const onSelectEquip = useCallback((id) => {
@@ -696,6 +797,7 @@ function SimulationManager({ running }) {
   const workerMeshes  = useRef({});
   const throttleMap   = useRef({});
   const wbsTickRef    = useRef(0);
+  const livePosTimer  = useRef(0);
 
   // 장비 추가/제거 동기화
   useEffect(() => {
@@ -888,6 +990,23 @@ function SimulationManager({ running }) {
       if (active > 0)
         dispatch({ type: 'UPDATE_TASK_PROGRESS', delta: 0.05 * active, taskIndex: Math.floor(Math.random() * 4) });
     }
+
+    // 사이드바용 실시간 좌표 — 150ms마다 dispatch (API 저장 트리거 안 함)
+    livePosTimer.current += delta;
+    if (livePosTimer.current >= 0.15) {
+      livePosTimer.current = 0;
+      const wPos = {};
+      workers.forEach(w => {
+        const ws = workerStateRef.current[w.id];
+        if (ws) wPos[w.id] = [...ws.pos];
+      });
+      const ePos = {};
+      equips.forEach(e => {
+        const es = equipStateRef.current[e.id];
+        if (es) ePos[e.id] = [...es.pos];
+      });
+      dispatch({ type: 'SET_LIVE_POSITIONS', workers: wPos, equipment: ePos });
+    }
   });
 
   // useMemo → 언어 바뀔 때만 새 객체, 매 렌더 재생성 방지
@@ -913,6 +1032,7 @@ function SimulationManager({ running }) {
           workerMeshes={workerMeshes}
           isSelected={w.id === selectedWorkerId}
           onSelect={onSelectWorker}
+          surveyOriginRef={surveyOriginRef}
         />
       ))}
       {initEquip.map(e => (
@@ -924,6 +1044,7 @@ function SimulationManager({ running }) {
           equipStateRef={equipStateRef}
           equipMeshes={equipMeshes}
           onSelect={onSelectEquip}
+          surveyOriginRef={surveyOriginRef}
         />
       ))}
     </>
@@ -932,6 +1053,7 @@ function SimulationManager({ running }) {
 
 // ── 측량 기준점 마커 ──────────────────────────────────────────────
 function SurveyOriginMarker({ origin }) {
+  const t = useT('integrationProject');
   if (!origin) return null;
   return (
     <group position={[0, 0, 0]}>
@@ -957,7 +1079,7 @@ function SurveyOriginMarker({ origin }) {
           border: '1px solid #facc1588', whiteSpace: 'nowrap', pointerEvents: 'none',
           lineHeight: 1.6,
         }}>
-          📍 {origin.label || '기준점'}
+          📍 {origin.label || t('surveyDefaultLabel')}
           <br />
           <span style={{ fontSize: 8, color: '#a09060' }}>
             X:{origin.x.toFixed(2)} Y:{origin.y.toFixed(2)} Z:{origin.z.toFixed(2)}
@@ -1015,6 +1137,7 @@ function SceneInner() {
           zone={z}
           isSelected={z.id === selectedZoneId}
           onSelect={onSelectZone}
+          surveyOrigin={surveyOrigin}
         />
       ))}
 

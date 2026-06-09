@@ -1,13 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
+import { useT } from '../../../i18n/LanguageContext';
 
 function toSurvey(local, o) { return o ? [local[0] + o.x, local[1] + o.y, local[2] + o.z] : local; }
 function toLocal(survey, o) { return o ? [survey[0] - o.x, survey[1] - o.y, survey[2] - o.z] : survey; }
-
-const ZONE_TYPES = [
-  { value: 'excavation', label: '굴착 위험', color: '#ef4444' },
-  { value: 'restricted', label: '접근 금지', color: '#f97316' },
-];
 
 function Label({ children }) {
   return (
@@ -38,12 +34,18 @@ function NumInput({ value, onChange, step = '0.5', min }) {
 }
 
 export default function ZoneOptionsPanel() {
+  const t = useT('integrationProject');
   const { dangerZones, selectedZoneId, surveyOrigin } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   const zone = dangerZones.find(z => z.id === selectedZoneId);
   const [form, setForm] = useState(null);
   const [applied, setApplied] = useState(false);
+
+  const ZONE_TYPES = [
+    { value: 'excavation', label: t('zoneExcavationLabel'), color: '#ef4444' },
+    { value: 'restricted', label: t('zoneRestrictedLabel'), color: '#f97316' },
+  ];
 
   useEffect(() => {
     if (!zone) { setForm(null); return; }
@@ -65,17 +67,19 @@ export default function ZoneOptionsPanel() {
 
   if (!zone || !form) return null;
 
+  const localCenter = zone.center || [0, 2, 0];
+  const displayCenter = toSurvey(localCenter, surveyOrigin);
   const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   const apply = () => {
     const inputCenter = [parseFloat(form.cx) || 0, parseFloat(form.cy) || 2, parseFloat(form.cz) || 0];
-    const localCenter = toLocal(inputCenter, surveyOrigin);
+    const newLocalCenter = toLocal(inputCenter, surveyOrigin);
     dispatch({
       type: 'UPDATE_ZONE',
       id: zone.id,
       updates: {
         name:   form.name,
-        center: localCenter,
+        center: newLocalCenter,
         halfSize: [
           Math.max(0.5, parseFloat(form.hx) || 3),
           Math.max(0.5, parseFloat(form.hy) || 4),
@@ -92,7 +96,7 @@ export default function ZoneOptionsPanel() {
     }, 800);
   };
 
-  const accentColor = ZONE_TYPES.find(t => t.value === form.type)?.color || '#ef4444';
+  const accentColor = ZONE_TYPES.find(tp => tp.value === form.type)?.color || '#ef4444';
 
   return (
     <div style={{
@@ -105,7 +109,7 @@ export default function ZoneOptionsPanel() {
       {/* 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontSize: 10, fontWeight: 800, color: accentColor, letterSpacing: '0.06em' }}>
-          ⚠ 위험구역 설정
+          ⚠ {t('zoneSetting')}
         </div>
         <button
           onClick={() => dispatch({ type: 'SELECT_ZONE', id: null })}
@@ -113,9 +117,29 @@ export default function ZoneOptionsPanel() {
         >✕</button>
       </div>
 
+      {/* 중심 좌표 표시 */}
+      <div style={{
+        background: '#07130a', border: `1px solid ${accentColor}44`,
+        borderRadius: 5, padding: '6px 9px', marginBottom: 9,
+      }}>
+        <div style={{ fontSize: 8, color: accentColor, fontWeight: 700, marginBottom: 4, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+          📍 {surveyOrigin ? t('surveyCoordBadge') : t('currentPosLabel')}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+          {[['X', displayCenter[0]], ['Y', displayCenter[1]], ['Z', displayCenter[2]]].map(([axis, val]) => (
+            <div key={axis} style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 1 }}>{axis}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: accentColor, letterSpacing: '0.02em' }}>
+                {val.toFixed(1)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* 이름 */}
       <div style={{ marginBottom: 8 }}>
-        <Label>이름</Label>
+        <Label>{t('nameLabel')}</Label>
         <input
           type="text"
           value={form.name}
@@ -130,7 +154,7 @@ export default function ZoneOptionsPanel() {
 
       {/* 유형 */}
       <div style={{ marginBottom: 8 }}>
-        <Label>구역 유형</Label>
+        <Label>{t('zoneTypeLabel')}</Label>
         <div style={{ display: 'flex', gap: 4 }}>
           {ZONE_TYPES.map(tp => (
             <button
@@ -154,10 +178,10 @@ export default function ZoneOptionsPanel() {
       {/* 중심 좌표 */}
       <div style={{ marginBottom: 8 }}>
         <Label>
-          중심 좌표
+          {t('zoneCenterLabel')}
           {surveyOrigin && (
             <span style={{ color: '#facc15', marginLeft: 5, fontSize: 8, fontWeight: 700, letterSpacing: 0 }}>
-              측량좌표
+              {t('surveyCoordBadge')}
             </span>
           )}
         </Label>
@@ -173,7 +197,7 @@ export default function ZoneOptionsPanel() {
 
       {/* 크기 (반사이즈) */}
       <div style={{ marginBottom: 8 }}>
-        <Label>크기 (반경 X/Y/Z)</Label>
+        <Label>{t('zoneHalfSizeLabel')}</Label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
           {[['X', 'hx'], ['Y', 'hy'], ['Z', 'hz']].map(([axis, key]) => (
             <div key={key}>
@@ -183,13 +207,13 @@ export default function ZoneOptionsPanel() {
           ))}
         </div>
         <div style={{ fontSize: 9, color: '#374151', marginTop: 3 }}>
-          실제 크기 = 반경 × 2
+          {t('zoneHalfSizeNote')}
         </div>
       </div>
 
       {/* 활성화 */}
       <div style={{ marginBottom: 10 }}>
-        <Label>활성화</Label>
+        <Label>{t('zoneActiveLabel')}</Label>
         <div style={{ display: 'flex', gap: 4 }}>
           {[
             { val: true,  label: 'ON',  active: '#1a3a1a', border: '#22c55e', color: '#22c55e' },
@@ -228,7 +252,7 @@ export default function ZoneOptionsPanel() {
           transition: 'all 0.2s',
         }}
       >
-        {applied ? '✓ 적용됨' : '적용'}
+        {applied ? t('applied') : t('equipApply')}
       </button>
     </div>
   );

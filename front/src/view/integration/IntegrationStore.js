@@ -17,7 +17,7 @@ const DEFAULT_WORKERS = [
 const DEFAULT_EQUIPMENT = [
   { id: 'e1', type: 'excavator', name: '굴착기-1',  initialPos: [0,0,0],   route: [[0,0,0],[10,0,0],[10,0,10],[0,0,10]], speed: 1.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null },
   { id: 'e2', type: 'dump',      name: '덤프트럭-1', initialPos: [-8,0,-8], route: [[-8,0,-8],[8,0,-8],[8,0,-2],[-8,0,-2]], speed: 2.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null },
-  { id: 'e3', type: 'crane',     name: '크레인-1',   initialPos: [15,0,5],  route: [[15,0,5]], speed: 0, mode: 'standby', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null },
+  { id: 'e3', type: 'crane',     name: '크레인-1',   initialPos: [15,0,5],  route: [[15,0,5],[15,0,-5],[20,0,-5],[20,0,5]], speed: 1.0, mode: 'auto', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null },
 ];
 const DEFAULT_ZONES = [
   { id: 'z1', name: '굴착 위험구역', center: [5,  2, 5], halfSize: [4, 4, 4], type: 'excavation', active: true },
@@ -46,6 +46,8 @@ function makeInitial() {
     selectedEquipId:   null,
     selectedWorkerId:  null,
     selectedZoneId:    null,
+    // ── 런타임 전용 (저장 안 됨) ─────────────────────────────────
+    livePositions:     { workers: {}, equipment: {} },
   };
 }
 
@@ -222,6 +224,10 @@ function reducer(state, action) {
     // ── 측량 기준점 ──────────────────────────────────────────────
     case 'SET_SURVEY_ORIGIN':
       return { ...state, surveyOrigin: action.origin }; // null이면 해제
+
+    // ── 실시간 위치 (저장 안 됨, Canvas → 사이드바용) ─────────────
+    case 'SET_LIVE_POSITIONS':
+      return { ...state, livePositions: { workers: action.workers, equipment: action.equipment } };
 
     // ── 시뮬레이션 ───────────────────────────────────────────────
     case 'TOGGLE_SIM':

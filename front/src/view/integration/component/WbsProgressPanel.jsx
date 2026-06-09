@@ -12,9 +12,9 @@ const TASK_STATUS_META = {
 };
 const BAR_COLORS = ['#22c55e', '#f59e0b', '#3b82f6', '#a855f7', '#f97316', '#06b6d4'];
 
-const ELEM_LABEL = {
-  IfcSlab: '슬래브/기초', IfcColumn: '기둥',
-  IfcBeam: '보',          IfcWall: '벽체', IfcPier: '교각',
+const ELEM_LABEL_KEY = {
+  IfcSlab: 'ifcSlab', IfcColumn: 'ifcColumn',
+  IfcBeam: 'ifcBeam', IfcWall:  'ifcWall',  IfcPier: 'ifcPier',
 };
 
 const PROGRESS_COLOR = p =>
@@ -26,15 +26,15 @@ function fmtDate(d) {
 }
 
 // ── 시방서 인용 패널 ──────────────────────────────────────────
-function SpecPanel({ citations, loading, hasData }) {
+function SpecPanel({ citations, loading, hasData, t }) {
   if (loading) return (
     <div style={{ fontSize: 9, color: '#60a5fa', padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4 }}>
       <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
-      시방서 검색 중...
+      {t('specSearching')}
     </div>
   );
   if (!hasData || !citations?.length) return (
-    <div style={{ fontSize: 9, color: '#374151', padding: '4px 0' }}>관련 시방서 없음</div>
+    <div style={{ fontSize: 9, color: '#374151', padding: '4px 0' }}>{t('specNone')}</div>
   );
   return (
     <div style={{ marginTop: 4 }}>
@@ -86,7 +86,7 @@ function useSpecQuery(taskName, elementType, status) {
 }
 
 // ── 일반 WBS 진도 바 ──────────────────────────────────────────
-function Bar({ label, value, color, status, tWbs }) {
+function Bar({ label, value, color, status, tWbs, t }) {
   const sm = TASK_STATUS_META[status];
   const spec = useSpecQuery(label, '', status);
 
@@ -101,7 +101,7 @@ function Bar({ label, value, color, status, tWbs }) {
           <span style={{ fontSize: 10, fontWeight: 700, color }}>{Math.round(value ?? 0)}%</span>
           <button
             onClick={spec.toggle}
-            title="관련 시방서 조회"
+            title={t('specQueryTitle')}
             style={{
               background: spec.open ? '#1e3a5f' : 'none',
               border: '1px solid #1e3a5f',
@@ -122,14 +122,14 @@ function Bar({ label, value, color, status, tWbs }) {
         <div style={{ height: '100%', width: `${Math.min(100, value ?? 0)}%`, background: color, borderRadius: 4, transition: 'width 1.2s ease' }} />
       </div>
       {spec.open && (
-        <SpecPanel citations={spec.data?.citations} loading={spec.loading} hasData={spec.data?.hasData} />
+        <SpecPanel citations={spec.data?.citations} loading={spec.loading} hasData={spec.data?.hasData} t={t} />
       )}
     </div>
   );
 }
 
 // ── BIM 공종 행 (클릭하면 추천 + 시방서 펼침) ─────────────────
-function BimPredRow({ task, workers, equipment }) {
+function BimPredRow({ task, workers, equipment, t }) {
   const [open, setOpen] = useState(false);
 
   const elementType = task.notes.split(':')[2];
@@ -148,21 +148,23 @@ function BimPredRow({ task, workers, equipment }) {
     [elementType, workers, equipment]
   );
 
+  const elemLabel = t(ELEM_LABEL_KEY[elementType]) || elementType;
+
   const spec = useSpecQuery(
-    task.taskName || ELEM_LABEL[elementType] || elementType,
+    task.taskName || elemLabel,
     elementType,
     task.status || ''
   );
 
   let statusText, statusColor;
   if (progress >= 100) {
-    statusText = '완료';       statusColor = '#60a5fa';
+    statusText = t('statusDone');    statusColor = '#60a5fa';
   } else if (blocked) {
-    statusText = '차단됨';     statusColor = '#ef4444';
+    statusText = t('statusBlocked'); statusColor = '#ef4444';
   } else if (!pred) {
-    statusText = '—';          statusColor = '#374151';
+    statusText = '—';                statusColor = '#374151';
   } else if (pred.isDelayed) {
-    statusText = `${fmtDate(pred.predictedDate)} ↑${pred.delayDays}일`;
+    statusText = `${fmtDate(pred.predictedDate)} ${t('delayDays', { n: pred.delayDays })}`;
     statusColor = '#f59e0b';
   } else {
     statusText = fmtDate(pred.predictedDate);
@@ -181,7 +183,7 @@ function BimPredRow({ task, workers, equipment }) {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 10, color: '#8896a4', flexShrink: 0, width: 58, textAlign: 'left' }}>
-            {ELEM_LABEL[elementType] || elementType}
+            {elemLabel}
           </span>
           <div style={{ flex: 1, background: '#111e2d', borderRadius: 2, height: 3, overflow: 'hidden' }}>
             <div style={{
@@ -223,10 +225,10 @@ function BimPredRow({ task, workers, equipment }) {
                 transition: 'color 0.15s, background 0.15s',
               }}
             >
-              {spec.open ? '▲ 시방서 닫기' : '📋 관련 시방서 조회'}
+              {spec.open ? t('specBtnClose') : t('specBtnOpen')}
             </button>
             {spec.open && (
-              <SpecPanel citations={spec.data?.citations} loading={spec.loading} hasData={spec.data?.hasData} />
+              <SpecPanel citations={spec.data?.citations} loading={spec.loading} hasData={spec.data?.hasData} t={t} />
             )}
           </div>
         </div>
@@ -236,7 +238,7 @@ function BimPredRow({ task, workers, equipment }) {
 }
 
 // ── BIM 공정 예측 섹션 ───────────────────────────────────────
-function BimPredictionSection({ bimTasks, workers, equipment }) {
+function BimPredictionSection({ bimTasks, workers, equipment, t }) {
   const [open, setOpen] = useState(false);
   if (!bimTasks.length) return null;
 
@@ -251,13 +253,13 @@ function BimPredictionSection({ bimTasks, workers, equipment }) {
         }}
       >
         <span style={{ fontSize: 9, fontWeight: 700, color: '#4b5563', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          ⚡ BIM 공정 예측
+          {t('bimPredTitle')}
         </span>
         <span style={{ fontSize: 9, color: '#374151' }}>{open ? '▲' : '▼'}</span>
       </button>
 
       {open && bimTasks.map(task => (
-        <BimPredRow key={task.taskId} task={task} workers={workers} equipment={equipment} />
+        <BimPredRow key={task.taskId} task={task} workers={workers} equipment={equipment} t={t} />
       ))}
     </div>
   );
@@ -297,18 +299,18 @@ export default function WbsProgressPanel() {
 
       {!isLoading && wbsTasks.length > 0 && (
         <>
-          <Bar label={t('wbsOverall')} value={overall} color="#60a5fa" tWbs={tWbs} />
+          <Bar label={t('wbsOverall')} value={overall} color="#60a5fa" tWbs={tWbs} t={t} />
 
           {regularTasks.length > 0 && (
             <>
               <div style={{ borderTop: '1px solid #111e2d', marginBottom: 8 }} />
               {regularTasks.map((tk, i) => (
-                <Bar key={tk.taskId} label={tk.taskName} value={tk.progress} status={tk.status} color={BAR_COLORS[i % BAR_COLORS.length]} tWbs={tWbs} />
+                <Bar key={tk.taskId} label={tk.taskName} value={tk.progress} status={tk.status} color={BAR_COLORS[i % BAR_COLORS.length]} tWbs={tWbs} t={t} />
               ))}
             </>
           )}
 
-          <BimPredictionSection bimTasks={bimTasks} workers={workers} equipment={equipment} />
+          <BimPredictionSection bimTasks={bimTasks} workers={workers} equipment={equipment} t={t} />
         </>
       )}
     </div>
