@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState }      from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SockJS                              from 'sockjs-client';
 import { Client }                          from '@stomp/stompjs';
 import AxiosCustom                          from '../../axios/AxiosCustom';
@@ -107,6 +107,23 @@ function DataLoader({ selectedProject }) {
     load();
   }, [selectedProject, dispatch]);
 
+  // WBS 태스크 진도 주기 갱신 (30초)
+  // WBS 탭에서 진도를 수정하면 통합 관제 BIM 채우기에 자동 반영됨
+  useEffect(() => {
+    const wbsProjectId = selectedProject?.wbsProjectId;
+    if (!wbsProjectId) return;
+
+    const refreshWbs = async () => {
+      try {
+        const r = await AxiosCustom.get(`/api/wbs/project/${wbsProjectId}/tasks`);
+        dispatch({ type: 'SET_REAL_DATA', wbsTasks: r.data || [] });
+      } catch { /* 갱신 실패 무시 */ }
+    };
+
+    const id = setInterval(refreshWbs, 30000);
+    return () => clearInterval(id);
+  }, [selectedProject?.wbsProjectId, dispatch]);
+
   return null;
 }
 
@@ -128,6 +145,42 @@ function StructureLoader() {
   }, [structures, dispatch]);
 
   return null;
+}
+
+// ── 개발 중 배너 ────────────────────────────────────────────
+function DevBanner() {
+  const [closed, setClosed] = useState(false);
+  if (closed) return null;
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      zIndex: 20,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 7,
+      background: '#1a1200cc',
+      border: '1px solid #d97706',
+      borderRadius: 8,
+      padding: '5px 10px 5px 12px',
+      fontSize: 10,
+      color: '#fbbf24',
+      fontWeight: 700,
+      backdropFilter: 'blur(6px)',
+      whiteSpace: 'nowrap',
+    }}>
+      🚧 개발 중
+      <button
+        onClick={() => setClosed(true)}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: '#92400e', fontSize: 11, padding: '0 2px', lineHeight: 1,
+          fontWeight: 900,
+        }}
+      >✕</button>
+    </div>
+  );
 }
 
 // ── 메인 대시보드 레이아웃 ─────────────────────────────────
@@ -155,6 +208,7 @@ function DashboardLayout({ selectedProject }) {
 
       <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
         <IntegrationScene />
+        <DevBanner />
 
         <div style={{
           position: 'absolute',
