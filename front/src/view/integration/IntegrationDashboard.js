@@ -12,16 +12,24 @@ import WbsProgressPanel                from './component/WbsProgressPanel';
 import ControlSidebar                  from './component/ControlSidebar';
 import { useT }                        from '../../i18n/LanguageContext';
 
-// ── GPS WebSocket 구독 ──────────────────────────────────────
+// ── GPS WebSocket 구독 (장비 ID별 개별 토픽) ────────────────
 function GpsLoader() {
   const { equipment, referencePoint } = useIntegration();
-  const dispatch = useIntegrationDispatch();
-  const stompRef = useRef(null);
+  const dispatch    = useIntegrationDispatch();
+  const equipRef    = useRef(equipment);
+  const refPointRef = useRef(referencePoint);
 
-  const hasGps = equipment.some(e => e.mode === 'gps' && e.gpsDeviceId);
+  useEffect(() => { equipRef.current    = equipment;      }, [equipment]);
+  useEffect(() => { refPointRef.current = referencePoint; }, [referencePoint]);
+
+  // GPS 모드이면서 deviceId 가 설정된 장비 → 고유 ID 목록
+  const deviceIds = [...new Set(
+    equipment.filter(e => e.mode === 'gps' && e.gpsDeviceId).map(e => e.gpsDeviceId)
+  )];
+  const deviceIdsKey = deviceIds.join(',');
 
   useEffect(() => {
-    if (!hasGps) return;
+    if (deviceIds.length === 0) return;
 
     function buildWsUrl() {
       if (process.env.REACT_APP_API_URL)
@@ -31,31 +39,33 @@ function GpsLoader() {
       return `${window.location.origin}/ws/sensor`;
     }
 
+    function handleMsg(deviceId, msg) {
+      try {
+        const data = JSON.parse(msg.body);
+        if (data.lat == null || data.lng == null) return;
+        const { lat: refLat, lng: refLng } = refPointRef.current;
+        const x = (data.lng - refLng) * 111320 * Math.cos(refLat * Math.PI / 180);
+        const z = -(data.lat - refLat) * 110540;
+        const pos = [x, 0, z];
+        equipRef.current
+          .filter(e => e.mode === 'gps' && e.gpsDeviceId === deviceId)
+          .forEach(e => dispatch({ type: 'SET_EQUIP_GPS_POS', id: e.id, pos }));
+      } catch { /* parse 실패 무시 */ }
+    }
+
     const client = new Client({
       webSocketFactory: () => new SockJS(buildWsUrl()),
       reconnectDelay: 5000,
       onConnect: () => {
-        client.subscribe('/topic/excavator', (msg) => {
-          try {
-            const data = JSON.parse(msg.body);
-            if (data.lat == null || data.lng == null) return;
-            const refLat = referencePoint.lat;
-            const refLng = referencePoint.lng;
-            const x = (data.lng - refLng) * 111320 * Math.cos(refLat * Math.PI / 180);
-            const z = -(data.lat - refLat) * 110540;
-            const pos = [x, 0, z];
-            // gpsDeviceId === 'excavator' 인 장비에 위치 적용
-            equipment
-              .filter(e => e.mode === 'gps' && e.gpsDeviceId === 'excavator')
-              .forEach(e => dispatch({ type: 'SET_EQUIP_GPS_POS', id: e.id, pos }));
-          } catch { /* parse 실패 무시 */ }
+        // 각 장비 ID별로 /topic/gps/{deviceId} 구독
+        deviceIds.forEach(deviceId => {
+          client.subscribe(`/topic/gps/${deviceId}`, msg => handleMsg(deviceId, msg));
         });
       },
     });
     client.activate();
-    stompRef.current = client;
     return () => { client.deactivate(); };
-  }, [hasGps]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deviceIdsKey, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
 }
