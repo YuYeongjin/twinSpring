@@ -204,7 +204,17 @@ function StructuresLayer() {
   const { structures, wbsTasks, surveyOrigin } = useIntegration();
   const [selectedStructId, setSelectedStructId] = useState(null);
 
+  // WBS notes 형식(BIM:<id>:<type>) 기반 공종별 진도 맵 (고급 연동용)
   const progressMap = useMemo(() => buildProgressMap(wbsTasks), [wbsTasks]);
+
+  // WBS 전체 평균 진행률 — BIM 요소에 자동 반영되는 기본값
+  const overallWbsProgress = useMemo(() => {
+    if (wbsTasks.length === 0) return 0;
+    return wbsTasks.reduce((s, tk) => s + (tk.progress || 0), 0) / wbsTasks.length;
+  }, [wbsTasks]);
+
+  const progressColor = p =>
+    p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#374151';
 
   if (!structures?.length) return null;
 
@@ -218,41 +228,82 @@ function StructuresLayer() {
         const isBim   = s.type === 'bim';
         const isStructSelected = selectedStructId === s.id;
 
-        // 기준좌표 기준 오프셋 표시
         const dispX = surveyOrigin ? offset[0] + surveyOrigin.x : offset[0];
         const dispY = surveyOrigin ? offset[1] + surveyOrigin.y : offset[1];
         const dispZ = surveyOrigin ? offset[2] + surveyOrigin.z : offset[2];
         const coordBadge = surveyOrigin ? t('surveyCoordBadge') : t('currentPosLabel');
 
+        const overall = Math.round(overallWbsProgress);
+        const overallCol = progressColor(overall);
+
         return (
           <group key={s.id} position={offset}>
-            {/* 구조물 클릭 레이블 (항상 표시, 클릭 시 좌표 토글) */}
+            {/* 구조물 클릭 레이블 */}
             <Html center position={[0, 0.4, 0]} distanceFactor={40}>
               <div
                 onClick={() => setSelectedStructId(isStructSelected ? null : s.id)}
                 style={{
                   background: isStructSelected ? '#1a1500dd' : '#0d1b2acc',
                   color: isStructSelected ? '#facc15' : '#60a5fa',
-                  padding: '2px 7px', borderRadius: 3, fontSize: 8, fontWeight: 700,
+                  padding: '4px 8px', borderRadius: 5, fontSize: 8, fontWeight: 700,
                   border: `1px solid ${isStructSelected ? '#facc1588' : '#1e3a5f'}`,
-                  whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
+                  whiteSpace: isStructSelected ? 'normal' : 'nowrap',
+                  cursor: 'pointer', userSelect: 'none',
                   lineHeight: 1.6,
+                  minWidth: isStructSelected ? 170 : 'auto',
                 }}
               >
                 🏗 {s.name}
                 {isStructSelected && (
                   <>
-                    <br />
-                    <span style={{ fontSize: 7, color: '#facc15' }}>
+                    <div style={{ fontSize: 7, color: '#facc15', marginTop: 2 }}>
                       📍 {coordBadge}  X:{dispX.toFixed(1)}  Y:{dispY.toFixed(1)}  Z:{dispZ.toFixed(1)}
-                    </span>
+                    </div>
+                    {isBim && (
+                      <div style={{ marginTop: 5, borderTop: '1px solid #facc1530', paddingTop: 4 }}>
+                        {/* 전체 WBS 진행률 */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontSize: 7, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            WBS 전체 진행률
+                          </span>
+                          <span style={{ fontSize: 10, color: overallCol, fontWeight: 800 }}>{overall}%</span>
+                        </div>
+                        <div style={{ background: '#0a1525', borderRadius: 3, height: 5, overflow: 'hidden', marginBottom: 6 }}>
+                          <div style={{ height: '100%', width: `${overall}%`, background: overallCol, borderRadius: 3, transition: 'width 0.8s ease' }} />
+                        </div>
+                        {/* WBS 태스크 목록 */}
+                        {wbsTasks.length === 0 ? (
+                          <div style={{ fontSize: 7, color: '#4b5563' }}>WBS 태스크 없음</div>
+                        ) : (
+                          wbsTasks.slice(0, 6).map(tk => {
+                            const p = Math.round(tk.progress || 0);
+                            const col = progressColor(p);
+                            return (
+                              <div key={tk.taskId} style={{ marginBottom: 3 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 7, color: '#c8d8e8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>
+                                    {tk.taskName}
+                                  </span>
+                                  <span style={{ fontSize: 7, color: col, fontWeight: 800, flexShrink: 0 }}>{p}%</span>
+                                </div>
+                                <div style={{ background: '#0a1525', borderRadius: 2, height: 2, overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${p}%`, background: col, borderRadius: 2 }} />
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        {wbsTasks.length > 6 && (
+                          <div style={{ fontSize: 6, color: '#374151', marginTop: 2 }}>+{wbsTasks.length - 6}개 태스크 더 있음</div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
             </Html>
             {elems.map(el => {
               if (isBim) {
-                // BIM 구조물: 공정율 채우기 렌더
                 const cv = toIntegrationCoords(el);
                 const pX = Number(cv.positionX) || 0;
                 const pY = Number(cv.positionY) || 0;
@@ -260,18 +311,19 @@ function StructuresLayer() {
                 const sX = Number(cv.sizeX)     || 0.1;
                 const sY = Number(cv.sizeY)     || 0.1;
                 const sZ = Number(cv.sizeZ)     || 0.1;
+                // notes 기반 공종별 진도가 있으면 우선 사용, 없으면 WBS 전체 평균 자동 반영
+                const elemProgress = progressMap[`${s.bimProjectId}:${el.elementType}`] ?? overallWbsProgress;
                 return (
                   <BimProgressFill
                     key={el.elementId}
                     localPosition={[pX, pZ + sZ / 2, pY]}
                     size={[sX, sZ, sY]}
                     elementType={el.elementType}
-                    progress={progressMap[`${s.bimProjectId}:${el.elementType}`] || 0}
+                    progress={elemProgress}
                     offsetY={offsetY}
                   />
                 );
               }
-              // IFC 구조물: 기존 BimElement 그대로 유지
               return <BimElement key={el.elementId} element={toIntegrationCoords(el)} />;
             })}
           </group>
@@ -288,19 +340,25 @@ function LinkedBimElements() {
   const progressMap  = useMemo(() => buildProgressMap(wbsTasks), [wbsTasks]);
   const bimProjectId = projectMeta?.bimProjectId;
 
+  const overallWbsProgress = useMemo(() => {
+    if (wbsTasks.length === 0) return 0;
+    return wbsTasks.reduce((s, tk) => s + (tk.progress || 0), 0) / wbsTasks.length;
+  }, [wbsTasks]);
+
   if (!bimElements?.length) return null;
   return (
     <>
       {bimElements.map(el => {
         const pY = Number(el.positionY) || 0;
         const sY = Number(el.sizeY) || 3;
+        const elemProgress = progressMap[`${bimProjectId}:${el.elementType}`] ?? overallWbsProgress;
         return (
           <BimProgressFill
             key={el.elementId}
             localPosition={[el.positionX || 0, pY + sY / 2, el.positionZ || 0]}
             size={[el.sizeX || 1, sY, el.sizeZ || 1]}
             elementType={el.elementType}
-            progress={progressMap[`${bimProjectId}:${el.elementType}`] || 0}
+            progress={elemProgress}
             offsetY={0}
           />
         );
