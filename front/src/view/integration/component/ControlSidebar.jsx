@@ -1,11 +1,39 @@
 import { useRef, useState, useEffect } from 'react';
-import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
+import { useIntegration, useIntegrationDispatch, computeStructureBounds } from '../IntegrationStore';
 import AddStructureModal, { resizeImageDataUrl } from './AddStructureModal';
 import EquipmentOptionsPanel from './EquipmentOptionsPanel';
 import WorkerOptionsPanel from './WorkerOptionsPanel';
 import ZoneOptionsPanel from './ZoneOptionsPanel';
+import BimWorkPlanPanel from './BimWorkPlanPanel';
 import { useT } from '../../../i18n/LanguageContext';
 import { calcProgressRate, getRecommendations, TASK_RULES, EQUIP_LABEL } from '../progressEngine';
+
+// 자동 작업 중 표시 뱃지 (깜빡이는 점)
+function AutoWorkBadge({ count }) {
+  const [on, setOn] = useState(true);
+  useEffect(() => {
+    const id = setInterval(() => setOn(v => !v), 700);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '5px 8px', marginBottom: 8, borderRadius: 5,
+      background: '#0f1f00', border: '1px solid #22c55e55',
+    }}>
+      <span style={{
+        display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+        background: on ? '#22c55e' : '#0f1f00',
+        boxShadow: on ? '0 0 6px #22c55e' : 'none',
+        transition: 'background 0.2s, box-shadow 0.2s',
+        flexShrink: 0,
+      }} />
+      <span style={{ fontSize: 9, color: '#4ade80', fontWeight: 700 }}>
+        자동 작업 중 · 장비 {count}대 운영
+      </span>
+    </div>
+  );
+}
 
 const STATUS_META = {
   NOT_STARTED: { label: '미착', color: '#94a3b8' },
@@ -295,6 +323,7 @@ export default function ControlSidebar() {
 
   const [showAddStructure, setShowAddStructure] = useState(false);
   const [expandedStructId, setExpandedStructId] = useState(null);
+  const [selectedBimStructId, setSelectedBimStructId] = useState(null);
   const terrainInputRef = useRef(null);
 
   // 측량 기준점 폼
@@ -372,18 +401,6 @@ export default function ControlSidebar() {
             {projectMeta?.wbsProjectId ? t('connected') : t('notConnected')}
           </span>
         </Row>
-        <Row>
-          <span style={{ fontSize: 11 }}>🏗</span>
-          <span style={{ flex: 1, fontSize: 10, color: projectMeta?.bimProjectId ? '#60a5fa' : '#374151', fontWeight: 600 }}>BIM</span>
-          <span style={{ fontSize: 9, color: projectMeta?.bimProjectId ? '#2a5080' : '#253347' }}>
-            {projectMeta?.bimProjectId ? t('connected') : t('notConnected')}
-          </span>
-        </Row>
-        {bimElements.length > 0 && (
-          <div style={{ fontSize: 9, color: '#4b5563', marginTop: 2 }}>
-            {t('bimLoaded', { n: bimElements.length })}
-          </div>
-        )}
       </Section>
 
       {/* BIM/WBS 현황 — WBS 태스크가 있을 때만 표시 */}
@@ -445,6 +462,62 @@ export default function ControlSidebar() {
 
       {/* 구조물 */}
       <Section title={t('sectionStructures', { n: structures.length })}>
+        {/* 선택된 BIM 구조물: 좌표 + 작업계획 패널 */}
+        {selectedBimStructId && (() => {
+          const sel = structures.find(s => s.id === selectedBimStructId);
+          if (!sel) return null;
+          const off = sel.offset || [0, 0, 0];
+          return (
+            <>
+              {/* BIM 프로젝트 영역 좌표 */}
+              {(() => {
+                const b = computeStructureBounds(sel);
+                const ox = surveyOrigin?.x || 0, oz = surveyOrigin?.z || 0;
+                const minX = b.minX + ox, maxX = b.maxX + ox;
+                const minZ = b.minZ + oz, maxZ = b.maxZ + oz;
+                const w = b.maxX - b.minX, d = b.maxZ - b.minZ;
+                return (
+                  <div style={{
+                    background: '#060f18', border: '1px solid #1e3a5f',
+                    borderRadius: 5, padding: '6px 9px', marginBottom: 6,
+                  }}>
+                    <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                      📍 BIM 프로젝트 영역 {surveyOrigin ? '(측량 좌표)' : ''}
+                    </div>
+                    {/* X 범위 */}
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                        <span style={{ fontSize: 8, color: '#ef4444', fontWeight: 700 }}>X</span>
+                        <span style={{ fontSize: 9, color: '#d1d5db', fontWeight: 600 }}>{minX.toFixed(2)} ~ {maxX.toFixed(2)}</span>
+                        <span style={{ fontSize: 8, color: '#4b5563' }}>폭 {w.toFixed(1)}m</span>
+                      </div>
+                      <div style={{ height: 2, background: '#111e2d', borderRadius: 1 }}>
+                        <div style={{ height: '100%', width: '100%', background: '#ef444488', borderRadius: 1 }} />
+                      </div>
+                    </div>
+                    {/* Z 범위 */}
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                        <span style={{ fontSize: 8, color: '#3b82f6', fontWeight: 700 }}>Z</span>
+                        <span style={{ fontSize: 9, color: '#d1d5db', fontWeight: 600 }}>{minZ.toFixed(2)} ~ {maxZ.toFixed(2)}</span>
+                        <span style={{ fontSize: 8, color: '#4b5563' }}>깊이 {d.toFixed(1)}m</span>
+                      </div>
+                      <div style={{ height: 2, background: '#111e2d', borderRadius: 1 }}>
+                        <div style={{ height: '100%', width: '100%', background: '#3b82f688', borderRadius: 1 }} />
+                      </div>
+                    </div>
+                    {/* 오프셋 기준점 */}
+                    <div style={{ fontSize: 8, color: '#253347', borderTop: '1px solid #111e2d', paddingTop: 4 }}>
+                      씬 오프셋 X:{off[0].toFixed(1)} Y:{off[1].toFixed(1)} Z:{off[2].toFixed(1)}
+                    </div>
+                  </div>
+                );
+              })()}
+              <BimWorkPlanPanel structure={sel} />
+            </>
+          );
+        })()}
+
         {structures.length === 0 && (
           <div style={{ fontSize: 10, color: '#374151', marginBottom: 6, whiteSpace: 'pre-line' }}>
             {t('structHint')}
@@ -452,12 +525,28 @@ export default function ControlSidebar() {
         )}
         {structures.map(s => {
           const isExpanded = expandedStructId === s.id;
+          const isBimSelected = selectedBimStructId === s.id;
           const offset = s.offset || [0, 0, 0];
           return (
             <div key={s.id} style={{ marginBottom: 5 }}>
               <Row>
-                <span style={{ fontSize: 11 }}>{s.type === 'bim' ? '🏗' : '📂'}</span>
-                <span style={{ flex: 1, fontSize: 10, color: '#d1d5db', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {/* BIM 구조물은 아이콘+이름 클릭으로 작업계획 패널 토글 */}
+                <span
+                  style={{ fontSize: 11, cursor: s.type === 'bim' ? 'pointer' : 'default' }}
+                  onClick={() => s.type === 'bim' && setSelectedBimStructId(isBimSelected ? null : s.id)}
+                >
+                  {s.type === 'bim' ? '🏗' : '📂'}
+                </span>
+                <span
+                  onClick={() => s.type === 'bim' && setSelectedBimStructId(isBimSelected ? null : s.id)}
+                  style={{
+                    flex: 1, fontSize: 10,
+                    color: isBimSelected ? '#60a5fa' : '#d1d5db',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    cursor: s.type === 'bim' ? 'pointer' : 'default',
+                    fontWeight: isBimSelected ? 700 : 400,
+                  }}
+                >
                   {s.name}
                 </span>
                 <span style={{ fontSize: 9, color: s.elements?.length > 0 ? '#22c55e' : '#f59e0b', flexShrink: 0 }}>
@@ -484,7 +573,10 @@ export default function ControlSidebar() {
                   {s.visible !== false ? 'ON' : 'OFF'}
                 </button>
                 <button
-                  onClick={() => dispatch({ type: 'REMOVE_STRUCTURE', id: s.id })}
+                  onClick={() => {
+                    if (selectedBimStructId === s.id) setSelectedBimStructId(null);
+                    dispatch({ type: 'REMOVE_STRUCTURE', id: s.id });
+                  }}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
                 >✕</button>
               </Row>
@@ -524,6 +616,10 @@ export default function ControlSidebar() {
 
       {/* 시뮬레이션 제어 */}
       <Section title={t('sectionSimulation')}>
+        {/* 자동 작업 중 상태 표시 */}
+        {equipment.some(e => e.mode === 'auto') && simulationRunning && (
+          <AutoWorkBadge count={equipment.filter(e => e.mode === 'auto').length} />
+        )}
         <Row>
           <Btn
             onClick={() => dispatch({ type: 'TOGGLE_SIM' })}
@@ -534,11 +630,11 @@ export default function ControlSidebar() {
           </Btn>
           <Btn
             onClick={() => dispatch({ type: 'AUTO_SIM_START' })}
-            color="#1a1200"
-            textColor="#f97316"
+            color={equipment.some(e => e.mode === 'auto') ? '#0f2200' : '#1a1200'}
+            textColor={equipment.some(e => e.mode === 'auto') ? '#4ade80' : '#f97316'}
             title={t('simAutoDesc')}
           >
-            {t('simAuto')}
+            {equipment.some(e => e.mode === 'auto') ? t('simAuto') : t('simAuto')}
           </Btn>
         </Row>
         <div style={{ fontSize: 9, color: '#374151', lineHeight: 1.5, marginTop: 2 }}>
