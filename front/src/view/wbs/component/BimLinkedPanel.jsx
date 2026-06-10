@@ -3,14 +3,82 @@ import AxiosCustom from '../../../axios/AxiosCustom';
 
 // ── BIM 공종 메타 ─────────────────────────────────────────────────
 const ELEMENT_META = {
-  IfcSlab:   { name: '슬래브/기초 공사', icon: '⬛', color: '#22c55e', daysPerUnit: 2.0 },
-  IfcColumn: { name: '기둥 공사',        icon: '🏛',  color: '#8b5cf6', daysPerUnit: 1.0 },
-  IfcBeam:   { name: '보 공사',          icon: '📏',  color: '#3b82f6', daysPerUnit: 0.5 },
-  IfcWall:   { name: '벽체 공사',        icon: '🧱',  color: '#f59e0b', daysPerUnit: 0.4 },
-  IfcPier:   { name: '교각 공사',        icon: '🗼',  color: '#ef4444', daysPerUnit: 5.0 },
+  IfcSlab:   { name: '슬래브/기초 공사', icon: '⬛', color: '#22c55e', daysPerM3: 0.3 },
+  IfcColumn: { name: '기둥 공사',        icon: '🏛',  color: '#8b5cf6', daysPerM3: 0.5 },
+  IfcBeam:   { name: '보 공사',          icon: '📏',  color: '#3b82f6', daysPerM3: 0.4 },
+  IfcWall:   { name: '벽체 공사',        icon: '🧱',  color: '#f59e0b', daysPerM3: 0.35 },
+  IfcPier:   { name: '교각 공사',        icon: '🗼',  color: '#ef4444', daysPerM3: 0.6 },
 };
 // 시공 순서 기준 정렬 (기초 → 기둥 → 보 → 벽 → 교각 → 기타)
 const ELEMENT_ORDER = ['IfcSlab', 'IfcColumn', 'IfcBeam', 'IfcWall', 'IfcPier'];
+
+// 공종별 세부 공정 (시방서 기준)
+// daysPerM3: 총 체적(m³) 당 일수 (0 = 체적 무관 고정)
+// minDays: 최소 일수
+const SUB_TASKS = {
+  IfcSlab: [
+    { name: '터파기',           daysPerM3: 0.15,  minDays: 1 },
+    { name: '버림콘크리트 타설', daysPerM3: 0.04,  minDays: 1 },
+    { name: '거푸집 설치',       daysPerM3: 0.10,  minDays: 1 },
+    { name: '철근 조립',         daysPerM3: 0.15,  minDays: 1 },
+    { name: '콘크리트 타설',     daysPerM3: 0.025, minDays: 1 },
+    { name: '양생',             daysPerM3: 0,     minDays: 4 }, // 양생은 체적 무관 고정
+  ],
+  IfcColumn: [
+    { name: '거푸집 설치',   daysPerM3: 0.20,  minDays: 1 },
+    { name: '철근 조립',     daysPerM3: 0.30,  minDays: 1 },
+    { name: '콘크리트 타설', daysPerM3: 0.05,  minDays: 1 },
+    { name: '양생',         daysPerM3: 0,     minDays: 3 },
+    { name: '탈형',         daysPerM3: 0.08,  minDays: 1 },
+  ],
+  IfcBeam: [
+    { name: '동바리 설치',   daysPerM3: 0.15,  minDays: 1 },
+    { name: '거푸집 설치',   daysPerM3: 0.20,  minDays: 1 },
+    { name: '철근 조립',     daysPerM3: 0.25,  minDays: 1 },
+    { name: '콘크리트 타설', daysPerM3: 0.04,  minDays: 1 },
+    { name: '양생',         daysPerM3: 0,     minDays: 3 },
+  ],
+  IfcWall: [
+    { name: '거푸집 설치',   daysPerM3: 0.18,  minDays: 1 },
+    { name: '철근 조립',     daysPerM3: 0.25,  minDays: 1 },
+    { name: '콘크리트 타설', daysPerM3: 0.04,  minDays: 1 },
+    { name: '양생',         daysPerM3: 0,     minDays: 3 },
+    { name: '탈형',         daysPerM3: 0.07,  minDays: 1 },
+  ],
+  IfcPier: [
+    { name: '굴착',             daysPerM3: 0.20,  minDays: 2 },
+    { name: '버림콘크리트 타설', daysPerM3: 0.05,  minDays: 1 },
+    { name: '거푸집 설치',       daysPerM3: 0.15,  minDays: 1 },
+    { name: '철근 조립',         daysPerM3: 0.25,  minDays: 2 },
+    { name: '콘크리트 타설',     daysPerM3: 0.04,  minDays: 1 },
+    { name: '양생',             daysPerM3: 0,     minDays: 5 },
+  ],
+};
+
+// 부재 배열의 총 체적(m³) 계산 (크기 데이터 없는 부재는 평균 1m³ 으로 대체)
+const calcTotalVolume = (elements) => {
+  const total = elements.reduce((sum, el) => {
+    const x = Number(el.sizeX) || 0;
+    const y = Number(el.sizeY) || 0;
+    const z = Number(el.sizeZ) || 0;
+    const vol = x * y * z;
+    return sum + (vol > 0 ? vol : 1);
+  }, 0);
+  return Math.max(total, 0.1);
+};
+
+// 총 체적 + 작업 인원을 반영한 세부 공정 일수 계산
+const calcSubDays = (sub, totalVol, workers = 1) => {
+  const w = Math.max(1, workers);
+  return Math.max(sub.minDays, Math.ceil((totalVol * sub.daysPerM3) / w));
+};
+
+// 일수 차이 계산 (두 날짜 문자열 'YYYY-MM-DD')
+const daysBetween = (a, b) => {
+  if (!a || !b) return null;
+  const ms = new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00');
+  return Math.max(1, Math.round(ms / 86400000));
+};
 
 // notes 필드에 저장하는 연결 마커: "BIM:{bimProjectId}:{elementType}"
 const makeMarker = (bimProjectId, elementType) =>
@@ -48,13 +116,14 @@ function ProgressBar({ value, color }) {
 //    onReload       : () => void — 태스크 자동생성 후 호출해 목록 갱신
 //    projectStartDate : string (YYYY-MM-DD) — 일정 계산 기준일
 // ════════════════════════════════════════════════════════════════
-export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectStartDate }) {
+export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectStartDate, projectEndDate }) {
   const [links,       setLinks]       = useState([]);   // BIM 링크 목록
   const [bimData,     setBimData]     = useState({});   // { bimProjectId: { name, elements[] } }
   const [expandedBim, setExpandedBim] = useState({});   // { bimProjectId: bool }
   const [expandedType,setExpandedType]= useState({});   // { 'bimId_type': bool }
   const [loading,     setLoading]     = useState(true);
   const [generating,  setGenerating]  = useState(null); // 생성 중인 bimProjectId
+  const [targetDays,  setTargetDays]  = useState({});   // { bimProjectId: number } 목표 공기(일)
 
   // ── BIM 링크 + 요소 로드 ─────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -100,16 +169,83 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── notes 마커로 연결된 WBS 태스크 탐색 ─────────────────────
-  const findLinkedTask = (bimProjectId, elementType) => {
-    const marker = makeMarker(bimProjectId, elementType);
-    return tasks.find(t => t.notes?.includes(marker));
+  // ── BIM 프로젝트의 총 man-days 및 인원 추산 ─────────────────
+  const calcProjectStats = (bimProjectId) => {
+    const data = bimData[bimProjectId];
+    if (!data?.elements?.length) return { totalManDays: 0, seqDays1: 0, workers: 1, actualDays: 0, tgt: 90 };
+
+    const byType = {};
+    data.elements.forEach(el => {
+      if (!byType[el.elementType]) byType[el.elementType] = [];
+      byType[el.elementType].push(el);
+    });
+
+    // 1인 기준 순차 공기 계산
+    let totalManDays = 0; // 가속 가능한 작업만의 man-days (양생 제외)
+    let seqDays1    = 0;  // 1인 기준 전체 순차 공기
+
+    const byTypeStats = {}; // { elementType: { vol, subDefs } }
+    Object.entries(byType).forEach(([elementType, els]) => {
+      const vol     = calcTotalVolume(els);
+      const subDefs = SUB_TASKS[elementType];
+      byTypeStats[elementType] = { vol, subDefs };
+
+      if (subDefs) {
+        subDefs.forEach(sub => {
+          const d = Math.max(sub.minDays, Math.ceil(vol * sub.daysPerM3));
+          seqDays1 += d;
+          if (sub.daysPerM3 > 0) totalManDays += Math.ceil(vol * sub.daysPerM3); // 양생 제외
+        });
+      } else {
+        const meta = ELEMENT_META[elementType];
+        const d = Math.max(1, Math.ceil(vol * (meta?.daysPerM3 || 0.3)));
+        seqDays1    += d;
+        totalManDays += d;
+      }
+    });
+
+    // 목표 공기 결정 (우선순위: 사용자 입력 > 프로젝트 기간 > 1인 기준의 60%)
+    const projDays = daysBetween(projectStartDate, projectEndDate);
+    const tgt      = Math.max(1, targetDays[bimProjectId] || projDays || Math.ceil(seqDays1 * 0.6));
+    const workers  = Math.max(1, Math.ceil(totalManDays / tgt));
+
+    // 인원 적용 후 실제 달력 공기 계산
+    // (양생 같은 고정 공정의 minDays로 인해 단순 나눗셈보다 길어짐)
+    let actualDays = 0;
+    Object.entries(byTypeStats).forEach(([elementType, { vol, subDefs }]) => {
+      if (subDefs) {
+        subDefs.forEach(sub => { actualDays += calcSubDays(sub, vol, workers); });
+      } else {
+        const meta = ELEMENT_META[elementType];
+        actualDays += Math.max(1, Math.ceil((vol * (meta?.daysPerM3 || 0.3)) / workers));
+      }
+    });
+
+    return {
+      totalManDays: Math.round(totalManDays),
+      seqDays1:     Math.round(seqDays1),
+      workers,
+      actualDays:   Math.round(actualDays), // 인원 적용 후 실제 공기 (minDays 제약 반영)
+      tgt,
+    };
   };
 
-  // ── 일정 자동 생성 ──────────────────────────────────────────
+  // ── notes 마커로 연결된 WBS 태스크 탐색 (부모 태스크만) ──────
+  const findLinkedTask = (bimProjectId, elementType) => {
+    const marker = makeMarker(bimProjectId, elementType);
+    return tasks.find(t => t.notes?.includes(marker) && !t.parentTaskId);
+  };
+
+  // ── 세부 공정 태스크 탐색 ─────────────────────────────────
+  const findSubTasks = (parentTaskId) =>
+    tasks.filter(t => t.parentTaskId === parentTaskId)
+         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+  // ── 일정 자동 생성 (공종별 세부 공정 포함) ────────────────────
   const handleAutoGenerate = async (bimProjectId) => {
     const data = bimData[bimProjectId];
     if (!data || generating) return;
+    const { workers } = calcProjectStats(bimProjectId);
     setGenerating(bimProjectId);
 
     try {
@@ -143,41 +279,85 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
         ? addDays(latestEnd, 1)
         : (projectStartDate || new Date().toISOString().slice(0, 10));
       let sortOrder = Math.max(0, ...tasks.map(t => t.sortOrder || 0)) + 1;
+      let parentCodeNum = Math.max(0, ...tasks.filter(t => !t.parentTaskId && t.wbsCode).map(t => parseInt(t.wbsCode) || 0)) + 1;
 
-      let addedCount = 0;
       for (const elementType of orderedTypes) {
         const marker = makeMarker(bimProjectId, elementType);
 
         // 이미 생성된 타입이면 cursor 진행 후 건너뜀
-        const existing = tasks.find(t => t.notes?.includes(marker));
+        const existing = tasks.find(t => t.notes?.includes(marker) && !t.parentTaskId);
         if (existing) {
           if (existing.endDate && existing.endDate >= cursor)
             cursor = addDays(existing.endDate, 1);
+          parentCodeNum++;
           continue;
         }
 
         const count    = byType[elementType].length;
-        const meta     = ELEMENT_META[elementType] || { name: elementType, daysPerUnit: 1 };
-        const duration = Math.max(1, Math.ceil(count * meta.daysPerUnit));
-        const startDate = cursor;
-        const endDate   = addDays(startDate, duration - 1);
-        cursor = addDays(endDate, 1);
+        const totalVol = calcTotalVolume(byType[elementType]);
+        const meta     = ELEMENT_META[elementType] || { name: elementType, daysPerM3: 0.3 };
+        const subDefs  = SUB_TASKS[elementType];
 
-        await AxiosCustom.post(`/api/wbs/project/${wbsProjectId}/task`, {
+        // ── 부모 태스크 생성 ──────────────────────────────────────
+        const parentCode  = String(parentCodeNum);
+        const parentStart = cursor;
+
+        // 세부 공정 있으면 총 일수 = 체적/인원 반영 세부 합산, 없으면 기존 계산
+        const totalDuration = subDefs
+          ? subDefs.reduce((s, sub) => s + calcSubDays(sub, totalVol, workers), 0)
+          : Math.max(1, Math.ceil((totalVol * (meta.daysPerM3 || 0.3)) / workers));
+
+        const parentEnd = addDays(parentStart, totalDuration - 1);
+
+        const parentRes = await AxiosCustom.post(`/api/wbs/project/${wbsProjectId}/task`, {
           taskName:       `${meta.name} (×${count})`,
-          startDate,
-          endDate,
-          duration,
+          startDate:      parentStart,
+          endDate:        parentEnd,
+          duration:       totalDuration,
           progress:       0,
           status:         'NOT_STARTED',
           responsible:    '',
           notes:          marker,
           source:         'BIM_AUTO',
-          wbsCode:        '',
+          wbsCode:        parentCode,
           sortOrder:      sortOrder++,
           predecessorIds: '',
+          parentTaskId:   null,
         });
-        addedCount++;
+        const parentTaskId = parentRes.data?.taskId;
+
+        // ── 세부 공정 생성 ────────────────────────────────────────
+        if (subDefs && parentTaskId) {
+          let subCursor    = parentStart;
+          let prevSubId    = null;
+          for (let si = 0; si < subDefs.length; si++) {
+            const sub      = subDefs[si];
+            const subDays  = calcSubDays(sub, totalVol, workers);
+            const subStart = subCursor;
+            const subEnd   = addDays(subStart, subDays - 1);
+            subCursor      = addDays(subEnd, 1);
+
+            const subRes = await AxiosCustom.post(`/api/wbs/project/${wbsProjectId}/task`, {
+              taskName:       sub.name,
+              startDate:      subStart,
+              endDate:        subEnd,
+              duration:       subDays,
+              progress:       0,
+              status:         'NOT_STARTED',
+              responsible:    '',
+              notes:          `BIM_SUB:${bimProjectId}:${elementType}:${sub.name}`,
+              source:         'BIM_AUTO',
+              wbsCode:        `${parentCode}.${si + 1}`,
+              sortOrder:      sortOrder++,
+              predecessorIds: prevSubId || '',
+              parentTaskId,
+            });
+            prevSubId = subRes.data?.taskId || null;
+          }
+        }
+
+        cursor = addDays(parentEnd, 1);
+        parentCodeNum++;
       }
 
       onReload();
@@ -225,6 +405,9 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
             )
           : null;
 
+        // 인원 추산
+        const stats = calcProjectStats(link.linkedProjectId);
+
         return (
           <div key={link.linkedProjectId} style={{
             background:    '#08131e',
@@ -262,24 +445,79 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                 </div>
               </div>
 
-              {/* 우측 뱃지 + 버튼 — 부모 클릭 전파 차단 */}
+              {/* 우측 뱃지 + 인원 추산 + 버튼 — 부모 클릭 전파 차단 */}
               <div
-                style={{ display: 'flex', gap: 6, alignItems: 'center' }}
+                style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}
                 onClick={e => e.stopPropagation()}
               >
-                <span style={{
-                  fontSize:   10,
-                  padding:    '2px 8px',
-                  borderRadius: 10,
-                  background: linkedCount === totalTypes && totalTypes > 0 ? '#14532d' : '#1e293b',
-                  color:      linkedCount === totalTypes && totalTypes > 0 ? '#4ade80' : '#64748b',
-                  border:     `1px solid ${linkedCount === totalTypes && totalTypes > 0 ? '#166534' : '#253347'}`,
-                  fontWeight: 700,
-                  whiteSpace: 'nowrap',
-                }}>
-                  WBS {linkedCount}/{totalTypes}
-                </span>
+                {/* WBS 연결 뱃지 */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{
+                    fontSize:   10,
+                    padding:    '2px 8px',
+                    borderRadius: 10,
+                    background: linkedCount === totalTypes && totalTypes > 0 ? '#14532d' : '#1e293b',
+                    color:      linkedCount === totalTypes && totalTypes > 0 ? '#4ade80' : '#64748b',
+                    border:     `1px solid ${linkedCount === totalTypes && totalTypes > 0 ? '#166534' : '#253347'}`,
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                  }}>
+                    WBS {linkedCount}/{totalTypes}
+                  </span>
+                </div>
 
+                {/* 인원 추산 행 */}
+                {elements.length > 0 && (
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', gap: 3,
+                    background: '#071018', borderRadius: 6,
+                    border: '1px solid #1a2a3a', padding: '5px 8px',
+                    fontSize: 9,
+                  }}>
+                    {/* 1행: 공사량 + 목표 공기 입력 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ color: '#475569' }}>공사량</span>
+                      <span style={{ color: '#60a5fa', fontWeight: 700 }}>{stats.totalManDays}m-d</span>
+                      <span style={{ color: '#1e3a5f' }}>|</span>
+                      <span style={{ color: '#475569' }}>1인공기</span>
+                      <span style={{ color: '#64748b' }}>{stats.seqDays1}일</span>
+                      <span style={{ color: '#1e3a5f' }}>|</span>
+                      <span style={{ color: '#475569' }}>목표</span>
+                      <input
+                        type="number" min={1}
+                        value={targetDays[link.linkedProjectId] ?? stats.tgt}
+                        onChange={e => setTargetDays(prev => ({
+                          ...prev, [link.linkedProjectId]: Math.max(1, Number(e.target.value) || 1),
+                        }))}
+                        style={{
+                          width: 40, background: '#0d1b2a', border: '1px solid #253347',
+                          borderRadius: 4, color: '#e2e8f0', fontSize: 9,
+                          padding: '1px 4px', textAlign: 'center', outline: 'none',
+                        }}
+                      />
+                      <span style={{ color: '#475569' }}>일</span>
+                    </div>
+                    {/* 2행: 추산 인원 + 실제 달력 공기 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ color: '#fbbf24', fontWeight: 700 }}>👷 {stats.workers}명 균일 투입</span>
+                      <span style={{ color: '#1e3a5f' }}>→</span>
+                      <span style={{ color: '#475569' }}>실제 공기</span>
+                      <span style={{
+                        color: stats.actualDays <= stats.tgt ? '#4ade80' : '#f87171',
+                        fontWeight: 700,
+                      }}>
+                        {stats.actualDays}일
+                      </span>
+                      {stats.actualDays > stats.tgt && (
+                        <span style={{ color: '#f87171', fontSize: 8 }}>
+                          (양생 등 고정 공정으로 목표 초과)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 생성 버튼 */}
                 <button
                   onClick={() => handleAutoGenerate(link.linkedProjectId)}
                   disabled={!!generating}
@@ -315,12 +553,16 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                 ) : (
                   orderedTypes.map((elementType, idx) => {
                     const count       = byType[elementType].length;
-                    const meta        = ELEMENT_META[elementType] || { name: elementType, icon: '📦', color: '#94a3b8', daysPerUnit: 1 };
+                    const totalVol    = calcTotalVolume(byType[elementType]);
+                    const meta        = ELEMENT_META[elementType] || { name: elementType, icon: '📦', color: '#94a3b8', daysPerM3: 0.3 };
                     const typeKey     = `${link.linkedProjectId}_${elementType}`;
                     const isTypeOpen  = !!expandedType[typeKey];
                     const linkedTask  = findLinkedTask(link.linkedProjectId, elementType);
                     const progress    = linkedTask?.progress ?? null;
-                    const estDays     = Math.max(1, Math.ceil(count * meta.daysPerUnit));
+                    const subDefs     = SUB_TASKS[elementType];
+                    const estDays     = subDefs
+                      ? subDefs.reduce((s, sub) => s + calcSubDays(sub, totalVol, stats.workers), 0)
+                      : Math.max(1, Math.ceil(totalVol * (meta.daysPerM3 || 0.3)));
 
                     return (
                       <div
@@ -357,7 +599,12 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                               }}>
                                 {elementType} × {count}
                               </span>
-                              <span style={{ fontSize: 9, color: '#374151' }}>~{estDays}일</span>
+                              <span style={{ fontSize: 9, color: '#374151' }}>
+                                ~{estDays}일
+                              </span>
+                              <span style={{ fontSize: 9, color: '#253347' }}>
+                                ({totalVol.toFixed(1)}m³)
+                              </span>
                             </div>
                             {progress !== null && <ProgressBar value={progress} color={meta.color} />}
                           </div>
@@ -383,24 +630,67 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                         {/* 세부 요소 목록 */}
                         {isTypeOpen && (
                           <div style={{ background: '#050d17', padding: '6px 14px 10px 42px' }}>
-                            {/* 연결된 태스크 정보 */}
-                            {linkedTask && (
-                              <div style={{
-                                display: 'flex', alignItems: 'center', gap: 8,
-                                padding: '5px 8px', marginBottom: 6,
-                                background: '#0a1e10', borderRadius: 5,
-                                border: '1px solid #166534',
-                              }}>
-                                <span style={{ fontSize: 9, color: '#4ade80', fontWeight: 700 }}>WBS 태스크</span>
-                                <span style={{ fontSize: 10, color: '#d1d5db', flex: 1 }}>{linkedTask.taskName}</span>
-                                <span style={{ fontSize: 9, color: '#4b5563' }}>
-                                  {linkedTask.startDate} ~ {linkedTask.endDate}
-                                </span>
-                                <span style={{ fontSize: 10, color: '#4ade80', fontWeight: 700 }}>
-                                  {linkedTask.progress}%
-                                </span>
-                              </div>
-                            )}
+                            {/* 연결된 태스크 + 세부 공정 */}
+                            {linkedTask && (() => {
+                              const subTasks = findSubTasks(linkedTask.taskId);
+                              return (
+                                <div style={{ marginBottom: 8 }}>
+                                  {/* 부모 태스크 행 */}
+                                  <div style={{
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '5px 8px', marginBottom: subTasks.length ? 2 : 0,
+                                    background: '#0a1e10', borderRadius: subTasks.length ? '5px 5px 0 0' : 5,
+                                    border: '1px solid #166534',
+                                  }}>
+                                    <span style={{ fontSize: 9, color: '#4ade80', fontWeight: 700 }}>WBS</span>
+                                    <span style={{ fontSize: 9, color: '#94a3b8', fontFamily: 'monospace' }}>{linkedTask.wbsCode}</span>
+                                    <span style={{ fontSize: 10, color: '#d1d5db', flex: 1 }}>{linkedTask.taskName}</span>
+                                    <span style={{ fontSize: 9, color: '#4b5563' }}>
+                                      {linkedTask.startDate} ~ {linkedTask.endDate}
+                                    </span>
+                                    <span style={{ fontSize: 10, color: '#4ade80', fontWeight: 700 }}>
+                                      {linkedTask.progress}%
+                                    </span>
+                                  </div>
+                                  {/* 세부 공정 행 */}
+                                  {subTasks.map((sub, si) => {
+                                    const statusColor = sub.status === 'COMPLETED' ? '#4ade80'
+                                      : sub.status === 'IN_PROGRESS' ? '#60a5fa'
+                                      : sub.status === 'DELAYED' ? '#f87171' : '#374151';
+                                    return (
+                                      <div key={sub.taskId} style={{
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                        padding: '4px 8px',
+                                        background: '#060e18',
+                                        borderLeft: '1px solid #166534',
+                                        borderRight: '1px solid #166534',
+                                        borderBottom: si === subTasks.length - 1 ? '1px solid #166534' : '1px solid #0a1810',
+                                        borderRadius: si === subTasks.length - 1 ? '0 0 5px 5px' : 0,
+                                      }}>
+                                        <span style={{ fontSize: 9, color: '#253347', marginLeft: 6 }}>└</span>
+                                        <span style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace', minWidth: 24 }}>
+                                          {sub.wbsCode}
+                                        </span>
+                                        <span style={{ fontSize: 10, color: '#94a3b8', flex: 1 }}>{sub.taskName}</span>
+                                        <span style={{ fontSize: 9, color: '#374151' }}>{sub.duration}일</span>
+                                        <div style={{
+                                          width: 48, height: 3, background: '#0d1b2a',
+                                          borderRadius: 2, overflow: 'hidden',
+                                        }}>
+                                          <div style={{
+                                            width: `${sub.progress || 0}%`, height: '100%',
+                                            background: meta.color, borderRadius: 2,
+                                          }} />
+                                        </div>
+                                        <span style={{ fontSize: 9, color: statusColor, minWidth: 22, textAlign: 'right' }}>
+                                          {sub.progress || 0}%
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
 
                             {/* 요소 목록 헤더 */}
                             <div style={{

@@ -17,6 +17,7 @@ public class WbsTaskDTO {
     private String  source;           // MANUAL | AGENT_CPM | AGENT_CRACK | AGENT_AUTO
     private Integer sortOrder;        // 표시 순서
     private String  createdAt;
+    private String  parentTaskId;     // 상위 태스크 ID (세부 공정용)
 
     public WbsTaskDTO() {}
 
@@ -69,4 +70,7 @@ public class WbsTaskDTO {
 
     public String  getCreatedAt()      { return createdAt; }
     public void    setCreatedAt(String v) { this.createdAt = v; }
+
+    public String  getParentTaskId()   { return parentTaskId; }
+    public void    setParentTaskId(String v) { this.parentTaskId = v; }
 }

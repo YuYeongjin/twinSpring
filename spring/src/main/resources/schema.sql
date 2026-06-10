@@ -293,6 +293,9 @@ CREATE TABLE IF NOT EXISTS wbs_task
 );
 CREATE INDEX IF NOT EXISTS idx_wbs_task_project ON wbs_task (wbs_project_id);
 
+-- WBS 태스크 계층 구조 (세부 공정 지원)
+ALTER TABLE wbs_task ADD COLUMN IF NOT EXISTS parent_task_id TEXT NULL;
+
 -- ================================================================
 -- WBS ↔ 타 프로젝트 연결 테이블 (BIM / 안전 / 시뮬레이션)
 -- ================================================================
