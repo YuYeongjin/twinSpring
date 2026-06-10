@@ -1355,6 +1355,71 @@ function SurveyOriginMarker({ origin }) {
   );
 }
 
+// ── 현장 카메라 마커 ──────────────────────────────────────────────
+function CameraMarkers() {
+  const { cameras } = useIntegration();
+  if (!cameras?.length) return null;
+  return (
+    <>
+      {cameras.filter(c => c.active).map(cam => {
+        const x = Number(cam.worldX) || 0;
+        const y = Number(cam.worldY) || 6;
+        const z = Number(cam.worldZ) || 0;
+        const yawRad = ((Number(cam.yaw) || 0) * Math.PI) / 180;
+        const fovH   = Number(cam.fovH) || 90;
+        const range  = 15; // FOV 가이드 선 길이 (m)
+        const halfFov = (fovH / 2) * Math.PI / 180;
+
+        // FOV 양쪽 가이드 선
+        const lx = x + Math.sin(yawRad - halfFov) * range;
+        const lz = z + Math.cos(yawRad - halfFov) * range;
+        const rx = x + Math.sin(yawRad + halfFov) * range;
+        const rz = z + Math.cos(yawRad + halfFov) * range;
+
+        const lineGeo = (x1, z1, x2, z2) => {
+          const pts = [new THREE.Vector3(x1, y, z1), new THREE.Vector3(x2, y, z2)];
+          return new THREE.BufferGeometry().setFromPoints(pts);
+        };
+
+        return (
+          <group key={cam.cameraId}>
+            {/* 카메라 본체 (작은 박스) */}
+            <mesh position={[x, y, z]}>
+              <boxGeometry args={[0.4, 0.25, 0.25]} />
+              <meshStandardMaterial color="#60a5fa" emissive="#1e40af" emissiveIntensity={0.5} />
+            </mesh>
+            {/* 마운트 기둥 */}
+            <mesh position={[x, y / 2, z]}>
+              <cylinderGeometry args={[0.05, 0.05, y, 6]} />
+              <meshStandardMaterial color="#374151" />
+            </mesh>
+            {/* FOV 가이드 선 */}
+            <line geometry={lineGeo(x, z, lx, lz)}>
+              <lineBasicMaterial color="#3b82f6" transparent opacity={0.35} />
+            </line>
+            <line geometry={lineGeo(x, z, rx, rz)}>
+              <lineBasicMaterial color="#3b82f6" transparent opacity={0.35} />
+            </line>
+            <line geometry={lineGeo(lx, lz, rx, rz)}>
+              <lineBasicMaterial color="#3b82f6" transparent opacity={0.20} />
+            </line>
+            {/* 레이블 */}
+            <Html center distanceFactor={30} position={[x, y + 0.6, z]}>
+              <div style={{
+                background: '#060f1add', color: '#60a5fa', fontSize: 8,
+                padding: '1px 5px', borderRadius: 3, border: '1px solid #1e3a5f',
+                whiteSpace: 'nowrap', pointerEvents: 'none', fontWeight: 700,
+              }}>
+                📷 {cam.name}
+              </div>
+            </Html>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
 // ── 씬 내부 ─────────────────────────────────────────────────────
 function SceneInner() {
   const { dangerZones, simulationRunning, terrain, selectedZoneId, surveyOrigin } = useIntegration();
@@ -1417,6 +1482,9 @@ function SceneInner() {
 
       {/* 측량 기준점 마커 */}
       <SurveyOriginMarker origin={surveyOrigin} />
+
+      {/* 현장 카메라 */}
+      <CameraMarkers />
 
       {/* 원점 축 표시 (X=빨강, Y=초록, Z=파랑) */}
       <axesHelper args={[10]} />
