@@ -5,6 +5,243 @@ import EquipmentOptionsPanel from './EquipmentOptionsPanel';
 import WorkerOptionsPanel from './WorkerOptionsPanel';
 import ZoneOptionsPanel from './ZoneOptionsPanel';
 import { useT } from '../../../i18n/LanguageContext';
+import { calcProgressRate, getRecommendations, TASK_RULES, EQUIP_LABEL } from '../progressEngine';
+
+const STATUS_META = {
+  NOT_STARTED: { label: '미착', color: '#94a3b8' },
+  IN_PROGRESS:  { label: '진행', color: '#60a5fa' },
+  COMPLETED:    { label: '완료', color: '#4ade80' },
+  DELAYED:      { label: '지연', color: '#ef4444' },
+};
+const PROGRESS_COLOR = p =>
+  p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#374151';
+
+// BIM 공종 자동 규칙 디테일 패널
+function TaskRuleDetail({ task, workers, equipment }) {
+  const elementType = task.notes?.split(':')[2];
+  const rule = TASK_RULES[elementType];
+  if (!rule) return null;
+
+  const { rate, blocked, reason } = calcProgressRate(elementType, workers, equipment);
+  const recs = getRecommendations(elementType, workers, equipment);
+  const activeEquip = equipment.filter(e => e.mode !== 'standby');
+
+  const rateColor = blocked ? '#ef4444' : rate >= 1.5 ? '#22c55e' : rate >= 1.0 ? '#60a5fa' : '#f97316';
+
+  return (
+    <div style={{
+      marginTop: 6, padding: '8px 9px',
+      background: '#060f18', borderRadius: 5,
+      border: `1px solid ${blocked ? '#7f1d1d' : '#1e3a5f'}`,
+    }}>
+      {/* 공종명 + 속도 배율 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ fontSize: 9, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          {elementType}
+        </span>
+        <span style={{
+          fontSize: 10, fontWeight: 800, color: rateColor,
+          background: blocked ? '#1a0000' : '#0a1a10',
+          padding: '1px 7px', borderRadius: 10,
+          border: `1px solid ${rateColor}44`,
+        }}>
+          {blocked ? '⛔ 블록' : `⚡ ×${rate.toFixed(2)}`}
+        </span>
+      </div>
+
+      {/* 블로커 장비 상태 */}
+      {rule.blockers.length > 0 && (
+        <div style={{ marginBottom: 5 }}>
+          <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            필수 장비
+          </div>
+          {rule.blockers.map((req, i) => {
+            const have = activeEquip.filter(e => e.type === req.type).length;
+            const ok   = have >= req.min;
+            return (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '2px 0', fontSize: 9,
+              }}>
+                <span style={{ color: ok ? '#8896a4' : '#fca5a5' }}>
+                  {EQUIP_LABEL[req.type] || req.type} × {req.min}
+                </span>
+                <span style={{
+                  color: ok ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: 8,
+                }}>
+                  {ok ? `✓ ${have}대` : `✗ ${have}/${req.min}`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 속도 보너스 */}
+      {rule.equipBonus.length > 0 && !blocked && (
+        <div style={{ marginBottom: 5 }}>
+          <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            속도 보너스
+          </div>
+          {rule.equipBonus.map((b, i) => {
+            const cnt = activeEquip.filter(e => e.type === b.type).length;
+            const gain = cnt * b.perUnit;
+            return (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, padding: '1px 0' }}>
+                <span style={{ color: '#6b7280' }}>{EQUIP_LABEL[b.type] || b.type} 1대당</span>
+                <span style={{ color: gain > 0 ? '#4ade80' : '#4b5563' }}>
+                  +{Math.round(b.perUnit * 100)}%
+                  {cnt > 0 && <span style={{ color: '#22c55e' }}> ({cnt}대 적용 중)</span>}
+                </span>
+              </div>
+            );
+          })}
+          {(rule.workerBonus || 0) > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, padding: '1px 0' }}>
+              <span style={{ color: '#6b7280' }}>작업자 1명당</span>
+              <span style={{ color: workers.length > 0 ? '#4ade80' : '#4b5563' }}>
+                +{Math.round(rule.workerBonus * 100)}%
+                {workers.length > 0 && <span style={{ color: '#22c55e' }}> ({workers.length}명)</span>}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 추천사항 */}
+      {recs.length > 0 && (
+        <div>
+          <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            추천
+          </div>
+          {recs.map((rec, i) => (
+            <div key={i} style={{
+              fontSize: 8, lineHeight: 1.6, padding: '1px 0',
+              color: rec.priority === 'critical' ? '#fca5a5' : rec.priority === 'warning' ? '#fde68a' : '#6ee7b7',
+            }}>
+              {rec.priority === 'critical' ? '⛔ ' : rec.priority === 'warning' ? '⚠ ' : '↑ '}{rec.text}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── BIM/WBS 현황 미니 패널 ────────────────────────────────────────
+function BimWbsPanel({ wbsTasks, workers, equipment, t }) {
+  const [open, setOpen]           = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+
+  const total   = wbsTasks.length;
+  const done    = wbsTasks.filter(tk => (tk.progress || 0) >= 100).length;
+  const overall = total > 0
+    ? Math.round(wbsTasks.reduce((s, tk) => s + (tk.progress || 0), 0) / total)
+    : 0;
+
+  const overallColor = PROGRESS_COLOR(overall);
+
+  return (
+    <div>
+      {/* 헤더 — 클릭하면 태스크 목록 펼침 */}
+      <div
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+          padding: '5px 6px', borderRadius: 5,
+          background: open ? '#0c1e35' : 'transparent',
+          border: `1px solid ${open ? '#1e3a5f' : 'transparent'}`,
+          marginBottom: open ? 8 : 0,
+        }}
+      >
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ fontSize: 10, color: overallColor, fontWeight: 700 }}>
+              {t('wbsOverall')}
+            </span>
+            <span style={{ fontSize: 10, color: overallColor, fontWeight: 800 }}>{overall}%</span>
+          </div>
+          <div style={{ background: '#111e2d', borderRadius: 3, height: 5, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${overall}%`,
+              background: overallColor, borderRadius: 3,
+              transition: 'width 1s ease',
+            }} />
+          </div>
+          {total > 0 && (
+            <div style={{ fontSize: 9, color: '#4b5563', marginTop: 3 }}>
+              {t('wbsTaskProgress', { done, total })}
+            </div>
+          )}
+        </div>
+        <span style={{ fontSize: 9, color: '#374151', flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
+      </div>
+
+      {/* 펼침 — 태스크 목록 */}
+      {open && (
+        <div style={{ paddingLeft: 2 }}>
+          {total === 0 ? (
+            <div style={{ fontSize: 9, color: '#374151', padding: '4px 0' }}>{t('wbsNoTasks')}</div>
+          ) : (
+            wbsTasks.map(tk => {
+              const p          = tk.progress || 0;
+              const c          = PROGRESS_COLOR(p);
+              const statusMeta = STATUS_META[tk.status] || {};
+              const isBimTask  = typeof tk.notes === 'string' && /^BIM:[^:]+:[^:]+/.test(tk.notes);
+              const isSelected = selectedTaskId === tk.taskId;
+
+              return (
+                <div key={tk.taskId} style={{ marginBottom: 7 }}>
+                  {/* 태스크 행 */}
+                  <div
+                    onClick={() => isBimTask && setSelectedTaskId(isSelected ? null : tk.taskId)}
+                    style={{
+                      cursor: isBimTask ? 'pointer' : 'default',
+                      padding: '3px 4px', borderRadius: 4,
+                      background: isSelected ? '#0c1e35' : 'transparent',
+                      border: `1px solid ${isSelected ? '#1e3a5f' : 'transparent'}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                      <span style={{
+                        fontSize: 9, color: '#8896a4',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 108,
+                      }}>
+                        {isBimTask && <span style={{ color: '#3b82f6', marginRight: 3 }}>■</span>}
+                        {tk.taskName}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        {statusMeta.label && (
+                          <span style={{ fontSize: 8, color: statusMeta.color, fontWeight: 700 }}>
+                            {statusMeta.label}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 9, color: c, fontWeight: 700 }}>{Math.round(p)}%</span>
+                        {isBimTask && (
+                          <span style={{ fontSize: 8, color: isSelected ? '#60a5fa' : '#374151' }}>
+                            {isSelected ? '▲' : '▼'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ background: '#111e2d', borderRadius: 2, height: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(100, p)}%`, background: c, borderRadius: 2, transition: 'width 1s ease' }} />
+                    </div>
+                  </div>
+
+                  {/* BIM 공종 규칙 디테일 (선택 시 펼침) */}
+                  {isSelected && (
+                    <TaskRuleDetail task={tk} workers={workers} equipment={equipment} />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const EQUIP_ICON = { excavator: '🚜', dump: '🚛', crane: '🏗', vehicle: '🚗', other: '🔧' };
 const EQUIP_TYPE_KEY = {
@@ -52,7 +289,7 @@ export default function ControlSidebar() {
     workers, equipment, dangerZones, simulationRunning,
     referencePoint, bimElements, isLoading, projectMeta,
     structures, terrain, selectedEquipId, selectedWorkerId, selectedZoneId,
-    surveyOrigin,
+    surveyOrigin, wbsTasks,
   } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
@@ -148,6 +385,13 @@ export default function ControlSidebar() {
           </div>
         )}
       </Section>
+
+      {/* BIM/WBS 현황 — WBS 태스크가 있을 때만 표시 */}
+      {(projectMeta?.wbsProjectId || projectMeta?.bimProjectId || wbsTasks.length > 0) && (
+        <Section title={t('bimWbsSection')}>
+          <BimWbsPanel wbsTasks={wbsTasks} workers={workers} equipment={equipment} t={t} />
+        </Section>
+      )}
 
       {/* 드론 지형 */}
       <Section title={t('sectionDroneTerrain')}>
@@ -288,8 +532,19 @@ export default function ControlSidebar() {
           >
             {simulationRunning ? t('simPause') : t('simResume')}
           </Btn>
+          <Btn
+            onClick={() => dispatch({ type: 'AUTO_SIM_START' })}
+            color="#1a1200"
+            textColor="#f97316"
+            title={t('simAutoDesc')}
+          >
+            {t('simAuto')}
+          </Btn>
         </Row>
-        <div style={{ fontSize: 9, color: '#374151', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 9, color: '#374151', lineHeight: 1.5, marginTop: 2 }}>
+          {t('simAutoDesc')}
+        </div>
+        <div style={{ fontSize: 9, color: '#253347', lineHeight: 1.5 }}>
           {t('refPoint', { lat: referencePoint.lat.toFixed(4), lng: referencePoint.lng.toFixed(4) })}
         </div>
       </Section>

@@ -48,6 +48,7 @@ function makeInitial() {
     selectedZoneId:    null,
     // ── 런타임 전용 (저장 안 됨) ─────────────────────────────────
     livePositions:     { workers: {}, equipment: {} },
+    equipActiveSecs:   {},  // { [equipId]: number } — 누적 활동 초 (mode !== 'standby')
   };
 }
 
@@ -232,6 +233,71 @@ function reducer(state, action) {
     // ── 시뮬레이션 ───────────────────────────────────────────────
     case 'TOGGLE_SIM':
       return { ...state, simulationRunning: !state.simulationRunning };
+
+    // ── Auto 작업 시뮬레이션 ────────────────────────────────────
+    // 모든 장비에 타입별 무작위 경로를 배정하고 auto 모드로 전환
+    case 'AUTO_SIM_START': {
+      const rng = (min, max) => min + Math.random() * (max - min);
+      const makeRoute = (type, initialPos) => {
+        const [ox, , oz] = initialPos || [0, 0, 0];
+        const cx = Math.max(-22, Math.min(22, ox + rng(-6, 6)));
+        const cz = Math.max(-22, Math.min(22, oz + rng(-6, 6)));
+        if (type === 'excavator') {
+          // 짧은 원형 순환 (굴착 패턴)
+          const r = rng(3, 7);
+          const pts = 6;
+          return Array.from({ length: pts }, (_, i) => {
+            const a = (i / pts) * Math.PI * 2;
+            return [cx + Math.cos(a) * r, 0, cz + Math.sin(a) * r];
+          });
+        }
+        if (type === 'dump') {
+          // 긴 직선 왕복 (운반 패턴)
+          const len = rng(12, 24);
+          const angle = Math.random() * Math.PI;
+          return [
+            [Math.max(-24, cx - Math.cos(angle) * len / 2), 0, Math.max(-24, cz - Math.sin(angle) * len / 2)],
+            [Math.min( 24, cx + Math.cos(angle) * len / 2), 0, Math.min( 24, cz + Math.sin(angle) * len / 2)],
+          ];
+        }
+        if (type === 'crane') {
+          // 소형 사각형 순환 (양중 패턴)
+          const r = rng(2, 5);
+          return [
+            [cx - r, 0, cz - r], [cx + r, 0, cz - r],
+            [cx + r, 0, cz + r], [cx - r, 0, cz + r],
+          ];
+        }
+        // vehicle / other: 삼각형 패턴
+        const r = rng(5, 10);
+        return Array.from({ length: 4 }, (_, i) => {
+          const a = (i / 4) * Math.PI * 2;
+          return [cx + Math.cos(a) * r, 0, cz + Math.sin(a) * r];
+        });
+      };
+      const getSpeed = (type) => {
+        if (type === 'dump')     return rng(2.0, 3.5);
+        if (type === 'crane')    return rng(0.5, 1.0);
+        if (type === 'vehicle')  return rng(1.5, 2.5);
+        return rng(1.0, 2.0); // excavator / other
+      };
+      const equipment = state.equipment.map(e => ({
+        ...e,
+        mode:  'auto',
+        speed: getSpeed(e.type),
+        route: makeRoute(e.type, e.initialPos),
+      }));
+      return { ...state, equipment, simulationRunning: true };
+    }
+
+    // ── 장비 활동 시간 누적 ─────────────────────────────────────────
+    case 'TICK_EQUIP_ACTIVE': {
+      const updated = { ...state.equipActiveSecs };
+      action.equipment.forEach(e => {
+        if (e.mode !== 'standby') updated[e.id] = (updated[e.id] || 0) + action.intervalSec;
+      });
+      return { ...state, equipActiveSecs: updated };
+    }
 
     default:
       return state;

@@ -496,3 +496,28 @@ DROP TRIGGER IF EXISTS trg_no_truncate_agent_query_log ON agent_query_log;
 CREATE TRIGGER trg_no_truncate_agent_query_log
     BEFORE TRUNCATE ON agent_query_log
     FOR EACH STATEMENT EXECUTE FUNCTION _prevent_agent_query_log_truncate();
+
+-- ================================================================
+-- 통합관제 일일 작업 일보 (daily report snapshot)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS integration_daily_report
+(
+    id               BIGSERIAL    PRIMARY KEY,
+    project_id       VARCHAR(100) NOT NULL,
+    report_date      DATE         NOT NULL,
+    site_name        VARCHAR(255),
+    location_str     VARCHAR(500),
+    worker_count     INTEGER      DEFAULT 0,
+    equip_count      INTEGER      DEFAULT 0,
+    overall_progress NUMERIC(5,2) DEFAULT 0,
+    task_snapshot    TEXT,   -- WBS 태스크 JSON 배열
+    equip_snapshot   TEXT,   -- 장비 JSON 배열
+    worker_snapshot  TEXT,   -- 작업자 JSON 배열
+    danger_snapshot  TEXT,   -- 위험구역 JSON 배열
+    created_at       TIMESTAMP    DEFAULT NOW(),
+    updated_at       TIMESTAMP    DEFAULT NOW(),
+    CONSTRAINT uq_daily_report UNIQUE (project_id, report_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_report_project_date
+    ON integration_daily_report (project_id, report_date DESC);
