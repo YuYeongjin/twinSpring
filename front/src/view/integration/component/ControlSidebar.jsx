@@ -351,6 +351,61 @@ export default function ControlSidebar() {
     reader.readAsDataURL(file);
   };
 
+  // BIM 요소 위치 기반 장비 순찰 경로 생성
+  const handleBimPatrol = () => {
+    // 장비 타입별 BIM 작업 가능 위치 수집
+    const targetsByType = {};
+    structures.forEach(s => {
+      if (s.type !== 'bim' || !s.visible || !s.elements?.length) return;
+      const offset = s.offset || [0, 0, 0];
+      const seen = new Set();
+      s.elements.forEach(el => {
+        if (seen.has(el.elementType)) return;
+        seen.add(el.elementType);
+        const rule = TASK_RULES[el.elementType];
+        if (!rule) return;
+        const x = (Number(el.positionX) || 0) + offset[0];
+        const z = (Number(el.positionZ) || 0) + offset[2];
+        [...rule.blockers, ...rule.equipBonus].forEach(({ type }) => {
+          if (!targetsByType[type]) targetsByType[type] = [];
+          if (!targetsByType[type].some(p => Math.abs(p[0] - x) < 0.5)) {
+            targetsByType[type].push([x, 0, z]);
+          }
+        });
+      });
+    });
+
+    const hasBim = Object.keys(targetsByType).length > 0;
+    if (!hasBim) {
+      dispatch({ type: 'AUTO_SIM_START' });
+    } else {
+      equipment.forEach(e => {
+        const pts = targetsByType[e.type] || [];
+        if (!pts.length) {
+          // BIM 매칭 없음 → 현재 위치 기준 기본 순환 경로
+          const [ox, , oz] = e.initialPos || [0, 0, 0];
+          const cx = Math.max(-20, Math.min(20, ox));
+          const cz = Math.max(-20, Math.min(20, oz));
+          const r = 4 + Math.random() * 3;
+          const defaultRoute = [
+            [cx - r, 0, cz - r], [cx + r, 0, cz - r],
+            [cx + r, 0, cz + r], [cx - r, 0, cz + r],
+          ];
+          dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { mode: 'auto', route: defaultRoute, speed: 1.5 } });
+          return;
+        }
+        // 각 목표 지점 + 인접 작업 오프셋 포함 순환 경로
+        const route = pts.slice(0, 6).flatMap(pt => [
+          pt,
+          [pt[0] + (Math.random() - 0.5) * 3, 0, pt[2] + (Math.random() - 0.5) * 3],
+        ]);
+        dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { mode: 'auto', route, speed: 1.5 } });
+      });
+    }
+    if (!simulationRunning) dispatch({ type: 'TOGGLE_SIM' });
+    // 이미 실행 중이면 경로만 갱신 (TOGGLE 불필요)
+  };
+
   return (
     <div style={{
       width: '100%', minWidth: 200, flexShrink: 0, background: '#0a1525',
@@ -550,7 +605,7 @@ export default function ControlSidebar() {
             {simulationRunning ? t('simPause') : t('simResume')}
           </Btn>
           <Btn
-            onClick={() => dispatch({ type: 'AUTO_SIM_START' })}
+            onClick={handleBimPatrol}
             color="#1a1200"
             textColor="#f97316"
             title={t('simAutoDesc')}
