@@ -10,7 +10,9 @@ import IntegrationDashboardPanel       from './component/IntegrationDashboardPan
 import IntegrationEventLog             from './component/IntegrationEventLog';
 import WbsProgressPanel                from './component/WbsProgressPanel';
 import ControlSidebar                  from './component/ControlSidebar';
+import DailyReport                     from './component/DailyReport';
 import { useT }                        from '../../i18n/LanguageContext';
+import { calcProgressRate, calcRealTimeProgress, RECALC_INTERVAL_MS } from './progressEngine';
 
 // ── GPS WebSocket 구독 (장비 ID별 개별 토픽) ────────────────
 function GpsLoader() {
@@ -134,6 +136,32 @@ function DataLoader({ selectedProject }) {
     return () => clearInterval(id);
   }, [selectedProject?.wbsProjectId, dispatch]);
 
+  // BIM 태스크 진도 실시간 자동 증가 (10초 주기)
+  // notes = "BIM:<projectId>:<elementType>" 형식인 태스크만 대상
+  const { wbsTasks, workers, equipment } = useIntegration();
+  const liveRef = useRef({ wbsTasks, workers, equipment });
+  useEffect(() => { liveRef.current = { wbsTasks, workers, equipment }; }, [wbsTasks, workers, equipment]);
+
+  useEffect(() => {
+    const tick = () => {
+      const { wbsTasks: tasks, workers: ws, equipment: eq } = liveRef.current;
+      tasks.forEach(task => {
+        if (typeof task.notes !== 'string' || !/^BIM:[^:]+:[^:]+/.test(task.notes)) return;
+        const elementType = task.notes.split(':')[2];
+        const { rate } = calcProgressRate(elementType, ws, eq);
+        const newProgress = calcRealTimeProgress(task, rate);
+        if (newProgress !== null) {
+          dispatch({ type: 'SET_TASK_PROGRESS', taskId: task.taskId, progress: newProgress });
+        }
+      });
+      // 활동 중인 장비 누적 시간 갱신 (mode !== 'standby' 이면 활동으로 간주)
+      dispatch({ type: 'TICK_EQUIP_ACTIVE', equipment: eq, intervalSec: RECALC_INTERVAL_MS / 1000 });
+    };
+    const id = setInterval(tick, RECALC_INTERVAL_MS);
+    tick(); // 즉시 한 번 실행
+    return () => clearInterval(id);
+  }, [dispatch]); // dispatch만 의존 — 실제 데이터는 liveRef로 참조
+
   return null;
 }
 
@@ -218,6 +246,7 @@ function DashboardLayout({ selectedProject }) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showPanel,   setShowPanel]   = useState(false); // 오른쪽 대시보드
   const [showSidebar, setShowSidebar] = useState(false); // 왼쪽 컨트롤
+  const [showReport,  setShowReport]  = useState(false); // 작업일보
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
@@ -251,15 +280,28 @@ function DashboardLayout({ selectedProject }) {
         <IntegrationScene />
         <DevBanner isMobile={isMobile} />
 
-        {/* 프로젝트명 배지 */}
+        {/* 프로젝트명 배지 + 작업일보 버튼 */}
         <div style={{
           position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
-          background: '#0d1b2acc', border: '1px solid #1e3a5f', borderRadius: 20,
-          padding: '4px 18px', fontSize: 11, color: '#60a5fa', fontWeight: 700,
-          pointerEvents: 'none', whiteSpace: 'nowrap', backdropFilter: 'blur(4px)',
-          zIndex: 5,
+          display: 'flex', alignItems: 'center', gap: 8, zIndex: 5,
         }}>
-          🔗 {selectedProject?.projectName || t('pageTitle')} · BIM · WBS
+          <div style={{
+            background: '#0d1b2acc', border: '1px solid #1e3a5f', borderRadius: 20,
+            padding: '4px 18px', fontSize: 11, color: '#60a5fa', fontWeight: 700,
+            pointerEvents: 'none', whiteSpace: 'nowrap', backdropFilter: 'blur(4px)',
+          }}>
+            🔗 {selectedProject?.projectName || t('pageTitle')} · BIM · WBS
+          </div>
+          <button
+            onClick={() => setShowReport(true)}
+            style={{
+              background: '#0d1b2acc', border: '1px solid #1e3a5f', borderRadius: 20,
+              padding: '4px 14px', fontSize: 11, color: '#93c5fd', fontWeight: 700,
+              cursor: 'pointer', backdropFilter: 'blur(4px)', whiteSpace: 'nowrap',
+            }}
+          >
+            {t('dailyReportBtn')}
+          </button>
         </div>
 
         {/* 힌트 */}
@@ -327,6 +369,9 @@ function DashboardLayout({ selectedProject }) {
           <WbsProgressPanel />
         </div>
       )}
+
+      {/* 작업일보 모달 */}
+      {showReport && <DailyReport onClose={() => setShowReport(false)} />}
 
     </div>
   );

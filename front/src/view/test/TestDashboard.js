@@ -99,16 +99,18 @@ function computeArmPoints(st, machine) {
 }
 
 function TransparentBimElement({ element, offsetX, offsetZ, isColliding }) {
+  // BIM 좌표 규칙: positionY=평면Y(→Three.js Z), positionZ=높이(→Three.js Y)
+  //               sizeY=깊이크기(→Three.js Z), sizeZ=높이크기(→Three.js Y)
   const size = useMemo(() => [
     Math.max(0.1, Number(element.sizeX)),
-    Math.max(0.1, Number(element.sizeY)),
-    Math.max(0.1, Number(element.sizeZ)),
+    Math.max(0.1, Number(element.sizeZ)),  // Three.js height = BIM sizeZ
+    Math.max(0.1, Number(element.sizeY)),  // Three.js depth  = BIM sizeY
   ], [element.sizeX, element.sizeY, element.sizeZ]);
 
   const position = useMemo(() => [
     Number(element.positionX) + offsetX,
-    Number(element.positionY) + size[1] / 2,
-    Number(element.positionZ) + offsetZ,
+    Number(element.positionZ) + size[1] / 2,  // Three.js Y = BIM positionZ + sizeZ/2
+    Number(element.positionY) + offsetZ,       // Three.js Z = BIM positionY
   ], [element.positionX, element.positionY, element.positionZ, size, offsetX, offsetZ]);
 
   const rotation = useMemo(() => [
@@ -283,12 +285,13 @@ function CollisionDetector({ stateRef, machine, elementsRef, offsetRef, onCollis
     const MARGIN = 0.35;
 
     for (const elem of elements) {
+      // BIM 좌표 규칙: positionZ=높이(Three.js Y), positionY=깊이(Three.js Z)
       const cx = Number(elem.positionX) + offset.x;
-      const cy = Number(elem.positionY) + Number(elem.sizeY) / 2;
-      const cz = Number(elem.positionZ) + offset.z;
+      const cy = Number(elem.positionZ) + Number(elem.sizeZ) / 2;  // Three.js Y center
+      const cz = Number(elem.positionY) + offset.z;                 // Three.js Z
       const hx = Number(elem.sizeX) / 2 + MARGIN;
-      const hy = Number(elem.sizeY) / 2 + MARGIN;
-      const hz = Number(elem.sizeZ) / 2 + MARGIN;
+      const hy = Number(elem.sizeZ) / 2 + MARGIN;  // Three.js Y half = BIM sizeZ/2
+      const hz = Number(elem.sizeY) / 2 + MARGIN;  // Three.js Z half = BIM sizeY/2
 
       let hit = false;
       for (const pt of points) {
@@ -459,7 +462,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
       webSocketFactory: () => new SockJS(buildWsUrl()),
       reconnectDelay: 3000,
       onConnect: () => {
-        client.subscribe('/topic/excavator', (msg) => {
+        client.subscribe('/topic/gps/excavator', (msg) => {
           try {
             const packet = JSON.parse(msg.body);
             handleGpsData(packet);
@@ -522,8 +525,9 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
     if (bimElements.length === 0) return { x: 0, z: 0 };
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     bimElements.forEach(el => {
-      const cx = Number(el.positionX), cz = Number(el.positionZ);
-      const hx = Number(el.sizeX)/2,   hz = Number(el.sizeZ)/2;
+      // BIM positionY=평면Y(Three.js Z), sizeY=깊이크기(Three.js Z)
+      const cx = Number(el.positionX), cz = Number(el.positionY);
+      const hx = Number(el.sizeX)/2,   hz = Number(el.sizeY)/2;
       minX = Math.min(minX, cx - hx); maxX = Math.max(maxX, cx + hx);
       minZ = Math.min(minZ, cz - hz); maxZ = Math.max(maxZ, cz + hz);
     });
@@ -567,13 +571,28 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
     setLoadingBim(true);
     setBimElements([]);
     elementsRef.current = [];
+    offsetRef.current = { x: 0, z: 0 };
     AxiosCustom.get(`/api/bim/project/${proj.projectId}`)
         .then(res => {
           const elems = Array.isArray(res.data) ? res.data : (res.data?.elements || []);
+          // offsetRef를 elementsRef와 동시에 갱신 → 충돌 감지가 즉시 올바른 위치를 사용
+          if (elems.length > 0) {
+            let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+            elems.forEach(el => {
+              const cx = Number(el.positionX), cz = Number(el.positionY);
+              const hx = Number(el.sizeX)/2,   hz = Number(el.sizeY)/2;
+              minX = Math.min(minX, cx - hx); maxX = Math.max(maxX, cx + hx);
+              minZ = Math.min(minZ, cz - hz); maxZ = Math.max(maxZ, cz + hz);
+            });
+            offsetRef.current = {
+              x: -((minX + maxX) / 2),
+              z: BUILDING_OFFSET_Z - ((minZ + maxZ) / 2),
+            };
+          }
           setBimElements(elems);
           elementsRef.current = elems;
         })
-        .catch(() => { setBimElements([]); elementsRef.current = []; })
+        .catch(() => { setBimElements([]); elementsRef.current = []; offsetRef.current = { x: 0, z: 0 }; })
         .finally(() => setLoadingBim(false));
   }, []);
 

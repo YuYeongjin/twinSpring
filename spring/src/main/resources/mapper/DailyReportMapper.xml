@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.DailyReportDAO">
+
+    <!-- 저장/갱신 (PostgreSQL UPSERT) -->
+    <insert id="upsertDailyReport" parameterType="map">
+        INSERT INTO integration_daily_report (
+            project_id, report_date, site_name, location_str,
+            worker_count, equip_count, overall_progress,
+            task_snapshot, equip_snapshot, worker_snapshot, danger_snapshot,
+            updated_at
+        ) VALUES (
+            #{projectId},
+            #{reportDate}::date,
+            #{siteName},
+            #{locationStr},
+            #{workerCount},
+            #{equipCount},
+            #{overallProgress},
+            #{taskSnapshot},
+            #{equipSnapshot},
+            #{workerSnapshot},
+            #{dangerSnapshot},
+            NOW()
+        )
+        ON CONFLICT (project_id, report_date)
+        DO UPDATE SET
+            site_name        = EXCLUDED.site_name,
+            location_str     = EXCLUDED.location_str,
+            worker_count     = EXCLUDED.worker_count,
+            equip_count      = EXCLUDED.equip_count,
+            overall_progress = EXCLUDED.overall_progress,
+            task_snapshot    = EXCLUDED.task_snapshot,
+            equip_snapshot   = EXCLUDED.equip_snapshot,
+            worker_snapshot  = EXCLUDED.worker_snapshot,
+            danger_snapshot  = EXCLUDED.danger_snapshot,
+            updated_at       = NOW()
+    </insert>
+
+    <!-- 날짜별 조회 -->
+    <select id="getDailyReport" resultType="map">
+        SELECT
+            project_id        AS "projectId",
+            TO_CHAR(report_date, 'YYYY-MM-DD') AS "reportDate",
+            site_name         AS "siteName",
+            location_str      AS "locationStr",
+            worker_count      AS "workerCount",
+            equip_count       AS "equipCount",
+            overall_progress  AS "overallProgress",
+            task_snapshot     AS "taskSnapshot",
+            equip_snapshot    AS "equipSnapshot",
+            worker_snapshot   AS "workerSnapshot",
+            danger_snapshot   AS "dangerSnapshot",
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI') AS "createdAt",
+            TO_CHAR(updated_at, 'YYYY-MM-DD HH24:MI') AS "updatedAt"
+        FROM integration_daily_report
+        WHERE project_id  = #{projectId}
+          AND report_date = #{reportDate}::date
+    </select>
+
+    <!-- 저장된 날짜 목록 (최근 90일) -->
+    <select id="getAvailableDates" resultType="string">
+        SELECT TO_CHAR(report_date, 'YYYY-MM-DD')
+        FROM   integration_daily_report
+        WHERE  project_id = #{projectId}
+        ORDER  BY report_date DESC
+        LIMIT  90
+    </select>
+
+    <!-- 전날 일보 조회 (일단위 증감용) — reportDate 기준 직전 저장일 -->
+    <select id="getPrevDayProgress" resultType="map">
+        SELECT
+            overall_progress AS "overallProgress",
+            task_snapshot    AS "taskSnapshot",
+            TO_CHAR(report_date, 'YYYY-MM-DD') AS "reportDate"
+        FROM integration_daily_report
+        WHERE project_id  = #{projectId}
+          AND report_date &lt; #{reportDate}::date
+        ORDER BY report_date DESC
+        LIMIT 1
+    </select>
+
+</mapper>

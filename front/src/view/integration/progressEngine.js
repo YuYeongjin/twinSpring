@@ -278,3 +278,29 @@ export function getRecommendations(elementType, workers, equipment) {
 
   return recs;
 }
+
+/**
+ * 장비 타입 → 담당 태스크명 자동 매핑
+ * 진행 중인 BIM 태스크를 기반으로 각 장비 타입이 어떤 작업에 쓰이는지 반환
+ *
+ * @param {Array} wbsTasks  - IntegrationStore.wbsTasks 배열
+ * @returns {{ [equipType: string]: string }} e.g. { excavator: '기초 슬래브 공사', crane: '기둥 설치' }
+ */
+export function getEquipTaskMap(wbsTasks) {
+  const map = {};
+  wbsTasks.forEach(task => {
+    if (typeof task.notes !== 'string' || !/^BIM:[^:]+:[^:]+/.test(task.notes)) return;
+    if (task.status === 'COMPLETED' || task.status === 'NOT_STARTED') return;
+    const elementType = task.notes.split(':')[2];
+    const rule = TASK_RULES[elementType];
+    if (!rule) return;
+    const involved = new Set([
+      ...(rule.blockers   || []).map(b => b.type),
+      ...(rule.equipBonus || []).map(b => b.type),
+    ]);
+    involved.forEach(type => {
+      if (!map[type]) map[type] = task.taskName || elementType;
+    });
+  });
+  return map;
+}
