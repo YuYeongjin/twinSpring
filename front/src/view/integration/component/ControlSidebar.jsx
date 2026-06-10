@@ -287,7 +287,7 @@ export default function ControlSidebar() {
   const t = useT('integrationProject');
   const {
     workers, equipment, dangerZones, simulationRunning,
-    referencePoint, bimElements, isLoading, projectMeta,
+    referencePoint, isLoading, projectMeta,
     structures, terrain, selectedEquipId, selectedWorkerId, selectedZoneId,
     surveyOrigin, wbsTasks,
   } = useIntegration();
@@ -372,18 +372,6 @@ export default function ControlSidebar() {
             {projectMeta?.wbsProjectId ? t('connected') : t('notConnected')}
           </span>
         </Row>
-        <Row>
-          <span style={{ fontSize: 11 }}>🏗</span>
-          <span style={{ flex: 1, fontSize: 10, color: projectMeta?.bimProjectId ? '#60a5fa' : '#374151', fontWeight: 600 }}>BIM</span>
-          <span style={{ fontSize: 9, color: projectMeta?.bimProjectId ? '#2a5080' : '#253347' }}>
-            {projectMeta?.bimProjectId ? t('connected') : t('notConnected')}
-          </span>
-        </Row>
-        {bimElements.length > 0 && (
-          <div style={{ fontSize: 9, color: '#4b5563', marginTop: 2 }}>
-            {t('bimLoaded', { n: bimElements.length })}
-          </div>
-        )}
       </Section>
 
       {/* BIM/WBS 현황 — WBS 태스크가 있을 때만 표시 */}
@@ -490,6 +478,35 @@ export default function ControlSidebar() {
               </Row>
               {isExpanded && (
                 <div style={{ paddingLeft: 4, marginBottom: 4 }}>
+                  {/* BIM 요소 정보 */}
+                  {s.type === 'bim' && (
+                    <div style={{ marginBottom: 8, background: '#060f18', borderRadius: 5, border: '1px solid #1e3a5f', padding: '6px 8px' }}>
+                      {s.elements === null ? (
+                        <div style={{ fontSize: 9, color: '#4b5563' }}>{t('structLoading')}</div>
+                      ) : s.elements.length === 0 ? (
+                        <div style={{ fontSize: 9, color: '#f59e0b' }}>{t('structEmpty')}</div>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+                            {t('bimElementsLabel', { n: s.elements.length })}
+                          </div>
+                          {Object.entries(
+                            s.elements.reduce((acc, el) => {
+                              const type = el.elementType || 'Other';
+                              acc[type] = (acc[type] || 0) + 1;
+                              return acc;
+                            }, {})
+                          ).map(([type, count]) => (
+                            <div key={type} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, padding: '1px 0' }}>
+                              <span style={{ color: '#6b7280' }}>{type}</span>
+                              <span style={{ color: '#22c55e', fontWeight: 700 }}>{count}ea</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {/* 위치 오프셋 */}
                   <div style={{ fontSize: 9, color: '#6b7280', marginBottom: 3 }}>{t('structPositionLabel')}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
                     {['X', 'Y', 'Z'].map((axis, i) => (
