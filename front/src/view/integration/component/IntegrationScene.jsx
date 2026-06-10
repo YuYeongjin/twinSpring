@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
 import { BimElement, getBaseColor } from '../../bim/element/BimElement';
 import { useT } from '../../../i18n/LanguageContext';
+import { TASK_RULES } from '../progressEngine';
 
 // ── 선택된 엔티티의 실시간 좌표 툴팁 ──────────────────────────
 // groupRef: Three.js Group ref (position이 매 프레임 업데이트됨)
@@ -198,6 +199,45 @@ function BimProgressFill({ localPosition, size, elementType, progress, offsetY =
   );
 }
 
+// ── 굴착 시뮬레이션 시각화 ────────────────────────────────────────
+// BIM 요소가 IfcSlab/IfcPier/IfcFoundation인 경우 WBS 진행률에 따라 굴착 구덩이 표시
+// x,z: 로컬 좌표(group offset 적용 전), w/d: 가로/깊이 크기, progress: 0~100
+function ExcavationPit({ x, z, w, d, progress }) {
+  const depth = (progress / 100) * 2.8; // 최대 2.8m 굴착
+  if (depth < 0.06) return null;
+  const pw = Math.max(w, 0.6), pd = Math.max(d, 0.6);
+  return (
+    <group position={[x, 0, z]}>
+      {/* 굴착된 흙(어두운 내부) */}
+      <mesh position={[0, -depth / 2, 0]}>
+        <boxGeometry args={[pw, depth + 0.05, pd]} />
+        <meshStandardMaterial color="#1a0e06" roughness={1} />
+      </mesh>
+      {/* 지표면 노출 흙 */}
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[pw, pd]} />
+        <meshStandardMaterial color="#5c3316" roughness={0.95} />
+      </mesh>
+      {/* 굴착 경계 표시 (지면 테두리 박스) */}
+      <mesh position={[0, 0.025, 0]}>
+        <boxGeometry args={[pw + 0.12, 0.05, pd + 0.12]} />
+        <meshStandardMaterial color="#f97316" transparent opacity={0.5} />
+      </mesh>
+      {progress > 3 && (
+        <Html center position={[0, 0.6, 0]} distanceFactor={30}>
+          <div style={{
+            background: '#0a0a0acc', color: '#f97316',
+            padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700,
+            border: '1px solid #f9731633', whiteSpace: 'nowrap',
+          }}>
+            ⛏ {progress.toFixed(0)}%
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+}
+
 // ── 구조물 레이어 (여러 BIM/IFC 구조물) ──────────────────────────
 function StructuresLayer() {
   const t = useT('integrationProject');
@@ -313,15 +353,25 @@ function StructuresLayer() {
                 const sZ = Number(cv.sizeZ)     || 0.1;
                 // notes 기반 공종별 진도가 있으면 우선 사용, 없으면 WBS 전체 평균 자동 반영
                 const elemProgress = progressMap[`${s.bimProjectId}:${el.elementType}`] ?? overallWbsProgress;
+                const isExcavationType = ['IfcSlab', 'IfcPier', 'IfcFoundation'].includes(el.elementType);
                 return (
-                  <BimProgressFill
-                    key={el.elementId}
-                    localPosition={[pX, pZ + sZ / 2, pY]}
-                    size={[sX, sZ, sY]}
-                    elementType={el.elementType}
-                    progress={elemProgress}
-                    offsetY={offsetY}
-                  />
+                  <group key={el.elementId}>
+                    {/* 굴착 공종은 구덩이 시각화 추가 */}
+                    {isExcavationType && (
+                      <ExcavationPit
+                        x={pX} z={pY}
+                        w={sX} d={sY}
+                        progress={elemProgress}
+                      />
+                    )}
+                    <BimProgressFill
+                      localPosition={[pX, pZ + sZ / 2, pY]}
+                      size={[sX, sZ, sY]}
+                      elementType={el.elementType}
+                      progress={elemProgress}
+                      offsetY={offsetY}
+                    />
+                  </group>
                 );
               }
               return <BimElement key={el.elementId} element={toIntegrationCoords(el)} />;
@@ -821,7 +871,7 @@ function SimulationManager({ running }) {
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
 
-  const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId, selectedWorkerId, surveyOrigin } = useIntegration();
+  const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId, selectedWorkerId, surveyOrigin, structures: initStructures, wbsTasks: initWbsTasks } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   // stale-closure 없이 선택 상태를 읽기 위한 ref
@@ -896,6 +946,10 @@ function SimulationManager({ running }) {
   useEffect(() => { equipRef.current = initEquip; }, [initEquip]);
   const workerRef = useRef(initWorkers);
   useEffect(() => { workerRef.current = initWorkers; }, [initWorkers]);
+  const structuresRef = useRef(initStructures);
+  useEffect(() => { structuresRef.current = initStructures; }, [initStructures]);
+  const wbsTasksRef = useRef(initWbsTasks);
+  useEffect(() => { wbsTasksRef.current = initWbsTasks; }, [initWbsTasks]);
 
   // ── stale-closure 방지: 작업자 상태를 ref로 관리 ────────────────
   // useState 대신 ref + tick 패턴 → useFrame 안에서 항상 최신 값 읽기
@@ -970,24 +1024,117 @@ function SimulationManager({ running }) {
         ];
         equipMeshes.current[e.id]?.position.set(...st.pos);
       }
+
+      // BIM 공종 작업 감지 (시방서 기반 — TASK_RULES)
+      if (e.mode !== 'standby' && st) {
+        structuresRef.current.forEach(s => {
+          if (s.type !== 'bim' || !s.visible || !s.elements?.length) return;
+          const offset = s.offset || [0, 0, 0];
+          const seenTypes = new Set();
+          s.elements.forEach(el => {
+            if (seenTypes.has(el.elementType)) return;
+            seenTypes.add(el.elementType);
+            const rule = TASK_RULES[el.elementType];
+            if (!rule) return;
+            const isRelevant =
+              rule.blockers.some(b => b.type === e.type) ||
+              rule.equipBonus.some(b => b.type === e.type);
+            if (!isRelevant) return;
+            const elX = (Number(el.positionX) || 0) + offset[0];
+            const elZ = (Number(el.positionZ) || 0) + offset[2];
+            const ddx = st.pos[0] - elX, ddz = st.pos[2] - elZ;
+            if (ddx * ddx + ddz * ddz < 36) {
+              throttledCall(throttleMap.current, `bim_${e.id}_${el.elementType}`, 20000, () => {
+                dispatch({ type: 'LOG_EVENT', event: {
+                  type: 'bim_work',
+                  severity: 'info',
+                  description: tRef.current('evtBimWork', { equip: e.name, type: el.elementType, struct: s.name }),
+                }});
+              });
+
+              // 굴착 공종 — 진행률 자동 증가 (excavator + IfcSlab/IfcPier/IfcFoundation)
+              const EXCAVATION_TYPES = ['IfcSlab', 'IfcPier', 'IfcFoundation'];
+              if (e.type === 'excavator' && EXCAVATION_TYPES.includes(el.elementType)) {
+                throttledCall(throttleMap.current, `excav_prog_${e.id}_${el.elementType}`, 8000, () => {
+                  const tasks = wbsTasksRef.current;
+                  // notes에 elementType 포함된 태스크 우선, 없으면 진행률 가장 낮은 태스크
+                  let target = tasks.find(t =>
+                    typeof t.notes === 'string' && t.notes.includes(el.elementType) && (t.progress || 0) < 100
+                  );
+                  if (!target) {
+                    target = tasks
+                      .filter(t => (t.progress || 0) < 100)
+                      .sort((a, b) => (a.progress || 0) - (b.progress || 0))[0];
+                  }
+                  if (target) dispatch({ type: 'UPDATE_TASK_PROGRESS', taskId: target.taskId, delta: 2.5 });
+                });
+              }
+            }
+          });
+        });
+      }
     });
 
-    // 작업자 랜덤워크 — 매 프레임 delta 기반으로 부드럽게 이동
-    // 방향은 ~2초마다 랜덤 변경 (순간이동 없음)
+    // 작업자 이동 — BIM 구조물 있으면 BIM 요소 위치 순환, 없으면 랜덤워크
     workers.forEach(w => {
       const ws = workerStateRef.current[w.id];
       if (!ws) return;
-      ws.dirTimer = (ws.dirTimer || 0) + delta;
-      if (!ws.dir || ws.dirTimer > 2.0) {
-        const angle = Math.random() * Math.PI * 2;
-        ws.dir = [Math.cos(angle), Math.sin(angle)];
-        ws.dirTimer = 0;
+
+      // BIM 구조물에서 공종별 대표 좌표 수집
+      const bimPoints = [];
+      structuresRef.current.forEach(s => {
+        if (s.type !== 'bim' || !s.visible || !s.elements?.length) return;
+        const offset = s.offset || [0, 0, 0];
+        const seen = new Set();
+        s.elements.forEach(el => {
+          if (seen.has(el.elementType)) return;
+          seen.add(el.elementType);
+          bimPoints.push({
+            x: (Number(el.positionX) || 0) + offset[0],
+            z: (Number(el.positionZ) || 0) + offset[2],
+          });
+        });
+      });
+
+      if (bimPoints.length > 0) {
+        // BIM 현장 위주 이동
+        ws.workTimer = (ws.workTimer || 0) - delta;
+        if (!ws.bimPt || ws.workTimer <= 0) {
+          ws.bimPt = bimPoints[Math.floor(Math.random() * bimPoints.length)];
+          ws.workTimer = 8 + Math.random() * 14; // 8~22초 체류
+        }
+        const dx = ws.bimPt.x - ws.pos[0];
+        const dz = ws.bimPt.z - ws.pos[2];
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 1.8) {
+          // 현장 도착 → 작업 중 미세 진동
+          ws.pos = [
+            Math.max(-28, Math.min(28, ws.pos[0] + (Math.random() - 0.5) * 0.5 * delta)),
+            0,
+            Math.max(-28, Math.min(28, ws.pos[2] + (Math.random() - 0.5) * 0.5 * delta)),
+          ];
+        } else {
+          const spd = 2.2;
+          ws.pos = [
+            Math.max(-28, Math.min(28, ws.pos[0] + (dx / dist) * spd * delta)),
+            0,
+            Math.max(-28, Math.min(28, ws.pos[2] + (dz / dist) * spd * delta)),
+          ];
+        }
+      } else {
+        // BIM 구조물 없을 때 기존 랜덤워크
+        ws.dirTimer = (ws.dirTimer || 0) + delta;
+        if (!ws.dir || ws.dirTimer > 2.0) {
+          const angle = Math.random() * Math.PI * 2;
+          ws.dir = [Math.cos(angle), Math.sin(angle)];
+          ws.dirTimer = 0;
+        }
+        ws.pos = [
+          Math.max(-28, Math.min(28, ws.pos[0] + ws.dir[0] * 1.2 * delta)),
+          0,
+          Math.max(-28, Math.min(28, ws.pos[2] + ws.dir[1] * 1.2 * delta)),
+        ];
       }
-      ws.pos = [
-        Math.max(-28, Math.min(28, ws.pos[0] + ws.dir[0] * 1.2 * delta)),
-        0,
-        Math.max(-28, Math.min(28, ws.pos[2] + ws.dir[1] * 1.2 * delta)),
-      ];
       workerMeshes.current[w.id]?.position.set(...ws.pos);
     });
 
