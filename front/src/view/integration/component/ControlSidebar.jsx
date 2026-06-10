@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useIntegration, useIntegrationDispatch, computeStructureBounds } from '../IntegrationStore';
 import AddStructureModal, { resizeImageDataUrl } from './AddStructureModal';
 import EquipmentOptionsPanel from './EquipmentOptionsPanel';
@@ -1166,8 +1166,8 @@ export default function ControlSidebar() {
         {workers.map(w => {
           const isSelected = w.id === selectedWorkerId;
           return (
+            <React.Fragment key={w.id}>
             <div
-              key={w.id}
               onClick={() => {
                 dispatch({ type: 'SELECT_WORKER',    id: isSelected ? null : w.id });
                 dispatch({ type: 'SELECT_EQUIPMENT', id: null });
@@ -1208,6 +1208,7 @@ export default function ControlSidebar() {
                 }}
               />
             )}
+            </React.Fragment>
           );
         })}
         <Btn small onClick={handleAddWorker}>{t('addWorker')}</Btn>
@@ -1223,8 +1224,8 @@ export default function ControlSidebar() {
           const modeColor  = e.mode === 'gps' ? '#a78bfa' : e.mode === 'standby' ? '#f59e0b' : '#22c55e';
           const modeLabel  = e.mode === 'gps' ? 'GPS' : e.mode === 'standby' ? t('equipIdle') : t('equipRunning');
           return (
+            <React.Fragment key={e.id}>
             <div
-              key={e.id}
               onClick={() => dispatch({ type: 'SELECT_EQUIPMENT', id: isSelected ? null : e.id })}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5,
@@ -1269,6 +1270,7 @@ export default function ControlSidebar() {
                 onReassign={structId => handleReassignEquipment(e, structId)}
               />
             )}
+            </React.Fragment>
           );
         })}
         <Btn small onClick={() => {
