@@ -192,11 +192,6 @@ function buildTasks(elements, startDate, t) {
     return addDays(end,1);
   }
 
-  const d=FIXED_SPECS.design;
-  cur=push(t(d.nameKey),cur,d.days,d.workers,t(d.rolesKey),t(d.equipKey),d.phase);
-  const tmp=FIXED_SPECS.temporary;
-  cur=push(t(tmp.nameKey),cur,tmp.days,tmp.workers,t(tmp.rolesKey),t(tmp.equipKey),tmp.phase);
-
   const pierVol=elements.filter(e=>e.elementType==='IfcPier').reduce((s,e)=>s+elVol(e),0);
   const pierP=calcPhase(pierVol,'IfcPier','concrete',t);
   const ef=FIXED_SPECS.earthwork;
@@ -266,7 +261,7 @@ function buildTasks(elements, startDate, t) {
   return tasks;
 }
 
-function computeWorkPlan(modelData, t) {
+export function computeWorkPlan(modelData, t) {
   if (!modelData?.length) return null;
   const relevant=modelData.filter(e=>['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcPier'].includes(e.elementType));
   if (!relevant.length) return null;
