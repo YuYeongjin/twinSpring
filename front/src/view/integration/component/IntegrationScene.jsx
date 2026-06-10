@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useLayoutEffect, useMemo, useCallback, mem
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Grid, Html, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import * as THREE from 'three';
-import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
+import { useIntegration, useIntegrationDispatch, computeStructureBounds } from '../IntegrationStore';
 import { BimElement, getBaseColor } from '../../bim/element/BimElement';
 import { useT } from '../../../i18n/LanguageContext';
 import { TASK_RULES } from '../progressEngine';
@@ -134,18 +134,17 @@ function buildProgressMap(wbsTasks) {
 // size:          Three.js [width, height, depth]
 // progress:      0-100 (WBS 공정율)
 // offsetY:       소속 <group>의 world Y 오프셋 (clip plane은 world 좌표계)
-function BimProgressFill({ localPosition, size, elementType, progress, offsetY = 0 }) {
+const NEON_COLOR = '#aaff44';
+
+function BimProgressFill({ localPosition, size, elementType, progress, offsetY = 0, isSelected = false }) {
   const worldYBottom = localPosition[1] - size[1] / 2 + offsetY;
   const worldHeight  = size[1];
 
-  // Three.js Plane(법선, 상수): -y + constant >= 0 → y <= constant 인 영역만 표시
-  // 즉 fillLevel 아래(바닥→진도만큼)만 렌더
   const planeRef    = useRef(null);
   const currentPRef = useRef(progress);
   const targetPRef  = useRef(progress);
   const wYBRef      = useRef(worldYBottom);
 
-  // 첫 마운트 시 clip plane 생성
   if (!planeRef.current) {
     const initLevel = worldYBottom + (progress / 100) * worldHeight;
     planeRef.current = new THREE.Plane(new THREE.Vector3(0, -1, 0), initLevel);
@@ -154,7 +153,6 @@ function BimProgressFill({ localPosition, size, elementType, progress, offsetY =
   useEffect(() => { targetPRef.current  = progress;     }, [progress]);
   useEffect(() => { wYBRef.current      = worldYBottom; }, [worldYBottom]);
 
-  // 매 프레임: 현재 진도를 목표값으로 부드럽게 보간 → clip plane 이동
   useFrame((_, delta) => {
     const diff = targetPRef.current - currentPRef.current;
     if (Math.abs(diff) < 0.01) return;
@@ -162,78 +160,104 @@ function BimProgressFill({ localPosition, size, elementType, progress, offsetY =
     planeRef.current.constant = wYBRef.current + (currentPRef.current / 100) * worldHeight;
   });
 
-  const baseColor = getBaseColor(elementType) || '#334155';
+  const baseColor = isSelected ? NEON_COLOR : (getBaseColor(elementType) || '#334155');
   const p = progress;
-  const fillColor = p >= 100 ? '#60a5fa'   // 완료 — 파랑
-    : p >= 75    ? '#22c55e'               // 75%+ — 녹색
-    : p >= 40    ? '#eab308'               // 40%+ — 노랑
-    : p >  0     ? '#f97316'               // 진행 — 주황
-    : '#334155';                           // 미착수 — 회색
+  const fillColor = isSelected ? NEON_COLOR
+    : p >= 100 ? '#60a5fa'
+    : p >= 75  ? '#22c55e'
+    : p >= 40  ? '#eab308'
+    : p >  0   ? '#f97316'
+    : '#334155';
 
   return (
     <group>
-      {/* 고스트: 전체 형상 반투명 윤곽 (항상 표시) */}
+      {/* 고스트: 선택 시 형광으로 전체를 채움, 비선택 시 반투명 윤곽 */}
       <mesh position={localPosition} castShadow>
         <boxGeometry args={size} />
-        <meshStandardMaterial color={baseColor} transparent opacity={0.07} depthWrite={false} />
+        <meshStandardMaterial
+          color={baseColor}
+          transparent
+          opacity={isSelected ? 0.62 : 0.07}
+          depthWrite={false}
+          emissive={isSelected ? NEON_COLOR : '#000000'}
+          emissiveIntensity={isSelected ? 0.55 : 0}
+        />
       </mesh>
       {/* 외곽선 */}
       <lineSegments position={localPosition}>
         <edgesGeometry args={[new THREE.BoxGeometry(...size)]} />
-        <lineBasicMaterial color={baseColor} transparent opacity={0.28} />
+        <lineBasicMaterial color={baseColor} transparent opacity={isSelected ? 0.95 : 0.28} />
       </lineSegments>
-      {/* 채움: clip plane이 진도에 따라 아래→위로 이동 */}
-      <mesh position={localPosition}>
-        <boxGeometry args={size} />
-        <meshStandardMaterial
-          color={fillColor}
-          clippingPlanes={[planeRef.current]}
-          clipShadows
-          transparent
-          opacity={0.80}
-          emissive={fillColor}
-          emissiveIntensity={0.08}
-        />
-      </mesh>
+      {/* 채움: clip plane이 진도에 따라 아래→위로 이동 (비선택 시만 의미 있음) */}
+      {!isSelected && (
+        <mesh position={localPosition}>
+          <boxGeometry args={size} />
+          <meshStandardMaterial
+            color={fillColor}
+            clippingPlanes={[planeRef.current]}
+            clipShadows
+            transparent
+            opacity={0.80}
+            emissive={fillColor}
+            emissiveIntensity={0.08}
+          />
+        </mesh>
+      )}
     </group>
   );
 }
 
-// ── 굴착 시뮬레이션 시각화 ────────────────────────────────────────
-// BIM 요소가 IfcSlab/IfcPier/IfcFoundation인 경우 WBS 진행률에 따라 굴착 구덩이 표시
-// x,z: 로컬 좌표(group offset 적용 전), w/d: 가로/깊이 크기, progress: 0~100
-function ExcavationPit({ x, z, w, d, progress }) {
-  const depth = (progress / 100) * 2.8; // 최대 2.8m 굴착
-  if (depth < 0.06) return null;
-  const pw = Math.max(w, 0.6), pd = Math.max(d, 0.6);
+// ── BIM 구조물 선택 하이라이트 박스 (맥동 아웃라인) ─────────────────
+function StructureSelectionBox({ elements }) {
+  const meshRef = useRef(null);
+  const edgeRef = useRef(null);
+  const tPulse  = useRef(0);
+
+  const bounds = useMemo(() => {
+    if (!elements?.length) return null;
+    let mnX=Infinity, mxX=-Infinity, mnY=Infinity, mxY=-Infinity, mnZ=Infinity, mxZ=-Infinity;
+    elements.forEach(el => {
+      const cv = toIntegrationCoords(el);
+      const px=Number(cv.positionX)||0, py=Number(cv.positionY)||0, pz=Number(cv.positionZ)||0;
+      const sx=Math.abs(Number(cv.sizeX))||0.1, sy=Math.abs(Number(cv.sizeY))||0.1, sz=Math.abs(Number(cv.sizeZ))||0.1;
+      mnX=Math.min(mnX,px-sx/2); mxX=Math.max(mxX,px+sx/2);
+      mnY=Math.min(mnY,pz);       mxY=Math.max(mxY,pz+sz);
+      mnZ=Math.min(mnZ,py-sy/2); mxZ=Math.max(mxZ,py+sy/2);
+    });
+    if (!isFinite(mnX)) return null;
+    return {
+      cx:(mnX+mxX)/2, cy:(mnY+mxY)/2, cz:(mnZ+mxZ)/2,
+      sw:mxX-mnX+0.8, sh:mxY-mnY+0.8, sd:mxZ-mnZ+0.8,
+    };
+  }, [elements]);
+
+  const boxGeo = useMemo(
+    () => bounds ? new THREE.BoxGeometry(bounds.sw, bounds.sh, bounds.sd) : null,
+    [bounds]
+  );
+
+  useFrame((_, delta) => {
+    tPulse.current += delta;
+    const pulse = 0.7 + 0.25 * Math.sin(tPulse.current * 2.8);
+    if (edgeRef.current?.material)  edgeRef.current.material.opacity  = pulse;
+    if (meshRef.current?.material)  meshRef.current.material.opacity  = 0.28 + 0.1 * Math.sin(tPulse.current * 2);
+  });
+
+  if (!bounds || !boxGeo) return null;
+
   return (
-    <group position={[x, 0, z]}>
-      {/* 굴착된 흙(어두운 내부) */}
-      <mesh position={[0, -depth / 2, 0]}>
-        <boxGeometry args={[pw, depth + 0.05, pd]} />
-        <meshStandardMaterial color="#1a0e06" roughness={1} />
+    <group position={[bounds.cx, bounds.cy, bounds.cz]}>
+      <mesh ref={meshRef}>
+        <boxGeometry args={[bounds.sw, bounds.sh, bounds.sd]} />
+        <meshStandardMaterial
+          color={NEON_COLOR} transparent opacity={0.28}
+          depthWrite={false} emissive={NEON_COLOR} emissiveIntensity={0.8}
+        />
       </mesh>
-      {/* 지표면 노출 흙 */}
-      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[pw, pd]} />
-        <meshStandardMaterial color="#5c3316" roughness={0.95} />
-      </mesh>
-      {/* 굴착 경계 표시 (지면 테두리 박스) */}
-      <mesh position={[0, 0.025, 0]}>
-        <boxGeometry args={[pw + 0.12, 0.05, pd + 0.12]} />
-        <meshStandardMaterial color="#f97316" transparent opacity={0.5} />
-      </mesh>
-      {progress > 3 && (
-        <Html center position={[0, 0.6, 0]} distanceFactor={30}>
-          <div style={{
-            background: '#0a0a0acc', color: '#f97316',
-            padding: '1px 6px', borderRadius: 3, fontSize: 8, fontWeight: 700,
-            border: '1px solid #f9731633', whiteSpace: 'nowrap',
-          }}>
-            ⛏ {progress.toFixed(0)}%
-          </div>
-        </Html>
-      )}
+      <lineSegments ref={edgeRef}>
+        <edgesGeometry args={[boxGeo]} />
+        <lineBasicMaterial color={NEON_COLOR} transparent opacity={0.9} />
+      </lineSegments>
     </group>
   );
 }
@@ -311,12 +335,12 @@ function StructuresLayer() {
               <div
                 onClick={() => setSelectedStructId(isStructSelected ? null : s.id)}
                 style={{
-                  background: isStructSelected ? '#1a1500dd' : '#0d1b2acc',
-                  color: isStructSelected ? '#facc15' : '#60a5fa',
-                  padding: '4px 8px', borderRadius: 5, fontSize: 8, fontWeight: 700,
-                  border: `1px solid ${isStructSelected ? '#facc1588' : '#1e3a5f'}`,
-                  whiteSpace: isStructSelected ? 'normal' : 'nowrap',
-                  cursor: 'pointer', userSelect: 'none',
+                  background: isStructSelected ? '#0a1e3aee' : '#0d1b2acc',
+                  color: isStructSelected ? '#93c5fd' : '#60a5fa',
+                  padding: '2px 7px', borderRadius: 3, fontSize: 8, fontWeight: 700,
+                  border: `1px solid ${isStructSelected ? '#60a5fa' : '#1e3a5f'}`,
+                  boxShadow: isStructSelected ? '0 0 8px #3b82f688' : 'none',
+                  whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
                   lineHeight: 1.6,
                   minWidth: isStructSelected ? 170 : 'auto',
                 }}
@@ -324,7 +348,8 @@ function StructuresLayer() {
                 🏗 {s.name}
                 {isStructSelected && (
                   <>
-                    <div style={{ fontSize: 7, color: '#facc15', marginTop: 2 }}>
+                    <br />
+                    <span style={{ fontSize: 7, color: '#60a5fa' }}>
                       📍 {coordBadge}  X:{dispX.toFixed(1)}  Y:{dispY.toFixed(1)}  Z:{dispZ.toFixed(1)}
                     </div>
                     {isBim && (
@@ -370,6 +395,8 @@ function StructuresLayer() {
                 )}
               </div>
             </Html>
+            {/* BIM 선택 하이라이트: 맥동하는 바운딩 박스 */}
+            {isBim && isStructSelected && <StructureSelectionBox elements={elems} />}
             {elems.map(el => {
               if (isBim) {
                 const cv = toIntegrationCoords(el);
@@ -384,23 +411,15 @@ function StructuresLayer() {
                 const elemProgress = progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback;
                 const isExcavationType = ['IfcSlab', 'IfcPier', 'IfcFoundation'].includes(el.elementType);
                 return (
-                  <group key={el.elementId}>
-                    {/* 굴착 공종은 구덩이 시각화 추가 */}
-                    {isExcavationType && (
-                      <ExcavationPit
-                        x={pX} z={pY}
-                        w={sX} d={sY}
-                        progress={elemProgress}
-                      />
-                    )}
-                    <BimProgressFill
-                      localPosition={[pX, pZ + sZ / 2, pY]}
-                      size={[sX, sZ, sY]}
-                      elementType={el.elementType}
-                      progress={elemProgress}
-                      offsetY={offsetY}
-                    />
-                  </group>
+                  <BimProgressFill
+                    key={el.elementId}
+                    localPosition={[pX, pZ + sZ / 2, pY]}
+                    size={[sX, sZ, sY]}
+                    elementType={el.elementType}
+                    progress={progressMap[`${s.bimProjectId}:${el.elementType}`] || 0}
+                    offsetY={offsetY}
+                    isSelected={isStructSelected}
+                  />
                 );
               }
               return <BimElement key={el.elementId} element={toIntegrationCoords(el)} />;
@@ -900,7 +919,7 @@ function SimulationManager({ running }) {
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
 
-  const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId, selectedWorkerId, surveyOrigin, structures: initStructures, wbsTasks: initWbsTasks } = useIntegration();
+  const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId, selectedWorkerId, surveyOrigin, structures } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   // stale-closure 없이 선택 상태를 읽기 위한 ref
@@ -936,13 +955,27 @@ function SimulationManager({ running }) {
   const wbsTickRef    = useRef(0);
   const livePosTimer  = useRef(0);
 
-  // 장비 추가/제거 동기화
+  // 장비 추가/제거/경로변경 동기화
   useEffect(() => {
     const existingIds = new Set(Object.keys(equipStateRef.current));
     const storeIds    = new Set(initEquip.map(e => e.id));
     initEquip.forEach(e => {
-      if (!existingIds.has(e.id))
-        equipStateRef.current[e.id] = { pos: [...(e.initialPos || [0, 0, 0])], routeIdx: 0, t: 0 };
+      const startPos = (e.route && e.route[0]) ? [...e.route[0]] : [...(e.initialPos || [0, 0, 0])];
+      if (!existingIds.has(e.id)) {
+        equipStateRef.current[e.id] = { pos: startPos, routeIdx: 0, t: 0 };
+      } else {
+        // route가 바뀌면 pos를 route[0]으로 텔레포트 (speed=0 장비도 올바른 위치에)
+        const st = equipStateRef.current[e.id];
+        const prevRoute = st._route;
+        if (e.route && e.route !== prevRoute) {
+          st.pos      = startPos;
+          st.routeIdx = 0;
+          st.t        = 0;
+          if (equipMeshes.current[e.id])
+            equipMeshes.current[e.id].position.set(...startPos);
+        }
+        st._route = e.route;
+      }
     });
     existingIds.forEach(id => { if (!storeIds.has(id)) delete equipStateRef.current[id]; });
   }, [initEquip]);
@@ -969,16 +1002,53 @@ function SimulationManager({ running }) {
     existingIds.forEach(id => { if (!storeIds.has(id)) delete workerStateRef.current[id]; });
   }, [initWorkers]);
 
-  const zonesRef  = useRef(dangerZones);
+  const zonesRef      = useRef(dangerZones);
   useEffect(() => { zonesRef.current = dangerZones; }, [dangerZones]);
-  const equipRef  = useRef(initEquip);
+  const equipRef      = useRef(initEquip);
   useEffect(() => { equipRef.current = initEquip; }, [initEquip]);
-  const workerRef = useRef(initWorkers);
+  const workerRef     = useRef(initWorkers);
   useEffect(() => { workerRef.current = initWorkers; }, [initWorkers]);
-  const structuresRef = useRef(initStructures);
-  useEffect(() => { structuresRef.current = initStructures; }, [initStructures]);
-  const wbsTasksRef = useRef(initWbsTasks);
-  useEffect(() => { wbsTasksRef.current = initWbsTasks; }, [initWbsTasks]);
+  const structuresRef = useRef(structures);
+  useEffect(() => { structuresRef.current = structures; }, [structures]);
+
+  // BIM 구조물 전체를 포함하는 play area (동적 클램프 기준)
+  const playAreaRef = useRef({ minX: -28, maxX: 28, minZ: -28, maxZ: 28 });
+  useEffect(() => {
+    const bimList = structures.filter(s => s.type === 'bim' && Array.isArray(s.elements) && s.elements.length > 0);
+    if (!bimList.length) { playAreaRef.current = { minX: -28, maxX: 28, minZ: -28, maxZ: 28 }; return; }
+    let mnX = Infinity, mxX = -Infinity, mnZ = Infinity, mxZ = -Infinity;
+    bimList.forEach(s => {
+      const b = computeStructureBounds(s);
+      mnX = Math.min(mnX, b.minX); mxX = Math.max(mxX, b.maxX);
+      mnZ = Math.min(mnZ, b.minZ); mxZ = Math.max(mxZ, b.maxZ);
+    });
+    playAreaRef.current = { minX: mnX - 8, maxX: mxX + 8, minZ: mnZ - 8, maxZ: mxZ + 8 };
+  }, [structures]);
+
+  // 자동 시작 시 작업자를 BIM 영역으로 즉시 이동
+  const isAutoRunning = structures.some(s => s.type === 'bim' && Array.isArray(s.elements) && s.elements.length > 0)
+    && initEquip.some(e => e.mode === 'auto');
+  useEffect(() => {
+    if (!isAutoRunning) return;
+    const bimList = structuresRef.current.filter(s => s.type === 'bim' && Array.isArray(s.elements) && s.elements.length > 0);
+    if (!bimList.length) return;
+    const wTotal = initWorkers.length || 1;
+    const wCols  = Math.max(1, Math.ceil(Math.sqrt(wTotal)));
+    const wRows  = Math.max(1, Math.ceil(wTotal / wCols));
+    initWorkers.forEach((w, wIdx) => {
+      const ws = workerStateRef.current[w.id];
+      if (!ws) return;
+      const b  = computeStructureBounds(bimList[wIdx % bimList.length]);
+      const bW = b.maxX - b.minX, bD = b.maxZ - b.minZ;
+      const col = wIdx % wCols, row = Math.floor(wIdx / wCols) % wRows;
+      const cW  = bW / wCols,   cD  = bD / wRows;
+      const nx  = b.minX + cW * col + (0.2 + Math.random() * 0.6) * cW;
+      const nz  = b.minZ + cD * row + (0.2 + Math.random() * 0.6) * cD;
+      ws.pos = [nx, 0, nz];
+      ws.dir = null;
+      workerMeshes.current[w.id]?.position.set(nx, 0, nz);
+    });
+  }, [isAutoRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── stale-closure 방지: 작업자 상태를 ref로 관리 ────────────────
   // useState 대신 ref + tick 패턴 → useFrame 안에서 항상 최신 값 읽기
@@ -1004,23 +1074,24 @@ function SimulationManager({ running }) {
     const workers = workerRef.current;
     const zones   = zonesRef.current;
 
-    // 장비 이동
+    // 장비 이동 — 이동 전 상태 백업 (충돌 차단 시 복원용)
     equips.forEach(e => {
       const st = equipStateRef.current[e.id];
       if (!st) return;
+      st.prevPos      = [...st.pos];   // 위치
+      st.prevT        = st.t;          // 루트 진행도
+      st.prevRouteIdx = st.routeIdx;   // 루트 구간
       if (e.mode === 'gps' && e.gpsPos) {
         st.pos = [e.gpsPos[0], e.gpsPos[1] || 0, e.gpsPos[2]];
         equipMeshes.current[e.id]?.position.set(...st.pos);
       } else if (e.mode === 'auto' && e.speed > 0 && e.route?.length >= 2) {
         const n = e.route.length;
-        // 현재 구간 길이 계산
         let fi = st.routeIdx % n;
         let ti = (fi + 1) % n;
         let fr = e.route[fi], to = e.route[ti];
         let dx = to[0] - fr[0], dz = to[2] - fr[2];
         let len = Math.sqrt(dx * dx + dz * dz);
 
-        // 길이가 0인 구간(중복 포인트) 은 건너뜀
         if (len < 0.01) {
           st.routeIdx = ti;
           fi = ti; ti = (ti + 1) % n;
@@ -1031,11 +1102,9 @@ function SimulationManager({ running }) {
 
         st.t += (e.speed * delta) / len;
 
-        // t >= 1 을 while 로 처리 — 한 프레임에 여러 구간 통과해도 안전
         while (st.t >= 1) {
           st.t -= 1;
           st.routeIdx = (st.routeIdx + 1) % n;
-          // 다음 구간도 0-길이면 건너뜀
           const nfi = st.routeIdx, nti = (nfi + 1) % n;
           const nlen = Math.hypot(
             e.route[nti][0] - e.route[nfi][0],
@@ -1053,154 +1122,69 @@ function SimulationManager({ running }) {
         ];
         equipMeshes.current[e.id]?.position.set(...st.pos);
       }
-
-      // BIM 공종 작업 감지 (시방서 기반 — TASK_RULES)
-      if (e.mode !== 'standby' && st) {
-        structuresRef.current.forEach(s => {
-          if (s.type !== 'bim' || !s.visible || !s.elements?.length) return;
-          const offset = s.offset || [0, 0, 0];
-          const seenTypes = new Set();
-          s.elements.forEach(el => {
-            if (seenTypes.has(el.elementType)) return;
-            seenTypes.add(el.elementType);
-            const rule = TASK_RULES[el.elementType];
-            if (!rule) return;
-            const isRelevant =
-              rule.blockers.some(b => b.type === e.type) ||
-              rule.equipBonus.some(b => b.type === e.type);
-            if (!isRelevant) return;
-            const elX = (Number(el.positionX) || 0) + offset[0];
-            const elZ = (Number(el.positionZ) || 0) + offset[2];
-            const ddx = st.pos[0] - elX, ddz = st.pos[2] - elZ;
-            if (ddx * ddx + ddz * ddz < 36) {
-              throttledCall(throttleMap.current, `bim_${e.id}_${el.elementType}`, 20000, () => {
-                dispatch({ type: 'LOG_EVENT', event: {
-                  type: 'bim_work',
-                  severity: 'info',
-                  description: tRef.current('evtBimWork', { equip: e.name, type: el.elementType, struct: s.name }),
-                }});
-              });
-
-              // WBS 세부 공정 순차 진행
-              throttledCall(throttleMap.current, `wbs_sub_${e.id}_${el.elementType}`, 8000, () => {
-                const tasks  = wbsTasksRef.current;
-                const useId  = e.assignedBimProjectId || s.bimProjectId;
-
-                // 부모 태스크 (BIM:{projId}:{elementType}, parentTaskId 없음)
-                const parentTask = tasks.find(t =>
-                  !t.parentTaskId &&
-                  t.notes?.startsWith(`BIM:${useId}:`) &&
-                  t.notes?.includes(el.elementType) &&
-                  (t.progress || 0) < 100
-                );
-                if (!parentTask) return;
-
-                // 세부 공정 목록 (parentTaskId 기준, sortOrder 순)
-                const subTasks = tasks
-                  .filter(t => t.parentTaskId === parentTask.taskId)
-                  .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-
-                if (subTasks.length > 0) {
-                  const taskMap = Object.fromEntries(tasks.map(t => [t.taskId, t]));
-                  // 선행 작업 모두 완료된 첫 번째 미완성 세부 공정
-                  const activeSubTask = subTasks.find(sub => {
-                    if ((sub.progress || 0) >= 100) return false;
-                    const predIds = (sub.predecessorIds || '').split(',').map(s => s.trim()).filter(Boolean);
-                    return predIds.every(pid => (taskMap[pid]?.progress || 0) >= 100);
-                  });
-                  if (!activeSubTask) return;
-
-                  dispatch({ type: 'UPDATE_TASK_PROGRESS', taskId: activeSubTask.taskId, delta: 3 });
-
-                  // 부모 진행률 = 세부 공정 평균 (업데이트 반영)
-                  const newSubProgress = Math.min(100, (activeSubTask.progress || 0) + 3);
-                  const avgProgress = Math.round(
-                    subTasks.reduce((acc, t) =>
-                      acc + (t.taskId === activeSubTask.taskId ? newSubProgress : (t.progress || 0)), 0
-                    ) / subTasks.length
-                  );
-                  dispatch({ type: 'SET_TASK_PROGRESS', taskId: parentTask.taskId, progress: avgProgress });
-                } else {
-                  // 세부 공정 없으면 부모 직접 증가
-                  dispatch({ type: 'UPDATE_TASK_PROGRESS', taskId: parentTask.taskId, delta: 2.5 });
-                }
-              });
-            }
-          });
-        });
-      }
     });
 
-    // 작업자 이동 — BIM 구조물 있으면 BIM 요소 위치 순환, 없으면 랜덤워크
-    workers.forEach(w => {
+    // ── 장비 충돌 차단: 겹치면 이동 취소 (밀어내기 X, 진입 금지) ────
+    for (let ia = 0; ia < equips.length; ia++) {
+      const ea = equips[ia];
+      const sa = equipStateRef.current[ea.id];
+      if (!sa || ea.mode !== 'auto') continue;  // 이동 중인 auto 장비만 체크
+      const ra = (ea.size ? Math.max(ea.size[0], ea.size[2]) : 3.5) / 2 + 1.0;
+      for (let ib = 0; ib < equips.length; ib++) {
+        if (ib === ia) continue;
+        const eb = equips[ib];
+        const sb = equipStateRef.current[eb.id];
+        if (!sb) continue;
+        const dx = sa.pos[0] - sb.pos[0];
+        const dz = sa.pos[2] - sb.pos[2];
+        const rb = (eb.size ? Math.max(eb.size[0], eb.size[2]) : 3.5) / 2 + 1.0;
+        if (dx * dx + dz * dz < (ra + rb) * (ra + rb)) {
+          // 겹침 발생 → 위치 + 루트 진행도 모두 복원 (장애물 비켜나면 자동 재개)
+          sa.pos      = sa.prevPos;
+          sa.t        = sa.prevT;
+          sa.routeIdx = sa.prevRouteIdx;
+          equipMeshes.current[ea.id]?.position.set(...sa.pos);
+          break;
+        }
+      }
+    }
+
+    // 작업자 이동 — BIM 구조물 실제 footprint 안에서 분산, 없으면 랜덤워크
+    const bimStructList = structuresRef.current
+      .filter(s => s.type === 'bim' && Array.isArray(s.elements) && s.elements.length > 0);
+
+    workers.forEach((w, wIdx) => {
       const ws = workerStateRef.current[w.id];
       if (!ws) return;
-
-      // 배정된 구조물 우선, 없으면 round-robin
-      const bimStructures = structuresRef.current.filter(
-        s => s.type === 'bim' && s.visible && s.elements?.length
-      );
-      const workerIdx = workers.findIndex(wk => wk.id === w.id);
-      const assignedStruct = bimStructures.length > 0
-        ? (w.assignedStructId
-            ? bimStructures.find(s => s.id === w.assignedStructId) || bimStructures[workerIdx % bimStructures.length]
-            : bimStructures[workerIdx % bimStructures.length])
-        : null;
-
-      // 배정된 프로젝트의 공종별 대표 좌표 수집
-      const bimPoints = [];
-      if (assignedStruct) {
-        const offset = assignedStruct.offset || [0, 0, 0];
-        const seen = new Set();
-        assignedStruct.elements.forEach(el => {
-          if (seen.has(el.elementType)) return;
-          seen.add(el.elementType);
-          bimPoints.push({
-            x: (Number(el.positionX) || 0) + offset[0],
-            z: (Number(el.positionZ) || 0) + offset[2],
-          });
-        });
-      }
-
-      if (bimPoints.length > 0) {
-        // BIM 현장 위주 이동
-        ws.workTimer = (ws.workTimer || 0) - delta;
-        if (!ws.bimPt || ws.workTimer <= 0) {
-          ws.bimPt = bimPoints[Math.floor(Math.random() * bimPoints.length)];
-          ws.workTimer = 8 + Math.random() * 14; // 8~22초 체류
-        }
-        const dx = ws.bimPt.x - ws.pos[0];
-        const dz = ws.bimPt.z - ws.pos[2];
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < 1.8) {
-          // 현장 도착 → 작업 중 미세 진동
-          ws.pos = [
-            Math.max(-28, Math.min(28, ws.pos[0] + (Math.random() - 0.5) * 0.5 * delta)),
-            0,
-            Math.max(-28, Math.min(28, ws.pos[2] + (Math.random() - 0.5) * 0.5 * delta)),
-          ];
+      ws.dirTimer = (ws.dirTimer || 0) + delta;
+      if (!ws.dir || ws.dirTimer > 2.5) {
+        if (bimStructList.length > 0) {
+          const assigned = bimStructList[wIdx % bimStructList.length];
+          const b  = computeStructureBounds(assigned);
+          const bW = b.maxX - b.minX, bD = b.maxZ - b.minZ;
+          const wTot = workers.length || 1;
+          const wC   = Math.max(1, Math.ceil(Math.sqrt(wTot)));
+          const wR   = Math.max(1, Math.ceil(wTot / wC));
+          const col  = wIdx % wC, row = Math.floor(wIdx / wC) % wR;
+          const cW   = bW / wC, cD = bD / wR;
+          // 자신의 격자 구역 안에서만 목표점 선택
+          const tx = b.minX + cW * col + (0.1 + Math.random() * 0.8) * cW;
+          const tz = b.minZ + cD * row + (0.1 + Math.random() * 0.8) * cD;
+          const dx = tx - ws.pos[0], dz = tz - ws.pos[2];
+          const len = Math.sqrt(dx * dx + dz * dz) || 1;
+          ws.dir = [dx / len, dz / len];
         } else {
-          const spd = 2.2;
-          ws.pos = [
-            Math.max(-28, Math.min(28, ws.pos[0] + (dx / dist) * spd * delta)),
-            0,
-            Math.max(-28, Math.min(28, ws.pos[2] + (dz / dist) * spd * delta)),
-          ];
-        }
-      } else {
-        // BIM 구조물 없을 때 기존 랜덤워크
-        ws.dirTimer = (ws.dirTimer || 0) + delta;
-        if (!ws.dir || ws.dirTimer > 2.0) {
           const angle = Math.random() * Math.PI * 2;
           ws.dir = [Math.cos(angle), Math.sin(angle)];
-          ws.dirTimer = 0;
         }
-        ws.pos = [
-          Math.max(-28, Math.min(28, ws.pos[0] + ws.dir[0] * 1.2 * delta)),
-          0,
-          Math.max(-28, Math.min(28, ws.pos[2] + ws.dir[1] * 1.2 * delta)),
-        ];
+        ws.dirTimer = 0;
       }
+      const pa = playAreaRef.current;
+      ws.pos = [
+        Math.max(pa.minX, Math.min(pa.maxX, ws.pos[0] + ws.dir[0] * 1.2 * delta)),
+        0,
+        Math.max(pa.minZ, Math.min(pa.maxZ, ws.pos[2] + ws.dir[1] * 1.2 * delta)),
+      ];
       workerMeshes.current[w.id]?.position.set(...ws.pos);
     });
 
