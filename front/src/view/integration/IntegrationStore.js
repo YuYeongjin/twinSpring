@@ -38,9 +38,12 @@ function makeInitial() {
     // ── 신규 ──────────────────────────────────────────────────────
     structures: [],       // { id, name, type:'bim'|'ifc', bimProjectId?, elements:null|[], offset:[0,0,0], visible:true }
     terrain:    null,     // { imageDataUrl, width, height } or null
+    cameras:    [],       // { cameraId, name, url, worldX, worldY, worldZ, yaw, fovH, active }
 
     isLoading:         false,
     simulationRunning: true,
+    // GPS ↔ 물리 좌표 변환 기준점 (현장 원점)
+    // project.refLat/refLng가 설정되면 그 값으로 덮어씀
     referencePoint:    { lat: 37.5665, lng: 126.9780 },
     surveyOrigin:      null,   // { label, x, y, z } — 측량 기준점 (scene 원점의 실좌표)
     selectedEquipId:   null,
@@ -80,8 +83,14 @@ function reducer(state, action) {
     case 'SET_LOADING':
       return { ...state, isLoading: action.value };
 
-    case 'SET_PROJECT_META':
-      return { ...state, projectMeta: action.meta };
+    case 'SET_PROJECT_META': {
+      // project에 refLat/refLng가 있으면 현장 원점으로 즉시 반영
+      const meta = action.meta;
+      const refUpdate = (meta?.refLat != null && meta?.refLng != null)
+        ? { referencePoint: { lat: meta.refLat, lng: meta.refLng } }
+        : {};
+      return { ...state, projectMeta: meta, ...refUpdate };
+    }
 
     case 'SET_REAL_DATA':
       return {
@@ -222,6 +231,20 @@ function reducer(state, action) {
     case 'CLEAR_TERRAIN':
       return { ...state, terrain: null };
 
+    // ── 현장 원점 (GPS ↔ 물리 좌표) ─────────────────────────────
+    case 'SET_SITE_ORIGIN':
+      return { ...state, referencePoint: { lat: action.lat, lng: action.lng } };
+
+    // ── 카메라 ──────────────────────────────────────────────────
+    case 'SET_CAMERAS':
+      return { ...state, cameras: action.cameras };
+    case 'ADD_CAMERA':
+      return { ...state, cameras: [...state.cameras, action.camera] };
+    case 'UPDATE_CAMERA':
+      return { ...state, cameras: state.cameras.map(c => c.cameraId === action.cameraId ? { ...c, ...action.updates } : c) };
+    case 'REMOVE_CAMERA':
+      return { ...state, cameras: state.cameras.filter(c => c.cameraId !== action.cameraId) };
+
     // ── 측량 기준점 ──────────────────────────────────────────────
     case 'SET_SURVEY_ORIGIN':
       return { ...state, surveyOrigin: action.origin }; // null이면 해제
@@ -343,6 +366,8 @@ export function IntegrationProvider({ projectId, children }) {
           wbsProjectId: project.wbsProjectId,
           bimProjectId: project.bimProjectId,
           description:  project.description,
+          refLat:       project.refLat,
+          refLng:       project.refLng,
         }});
         if (project.simConfig) {
           try {
@@ -357,6 +382,16 @@ export function IntegrationProvider({ projectId, children }) {
       }
     }
     loadSimConfig();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  // 프로젝트 전환 시 카메라 목록 로드
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    AxiosCustom.get(`/api/integration/project/${projectId}/cameras`)
+      .then(res => { if (!cancelled) dispatch({ type: 'SET_CAMERAS', cameras: res.data || [] }); })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [projectId]);
 

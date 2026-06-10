@@ -11,6 +11,8 @@
                description    AS "description",
                sim_config     AS "simConfig",
                status         AS "status",
+               ref_lat        AS "refLat",
+               ref_lng        AS "refLng",
                created_at     AS "createdAt"
         FROM integration_project
         WHERE status = 'ACTIVE'
@@ -25,6 +27,8 @@
                description    AS "description",
                sim_config     AS "simConfig",
                status         AS "status",
+               ref_lat        AS "refLat",
+               ref_lng        AS "refLng",
                created_at     AS "createdAt"
         FROM integration_project
         WHERE wbs_project_id = #{wbsProjectId}
@@ -40,6 +44,8 @@
                description    AS "description",
                sim_config     AS "simConfig",
                status         AS "status",
+               ref_lat        AS "refLat",
+               ref_lng        AS "refLng",
                created_at     AS "createdAt"
         FROM integration_project
         WHERE project_id = #{projectId}
@@ -66,6 +72,14 @@
     <update id="updateSimConfig" parameterType="map">
         UPDATE integration_project
         SET sim_config = #{simConfig},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE project_id = #{projectId}
+    </update>
+
+    <update id="updateSiteOrigin" parameterType="map">
+        UPDATE integration_project
+        SET ref_lat    = #{refLat},
+            ref_lng    = #{refLng},
             updated_at = CURRENT_TIMESTAMP
         WHERE project_id = #{projectId}
     </update>

@@ -76,6 +76,15 @@ public class IntegrationServiceImpl implements IntegrationService {
     }
 
     @Override
+    public void updateSiteOrigin(String projectId, Double refLat, Double refLng) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("projectId", projectId);
+        params.put("refLat",    refLat);
+        params.put("refLng",    refLng);
+        integrationDAO.updateSiteOrigin(params);
+    }
+
+    @Override
     public void deleteIntegrationProject(String projectId) {
         integrationDAO.deleteIntegrationProject(projectId);
     }
@@ -89,7 +98,15 @@ public class IntegrationServiceImpl implements IntegrationService {
         dto.setDescription((String) row.get("description"));
         dto.setSimConfig((String)   row.get("simConfig"));
         dto.setStatus((String)      row.get("status"));
+        dto.setRefLat(toDouble(row.get("refLat")));
+        dto.setRefLng(toDouble(row.get("refLng")));
         dto.setCreatedAt(row.get("createdAt") != null ? row.get("createdAt").toString() : null);
         return dto;
+    }
+
+    private Double toDouble(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number) return ((Number) v).doubleValue();
+        try { return Double.parseDouble(v.toString()); } catch (Exception e) { return null; }
     }
 }

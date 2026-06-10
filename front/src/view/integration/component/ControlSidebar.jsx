@@ -6,6 +6,7 @@ import WorkerOptionsPanel from './WorkerOptionsPanel';
 import ZoneOptionsPanel from './ZoneOptionsPanel';
 import { useT } from '../../../i18n/LanguageContext';
 import { calcProgressRate, getRecommendations, TASK_RULES, EQUIP_LABEL } from '../progressEngine';
+import AxiosCustom from '../../../axios/AxiosCustom';
 
 const STATUS_META = {
   NOT_STARTED: { label: '미착', color: '#94a3b8' },
@@ -249,6 +250,177 @@ const EQUIP_TYPE_KEY = {
   vehicle:   'equipVehicle',   other: 'equipOther',
 };
 
+// ── 현장 카메라 관리 패널 ─────────────────────────────────────────
+const EMPTY_CAM = { name: '', url: '', worldX: '0', worldY: '6', worldZ: '0', yaw: '0', fovH: '90' };
+
+function CameraSection({ cameras, projectId, referencePoint, dispatch }) {
+  const t = useT('integrationProject');
+  const [form,    setForm]    = useState(EMPTY_CAM);
+  const [editing, setEditing] = useState(null);  // cameraId being edited
+  const [originForm, setOriginForm] = useState({ lat: '', lng: '' });
+  const [originSaved, setOriginSaved] = useState(false);
+
+  useEffect(() => {
+    if (referencePoint) {
+      setOriginForm({ lat: referencePoint.lat.toFixed(6), lng: referencePoint.lng.toFixed(6) });
+    }
+  }, [referencePoint]);
+
+  const handleSaveOrigin = async () => {
+    if (!projectId) return;
+    const lat = parseFloat(originForm.lat);
+    const lng = parseFloat(originForm.lng);
+    if (isNaN(lat) || isNaN(lng)) return;
+    await AxiosCustom.put(`/api/integration/project/${projectId}/site-origin`, { refLat: lat, refLng: lng }).catch(() => {});
+    dispatch({ type: 'SET_SITE_ORIGIN', lat, lng });
+    setOriginSaved(true);
+    setTimeout(() => setOriginSaved(false), 1500);
+  };
+
+  const handleAdd = async () => {
+    if (!projectId || !form.name.trim() || !form.url.trim()) return;
+    const body = {
+      name: form.name.trim(), url: form.url.trim(),
+      worldX: parseFloat(form.worldX) || 0, worldY: parseFloat(form.worldY) || 6,
+      worldZ: parseFloat(form.worldZ) || 0, yaw: parseFloat(form.yaw) || 0,
+      fovH: parseFloat(form.fovH) || 90, active: true,
+    };
+    const res = await AxiosCustom.post(`/api/integration/project/${projectId}/cameras`, body).catch(() => null);
+    if (res?.data) {
+      dispatch({ type: 'ADD_CAMERA', camera: res.data });
+      setForm(EMPTY_CAM);
+    }
+  };
+
+  const handleDelete = async (cameraId) => {
+    if (!projectId) return;
+    await AxiosCustom.delete(`/api/integration/project/${projectId}/cameras/${cameraId}`).catch(() => {});
+    dispatch({ type: 'REMOVE_CAMERA', cameraId });
+  };
+
+  const handleToggle = async (cam) => {
+    if (!projectId) return;
+    const updated = { ...cam, active: !cam.active };
+    await AxiosCustom.put(`/api/integration/project/${projectId}/cameras/${cam.cameraId}`, updated).catch(() => {});
+    dispatch({ type: 'UPDATE_CAMERA', cameraId: cam.cameraId, updates: { active: updated.active } });
+  };
+
+  const inputStyle = {
+    width: '100%', background: '#0d1b2a', border: '1px solid #1e3a5f',
+    borderRadius: 4, color: '#d1d5db', fontSize: 10,
+    padding: '3px 6px', boxSizing: 'border-box', outline: 'none',
+  };
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', marginBottom: 8,
+        borderBottom: '1px solid #1e3a5f', paddingBottom: 4 }}>
+        {t('sectionCameras').replace('{n}', cameras?.length || 0)}
+      </div>
+
+      {/* 현장 원점 (GPS 기준점) */}
+      <div style={{ background: '#071018', border: '1px solid #1e3a5f', borderRadius: 5,
+        padding: '6px 8px', marginBottom: 8 }}>
+        <div style={{ fontSize: 9, color: '#4b5563', fontWeight: 700, marginBottom: 4 }}>
+          {t('cameraOriginTitle')}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 5 }}>
+          {[[t('cameraOriginLat'), 'lat'], [t('cameraOriginLng'), 'lng']].map(([lbl, key]) => (
+            <div key={key}>
+              <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 2 }}>{lbl}</div>
+              <input type="number" step="0.000001" value={originForm[key]}
+                onChange={e => setOriginForm(f => ({ ...f, [key]: e.target.value }))}
+                style={inputStyle} />
+            </div>
+          ))}
+        </div>
+        <button onClick={handleSaveOrigin} style={{
+          width: '100%', background: originSaved ? '#0a2a0a' : '#1e3a5f',
+          border: `1px solid ${originSaved ? '#4ade80' : '#3b82f6'}`,
+          borderRadius: 4, padding: '4px 0', fontSize: 9, fontWeight: 700,
+          color: originSaved ? '#4ade80' : '#93c5fd', cursor: 'pointer',
+        }}>
+          {originSaved ? t('cameraOriginSaved') : t('cameraOriginSave')}
+        </button>
+      </div>
+
+      {/* 등록된 카메라 목록 */}
+      {cameras?.map(cam => (
+        <div key={cam.cameraId} style={{
+          background: '#071018', border: `1px solid ${cam.active ? '#1e3a5f' : '#1e293b'}`,
+          borderRadius: 5, padding: '6px 8px', marginBottom: 4,
+          opacity: cam.active ? 1 : 0.55,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+            <span style={{ fontSize: 9, color: cam.active ? '#60a5fa' : '#4b5563', flex: 1, fontWeight: 700 }}>
+              {cam.active ? '🟢' : '⚫'} {cam.name}
+            </span>
+            <button onClick={() => handleToggle(cam)} style={{
+              background: 'none', border: '1px solid #253347', borderRadius: 3,
+              padding: '1px 5px', color: '#6b7280', fontSize: 8, cursor: 'pointer',
+            }}>
+              {cam.active ? t('cameraOff') : t('cameraOn')}
+            </button>
+            <button onClick={() => handleDelete(cam.cameraId)} style={{
+              background: 'none', border: '1px solid #374151', borderRadius: 3,
+              padding: '1px 5px', color: '#6b7280', fontSize: 8, cursor: 'pointer',
+            }}>{t('cameraDeleteBtn')}</button>
+          </div>
+          <div style={{ fontSize: 8, color: '#374151', wordBreak: 'break-all' }}>{cam.url}</div>
+          <div style={{ fontSize: 8, color: '#253347', marginTop: 2 }}>
+            X:{cam.worldX?.toFixed(1)} Y:{cam.worldY?.toFixed(1)} Z:{cam.worldZ?.toFixed(1)}
+            &nbsp;| Yaw:{cam.yaw?.toFixed(0)}° FOV:{cam.fovH?.toFixed(0)}°
+          </div>
+        </div>
+      ))}
+
+      {/* 카메라 추가 폼 */}
+      <div style={{ background: '#071018', border: '1px solid #1a2a3a', borderRadius: 5, padding: '6px 8px' }}>
+        <div style={{ fontSize: 9, color: '#374151', fontWeight: 700, marginBottom: 5 }}>{t('cameraAddTitle')}</div>
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 2 }}>{t('cameraNameLabel')}</div>
+          <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+            placeholder={t('cameraNamePlaceholder')} style={inputStyle} />
+        </div>
+        <div style={{ marginBottom: 4 }}>
+          <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 2 }}>{t('cameraUrlLabel')}</div>
+          <input value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+            placeholder={t('cameraUrlPlaceholder')} style={inputStyle} />
+        </div>
+        <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 3 }}>{t('cameraCoordLabel')}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 4 }}>
+          {[['X', 'worldX'], ['Y(높이)', 'worldY'], ['Z', 'worldZ']].map(([lbl, key]) => (
+            <div key={key}>
+              <div style={{ fontSize: 8, color: '#374151', marginBottom: 2, textAlign: 'center' }}>{lbl}</div>
+              <input type="number" step="0.1" value={form[key]}
+                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                style={{ ...inputStyle, textAlign: 'center' }} />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 6 }}>
+          {[[t('cameraYawLabel'), 'yaw'], [t('cameraFovLabel'), 'fovH']].map(([lbl, key]) => (
+            <div key={key}>
+              <div style={{ fontSize: 8, color: '#374151', marginBottom: 2 }}>{lbl}</div>
+              <input type="number" step="1" value={form[key]}
+                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                style={inputStyle} />
+            </div>
+          ))}
+        </div>
+        <button onClick={handleAdd} disabled={!form.name.trim() || !form.url.trim()}
+          style={{
+            width: '100%', background: '#1e3a5f', border: '1px solid #3b82f6',
+            borderRadius: 4, padding: '5px 0', fontSize: 10, fontWeight: 700,
+            color: '#60a5fa', cursor: 'pointer', opacity: (!form.name.trim() || !form.url.trim()) ? 0.4 : 1,
+          }}>
+          {t('cameraRegBtn')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── 공통 서브 컴포넌트 ────────────────────────────────────────────
 function Section({ title, children }) {
   return (
@@ -393,7 +565,7 @@ export default function ControlSidebar() {
     workers, equipment, dangerZones, simulationRunning,
     referencePoint, isLoading, projectMeta,
     structures, terrain, selectedEquipId, selectedWorkerId, selectedZoneId,
-    surveyOrigin, wbsTasks,
+    surveyOrigin, wbsTasks, cameras,
   } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
@@ -869,6 +1041,14 @@ export default function ControlSidebar() {
           )}
         </div>
       </Section>
+
+      {/* 현장 카메라 */}
+      <CameraSection
+        cameras={cameras}
+        projectId={projectMeta?.projectId}
+        referencePoint={referencePoint}
+        dispatch={dispatch}
+      />
 
       {/* 작업자 */}
       <Section title={t('sectionWorkers', { n: workers.length })}>
