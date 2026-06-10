@@ -244,14 +244,29 @@ function StructuresLayer() {
   const { structures, wbsTasks, surveyOrigin } = useIntegration();
   const [selectedStructId, setSelectedStructId] = useState(null);
 
-  // WBS notes 형식(BIM:<id>:<type>) 기반 공종별 진도 맵 (고급 연동용)
+  // WBS notes 형식(BIM:<id>:<type>) 기반 공종별 진도 맵
   const progressMap = useMemo(() => buildProgressMap(wbsTasks), [wbsTasks]);
 
-  // WBS 전체 평균 진행률 — BIM 요소에 자동 반영되는 기본값
+  // WBS 전체 평균 (notes 없는 태스크 기준)
   const overallWbsProgress = useMemo(() => {
     if (wbsTasks.length === 0) return 0;
     return wbsTasks.reduce((s, tk) => s + (tk.progress || 0), 0) / wbsTasks.length;
   }, [wbsTasks]);
+
+  // BIM 프로젝트별 평균 진행률 — notes BIM:<id>:* 태스크가 있으면 해당 태스크만, 없으면 전체 평균 fallback
+  const perProjectProgress = useMemo(() => {
+    const result = {};
+    structures.forEach(s => {
+      if (s.type !== 'bim' || !s.bimProjectId || s.bimProjectId in result) return;
+      const matching = wbsTasks.filter(t =>
+        typeof t.notes === 'string' && t.notes.startsWith(`BIM:${s.bimProjectId}:`)
+      );
+      result[s.bimProjectId] = matching.length > 0
+        ? matching.reduce((acc, t) => acc + (t.progress || 0), 0) / matching.length
+        : overallWbsProgress;
+    });
+    return result;
+  }, [structures, wbsTasks, overallWbsProgress]);
 
   const progressColor = p =>
     p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#374151';
@@ -273,8 +288,21 @@ function StructuresLayer() {
         const dispZ = surveyOrigin ? offset[2] + surveyOrigin.z : offset[2];
         const coordBadge = surveyOrigin ? t('surveyCoordBadge') : t('currentPosLabel');
 
-        const overall = Math.round(overallWbsProgress);
+        // 이 구조물 전용 진행률 (프로젝트별 분리)
+        const projectAvgRaw = isBim
+          ? (perProjectProgress[s.bimProjectId] ?? overallWbsProgress)
+          : overallWbsProgress;
+        const overall = Math.round(projectAvgRaw);
         const overallCol = progressColor(overall);
+
+        // 이 프로젝트에 해당하는 WBS 태스크만 필터 (notes BIM:<id>:* 또는 notes 없는 공통 태스크)
+        const projectTasks = isBim
+          ? wbsTasks.filter(t =>
+              !t.notes ||
+              !t.notes.match(/^BIM:[^:]+:/) ||
+              t.notes.startsWith(`BIM:${s.bimProjectId}:`)
+            )
+          : wbsTasks;
 
         return (
           <group key={s.id} position={offset}>
@@ -311,11 +339,11 @@ function StructuresLayer() {
                         <div style={{ background: '#0a1525', borderRadius: 3, height: 5, overflow: 'hidden', marginBottom: 6 }}>
                           <div style={{ height: '100%', width: `${overall}%`, background: overallCol, borderRadius: 3, transition: 'width 0.8s ease' }} />
                         </div>
-                        {/* WBS 태스크 목록 */}
-                        {wbsTasks.length === 0 ? (
+                        {/* WBS 태스크 목록 (이 프로젝트 관련 태스크만) */}
+                        {projectTasks.length === 0 ? (
                           <div style={{ fontSize: 7, color: '#4b5563' }}>WBS 태스크 없음</div>
                         ) : (
-                          wbsTasks.slice(0, 6).map(tk => {
+                          projectTasks.slice(0, 6).map(tk => {
                             const p = Math.round(tk.progress || 0);
                             const col = progressColor(p);
                             return (
@@ -333,8 +361,8 @@ function StructuresLayer() {
                             );
                           })
                         )}
-                        {wbsTasks.length > 6 && (
-                          <div style={{ fontSize: 6, color: '#374151', marginTop: 2 }}>+{wbsTasks.length - 6}개 태스크 더 있음</div>
+                        {projectTasks.length > 6 && (
+                          <div style={{ fontSize: 6, color: '#374151', marginTop: 2 }}>+{projectTasks.length - 6}개 태스크 더 있음</div>
                         )}
                       </div>
                     )}
@@ -351,8 +379,9 @@ function StructuresLayer() {
                 const sX = Number(cv.sizeX)     || 0.1;
                 const sY = Number(cv.sizeY)     || 0.1;
                 const sZ = Number(cv.sizeZ)     || 0.1;
-                // notes 기반 공종별 진도가 있으면 우선 사용, 없으면 WBS 전체 평균 자동 반영
-                const elemProgress = progressMap[`${s.bimProjectId}:${el.elementType}`] ?? overallWbsProgress;
+                // notes 기반 공종별 → 프로젝트 평균 → 전체 평균 순으로 fallback
+                const projectFallback = perProjectProgress[s.bimProjectId] ?? overallWbsProgress;
+                const elemProgress = progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback;
                 const isExcavationType = ['IfcSlab', 'IfcPier', 'IfcFoundation'].includes(el.elementType);
                 return (
                   <group key={el.elementId}>
@@ -1052,23 +1081,50 @@ function SimulationManager({ running }) {
                 }});
               });
 
-              // 굴착 공종 — 진행률 자동 증가 (excavator + IfcSlab/IfcPier/IfcFoundation)
-              const EXCAVATION_TYPES = ['IfcSlab', 'IfcPier', 'IfcFoundation'];
-              if (e.type === 'excavator' && EXCAVATION_TYPES.includes(el.elementType)) {
-                throttledCall(throttleMap.current, `excav_prog_${e.id}_${el.elementType}`, 8000, () => {
-                  const tasks = wbsTasksRef.current;
-                  // notes에 elementType 포함된 태스크 우선, 없으면 진행률 가장 낮은 태스크
-                  let target = tasks.find(t =>
-                    typeof t.notes === 'string' && t.notes.includes(el.elementType) && (t.progress || 0) < 100
+              // WBS 세부 공정 순차 진행
+              throttledCall(throttleMap.current, `wbs_sub_${e.id}_${el.elementType}`, 8000, () => {
+                const tasks  = wbsTasksRef.current;
+                const useId  = e.assignedBimProjectId || s.bimProjectId;
+
+                // 부모 태스크 (BIM:{projId}:{elementType}, parentTaskId 없음)
+                const parentTask = tasks.find(t =>
+                  !t.parentTaskId &&
+                  t.notes?.startsWith(`BIM:${useId}:`) &&
+                  t.notes?.includes(el.elementType) &&
+                  (t.progress || 0) < 100
+                );
+                if (!parentTask) return;
+
+                // 세부 공정 목록 (parentTaskId 기준, sortOrder 순)
+                const subTasks = tasks
+                  .filter(t => t.parentTaskId === parentTask.taskId)
+                  .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+                if (subTasks.length > 0) {
+                  const taskMap = Object.fromEntries(tasks.map(t => [t.taskId, t]));
+                  // 선행 작업 모두 완료된 첫 번째 미완성 세부 공정
+                  const activeSubTask = subTasks.find(sub => {
+                    if ((sub.progress || 0) >= 100) return false;
+                    const predIds = (sub.predecessorIds || '').split(',').map(s => s.trim()).filter(Boolean);
+                    return predIds.every(pid => (taskMap[pid]?.progress || 0) >= 100);
+                  });
+                  if (!activeSubTask) return;
+
+                  dispatch({ type: 'UPDATE_TASK_PROGRESS', taskId: activeSubTask.taskId, delta: 3 });
+
+                  // 부모 진행률 = 세부 공정 평균 (업데이트 반영)
+                  const newSubProgress = Math.min(100, (activeSubTask.progress || 0) + 3);
+                  const avgProgress = Math.round(
+                    subTasks.reduce((acc, t) =>
+                      acc + (t.taskId === activeSubTask.taskId ? newSubProgress : (t.progress || 0)), 0
+                    ) / subTasks.length
                   );
-                  if (!target) {
-                    target = tasks
-                      .filter(t => (t.progress || 0) < 100)
-                      .sort((a, b) => (a.progress || 0) - (b.progress || 0))[0];
-                  }
-                  if (target) dispatch({ type: 'UPDATE_TASK_PROGRESS', taskId: target.taskId, delta: 2.5 });
-                });
-              }
+                  dispatch({ type: 'SET_TASK_PROGRESS', taskId: parentTask.taskId, progress: avgProgress });
+                } else {
+                  // 세부 공정 없으면 부모 직접 증가
+                  dispatch({ type: 'UPDATE_TASK_PROGRESS', taskId: parentTask.taskId, delta: 2.5 });
+                }
+              });
             }
           });
         });
@@ -1080,13 +1136,23 @@ function SimulationManager({ running }) {
       const ws = workerStateRef.current[w.id];
       if (!ws) return;
 
-      // BIM 구조물에서 공종별 대표 좌표 수집
+      // 배정된 구조물 우선, 없으면 round-robin
+      const bimStructures = structuresRef.current.filter(
+        s => s.type === 'bim' && s.visible && s.elements?.length
+      );
+      const workerIdx = workers.findIndex(wk => wk.id === w.id);
+      const assignedStruct = bimStructures.length > 0
+        ? (w.assignedStructId
+            ? bimStructures.find(s => s.id === w.assignedStructId) || bimStructures[workerIdx % bimStructures.length]
+            : bimStructures[workerIdx % bimStructures.length])
+        : null;
+
+      // 배정된 프로젝트의 공종별 대표 좌표 수집
       const bimPoints = [];
-      structuresRef.current.forEach(s => {
-        if (s.type !== 'bim' || !s.visible || !s.elements?.length) return;
-        const offset = s.offset || [0, 0, 0];
+      if (assignedStruct) {
+        const offset = assignedStruct.offset || [0, 0, 0];
         const seen = new Set();
-        s.elements.forEach(el => {
+        assignedStruct.elements.forEach(el => {
           if (seen.has(el.elementType)) return;
           seen.add(el.elementType);
           bimPoints.push({
@@ -1094,7 +1160,7 @@ function SimulationManager({ running }) {
             z: (Number(el.positionZ) || 0) + offset[2],
           });
         });
-      });
+      }
 
       if (bimPoints.length > 0) {
         // BIM 현장 위주 이동
@@ -1187,14 +1253,8 @@ function SimulationManager({ running }) {
       setStatusTick(n => n + 1);  // 최소한의 리렌더만 유발
     }
 
-    // WBS 공정률 자동 증가 (60초마다)
+    // wbsTickRef는 다른 곳에서 참조할 수 있으므로 카운터만 유지 (랜덤 증가 제거)
     wbsTickRef.current += delta;
-    if (wbsTickRef.current > 60) {
-      wbsTickRef.current = 0;
-      const active = equips.filter(e => e.mode === 'auto' && e.speed > 0).length;
-      if (active > 0)
-        dispatch({ type: 'UPDATE_TASK_PROGRESS', delta: 0.05 * active, taskIndex: Math.floor(Math.random() * 4) });
-    }
 
     // 사이드바용 실시간 좌표 — 150ms마다 dispatch (API 저장 트리거 안 함)
     livePosTimer.current += delta;

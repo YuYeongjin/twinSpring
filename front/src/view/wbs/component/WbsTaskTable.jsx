@@ -547,6 +547,26 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
               style={{ backgroundColor: s.bg, color: s.color }}>{t(s.tKey)}</span>
       );
     }
+    if (col.key === "taskName") {
+      const isChild = !!task.parentTaskId;
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: isChild ? 12 : 0 }}>
+          {isChild && <span style={{ color: '#253347', fontSize: 10, flexShrink: 0 }}>└</span>}
+          <span className="text-xs break-all" style={{ color: isChild ? '#94a3b8' : '#e2e8f0' }}>
+            {task.taskName ?? ""}
+          </span>
+        </div>
+      );
+    }
+    if (col.key === "wbsCode") {
+      const isChild = !!task.parentTaskId;
+      return (
+        <span className="text-xs font-mono"
+              style={{ color: isChild ? '#475569' : '#93c5fd' }}>
+          {task.wbsCode ?? ""}
+        </span>
+      );
+    }
     if (col.key === "notes") {
       const val = task[col.key];
       return (
@@ -656,9 +676,12 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
             {tasks.map((task, idx) => {
               const isEditing  = editingId === task.taskId;
               const isCritical = mergedCpm[task.taskId]?.isCritical;
+              const isChild    = !!task.parentTaskId;
               const rowBg = isCritical
                 ? (idx % 2 === 0 ? "#1a0a0a" : "#160808")
-                : (idx % 2 === 0 ? "#0d1b2a" : "#0a1521");
+                : isChild
+                  ? (idx % 2 === 0 ? "#08121e" : "#060f1a")
+                  : (idx % 2 === 0 ? "#0d1b2a" : "#0a1521");
 
               return (
                 <tr key={task.taskId} style={{ backgroundColor: rowBg }}

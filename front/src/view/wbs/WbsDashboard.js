@@ -906,6 +906,7 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
                         tasks={tasks}
                         onReload={reloadTasks}
                         projectStartDate={selectedProject.startDate}
+                        projectEndDate={selectedProject.endDate}
                       />
 
                       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">

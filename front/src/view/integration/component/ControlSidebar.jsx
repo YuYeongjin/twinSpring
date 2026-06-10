@@ -282,6 +282,110 @@ function Row({ children }) {
   return <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>{children}</div>;
 }
 
+// ── BIM 프로젝트 재배정 드롭다운 ──────────────────────────────────
+function ReassignRow({ structures, currentStructId, onAssign }) {
+  const [sel, setSel] = useState(currentStructId || '');
+  const bimList = structures.filter(s => s.type === 'bim' && s.visible !== false);
+  if (!bimList.length) return (
+    <div style={{ fontSize: 8, color: '#374151' }}>등록된 BIM 프로젝트 없음</div>
+  );
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4 }}>
+      <span style={{ fontSize: 8, color: '#4b6a8a', fontWeight: 700, flexShrink: 0 }}>🔄</span>
+      <select
+        value={sel}
+        onChange={e => setSel(e.target.value)}
+        style={{
+          flex: 1, background: '#0d1b2a', border: '1px solid #1e3a5f',
+          borderRadius: 3, color: '#d1d5db', fontSize: 8, padding: '2px 3px', outline: 'none',
+        }}
+      >
+        <option value="">— 프로젝트 선택 —</option>
+        {bimList.map(s => (
+          <option key={s.id} value={s.id}>{s.name}</option>
+        ))}
+      </select>
+      <button
+        onClick={() => sel && onAssign(sel)}
+        disabled={!sel}
+        style={{
+          background: sel ? '#0c2233' : '#060a0f',
+          border: `1px solid ${sel ? '#38bdf8' : '#1e3a5f'}`,
+          borderRadius: 3, color: sel ? '#38bdf8' : '#374151',
+          fontSize: 8, padding: '2px 7px', cursor: sel ? 'pointer' : 'default', fontWeight: 700,
+        }}
+      >배정</button>
+    </div>
+  );
+}
+
+// ── 배정 현황 + 재배정 패널 ────────────────────────────────────────
+function WorkAssignmentPanel({ assignedStructId, assignedBimProjectId, structures, wbsTasks, workableTypes, onReassign }) {
+  const assignedStruct = structures.find(s => s.id === assignedStructId);
+  const projTasks = assignedBimProjectId
+    ? wbsTasks.filter(t => !t.notes?.match(/^BIM:[^:]+:/) || t.notes.startsWith(`BIM:${assignedBimProjectId}:`))
+    : [];
+
+  return (
+    <div style={{
+      background: '#060f18', border: '1px solid #1e3a5f',
+      borderRadius: 5, padding: '7px 9px', marginTop: 4, marginBottom: 4,
+    }}>
+      <div style={{ fontSize: 8, color: '#4b6a8a', fontWeight: 700, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        📌 배정 현황
+      </div>
+
+      {assignedStruct ? (
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ fontSize: 10, color: '#60a5fa', fontWeight: 700, marginBottom: 3 }}>
+            🏗 {assignedStruct.name}
+          </div>
+          {workableTypes?.length > 0 && (
+            <div style={{ fontSize: 8, color: '#6b7280', marginBottom: 4 }}>
+              담당 공종: <span style={{ color: '#a78bfa' }}>{workableTypes.slice(0, 3).join(' · ')}</span>
+            </div>
+          )}
+          {projTasks.length === 0 ? (
+            <div style={{ fontSize: 8, color: '#374151' }}>연결된 WBS 태스크 없음</div>
+          ) : (
+            projTasks.slice(0, 4).map(tk => {
+              const p = Math.round(tk.progress || 0);
+              const col = p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#374151';
+              return (
+                <div key={tk.taskId} style={{ marginBottom: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8 }}>
+                    <span style={{ color: '#9ca3af', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tk.taskName}</span>
+                    <span style={{ color: col, fontWeight: 700, flexShrink: 0 }}>{p}%</span>
+                  </div>
+                  <div style={{ background: '#0a1525', borderRadius: 2, height: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${p}%`, background: col, borderRadius: 2, transition: 'width 0.5s' }} />
+                  </div>
+                </div>
+              );
+            })
+          )}
+          {projTasks.length > 4 && (
+            <div style={{ fontSize: 7, color: '#374151' }}>+{projTasks.length - 4}개 태스크 더 있음</div>
+          )}
+        </div>
+      ) : (
+        <div style={{ fontSize: 9, color: '#374151', marginBottom: 6 }}>
+          미배정 — 자동 작업 시 자동 배정됩니다
+        </div>
+      )}
+
+      <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: 6, marginTop: 2 }}>
+        <div style={{ fontSize: 8, color: '#4b6a8a', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase' }}>다른 프로젝트로 재배정</div>
+        <ReassignRow
+          structures={structures}
+          currentStructId={assignedStructId}
+          onAssign={onReassign}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 사이드바 ─────────────────────────────────────────────────
 export default function ControlSidebar() {
   const t = useT('integrationProject');
@@ -351,59 +455,109 @@ export default function ControlSidebar() {
     reader.readAsDataURL(file);
   };
 
-  // BIM 요소 위치 기반 장비 순찰 경로 생성
+  // 자동 작업 — BIM 프로젝트별로 장비/인원 분배
   const handleBimPatrol = () => {
-    // 장비 타입별 BIM 작업 가능 위치 수집
-    const targetsByType = {};
-    structures.forEach(s => {
-      if (s.type !== 'bim' || !s.visible || !s.elements?.length) return;
-      const offset = s.offset || [0, 0, 0];
+    const bimStructures = structures.filter(s => s.type === 'bim' && s.visible && s.elements?.length);
+
+    if (!bimStructures.length) {
+      // BIM 없음 → 기존 랜덤 자동 작업
+      dispatch({ type: 'AUTO_SIM_START' });
+      if (!simulationRunning) dispatch({ type: 'TOGGLE_SIM' });
+      return;
+    }
+
+    const projCount = bimStructures.length;
+
+    // 장비를 BIM 프로젝트 수로 round-robin 배정
+    equipment.forEach((e, eIdx) => {
+      const proj = bimStructures[eIdx % projCount];
+      const offset = proj.offset || [0, 0, 0];
+      const cx = offset[0], cz = offset[2];
+
+      // 배정된 프로젝트에서 이 장비 타입이 작업 가능한 위치 수집
       const seen = new Set();
-      s.elements.forEach(el => {
+      const pts = [];
+      proj.elements.forEach(el => {
         if (seen.has(el.elementType)) return;
-        seen.add(el.elementType);
         const rule = TASK_RULES[el.elementType];
         if (!rule) return;
-        const x = (Number(el.positionX) || 0) + offset[0];
-        const z = (Number(el.positionZ) || 0) + offset[2];
-        [...rule.blockers, ...rule.equipBonus].forEach(({ type }) => {
-          if (!targetsByType[type]) targetsByType[type] = [];
-          if (!targetsByType[type].some(p => Math.abs(p[0] - x) < 0.5)) {
-            targetsByType[type].push([x, 0, z]);
-          }
-        });
+        const canWork = rule.blockers.some(b => b.type === e.type) ||
+                        rule.equipBonus.some(b => b.type === e.type);
+        if (!canWork) return;
+        seen.add(el.elementType);
+        pts.push([
+          (Number(el.positionX) || 0) + offset[0],
+          0,
+          (Number(el.positionZ) || 0) + offset[2],
+        ]);
       });
+
+      // 해당 공종 없으면 프로젝트 중심 순환
+      if (!pts.length) {
+        const r = 4 + Math.random() * 2;
+        pts.push(
+          [cx - r, 0, cz - r], [cx + r, 0, cz - r],
+          [cx + r, 0, cz + r], [cx - r, 0, cz + r],
+        );
+      }
+
+      const route = pts.slice(0, 6).flatMap(pt => [
+        pt,
+        [pt[0] + (Math.random() - 0.5) * 2.5, 0, pt[2] + (Math.random() - 0.5) * 2.5],
+      ]);
+
+      dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: {
+        mode: 'auto', route, speed: 1.5,
+        assignedBimProjectId: proj.bimProjectId,
+        assignedStructId: proj.id,
+      }});
     });
 
-    const hasBim = Object.keys(targetsByType).length > 0;
-    if (!hasBim) {
-      dispatch({ type: 'AUTO_SIM_START' });
-    } else {
-      equipment.forEach(e => {
-        const pts = targetsByType[e.type] || [];
-        if (!pts.length) {
-          // BIM 매칭 없음 → 현재 위치 기준 기본 순환 경로
-          const [ox, , oz] = e.initialPos || [0, 0, 0];
-          const cx = Math.max(-20, Math.min(20, ox));
-          const cz = Math.max(-20, Math.min(20, oz));
-          const r = 4 + Math.random() * 3;
-          const defaultRoute = [
-            [cx - r, 0, cz - r], [cx + r, 0, cz - r],
-            [cx + r, 0, cz + r], [cx - r, 0, cz + r],
-          ];
-          dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { mode: 'auto', route: defaultRoute, speed: 1.5 } });
-          return;
-        }
-        // 각 목표 지점 + 인접 작업 오프셋 포함 순환 경로
-        const route = pts.slice(0, 6).flatMap(pt => [
-          pt,
-          [pt[0] + (Math.random() - 0.5) * 3, 0, pt[2] + (Math.random() - 0.5) * 3],
-        ]);
-        dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { mode: 'auto', route, speed: 1.5 } });
-      });
-    }
+    // 작업자도 프로젝트별 배정
+    workers.forEach((w, wIdx) => {
+      const proj = bimStructures[wIdx % projCount];
+      dispatch({ type: 'UPDATE_WORKER', id: w.id, updates: {
+        assignedStructId: proj.id,
+        assignedBimProjectId: proj.bimProjectId,
+      }});
+    });
+
     if (!simulationRunning) dispatch({ type: 'TOGGLE_SIM' });
-    // 이미 실행 중이면 경로만 갱신 (TOGGLE 불필요)
+  };
+
+  // 장비 개별 재배정 — 선택한 BIM 프로젝트로 경로 재생성
+  const handleReassignEquipment = (equip, structId) => {
+    const proj = structures.find(s => s.id === structId);
+    if (!proj?.elements?.length) return;
+    const offset = proj.offset || [0, 0, 0];
+    const seen = new Set();
+    const pts = [];
+    proj.elements.forEach(el => {
+      if (seen.has(el.elementType)) return;
+      const rule = TASK_RULES[el.elementType];
+      if (!rule) return;
+      const canWork = rule.blockers.some(b => b.type === equip.type) ||
+                      rule.equipBonus.some(b => b.type === equip.type);
+      if (!canWork) return;
+      seen.add(el.elementType);
+      pts.push([
+        (Number(el.positionX) || 0) + offset[0], 0,
+        (Number(el.positionZ) || 0) + offset[2],
+      ]);
+    });
+    if (!pts.length) {
+      const cx = offset[0], cz = offset[2], r = 4 + Math.random() * 2;
+      pts.push([cx-r,0,cz-r],[cx+r,0,cz-r],[cx+r,0,cz+r],[cx-r,0,cz+r]);
+    }
+    const route = pts.slice(0, 6).flatMap(pt => [
+      pt, [pt[0]+(Math.random()-0.5)*2.5, 0, pt[2]+(Math.random()-0.5)*2.5],
+    ]);
+    dispatch({ type: 'UPDATE_EQUIPMENT', id: equip.id, updates: {
+      mode: 'auto', route, speed: 1.5,
+      assignedBimProjectId: proj.bimProjectId,
+      assignedStructId: proj.id,
+    }});
+    if (!simulationRunning) dispatch({ type: 'TOGGLE_SIM' });
   };
 
   return (
@@ -750,6 +904,22 @@ export default function ControlSidebar() {
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
               >✕</button>
             </div>
+            {isSelected && (
+              <WorkAssignmentPanel
+                assignedStructId={w.assignedStructId}
+                assignedBimProjectId={w.assignedBimProjectId}
+                structures={structures}
+                wbsTasks={wbsTasks}
+                workableTypes={null}
+                onReassign={structId => {
+                  const proj = structures.find(s => s.id === structId);
+                  if (proj) dispatch({ type: 'UPDATE_WORKER', id: w.id, updates: {
+                    assignedStructId: structId,
+                    assignedBimProjectId: proj.bimProjectId,
+                  }});
+                }}
+              />
+            )}
           );
         })}
         <Btn small onClick={handleAddWorker}>{t('addWorker')}</Btn>
@@ -794,6 +964,23 @@ export default function ControlSidebar() {
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
               >✕</button>
             </div>
+            {isSelected && (
+              <WorkAssignmentPanel
+                assignedStructId={e.assignedStructId}
+                assignedBimProjectId={e.assignedBimProjectId}
+                structures={structures}
+                wbsTasks={wbsTasks}
+                workableTypes={
+                  Object.entries(TASK_RULES)
+                    .filter(([, rule]) =>
+                      rule.blockers.some(b => b.type === e.type) ||
+                      rule.equipBonus.some(b => b.type === e.type)
+                    )
+                    .map(([type]) => type)
+                }
+                onReassign={structId => handleReassignEquipment(e, structId)}
+              />
+            )}
           );
         })}
         <Btn small onClick={() => {

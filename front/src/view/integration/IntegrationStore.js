@@ -308,6 +308,26 @@ function reducer(state, action) {
 export function IntegrationProvider({ projectId, children }) {
   const [state, dispatch] = useReducer(reducer, undefined, makeInitial);
 
+  // WBS 태스크 진행률 변경 감지 → DB 자동 저장 (3초 debounce)
+  const prevProgressRef = useRef({});  // { taskId: progress }
+  const syncTimers      = useRef({});  // { taskId: timeoutId }
+  useEffect(() => {
+    state.wbsTasks.forEach(task => {
+      const prev = prevProgressRef.current[task.taskId];
+      if (prev === undefined) {
+        prevProgressRef.current[task.taskId] = task.progress;
+        return;
+      }
+      if (prev !== task.progress) {
+        prevProgressRef.current[task.taskId] = task.progress;
+        clearTimeout(syncTimers.current[task.taskId]);
+        syncTimers.current[task.taskId] = setTimeout(() => {
+          AxiosCustom.put(`/api/wbs/task/${task.taskId}`, task).catch(() => {});
+        }, 3000);
+      }
+    });
+  }, [state.wbsTasks]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 프로젝트 전환 시 API에서 sim_config 복원
   useEffect(() => {
     if (!projectId) return;

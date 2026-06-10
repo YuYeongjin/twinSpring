@@ -90,6 +90,7 @@
             notes            AS "notes",
             source           AS "source",
             sort_order       AS "sortOrder",
+            parent_task_id   AS "parentTaskId",
             TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
         FROM wbs_task
         WHERE wbs_project_id = #{projectId}
@@ -112,7 +113,8 @@
             t.responsible      AS "responsible",
             t.notes            AS "notes",
             t.source           AS "source",
-            t.sort_order       AS "sortOrder"
+            t.sort_order       AS "sortOrder",
+            t.parent_task_id   AS "parentTaskId"
         FROM wbs_task t
         JOIN wbs_project p ON p.project_id = t.wbs_project_id
         ORDER BY p.project_id ASC, t.sort_order ASC, t.created_at ASC
@@ -133,7 +135,8 @@
             responsible      AS "responsible",
             notes            AS "notes",
             source           AS "source",
-            sort_order       AS "sortOrder"
+            sort_order       AS "sortOrder",
+            parent_task_id   AS "parentTaskId"
         FROM wbs_task
         WHERE task_id = #{taskId}
     </select>
@@ -143,13 +146,13 @@
             task_id, wbs_project_id, wbs_code, task_name,
             start_date, end_date, duration, progress,
             predecessor_ids, status, responsible, notes,
-            source, sort_order
+            source, sort_order, parent_task_id
         ) VALUES (
             #{taskId}, #{wbsProjectId}, #{wbsCode}, #{taskName},
             NULLIF(#{startDate}, '')::DATE, NULLIF(#{endDate}, '')::DATE,
             #{duration}, #{progress},
             #{predecessorIds}, #{status}, #{responsible}, #{notes},
-            #{source}, #{sortOrder}
+            #{source}, #{sortOrder}, #{parentTaskId}
         )
     </insert>
 
@@ -166,6 +169,7 @@
             responsible     = #{responsible},
             notes           = #{notes},
             sort_order      = #{sortOrder},
+            parent_task_id  = #{parentTaskId},
             updated_at      = CURRENT_TIMESTAMP
         WHERE task_id = #{taskId}
     </update>
@@ -183,7 +187,7 @@
             task_id, wbs_project_id, wbs_code, task_name,
             start_date, end_date, duration, progress,
             predecessor_ids, status, responsible, notes,
-            source, sort_order
+            source, sort_order, parent_task_id
         )
         <foreach collection="list" item="t" separator=" UNION ALL ">
             SELECT
@@ -191,7 +195,7 @@
                 NULLIF(#{t.startDate}, '')::DATE, NULLIF(#{t.endDate}, '')::DATE,
                 #{t.duration}, #{t.progress},
                 #{t.predecessorIds}, #{t.status}, #{t.responsible}, #{t.notes},
-                #{t.source}, #{t.sortOrder}
+                #{t.source}, #{t.sortOrder}, #{t.parentTaskId}
         </foreach>
     </insert>
 
