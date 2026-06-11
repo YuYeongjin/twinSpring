@@ -1843,14 +1843,15 @@ export default function ControlSidebar() {
         <Btn small onClick={() => {
           const types = ['excavator', 'dump', 'crane'];
           const type  = types[equipment.length % types.length];
-          const typeKeys = { excavator: 'equipExcavator', dump: 'equipDump', crane: 'equipCrane' };
+          const EQUIP_EN = { excavator: 'Excavator', dump: 'Dump', crane: 'Crane' };
           const defSizes = { excavator: [2.8,2.5,3.5], dump: [2.8,2.5,3.5], crane: [1.5,9.0,1.5] };
+          const sameTypeCount = equipment.filter(e => e.type === type).length;
           dispatch({
             type: 'ADD_EQUIPMENT',
             equipment: {
               id:          `eq_${Date.now()}`,
               type,
-              name:        `${t(typeKeys[type])}-${equipment.length + 1}`,
+              name:        `${EQUIP_EN[type] || type}-${sameTypeCount + 1}`,
               initialPos:  [(Math.random()-0.5)*20, 0, (Math.random()-0.5)*20],
               route:       [],
               speed:       1.0,

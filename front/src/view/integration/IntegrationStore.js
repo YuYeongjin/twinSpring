@@ -10,18 +10,18 @@ export const useIntegrationDispatch = () => useContext(IntegrationDispatch);
 const MAX_EVENTS = 60;
 
 const DEFAULT_WORKERS = [
-  { id: 'w1', name: '작업자 A', initialPos: [5,  0,  3], gear: true,  gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
-  { id: 'w2', name: '작업자 B', initialPos: [-3, 0,  8], gear: true,  gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
-  { id: 'w3', name: '작업자 C', initialPos: [10, 0, -5], gear: false, gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'w1', name: 'Worker A', initialPos: [5,  0,  3], gear: true,  gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'w2', name: 'Worker B', initialPos: [-3, 0,  8], gear: true,  gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'w3', name: 'Worker C', initialPos: [10, 0, -5], gear: false, gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
 ];
 const DEFAULT_EQUIPMENT = [
-  { id: 'e1', type: 'excavator', name: '굴착기-1',  initialPos: [0,0,0],   route: [[0,0,0],[10,0,0],[10,0,10],[0,0,10]], speed: 1.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
-  { id: 'e2', type: 'dump',      name: '덤프트럭-1', initialPos: [-8,0,-8], route: [[-8,0,-8],[8,0,-8],[8,0,-2],[-8,0,-2]], speed: 2.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
-  { id: 'e3', type: 'crane',     name: '크레인-1',   initialPos: [15,0,5],  route: [[15,0,5],[15,0,-5],[20,0,-5],[20,0,5]], speed: 1.0, mode: 'auto', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'e1', type: 'excavator', name: 'Excavator-1', initialPos: [0,0,0],   route: [[0,0,0],[10,0,0],[10,0,10],[0,0,10]], speed: 1.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'e2', type: 'dump',      name: 'Dump-1',      initialPos: [-8,0,-8], route: [[-8,0,-8],[8,0,-8],[8,0,-2],[-8,0,-2]], speed: 2.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'e3', type: 'crane',     name: 'Crane-1',     initialPos: [15,0,5],  route: [[15,0,5],[15,0,-5],[20,0,-5],[20,0,5]], speed: 1.0, mode: 'auto', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
 ];
 const DEFAULT_ZONES = [
-  { id: 'z1', name: '굴착 위험구역', center: [5,  2, 5], halfSize: [4, 4, 4], type: 'excavation', active: true },
-  { id: 'z2', name: '접근 금지구역', center: [15, 2, 5], halfSize: [3, 4, 3], type: 'restricted',  active: true },
+  { id: 'z1', name: 'Excavation Zone', center: [5,  2, 5], halfSize: [4, 4, 4], type: 'excavation', active: true },
+  { id: 'z2', name: 'Restricted Zone', center: [15, 2, 5], halfSize: [3, 4, 3], type: 'restricted',  active: true },
 ];
 
 function makeInitial() {
@@ -102,6 +102,21 @@ export function computeStructureBounds(s) {
   }
 
   return { minX: wMinX, maxX: wMaxX, minZ: wMinZ, maxZ: wMaxZ };
+}
+
+// ── WBS 태스크 상태 자동 결정 ─────────────────────────────────────
+// progress + endDate → status 자동 결정
+// - 100 → COMPLETED
+// - 1~99, endDate 지남 → DELAYED
+// - 1~99, endDate 남음 → IN_PROGRESS
+// - 0 → NOT_STARTED
+function deriveTaskStatus(progress, endDate, today) {
+  if (progress >= 100) return 'COMPLETED';
+  if (progress > 0) {
+    if (endDate && endDate < today) return 'DELAYED';
+    return 'IN_PROGRESS';
+  }
+  return 'NOT_STARTED';
 }
 
 // ── 직렬화 헬퍼 ──────────────────────────────────────────────────
@@ -213,21 +228,22 @@ function reducer(state, action) {
       };
 
     case 'UPDATE_TASK_PROGRESS': {
-      const updated = state.wbsTasks.map(t =>
-        t.taskId === action.taskId
-          ? { ...t, progress: Math.min(100, (t.progress || 0) + (action.delta || 0)) }
-          : t
-      );
+      const today = new Date().toISOString().slice(0, 10);
+      const updated = state.wbsTasks.map(t => {
+        if (t.taskId !== action.taskId) return t;
+        const newProgress = Math.min(100, (t.progress || 0) + (action.delta || 0));
+        return { ...t, progress: newProgress, status: deriveTaskStatus(newProgress, t.endDate, today) };
+      });
       return { ...state, wbsTasks: updated };
     }
 
     case 'SET_TASK_PROGRESS': {
-      // 절댓값으로 진도를 설정 (실시간 날짜 계산 결과 반영)
-      const updated = state.wbsTasks.map(t =>
-        t.taskId === action.taskId
-          ? { ...t, progress: Math.min(100, Math.max(0, action.progress)) }
-          : t
-      );
+      const today = new Date().toISOString().slice(0, 10);
+      const updated = state.wbsTasks.map(t => {
+        if (t.taskId !== action.taskId) return t;
+        const newProgress = Math.min(100, Math.max(0, action.progress));
+        return { ...t, progress: newProgress, status: deriveTaskStatus(newProgress, t.endDate, today) };
+      });
       return { ...state, wbsTasks: updated };
     }
 

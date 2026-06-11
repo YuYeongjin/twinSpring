@@ -37,10 +37,10 @@ const hexLighten = (hex, a = 0.82) => {
 };
 
 // ── 정적 레이블 ─────────────────────────────────────────────────────
-const STATUS_LBL = { NOT_STARTED:'미착수', IN_PROGRESS:'진행중', COMPLETED:'완료', DELAYED:'지연' };
-const EQUIP_LBL  = { excavator:'굴착기', dump:'덤프트럭', crane:'크레인', vehicle:'차량', other:'기타' };
-const MODE_LBL   = { auto:'작동', standby:'대기', gps:'GPS' };
-const ZONE_LBL   = { excavation:'굴착', restricted:'접근금지', hazard:'위험' };
+const STATUS_LBL = { NOT_STARTED:'Not Started', IN_PROGRESS:'In Progress', COMPLETED:'Completed', DELAYED:'Delayed' };
+const EQUIP_LBL  = { excavator:'Excavator', dump:'Dump Truck', crane:'Crane', vehicle:'Vehicle', other:'Other' };
+const MODE_LBL   = { auto:'Active', standby:'Standby', gps:'GPS' };
+const ZONE_LBL   = { excavation:'Excavation', restricted:'Restricted', hazard:'Hazard' };
 
 // ── 섹션별 HTML 조각 ────────────────────────────────────────────────
 function makeTasksHtml(tasks, prevMap) {
