@@ -3,6 +3,7 @@ import AxiosCustom from '../../../axios/AxiosCustom';
 import { parseIfcFile } from '../../../utils/ifcImporter';
 import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
 import { useT } from '../../../i18n/LanguageContext';
+import { generateBimWbsTasks } from '../../wbs/bimTaskGenerator';
 
 const TAB = { BIM: 'bim', IFC: 'ifc' };
 
@@ -321,16 +322,32 @@ export default function AddStructureModal({ onClose }) {
 
   const handleAdd = async (structure) => {
     dispatch({ type: 'ADD_STRUCTURE', structure });
-    // BIM 구조물 추가 시 통합 프로젝트의 WBS와 project_link 자동 생성
+
     if (structure.type === 'bim' && structure.bimProjectId && projectMeta?.wbsProjectId) {
+      const wbsProjectId = projectMeta.wbsProjectId;
+      const bimProjectId = structure.bimProjectId;
+
+      // project_link 생성 (이미 있으면 무시)
       try {
         await AxiosCustom.post('/api/project-link', {
-          wbsProjectId:    projectMeta.wbsProjectId,
+          wbsProjectId,
           linkedType:      'BIM',
-          linkedProjectId: String(structure.bimProjectId),
+          linkedProjectId: String(bimProjectId),
           note:            'auto',
         });
       } catch { /* 이미 연결됐거나 서버 에러 — 무시 */ }
+
+      // WBS BIM-tagged 태스크 자동 생성 (없는 공종만 생성, 기존 태스크는 보호)
+      try {
+        const tasksRes = await AxiosCustom.get(`/api/wbs/project/${wbsProjectId}/tasks`);
+        const existingTasks = tasksRes.data || [];
+        await generateBimWbsTasks({
+          wbsProjectId,
+          bimProjectId,
+          elements:      structure.elements || [],
+          existingTasks,
+        });
+      } catch { /* 태스크 생성 실패 — 무시 (수동으로 WBS탭에서 생성 가능) */ }
     }
   };
 
