@@ -317,15 +317,23 @@ function IfcTab({ onAdd, onClose }) {
 export default function AddStructureModal({ onClose }) {
   const t = useT('integrationProject');
   const dispatch = useIntegrationDispatch();
-  const { projectMeta } = useIntegration();
+  const { projectMeta, structures } = useIntegration();
   const [tab, setTab] = useState(TAB.BIM);
 
   const handleAdd = async (structure) => {
-    dispatch({ type: 'ADD_STRUCTURE', structure });
+    // 구조물 이름 중복 시 자동 (1), (2) 부여
+    const existingNames = new Set((structures || []).map(s => s.name));
+    const base = structure.name;
+    let uniqueName = base;
+    let counter = 1;
+    while (existingNames.has(uniqueName)) uniqueName = `${base} (${counter++})`;
+    const resolvedStructure = { ...structure, name: uniqueName };
 
-    if (structure.type === 'bim' && structure.bimProjectId && projectMeta?.wbsProjectId) {
+    dispatch({ type: 'ADD_STRUCTURE', structure: resolvedStructure });
+
+    if (resolvedStructure.type === 'bim' && resolvedStructure.bimProjectId && projectMeta?.wbsProjectId) {
       const wbsProjectId = projectMeta.wbsProjectId;
-      const bimProjectId = structure.bimProjectId;
+      const bimProjectId = resolvedStructure.bimProjectId;
 
       // project_link 생성 (이미 있으면 무시)
       try {
@@ -344,7 +352,8 @@ export default function AddStructureModal({ onClose }) {
         await generateBimWbsTasks({
           wbsProjectId,
           bimProjectId,
-          elements:      structure.elements || [],
+          bimProjectName: uniqueName || null,
+          elements:      resolvedStructure.elements || [],
           existingTasks,
         });
       } catch { /* 태스크 생성 실패 — 무시 (수동으로 WBS탭에서 생성 가능) */ }

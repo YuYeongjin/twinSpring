@@ -63,7 +63,7 @@ function LivePosBox({ pos, surveyOrigin, t }) {
 
 export default function WorkerOptionsPanel() {
   const t = useT('integrationProject');
-  const { workers, selectedWorkerId, surveyOrigin, livePositions } = useIntegration();
+  const { workers, selectedWorkerId, surveyOrigin, livePositions, wbsTasks } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   const worker = workers.find(w => w.id === selectedWorkerId);
@@ -80,6 +80,7 @@ export default function WorkerOptionsPanel() {
       posY: display[1].toString(),
       posZ: display[2].toString(),
       gear: worker.gear !== false,
+      assignedWbsTaskId: worker.assignedWbsTaskId || null,
     });
     setApplied(false);
   }, [selectedWorkerId, surveyOrigin]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -96,9 +97,10 @@ export default function WorkerOptionsPanel() {
       type: 'UPDATE_WORKER',
       id: worker.id,
       updates: {
-        name:       form.name,
-        initialPos: localPos,
-        gear:       form.gear,
+        name:              form.name,
+        initialPos:        localPos,
+        gear:              form.gear,
+        assignedWbsTaskId: form.assignedWbsTaskId || null,
       },
     });
     setApplied(true);
@@ -189,6 +191,30 @@ export default function WorkerOptionsPanel() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* 담당 작업 배정 */}
+      <div style={{ marginBottom: 10 }}>
+        <Label>{t('assignTaskLabel') || '담당 작업'}</Label>
+        <select
+          value={form.assignedWbsTaskId || ''}
+          onChange={e => set('assignedWbsTaskId', e.target.value || null)}
+          style={{
+            width: '100%', background: '#0d1b2a', border: '1px solid #1e3a5f',
+            borderRadius: 4, color: '#d1d5db', fontSize: 11, padding: '4px 7px',
+            outline: 'none',
+          }}
+        >
+          <option value="">{t('noTask') || '— 없음 —'}</option>
+          {(wbsTasks || [])
+            .filter(tk => !(tk.notes || '').startsWith('BIM_SUB:') && tk.taskName)
+            .map(tk => (
+              <option key={tk.taskId} value={tk.taskId}>
+                {tk.taskName}
+              </option>
+            ))
+          }
+        </select>
       </div>
 
       {/* 적용 버튼 */}
