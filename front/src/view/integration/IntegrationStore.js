@@ -141,12 +141,19 @@ function reducer(state, action) {
     }
 
     case 'SET_REAL_DATA': {
-      // 씬에 BIM 구조물이 이미 있는 상태에서 WBS 태스크가 로드되면 진도 초기화
-      // (이전 시뮬레이션에서 DB에 저장된 100% 값이 새 세션에서도 100%로 보이는 문제 방지)
-      const hasBimStructure = state.structures.some(s => s.type === 'bim');
-      const incomingTasks   = action.wbsTasks ?? state.wbsTasks;
-      const resolvedTasks   = hasBimStructure
-        ? incomingTasks.map(t => ({ ...t, progress: 0 }))
+      const incomingTasks = action.wbsTasks ?? state.wbsTasks;
+      // 씬에 이미 있는 BIM 프로젝트에 연결된 태스크만 0% 초기화
+      // 기존 WBS 태스크(BIM notes 없음)는 절대 건드리지 않음
+      const bimIdsInScene = new Set(
+        state.structures
+          .filter(s => s.type === 'bim' && s.bimProjectId)
+          .map(s => String(s.bimProjectId))
+      );
+      const resolvedTasks = bimIdsInScene.size > 0
+        ? incomingTasks.map(t => {
+            const m = (t.notes || '').match(/^BIM:([^:]+):/);
+            return (m && bimIdsInScene.has(m[1])) ? { ...t, progress: 0 } : t;
+          })
         : incomingTasks;
       return {
         ...state,
@@ -160,11 +167,7 @@ function reducer(state, action) {
     case 'LOAD_SIM_CONFIG': {
       const loadedStructures = deserializeStructures(action.config.structures);
       const hasBim = loadedStructures.some(s => s.type === 'bim');
-      // BIM 구조물이 포함된 씬을 불러올 때 WBS 태스크 진도 초기화
-      // SET_REAL_DATA보다 먼저 실행될 경우 state.wbsTasks가 비어있어 무해함
-      const wbsTasks = hasBim && state.wbsTasks.length > 0
-        ? state.wbsTasks.map(t => ({ ...t, progress: 0 }))
-        : state.wbsTasks;
+      // wbsTasks는 건드리지 않음 — SET_REAL_DATA에서 BIM-tagged 태스크만 별도 처리
       return {
         ...state,
         workers:      action.config.workers     || state.workers,
@@ -174,7 +177,6 @@ function reducer(state, action) {
         terrain:      action.config.terrain !== undefined ? action.config.terrain : state.terrain,
         surveyOrigin: action.config.surveyOrigin !== undefined ? action.config.surveyOrigin : state.surveyOrigin,
         bimSimProgress: hasBim ? {} : state.bimSimProgress,
-        wbsTasks,
       };
     }
 
@@ -319,13 +321,16 @@ function reducer(state, action) {
     // ── 구조물 ───────────────────────────────────────────────────
     case 'ADD_STRUCTURE': {
       const newStructures = [...state.structures, action.structure];
-      // BIM 구조물 추가 = 새 시뮬레이션 시작 → 전체 WBS 태스크 진도 초기화
-      // (이전 시뮬레이션에서 DB에 저장된 100% 값이 새 추가 시 즉시 100%로 보이는 문제 방지)
-      if (action.structure.type === 'bim') {
+      if (action.structure.type === 'bim' && action.structure.bimProjectId) {
+        const bimId = String(action.structure.bimProjectId);
+        const prefix = `BIM:${bimId}:`;
         return {
           ...state,
           structures: newStructures,
-          wbsTasks: state.wbsTasks.map(t => ({ ...t, progress: 0 })),
+          // 해당 BIM 프로젝트에 연결된 태스크만 0% 초기화 — 기존 WBS 태스크 보호
+          wbsTasks: state.wbsTasks.map(t =>
+            (t.notes || '').startsWith(prefix) ? { ...t, progress: 0 } : t
+          ),
           bimSimProgress: {},
         };
       }
