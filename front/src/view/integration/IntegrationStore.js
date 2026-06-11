@@ -299,8 +299,20 @@ function reducer(state, action) {
       };
 
     // ── 구조물 ───────────────────────────────────────────────────
-    case 'ADD_STRUCTURE':
-      return { ...state, structures: [...state.structures, action.structure] };
+    case 'ADD_STRUCTURE': {
+      const newStructures = [...state.structures, action.structure];
+      // BIM 구조물 추가 시 해당 BIM 프로젝트에 연결된 WBS 태스크 진도 초기화
+      // (이전 시뮬레이션에서 DB에 저장된 100% 값이 새 추가 시 즉시 100%로 보이는 문제 방지)
+      if (action.structure.type === 'bim' && action.structure.bimProjectId) {
+        const bimId = String(action.structure.bimProjectId);
+        const prefix = `BIM:${bimId}:`;
+        const wbsTasks = state.wbsTasks.map(t =>
+          (t.notes || '').startsWith(prefix) ? { ...t, progress: 0 } : t
+        );
+        return { ...state, structures: newStructures, wbsTasks };
+      }
+      return { ...state, structures: newStructures };
+    }
 
     case 'REMOVE_STRUCTURE':
       return { ...state, structures: state.structures.filter(s => s.id !== action.id) };
