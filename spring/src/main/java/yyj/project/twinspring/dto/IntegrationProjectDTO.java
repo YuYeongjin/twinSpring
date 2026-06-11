@@ -9,6 +9,8 @@ public class IntegrationProjectDTO {
     private String description;
     private String simConfig;      // JSON (작업자·장비·위험구역)
     private String status;         // ACTIVE | INACTIVE
+    private Double refLat;         // 현장 원점 위도 (GPS ↔ 물리좌표 변환 기준)
+    private Double refLng;         // 현장 원점 경도
     private String createdAt;
 
     public IntegrationProjectDTO() {}
@@ -35,6 +37,11 @@ public class IntegrationProjectDTO {
 
     public String getStatus()                { return status; }
     public void   setStatus(String v)        { this.status = v; }
+
+    public Double  getRefLat()               { return refLat; }
+    public void    setRefLat(Double v)       { this.refLat = v; }
+    public Double  getRefLng()               { return refLng; }
+    public void    setRefLng(Double v)       { this.refLng = v; }
 
     public String getCreatedAt()             { return createdAt; }
     public void   setCreatedAt(String v)     { this.createdAt = v; }

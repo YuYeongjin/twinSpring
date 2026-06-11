@@ -293,6 +293,9 @@ CREATE TABLE IF NOT EXISTS wbs_task
 );
 CREATE INDEX IF NOT EXISTS idx_wbs_task_project ON wbs_task (wbs_project_id);
 
+-- WBS 태스크 계층 구조 (세부 공정 지원)
+ALTER TABLE wbs_task ADD COLUMN IF NOT EXISTS parent_task_id TEXT NULL;
+
 -- ================================================================
 -- WBS ↔ 타 프로젝트 연결 테이블 (BIM / 안전 / 시뮬레이션)
 -- ================================================================
@@ -521,3 +524,32 @@ CREATE TABLE IF NOT EXISTS integration_daily_report
 
 CREATE INDEX IF NOT EXISTS idx_daily_report_project_date
     ON integration_daily_report (project_id, report_date DESC);
+
+-- ================================================================
+-- 현장 카메라 테이블
+-- 물리 좌표(현장 원점 기준 미터)로 카메라 위치를 등록
+-- CV 서버가 이 파라미터를 사용해 픽셀 → 물리 좌표 변환
+-- ================================================================
+CREATE TABLE IF NOT EXISTS site_camera
+(
+    camera_id    TEXT        NOT NULL PRIMARY KEY,
+    project_id   TEXT        NOT NULL,   -- integration_project 참조
+    name         TEXT        NOT NULL,
+    url          TEXT        NOT NULL,   -- RTSP/HTTP 스트림 URL
+    world_x      DOUBLE PRECISION NOT NULL DEFAULT 0,  -- 현장 원점 기준 X (m)
+    world_y      DOUBLE PRECISION NOT NULL DEFAULT 0,  -- 설치 높이 (m)
+    world_z      DOUBLE PRECISION NOT NULL DEFAULT 0,  -- 현장 원점 기준 Z (m)
+    yaw          DOUBLE PRECISION NOT NULL DEFAULT 0,  -- 수평 회전각 (도, 0=+Z방향)
+    fov_h        DOUBLE PRECISION NOT NULL DEFAULT 90, -- 수평 FOV (도)
+    active       BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_camera_project ON site_camera (project_id);
+
+-- ================================================================
+-- 현장 원점 설정 (integration_project 확장)
+-- ref_lat / ref_lng: GPS ↔ 물리 좌표 변환 기준점
+-- ================================================================
+ALTER TABLE integration_project ADD COLUMN IF NOT EXISTS ref_lat DOUBLE PRECISION NULL;
+ALTER TABLE integration_project ADD COLUMN IF NOT EXISTS ref_lng DOUBLE PRECISION NULL;

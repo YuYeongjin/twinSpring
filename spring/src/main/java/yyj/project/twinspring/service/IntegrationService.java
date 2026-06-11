@@ -19,5 +19,7 @@ public interface IntegrationService {
 
     void updateSimConfig(String projectId, String simConfig);
 
+    void updateSiteOrigin(String projectId, Double refLat, Double refLng);
+
     void deleteIntegrationProject(String projectId);
 }
