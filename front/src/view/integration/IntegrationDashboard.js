@@ -177,6 +177,58 @@ function DataLoader({ selectedProject }) {
   return null;
 }
 
+// ── project_link 기반 BIM 구조물 자동 동기화 ──────────────────
+// WBS탭에서 BIM을 추가하면 통합관제에도 자동으로 구조물이 추가됨
+function BimLinkSync({ selectedProject }) {
+  const { structures, projectMeta } = useIntegration();
+  const dispatch = useIntegrationDispatch();
+  const syncedRef = useRef(false);
+
+  useEffect(() => {
+    syncedRef.current = false;
+  }, [selectedProject?.projectId]);
+
+  useEffect(() => {
+    const wbsProjectId = projectMeta?.wbsProjectId;
+    if (!wbsProjectId || syncedRef.current) return;
+    // structures 로드가 완료된 후 한 번만 실행
+    syncedRef.current = true;
+
+    async function syncBimLinks() {
+      try {
+        const res = await AxiosCustom.get(`/api/project-link/wbs/${wbsProjectId}`);
+        const bimLinks = (res.data || []).filter(l => l.linkedType === 'BIM');
+        for (const link of bimLinks) {
+          const alreadyInScene = structures.some(
+            s => s.type === 'bim' && String(s.bimProjectId) === String(link.linkedProjectId)
+          );
+          if (alreadyInScene) continue;
+          // 씬에 없는 BIM 프로젝트를 자동으로 추가
+          try {
+            const bimRes = await AxiosCustom.get(`/api/bim/project/${link.linkedProjectId}`);
+            dispatch({
+              type: 'ADD_STRUCTURE',
+              structure: {
+                id:           `s_${Date.now()}_${link.linkedProjectId}`,
+                name:         link.linkedProjectName || `BIM ${link.linkedProjectId}`,
+                type:         'bim',
+                bimProjectId: link.linkedProjectId,
+                elements:     bimRes.data || [],
+                offset:       [0, 0, 0],
+                visible:      true,
+              },
+            });
+          } catch { /* BIM 로드 실패 — 무시 */ }
+        }
+      } catch { /* project_link 조회 실패 — 무시 */ }
+    }
+
+    syncBimLinks();
+  }, [projectMeta?.wbsProjectId, structures, dispatch]);
+
+  return null;
+}
+
 // ── BIM 구조물 elements 자동 로더 ──────────────────────────
 function StructureLoader() {
   const { structures } = useIntegration();
@@ -395,6 +447,7 @@ export default function IntegrationDashboard({ selectedProject, onBack }) {
     <IntegrationProvider projectId={selectedProject?.projectId}>
       <DataLoader selectedProject={selectedProject} />
       <StructureLoader />
+      <BimLinkSync selectedProject={selectedProject} />
       <GpsLoader />
       <DashboardLayout selectedProject={selectedProject} />
     </IntegrationProvider>

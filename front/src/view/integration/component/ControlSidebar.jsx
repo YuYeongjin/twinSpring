@@ -1470,8 +1470,20 @@ export default function ControlSidebar() {
                   {s.visible !== false ? 'ON' : 'OFF'}
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (selectedBimStructId === s.id) setSelectedBimStructId(null);
+                    // BIM 구조물 제거 시 연결된 project_link도 삭제 (재로드 시 재추가 방지)
+                    if (s.type === 'bim' && s.bimProjectId && projectMeta?.wbsProjectId) {
+                      try {
+                        const res = await AxiosCustom.get(
+                          `/api/project-link/linked?type=BIM&id=${s.bimProjectId}`
+                        );
+                        const link = (res.data || []).find(
+                          l => String(l.wbsProjectId) === String(projectMeta.wbsProjectId)
+                        );
+                        if (link) await AxiosCustom.delete(`/api/project-link/${link.linkId}`);
+                      } catch { /* 링크 없거나 삭제 실패 — 무시 */ }
+                    }
                     dispatch({ type: 'REMOVE_STRUCTURE', id: s.id });
                   }}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4b5563', fontSize: 11, padding: 0, flexShrink: 0 }}
