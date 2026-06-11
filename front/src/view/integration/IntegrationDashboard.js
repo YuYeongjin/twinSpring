@@ -306,6 +306,34 @@ function StructureLoader() {
   return null;
 }
 
+// ── 드래그 리사이즈 핸들 ────────────────────────────────────
+function ResizeHandle({ onMouseDown, onTouchStart, side = 'left' }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      onTouchStart={onTouchStart}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: 8, flexShrink: 0, cursor: 'col-resize',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'transparent', touchAction: 'none', zIndex: 10,
+        order: side === 'right' ? -1 : undefined,
+      }}
+    >
+      <div style={{
+        width: 3,
+        height: hovered ? 64 : 48,
+        borderRadius: 2,
+        background: '#3b82f6',
+        opacity: hovered ? 1 : 0.3,
+        transition: 'opacity 0.15s, height 0.15s',
+      }} />
+    </div>
+  );
+}
+
 // ── 개발 중 배너 ────────────────────────────────────────────
 function DevBanner({ isMobile }) {
   const t = useT('integrationProject');
@@ -314,9 +342,10 @@ function DevBanner({ isMobile }) {
   return (
     <div style={{
       position: 'absolute',
-      top: 12,
-      left: isMobile ? 12 : undefined,
-      right: isMobile ? undefined : 12,
+      // 모바일: 네비바(46px) 아래에 표시, 데스크톱: 우상단
+      top: isMobile ? 54 : 12,
+      left: isMobile ? 8 : undefined,
+      right: isMobile ? 8 : 12,
       zIndex: 11,
       display: 'flex',
       alignItems: 'center',
@@ -369,6 +398,56 @@ function DashboardLayout({ selectedProject }) {
   const [showSidebar, setShowSidebar] = useState(false); // 왼쪽 컨트롤
   const [showReport,  setShowReport]  = useState(false); // 작업일보
 
+  // 사이드바 / 우측 패널 드래그 리사이즈
+  const [sidebarWidth,    setSidebarWidth]    = useState(260);
+  const [rightPanelWidth, setRightPanelWidth] = useState(290);
+  const sidebarDragging    = useRef(false);
+  const rightDragging      = useRef(false);
+  const sidebarContainerRef  = useRef(null);
+  const rightContainerRef    = useRef(null);
+  const layoutContainerRef   = useRef(null);
+
+  const makeDragHandler = (draggingRef, setter, getWidth) => (e) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev) => {
+      if (!draggingRef.current) return;
+      const clientX = ev.clientX ?? ev.touches?.[0]?.clientX ?? 0;
+      setter(Math.min(480, Math.max(200, getWidth(clientX))));
+    };
+    const onUp = () => {
+      draggingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onUp);
+  };
+
+  const handleSidebarDragStart = makeDragHandler(
+    sidebarDragging, setSidebarWidth,
+    (clientX) => {
+      if (!sidebarContainerRef.current) return sidebarWidth;
+      return clientX - sidebarContainerRef.current.getBoundingClientRect().left;
+    }
+  );
+
+  const handleRightDragStart = makeDragHandler(
+    rightDragging, setRightPanelWidth,
+    (clientX) => {
+      if (!rightContainerRef.current) return rightPanelWidth;
+      return rightContainerRef.current.getBoundingClientRect().right - clientX;
+    }
+  );
+
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -387,62 +466,104 @@ function DashboardLayout({ selectedProject }) {
   const mobileAnyOpen = isMobile && (showPanel || showSidebar);
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden', background: '#060f18', position: 'relative' }}>
+    <div
+      ref={layoutContainerRef}
+      style={{ display: 'flex', height: '100%', minHeight: 0, overflow: 'hidden', background: '#060f18', position: 'relative' }}
+    >
 
-      {/* 데스크톱: 왼쪽 고정 사이드바 */}
+      {/* 데스크톱: 왼쪽 리사이즈 사이드바 */}
       {!isMobile && (
-        <div style={{ width: 220, flexShrink: 0 }}>
-          <ControlSidebar />
+        <div
+          ref={sidebarContainerRef}
+          style={{ width: sidebarWidth, flexShrink: 0, display: 'flex', position: 'relative' }}
+        >
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <ControlSidebar />
+          </div>
+          <ResizeHandle onMouseDown={handleSidebarDragStart} onTouchStart={handleSidebarDragStart} />
         </div>
       )}
 
-      {/* 3D 씬 — z-index:0 으로 stacking context 격리 (drei Html 라벨이 패널 위로 튀어나오지 않도록) */}
+      {/* 3D 씬 */}
       <div style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 0 }}>
         <IntegrationScene />
-        <DevBanner isMobile={isMobile} />
 
-        {/* 프로젝트명 배지 + 작업일보 버튼 */}
-        <div style={{
-          position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
-          display: 'flex', alignItems: 'center', gap: 8, zIndex: 5,
-        }}>
+        {/* 모바일: 상단 통합 네비바 */}
+        {isMobile && (
           <div style={{
-            background: '#0d1b2acc', border: '1px solid #1e3a5f', borderRadius: 20,
-            padding: '4px 18px', fontSize: 11, color: '#60a5fa', fontWeight: 700,
-            pointerEvents: 'none', whiteSpace: 'nowrap', backdropFilter: 'blur(4px)',
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 11,
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '7px 10px',
+            background: '#060f18cc',
+            borderBottom: '1px solid #111e2d',
+            backdropFilter: 'blur(6px)',
+            minHeight: 46,
           }}>
-            🔗 {selectedProject?.projectName || t('pageTitle')} · BIM · WBS
+            {/* 프로젝트명 (줄임) */}
+            <div style={{
+              flex: 1, minWidth: 0,
+              fontSize: 11, color: '#60a5fa', fontWeight: 700,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              🔗 {selectedProject?.projectName || t('pageTitle')}
+            </div>
+            {/* 작업일보 */}
+            <button
+              onClick={() => setShowReport(true)}
+              style={{
+                background: '#0d1b2acc', border: '1px solid #1e3a5f', borderRadius: 8,
+                padding: '5px 9px', fontSize: 10, color: '#93c5fd', fontWeight: 700,
+                cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+              }}
+            >
+              {t('dailyReportBtn')}
+            </button>
+            {/* 사이드바 토글 */}
+            <button
+              onClick={() => { setShowSidebar(v => !v); setShowPanel(false); }}
+              style={{ ...PANEL_BTN, color: showSidebar ? '#22c55e' : '#60a5fa', padding: '6px 10px', fontSize: 15 }}
+            >⚙</button>
+            {/* 우측 패널 토글 */}
+            <button
+              onClick={() => { setShowPanel(v => !v); setShowSidebar(false); }}
+              style={{ ...PANEL_BTN, color: showPanel ? '#22c55e' : '#60a5fa', padding: '6px 10px', fontSize: 15 }}
+            >📊</button>
           </div>
-          <button
-            onClick={() => setShowReport(true)}
-            style={{
+        )}
+
+        {/* 데스크톱: 프로젝트명 배지 + 작업일보 버튼 */}
+        {!isMobile && (
+          <div style={{
+            position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', alignItems: 'center', gap: 8, zIndex: 5,
+          }}>
+            <div style={{
               background: '#0d1b2acc', border: '1px solid #1e3a5f', borderRadius: 20,
-              padding: '4px 14px', fontSize: 11, color: '#93c5fd', fontWeight: 700,
-              cursor: 'pointer', backdropFilter: 'blur(4px)', whiteSpace: 'nowrap',
-            }}
-          >
-            {t('dailyReportBtn')}
-          </button>
-        </div>
+              padding: '4px 18px', fontSize: 11, color: '#60a5fa', fontWeight: 700,
+              pointerEvents: 'none', whiteSpace: 'nowrap', backdropFilter: 'blur(4px)',
+            }}>
+              🔗 {selectedProject?.projectName || t('pageTitle')} · BIM · WBS
+            </div>
+            <button
+              onClick={() => setShowReport(true)}
+              style={{
+                background: '#0d1b2acc', border: '1px solid #1e3a5f', borderRadius: 20,
+                padding: '4px 14px', fontSize: 11, color: '#93c5fd', fontWeight: 700,
+                cursor: 'pointer', backdropFilter: 'blur(4px)', whiteSpace: 'nowrap',
+              }}
+            >
+              {t('dailyReportBtn')}
+            </button>
+          </div>
+        )}
+
+        {/* 개발중 배너 — 데스크톱: 우상단 / 모바일: 네비바 아래 */}
+        <DevBanner isMobile={isMobile} />
 
         {/* 힌트 */}
         <div style={{ position: 'absolute', bottom: 10, left: 10, fontSize: 9, color: '#374151', pointerEvents: 'none' }}>
           {t('overlayHint')}
         </div>
-
-        {/* 모바일 토글 버튼 */}
-        {isMobile && (
-          <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 6, zIndex: 10 }}>
-            <button
-              onClick={() => { setShowSidebar(v => !v); setShowPanel(false); }}
-              style={{ ...PANEL_BTN, color: showSidebar ? '#22c55e' : '#60a5fa' }}
-            >⚙</button>
-            <button
-              onClick={() => { setShowPanel(v => !v); setShowSidebar(false); }}
-              style={{ ...PANEL_BTN, color: showPanel ? '#22c55e' : '#60a5fa' }}
-            >📊</button>
-          </div>
-        )}
       </div>
 
       {/* 딤 오버레이 (모바일, 패널 열렸을 때) */}
@@ -456,38 +577,49 @@ function DashboardLayout({ selectedProject }) {
         />
       )}
 
-      {/* 모바일: 왼쪽 ControlSidebar 오버레이 */}
+      {/* 모바일: 왼쪽 ControlSidebar 오버레이 (네비바 아래부터) */}
       {isMobile && showSidebar && (
         <div style={{
-          position: 'absolute', top: 0, left: 0,
-          width: 'min(82vw, 280px)', height: '100%',
+          position: 'absolute', top: 46, left: 0,
+          width: 'min(82vw, 280px)', height: 'calc(100% - 46px)',
           zIndex: 20, overflow: 'hidden',
         }} className="bim-panel-left">
           <ControlSidebar />
         </div>
       )}
 
-      {/* 데스크톱: 오른쪽 고정 / 모바일: 오버레이 */}
+      {/* 데스크톱: 오른쪽 리사이즈 패널 / 모바일: 오버레이 */}
       {(!isMobile || showPanel) && (
         <div
+          ref={!isMobile ? rightContainerRef : undefined}
           className={isMobile ? 'bim-panel-right' : undefined}
           style={isMobile ? {
-            position: 'absolute', top: 0, right: 0,
-            width: 'min(88vw, 320px)', height: '100%',
+            position: 'absolute', top: 46, right: 0,
+            width: 'min(88vw, 320px)', height: 'calc(100% - 46px)',
             zIndex: 20, background: '#0a1525',
             borderLeft: '1px solid #111e2d',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
           } : {
-            width: 290, flexShrink: 0, background: '#0a1525',
+            width: rightPanelWidth, flexShrink: 0, background: '#0a1525',
             borderLeft: '1px solid #111e2d',
-            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            display: 'flex', overflow: 'hidden',
           }}
         >
-          <IntegrationDashboardPanel />
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #111e2d' }}>
-            <IntegrationEventLog />
+          {/* 데스크톱: 좌측 드래그 핸들 */}
+          {!isMobile && (
+            <ResizeHandle
+              onMouseDown={handleRightDragStart}
+              onTouchStart={handleRightDragStart}
+              side="right"
+            />
+          )}
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <IntegrationDashboardPanel />
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #111e2d' }}>
+              <IntegrationEventLog />
+            </div>
+            <WbsProgressPanel />
           </div>
-          <WbsProgressPanel />
         </div>
       )}
 

@@ -371,8 +371,8 @@ export default function DailyReport({ onClose }) {
               🎨 편집 중
             </button>
             <button onClick={onClose}
-              style={{ background: 'none', border: '1px solid #374151', borderRadius: 6, color: '#6b7280', fontSize: 11, padding: '6px 12px', cursor: 'pointer' }}>
-              {t('drClose')}
+              style={{ background: '#1a0a0a', border: '1px solid #ef4444', borderRadius: 6, color: '#f87171', fontSize: 11, fontWeight: 700, padding: '6px 14px', cursor: 'pointer' }}>
+              ✕ {t('drClose')}
             </button>
           </div>
         </div>
@@ -389,8 +389,14 @@ export default function DailyReport({ onClose }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(3,10,20,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 20, overflowY: 'auto' }}>
-      <div style={{ width: '100%', maxWidth: 860, margin: '0 16px 40px', background: '#0a1525', border: '1px solid #1e3a5f', borderRadius: 12, boxShadow: '0 8px 40px #000a' }}>
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(3,10,20,0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 20, overflowY: 'auto' }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 860, margin: '0 16px 40px', background: '#0a1525', border: '1px solid #1e3a5f', borderRadius: 12, boxShadow: '0 8px 40px #000a' }}
+      >
 
         {/* ── 헤더 ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #1e3a5f', gap: 8, flexWrap: 'wrap' }}>
@@ -423,8 +429,8 @@ export default function DailyReport({ onClose }) {
               🎨 {mode === 'template' ? '편집 중' : '템플릿'}
             </button>
             <button onClick={onClose}
-              style={{ background: 'none', border: '1px solid #374151', borderRadius: 6, color: '#6b7280', fontSize: 11, padding: '6px 12px', cursor: 'pointer' }}>
-              {t('drClose')}
+              style={{ background: '#1a0a0a', border: '1px solid #ef4444', borderRadius: 6, color: '#f87171', fontSize: 11, fontWeight: 700, padding: '6px 14px', cursor: 'pointer' }}>
+              ✕ {t('drClose')}
             </button>
           </div>
         </div>
