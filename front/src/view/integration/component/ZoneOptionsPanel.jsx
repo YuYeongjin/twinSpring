@@ -45,6 +45,7 @@ export default function ZoneOptionsPanel() {
   const ZONE_TYPES = [
     { value: 'excavation', label: t('zoneExcavationLabel'), color: '#ef4444' },
     { value: 'restricted', label: t('zoneRestrictedLabel'), color: '#f97316' },
+    { value: 'dump_site',  label: t('zoneDumpSiteLabel'),  color: '#22d3ee' },
   ];
 
   useEffect(() => {
@@ -109,7 +110,7 @@ export default function ZoneOptionsPanel() {
       {/* 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <div style={{ fontSize: 10, fontWeight: 800, color: accentColor, letterSpacing: '0.06em' }}>
-          ⚠ {t('zoneSetting')}
+          {form.type === 'dump_site' ? '◎' : '⚠'} {t('zoneSetting')}
         </div>
         <button
           onClick={() => dispatch({ type: 'SELECT_ZONE', id: null })}
