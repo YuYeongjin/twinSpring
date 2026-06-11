@@ -199,10 +199,18 @@ function App() {
   // Rename BIM project
   // ---------------------------------------------------------------
   const renameProject = useCallback((projectId, newName, callback) => {
-    AxiosCustom.put(`/api/bim/project/${projectId}/name`, { projectName: newName })
+    const existingNames = new Set(
+      (projectList || []).filter(p => p.projectId !== projectId).map(p => p.projectName)
+    );
+    let uniqueName = newName;
+    let counter = 1;
+    const base = newName;
+    while (existingNames.has(uniqueName)) uniqueName = `${base} (${counter++})`;
+
+    AxiosCustom.put(`/api/bim/project/${projectId}/name`, { projectName: uniqueName })
       .then(() => {
         setProjectList(prev =>
-          prev.map(p => p.projectId === projectId ? { ...p, projectName: newName } : p)
+          prev.map(p => p.projectId === projectId ? { ...p, projectName: uniqueName } : p)
         );
         if (callback) callback(true);
       })
@@ -210,15 +218,21 @@ function App() {
         console.error('Failed to rename project:', error);
         if (callback) callback(false);
       });
-  }, []);
+  }, [projectList]);
 
   // ---------------------------------------------------------------
   // Create new BIM project
   // ---------------------------------------------------------------
   const addNewProject = useCallback((type, name, callback) => {
+    const base = name || type + ' project';
+    const existingNames = new Set((projectList || []).map(p => p.projectName));
+    let uniqueName = base;
+    let counter = 1;
+    while (existingNames.has(uniqueName)) uniqueName = `${base} (${counter++})`;
+
     AxiosCustom.post('/api/bim/project', {
       structureType: type,
-      projectName: name || type + ' project',
+      projectName: uniqueName,
       spanCount: 0,
     })
       .then(() => refreshProjectList())
@@ -227,7 +241,7 @@ function App() {
         console.error('Failed to create project:', error);
         if (callback) callback();
       });
-  }, [refreshProjectList]);
+  }, [refreshProjectList, projectList]);
 
   // ---------------------------------------------------------------
   // Delete BIM project

@@ -1,6 +1,12 @@
 /**
  * BIM → WBS 공정 자동 생성 공통 로직
  * BimLinkedPanel(WBS탭)과 AddStructureModal(통합관제탭)에서 동일하게 사용
+ *
+ * 생성 구조:
+ *   BIM: {bimProjectName}          (루트 부모, notes: BIM:{bimId}:ROOT)
+ *     └─ 슬래브/기초 공사 (×N)    (공종 부모, notes: BIM:{bimId}:{elementType})
+ *          ├─ 터파기               (세부 공정, notes: BIM_SUB:{bimId}:{elementType}:{subName})
+ *          └─ ...
  */
 import AxiosCustom from '../../axios/AxiosCustom';
 
@@ -80,8 +86,6 @@ function addDays(dateStr, n) {
 
 /**
  * BIM 요소 기반 최적 인원 계산
- * @param {Array}  elements  - BIM 요소 배열
- * @param {number} targetDays - 목표 공기(일), 기본값 90
  */
 export function calcOptimalWorkers(elements, targetDays = 90) {
   const byType = {};
@@ -108,26 +112,34 @@ export function calcOptimalWorkers(elements, targetDays = 90) {
 }
 
 /**
- * BIM 요소 → WBS 공정 자동 생성
+ * BIM 요소 → WBS 공정 자동 생성 (트리 구조)
+ *
+ * 구조:
+ *   [BIM 루트 태스크]          notes: BIM:{bimId}:ROOT
+ *     [공종 태스크]            notes: BIM:{bimId}:{elementType}
+ *       [세부 공정 태스크]     notes: BIM_SUB:{bimId}:{elementType}:{subName}
  *
  * @param {object} params
- * @param {string}  params.wbsProjectId  - WBS 프로젝트 ID
- * @param {string|number} params.bimProjectId - BIM 프로젝트 ID
- * @param {Array}   params.elements       - BIM 요소 배열 ({ elementType, sizeX, sizeY, sizeZ, ... })
- * @param {Array}   params.existingTasks  - 현재 WBS 태스크 배열 (중복 방지, cursor 계산용)
- * @param {number}  [params.workers]      - 투입 인원 (없으면 체적 기반 자동 계산)
- * @param {string}  [params.startDate]    - 시작일 YYYY-MM-DD (없으면 기존 태스크 종료일 다음날 or 오늘)
- * @returns {Promise<number>} 생성된 부모 태스크 수
+ * @param {string}       params.wbsProjectId    - WBS 프로젝트 ID
+ * @param {string|number} params.bimProjectId   - BIM 프로젝트 ID
+ * @param {string}       [params.bimProjectName] - BIM 프로젝트 이름 (루트 태스크 이름에 사용)
+ * @param {Array}        params.elements         - BIM 요소 배열
+ * @param {Array}        params.existingTasks    - 현재 WBS 태스크 배열 (중복 방지, cursor 계산용)
+ * @param {number}       [params.workers]        - 투입 인원 (없으면 체적 기반 자동 계산)
+ * @param {string}       [params.startDate]      - 시작일 YYYY-MM-DD
+ * @returns {Promise<number>} 생성된 공종 태스크 수
  */
 export async function generateBimWbsTasks({
   wbsProjectId,
   bimProjectId,
+  bimProjectName = null,
   elements,
   existingTasks = [],
   workers: workersParam = null,
   startDate = null,
 }) {
-  const bimId = String(bimProjectId);
+  const bimId     = String(bimProjectId);
+  const rootMarker = `BIM:${bimId}:ROOT`;
 
   // elementType 별 그룹화
   const byType = {};
@@ -136,84 +148,111 @@ export async function generateBimWbsTasks({
     byType[el.elementType].push(el);
   });
 
-  // 시공 순서 정렬 + 나머지 타입 추가
   const orderedTypes = [
     ...ELEMENT_ORDER.filter(t => byType[t]),
     ...Object.keys(byType).filter(t => !ELEMENT_ORDER.includes(t)),
   ];
-
   if (orderedTypes.length === 0) return 0;
 
-  // 인원 결정
-  const workers = workersParam != null
-    ? workersParam
-    : calcOptimalWorkers(elements);
+  const workers = workersParam != null ? workersParam : calcOptimalWorkers(elements);
 
   // cursor: 기존 태스크 중 가장 늦은 endDate 다음날 or startDate or 오늘
-  const latestEnd = existingTasks.reduce((acc, t) => (
+  // BIM 루트 태스크 자신은 제외 (이미 존재하는 경우 재계산 방지)
+  const nonBimTasks = existingTasks.filter(t => !(t.notes || '').startsWith(`BIM:${bimId}:`));
+  const latestEnd = nonBimTasks.reduce((acc, t) => (
     !t.endDate ? acc : (!acc || t.endDate > acc ? t.endDate : acc)
   ), null);
-  let cursor = latestEnd
+  const rootStart = latestEnd
     ? addDays(latestEnd, 1)
     : (startDate || new Date().toISOString().slice(0, 10));
 
-  let sortOrder    = Math.max(0, ...existingTasks.map(t => t.sortOrder || 0)) + 1;
-  let parentCodeNum = Math.max(
+  // 전체 공종 일정 사전 계산 (루트 endDate 결정을 위해)
+  let innerCursor = rootStart;
+  const typeSchedules = orderedTypes.map(elementType => {
+    const vol     = calcTotalVolume(byType[elementType]);
+    const subDefs = SUB_TASKS[elementType];
+    const duration = subDefs
+      ? subDefs.reduce((s, sub) => s + calcSubDays(sub, vol, workers), 0)
+      : Math.max(1, Math.ceil((vol * (ELEMENT_META[elementType]?.daysPerM3 || 0.3)) / workers));
+    const start = innerCursor;
+    const end   = addDays(start, duration - 1);
+    innerCursor = addDays(end, 1);
+    return { elementType, vol, subDefs, duration, start, end };
+  });
+
+  const totalDuration = typeSchedules.reduce((s, { duration }) => s + duration, 0);
+  const rootEnd = addDays(rootStart, totalDuration - 1);
+
+  // sortOrder / wbsCode 기준 (기존 루트 태스크 기준)
+  let globalSortOrder = Math.max(0, ...existingTasks.map(t => t.sortOrder || 0)) + 1;
+  const rootCodeNum   = Math.max(
     0,
     ...existingTasks.filter(t => !t.parentTaskId && t.wbsCode).map(t => parseInt(t.wbsCode) || 0)
   ) + 1;
+  const rootCode = String(rootCodeNum);
 
+  // ── BIM 루트 태스크 생성 (없을 때만) ──────────────────────────
+  let rootTaskId = existingTasks.find(t => t.notes === rootMarker)?.taskId ?? null;
+
+  if (!rootTaskId) {
+    const rootRes = await AxiosCustom.post(`/api/wbs/project/${wbsProjectId}/task`, {
+      taskName:       bimProjectName ? `BIM: ${bimProjectName}` : `BIM 프로젝트 (${bimId})`,
+      startDate:      rootStart,
+      endDate:        rootEnd,
+      duration:       totalDuration,
+      progress:       0,
+      status:         'NOT_STARTED',
+      responsible:    '',
+      notes:          rootMarker,
+      source:         'BIM_AUTO',
+      wbsCode:        rootCode,
+      sortOrder:      globalSortOrder++,
+      predecessorIds: '',
+      parentTaskId:   null,
+    });
+    rootTaskId = rootRes.data?.taskId;
+  }
+
+  // ── 공종별 태스크 생성 (루트 하위) ────────────────────────────
   let created = 0;
 
-  for (const elementType of orderedTypes) {
+  for (let ti = 0; ti < typeSchedules.length; ti++) {
+    const { elementType, vol, subDefs, duration, start, end } = typeSchedules[ti];
     const marker = `BIM:${bimId}:${elementType}`;
+    const meta   = ELEMENT_META[elementType] || { name: elementType };
+    const count  = byType[elementType].length;
 
-    // 이미 생성된 타입이면 cursor만 진행 후 건너뜀
-    const existing = existingTasks.find(t => t.notes?.includes(marker) && !t.parentTaskId);
-    if (existing) {
-      if (existing.endDate && existing.endDate >= cursor)
-        cursor = addDays(existing.endDate, 1);
-      parentCodeNum++;
+    // 이미 생성된 공종이면 건너뜀
+    if (existingTasks.find(t => t.notes === marker)) {
+      created++;
       continue;
     }
 
-    const count    = byType[elementType].length;
-    const totalVol = calcTotalVolume(byType[elementType]);
-    const meta     = ELEMENT_META[elementType] || { name: elementType, daysPerM3: 0.3 };
-    const subDefs  = SUB_TASKS[elementType];
-
-    const parentCode  = String(parentCodeNum);
-    const parentStart = cursor;
-
-    const totalDuration = subDefs
-      ? subDefs.reduce((s, sub) => s + calcSubDays(sub, totalVol, workers), 0)
-      : Math.max(1, Math.ceil((totalVol * (meta.daysPerM3 || 0.3)) / workers));
-
-    const parentEnd = addDays(parentStart, totalDuration - 1);
-
-    const parentRes = await AxiosCustom.post(`/api/wbs/project/${wbsProjectId}/task`, {
+    const elemCode = `${rootCode}.${ti + 1}`;
+    const elemRes = await AxiosCustom.post(`/api/wbs/project/${wbsProjectId}/task`, {
       taskName:       `${meta.name} (×${count})`,
-      startDate:      parentStart,
-      endDate:        parentEnd,
-      duration:       totalDuration,
+      startDate:      start,
+      endDate:        end,
+      duration,
       progress:       0,
       status:         'NOT_STARTED',
       responsible:    '',
       notes:          marker,
       source:         'BIM_AUTO',
-      wbsCode:        parentCode,
-      sortOrder:      sortOrder++,
+      wbsCode:        elemCode,
+      sortOrder:      globalSortOrder++,
       predecessorIds: '',
-      parentTaskId:   null,
+      parentTaskId:   rootTaskId,
     });
-    const parentTaskId = parentRes.data?.taskId;
+    const elemTaskId = elemRes.data?.taskId;
 
-    if (subDefs && parentTaskId) {
-      let subCursor = parentStart;
+    // 세부 공정 태스크 생성 (공종 하위)
+    if (subDefs && elemTaskId) {
+      let subCursor = start;
       let prevSubId = null;
       for (let si = 0; si < subDefs.length; si++) {
         const sub     = subDefs[si];
-        const subDays = calcSubDays(sub, totalVol, workers);
+        const subDays = calcSubDays(sub, vol, workers);
         const subStart = subCursor;
         const subEnd   = addDays(subStart, subDays - 1);
         subCursor = addDays(subEnd, 1);
@@ -228,17 +267,15 @@ export async function generateBimWbsTasks({
           responsible:    '',
           notes:          `BIM_SUB:${bimId}:${elementType}:${sub.name}`,
           source:         'BIM_AUTO',
-          wbsCode:        `${parentCode}.${si + 1}`,
-          sortOrder:      sortOrder++,
+          wbsCode:        `${elemCode}.${si + 1}`,
+          sortOrder:      globalSortOrder++,
           predecessorIds: prevSubId || '',
-          parentTaskId,
+          parentTaskId:   elemTaskId,
         });
         prevSubId = subRes.data?.taskId || null;
       }
     }
 
-    cursor = addDays(parentEnd, 1);
-    parentCodeNum++;
     created++;
   }
 

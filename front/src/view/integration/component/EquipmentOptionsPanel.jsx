@@ -262,7 +262,7 @@ function RouteEditor({ route, onChange, surveyOrigin, livePos, t }) {
 // ── 메인 패널 ────────────────────────────────────────────────────
 export default function EquipmentOptionsPanel() {
   const t = useT('integrationProject');
-  const { equipment, selectedEquipId, surveyOrigin, livePositions } = useIntegration();
+  const { equipment, selectedEquipId, surveyOrigin, livePositions, wbsTasks } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   const equip = equipment.find(e => e.id === selectedEquipId);
@@ -273,15 +273,16 @@ export default function EquipmentOptionsPanel() {
   useEffect(() => {
     if (!equip) { setForm(null); return; }
     setForm({
-      name:        equip.name,
-      type:        equip.type        || 'excavator',
-      sizeW:       (equip.size?.[0]  ?? 2.8).toString(),
-      sizeH:       (equip.size?.[1]  ?? 2.5).toString(),
-      sizeD:       (equip.size?.[2]  ?? 3.5).toString(),
-      mode:        equip.mode        || 'auto',
-      speed:       (equip.speed      ?? 1.5).toString(),
-      gpsDeviceId: equip.gpsDeviceId || '',
-      route:       routeToForm(equip.route, surveyOrigin),
+      name:              equip.name,
+      type:              equip.type        || 'excavator',
+      sizeW:             (equip.size?.[0]  ?? 2.8).toString(),
+      sizeH:             (equip.size?.[1]  ?? 2.5).toString(),
+      sizeD:             (equip.size?.[2]  ?? 3.5).toString(),
+      mode:              equip.mode        || 'auto',
+      speed:             (equip.speed      ?? 1.5).toString(),
+      gpsDeviceId:       equip.gpsDeviceId || '',
+      route:             routeToForm(equip.route, surveyOrigin),
+      assignedWbsTaskId: equip.assignedWbsTaskId || null,
     });
     setApplied(false);
   }, [selectedEquipId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -301,13 +302,14 @@ export default function EquipmentOptionsPanel() {
       type: 'UPDATE_EQUIPMENT',
       id: equip.id,
       updates: {
-        name:        form.name,
-        type:        form.type,
+        name:              form.name,
+        type:              form.type,
         size,
-        mode:        form.mode,
-        speed:       form.mode === 'auto' ? (parseFloat(form.speed) || 0) : 0,
-        gpsDeviceId: form.gpsDeviceId || null,
-        route:       formToRoute(form.route, surveyOrigin),
+        mode:              form.mode,
+        speed:             form.mode === 'auto' ? (parseFloat(form.speed) || 0) : 0,
+        gpsDeviceId:       form.gpsDeviceId || null,
+        route:             formToRoute(form.route, surveyOrigin),
+        assignedWbsTaskId: form.assignedWbsTaskId || null,
       },
     });
     setApplied(true);
@@ -476,6 +478,30 @@ export default function EquipmentOptionsPanel() {
           </div>
         </div>
       )}
+
+      {/* 담당 작업 배정 */}
+      <div style={{ marginBottom: 10 }}>
+        <Label>{t('assignTaskLabel') || '담당 작업'}</Label>
+        <select
+          value={form.assignedWbsTaskId || ''}
+          onChange={e => set('assignedWbsTaskId', e.target.value || null)}
+          style={{
+            width: '100%', background: '#0d1b2a', border: '1px solid #1e3a5f',
+            borderRadius: 4, color: '#d1d5db', fontSize: 11, padding: '4px 7px',
+            outline: 'none',
+          }}
+        >
+          <option value="">{t('noTask') || '— 없음 —'}</option>
+          {(wbsTasks || [])
+            .filter(tk => !(tk.notes || '').startsWith('BIM_SUB:') && tk.taskName)
+            .map(tk => (
+              <option key={tk.taskId} value={tk.taskId}>
+                {tk.taskName}
+              </option>
+            ))
+          }
+        </select>
+      </div>
 
       {/* 적용 버튼 */}
       <button
