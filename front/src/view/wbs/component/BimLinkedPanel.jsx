@@ -166,7 +166,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
   // ── notes 마커로 연결된 WBS 태스크 탐색 (부모 태스크만) ──────
   const findLinkedTask = (bimProjectId, elementType) => {
     const marker = makeMarker(bimProjectId, elementType);
-    return tasks.find(t => t.notes?.includes(marker) && !t.parentTaskId);
+    return tasks.find(t => t.notes === marker);
   };
 
   // ── 세부 공정 태스크 탐색 ─────────────────────────────────
@@ -184,6 +184,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
       await generateBimWbsTasks({
         wbsProjectId,
         bimProjectId,
+        bimProjectName: data.name || null,
         elements:      data.elements,
         existingTasks: tasks,
         workers,

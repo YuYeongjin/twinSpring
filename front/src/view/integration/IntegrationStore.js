@@ -150,7 +150,7 @@ function reducer(state, action) {
         ? (() => {
             const pendingSet = new Set(pending);
             return incomingTasks.map(t => {
-              const m = (t.notes || '').match(/^BIM:([^:]+):/);
+              const m = (t.notes || '').match(/^BIM[^:]*:([^:]+):/);
               return (m && pendingSet.has(m[1])) ? { ...t, progress: 0 } : t;
             });
           })()
@@ -180,7 +180,7 @@ function reducer(state, action) {
           // SET_REAL_DATA가 먼저 도착한 경우 → 지금 바로 리셋
           const bimIdSet = new Set(bimIdsFromConfig);
           wbsTasks = state.wbsTasks.map(t => {
-            const m = (t.notes || '').match(/^BIM:([^:]+):/);
+            const m = (t.notes || '').match(/^BIM[^:]*:([^:]+):/);
             return (m && bimIdSet.has(m[1])) ? { ...t, progress: 0 } : t;
           });
         } else {
@@ -345,8 +345,10 @@ function reducer(state, action) {
     case 'ADD_STRUCTURE': {
       const newStructures = [...state.structures, action.structure];
       if (action.structure.type === 'bim' && action.structure.bimProjectId) {
-        const bimId = String(action.structure.bimProjectId);
-        const prefix = `BIM:${bimId}:`;
+        const bimId    = String(action.structure.bimProjectId);
+        const prefix   = `BIM:${bimId}:`;
+        const subPrefix = `BIM_SUB:${bimId}:`;
+        const isBimTask = (notes) => (notes || '').startsWith(prefix) || (notes || '').startsWith(subPrefix);
 
         if (state.wbsTasks.length > 0) {
           // 태스크 이미 로드됨 → 해당 BIM 태스크만 즉시 리셋 (기존 WBS 태스크 보호)
@@ -354,7 +356,7 @@ function reducer(state, action) {
             ...state,
             structures: newStructures,
             wbsTasks: state.wbsTasks.map(t =>
-              (t.notes || '').startsWith(prefix) ? { ...t, progress: 0 } : t
+              isBimTask(t.notes) ? { ...t, progress: 0 } : t
             ),
             bimSimProgress: {},
           };
