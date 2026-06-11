@@ -59,7 +59,7 @@ const STATUS_COLOR = {
 };
 const EQUIP_COLOR = { excavator: '#f97316', dump: '#3b82f6', crane: '#eab308', vehicle: '#22c55e', other: '#a855f7' };
 const EQUIP_ICON  = { excavator: '🚜',      dump: '🚛',       crane: '🏗',     vehicle: '🚗',      other: '🔧'  };
-const ZONE_COLOR  = { excavation: '#ef4444', restricted: '#f97316' };
+const ZONE_COLOR  = { excavation: '#ef4444', restricted: '#f97316', dump_site: '#22d3ee' };
 
 // ── 헬퍼 ─────────────────────────────────────────────────────────
 function inZone(pos, zone) {
@@ -1020,6 +1020,21 @@ function findDumpZone(excavPos, pa) {
   }, corners[0]);
 }
 
+// dump_site 구역 중심 반환 (없으면 폴백으로 play area 코너 사용)
+function resolveDumpTarget(excavPos, pa, zones) {
+  const sites = zones.filter(z => z.type === 'dump_site' && z.active !== false);
+  if (sites.length > 0) {
+    // 여러 개면 굴착기에서 가장 먼 사이트 선택 (반출 동선 최대화)
+    const best = sites.reduce((b, z) => {
+      const d2 = (z.center[0]-excavPos[0])**2 + (z.center[2]-excavPos[2])**2;
+      const bd = (b.center[0]-excavPos[0])**2 + (b.center[2]-excavPos[2])**2;
+      return d2 > bd ? z : b;
+    }, sites[0]);
+    return [best.center[0], 0, best.center[2]];
+  }
+  return findDumpZone(excavPos, pa);
+}
+
 // ── 시뮬레이션 관리자 ─────────────────────────────────────────────
 function SimulationManager({ running }) {
   const t = useT('integrationProject');
@@ -1314,6 +1329,9 @@ function SimulationManager({ running }) {
         const eb = equips[ib];
         const sb = equipStateRef.current[eb.id];
         if (!sb) continue;
+        // 굴착기-덤프트럭 쌍은 협동 작업이므로 충돌 무시
+        if ((ea.type === 'excavator' && eb.type === 'dump') ||
+            (ea.type === 'dump'      && eb.type === 'excavator')) continue;
         const dx = sa.pos[0] - sb.pos[0];
         const dz = sa.pos[2] - sb.pos[2];
         const rb = (eb.size ? Math.max(eb.size[0], eb.size[2]) : 3.5) / 2 + 1.0;
@@ -1331,7 +1349,7 @@ function SimulationManager({ running }) {
     // ── 덤프트럭 작업 사이클 (굴착기 적재 → 반출 → 복귀 반복) ──────
     const LOAD_WAIT  = 4.5;   // 적재 대기 시간 (초)
     const DUMP_WAIT  = 3.0;   // 하역 대기 시간 (초)
-    const ARRIVE_R2  = 3.0 * 3.0;  // 도착 판정 반경² (m)
+    const ARRIVE_R2  = 5.0 * 5.0;  // 도착 판정 반경² (m)
 
     // 이 프레임의 굴착기 (auto 모드)
     const excavator = equips.find(e => e.type === 'excavator' && e.mode === 'auto');
@@ -1348,9 +1366,14 @@ function SimulationManager({ running }) {
 
       // ── 최초 초기화 또는 외부에서 경로가 완전히 바뀌었을 때 ──
       if (!dw) {
+        // 굴착기 옆 6~8m 지점에 대기 (겹침 방지)
         const target = excavPos
-          ? [excavPos[0] + (Math.random()-0.5)*3, 0, excavPos[2] + (Math.random()-0.5)*3]
-          : [2, 0, 2];
+          ? (() => {
+              const angle = Math.atan2(st.pos[2] - excavPos[2], st.pos[0] - excavPos[0]);
+              const dist  = 6 + Math.random() * 2;
+              return [excavPos[0] + Math.cos(angle) * dist, 0, excavPos[2] + Math.sin(angle) * dist];
+            })()
+          : [8, 0, 2];
         const route = buildDumpRoute(st.pos, target);
         dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 4.0 } });
         st.routeIdx = 0; st.t = 0;
@@ -1371,7 +1394,7 @@ function SimulationManager({ running }) {
           if (dw.phase === 'wait_load') {
             // 적재 완료 → 덤프 사이트로 출발 (흙 실어서 무거움 → 느림)
             const ep = excavPos || [0, 0, 0];
-            dw.dumpZone = dw.dumpZone || findDumpZone(ep, pa);
+            dw.dumpZone = dw.dumpZone || resolveDumpTarget(ep, pa, zonesRef.current);
             const route = buildDumpRoute(st.pos, dw.dumpZone);
             dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 2.5 } });
             st.routeIdx = 0; st.t = 0;
@@ -1381,13 +1404,13 @@ function SimulationManager({ running }) {
             dw.arrived = false;
 
           } else {
-            // 하역 완료 → 굴착기 쪽으로 복귀 (비어서 빠름)
+            // 하역 완료 → 굴착기 옆 6~8m 지점으로 복귀 (비어서 빠름)
             const ep = excavPos || [0, 0, 0];
             const angle = Math.atan2(st.pos[2] - ep[2], st.pos[0] - ep[0]);
             const arrivePos = [
-              ep[0] + Math.cos(angle) * (3.5 + Math.random() * 2),
+              ep[0] + Math.cos(angle) * (6 + Math.random() * 2),
               0,
-              ep[2] + Math.sin(angle) * (3.5 + Math.random() * 2),
+              ep[2] + Math.sin(angle) * (6 + Math.random() * 2),
             ];
             const route = buildDumpRoute(st.pos, arrivePos);
             dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 4.5 } });
