@@ -310,6 +310,25 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
     return () => window.removeEventListener(ALERT_EVENT, onAlert);
   }, []);
 
+  // ── 통합관제 연동 폴링: 선택 프로젝트 있을 때 30초마다 진도 갱신 ──
+  // 통합관제에서 UPDATE_TASK_PROGRESS → API 저장 → 여기서 30s 주기로 수신
+  useEffect(() => {
+    if (!selectedProject) return;
+    const poll = async () => {
+      try {
+        const r = await AxiosCustom.get(`/api/wbs/project/${selectedProject.projectId}/tasks`);
+        setTasks(prev => {
+          const next = sortByStartDate(r.data);
+          // 진도가 실제로 달라졌을 때만 상태 교체 (불필요한 리렌더 방지)
+          const changed = next.some((t, i) => prev[i]?.progress !== t.progress || prev[i]?.taskId !== t.taskId);
+          return changed ? next : prev;
+        });
+      } catch { /* 폴링 실패 무시 */ }
+    };
+    const id = setInterval(poll, 30000);
+    return () => clearInterval(id);
+  }, [selectedProject?.projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Agent WBS 자동 수정 ────────────────────────────────────────
   // App.js에서 승인 시 autoEditRequest가 설정되면 아래 로직이 자동 실행된다.
   const [autoEditStatus, setAutoEditStatus] = useState(null); // null|'running'|'done'|'error'
@@ -777,6 +796,17 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
                   {selectedProject.contractAmount && <span>💰 ₩{Number(selectedProject.contractAmount).toLocaleString()}</span>}
                   {selectedProject.managerName && <span>👷 {selectedProject.managerName}</span>}
                 </div>
+                {/* 통합관제 BIM 연동 배지 */}
+                {(() => {
+                  const bimCount = tasks.filter(tk => /^BIM:[^:]+:[^:]+/.test(tk.notes || '')).length;
+                  if (!bimCount) return null;
+                  return (
+                    <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-bold"
+                      style={{ background: '#0c2a1a', border: '1px solid #22c55e44', color: '#4ade80' }}>
+                      BIM {bimCount}
+                    </span>
+                  );
+                })()}
               </div>
 
               {/* 서브탭 — 가로 스크롤 */}
