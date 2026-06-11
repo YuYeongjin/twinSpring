@@ -469,16 +469,29 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
 
   // ── CRUD ─────────────────────────────────────────────────────
   const handleCreate = useCallback(async (formData) => {
-    await AxiosCustom.post("/api/wbs/project", formData);
+    const base = formData.projectName;
+    const existingNames = new Set((projects || []).map(p => p.projectName));
+    let name = base;
+    let counter = 1;
+    while (existingNames.has(name)) name = `${base} (${counter++})`;
+    await AxiosCustom.post("/api/wbs/project", { ...formData, projectName: name });
     await loadProjects(); await loadAllTasks();
-  }, [loadProjects, loadAllTasks]);
+  }, [loadProjects, loadAllTasks, projects]);
 
   const handleUpdate = useCallback(async (formData) => {
-    await AxiosCustom.put(`/api/wbs/project/${editingProject.projectId}`, formData);
+    const base = formData.projectName;
+    const existingNames = new Set(
+      (projects || []).filter(p => p.projectId !== editingProject.projectId).map(p => p.projectName)
+    );
+    let name = base;
+    let counter = 1;
+    while (existingNames.has(name)) name = `${base} (${counter++})`;
+    const resolved = { ...formData, projectName: name };
+    await AxiosCustom.put(`/api/wbs/project/${editingProject.projectId}`, resolved);
     await loadProjects(); setEditingProject(null);
     if (selectedProject?.projectId === editingProject.projectId)
-      setSelected(prev => ({ ...prev, ...formData }));
-  }, [editingProject, loadProjects, selectedProject]);
+      setSelected(prev => ({ ...prev, ...resolved }));
+  }, [editingProject, loadProjects, selectedProject, projects]);
 
   const handleDelete = useCallback(async (projectId) => {
     if (!window.confirm(t('deleteConfirm'))) return;
