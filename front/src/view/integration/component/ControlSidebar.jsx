@@ -1155,7 +1155,7 @@ export default function ControlSidebar() {
         name: t('zoneName', { n: dangerZones.length + 1 }),
         center: [(Math.random() - 0.5) * 20, 2, (Math.random() - 0.5) * 20],
         halfSize: [3 + Math.random() * 2, 4, 3 + Math.random() * 2],
-        type: Math.random() > 0.5 ? 'excavation' : 'restricted',
+        type: 'excavation',
         active: true,
       },
     });
@@ -1861,7 +1861,7 @@ export default function ControlSidebar() {
 
         {dangerZones.map(z => {
           const isSelected = z.id === selectedZoneId;
-          const zoneColor = z.type === 'restricted' ? '#f97316' : '#ef4444';
+          const zoneColor = z.type === 'restricted' ? '#f97316' : z.type === 'dump_site' ? '#22d3ee' : '#ef4444';
           return (
             <div
               key={z.id}
