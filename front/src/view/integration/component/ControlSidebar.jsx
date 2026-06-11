@@ -15,6 +15,7 @@ import AxiosCustom from '../../../axios/AxiosCustom';
 
 // 자동 작업 중 표시 뱃지 (깜빡이는 점)
 function AutoWorkBadge({ count }) {
+  const t = useT('integrationProject');
   const [on, setOn] = useState(true);
   useEffect(() => {
     const id = setInterval(() => setOn(v => !v), 700);
@@ -34,23 +35,30 @@ function AutoWorkBadge({ count }) {
         flexShrink: 0,
       }} />
       <span style={{ fontSize: 9, color: '#4ade80', fontWeight: 700 }}>
-        자동 작업 중 · 장비 {count}대 운영
+        {t('autoWorkBadge', { count })}
       </span>
     </div>
   );
 }
 
-const STATUS_META = {
-  NOT_STARTED: { label: '미착', color: '#94a3b8' },
-  IN_PROGRESS:  { label: '진행', color: '#60a5fa' },
-  COMPLETED:    { label: '완료', color: '#4ade80' },
-  DELAYED:      { label: '지연', color: '#ef4444' },
+const STATUS_COLOR = {
+  NOT_STARTED: '#94a3b8',
+  IN_PROGRESS:  '#60a5fa',
+  COMPLETED:    '#4ade80',
+  DELAYED:      '#ef4444',
+};
+const STATUS_T_KEY = {
+  NOT_STARTED: 'drStatusNotStarted',
+  IN_PROGRESS: 'drStatusInProgress',
+  COMPLETED:   'drStatusCompleted',
+  DELAYED:     'drStatusDelayed',
 };
 const PROGRESS_COLOR = p =>
   p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#374151';
 
 // BIM 공종 자동 규칙 디테일 패널
 function TaskRuleDetail({ task, workers, equipment }) {
+  const t = useT('integrationProject');
   const elementType = task.notes?.split(':')[2];
   const rule = TASK_RULES[elementType];
   if (!rule) return null;
@@ -78,7 +86,7 @@ function TaskRuleDetail({ task, workers, equipment }) {
           padding: '1px 7px', borderRadius: 10,
           border: `1px solid ${rateColor}44`,
         }}>
-          {blocked ? '⛔ 블록' : `⚡ ×${rate.toFixed(2)}`}
+          {blocked ? t('ruleBlocked') : `⚡ ×${rate.toFixed(2)}`}
         </span>
       </div>
 
@@ -86,7 +94,7 @@ function TaskRuleDetail({ task, workers, equipment }) {
       {rule.blockers.length > 0 && (
         <div style={{ marginBottom: 5 }}>
           <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            필수 장비
+            {t('ruleRequired')}
           </div>
           {rule.blockers.map((req, i) => {
             const have = activeEquip.filter(e => e.type === req.type).length;
@@ -102,7 +110,7 @@ function TaskRuleDetail({ task, workers, equipment }) {
                 <span style={{
                   color: ok ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: 8,
                 }}>
-                  {ok ? `✓ ${have}대` : `✗ ${have}/${req.min}`}
+                  {ok ? t('ruleEquipOk', { n: have }) : t('ruleEquipNG', { n: have, min: req.min })}
                 </span>
               </div>
             );
@@ -114,27 +122,25 @@ function TaskRuleDetail({ task, workers, equipment }) {
       {rule.equipBonus.length > 0 && !blocked && (
         <div style={{ marginBottom: 5 }}>
           <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            속도 보너스
+            {t('ruleBonus')}
           </div>
           {rule.equipBonus.map((b, i) => {
             const cnt = activeEquip.filter(e => e.type === b.type).length;
             const gain = cnt * b.perUnit;
             return (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, padding: '1px 0' }}>
-                <span style={{ color: '#6b7280' }}>{EQUIP_LABEL[b.type] || b.type} 1대당</span>
+                <span style={{ color: '#6b7280' }}>{EQUIP_LABEL[b.type] || b.type} +{Math.round(b.perUnit * 100)}%</span>
                 <span style={{ color: gain > 0 ? '#4ade80' : '#4b5563' }}>
-                  +{Math.round(b.perUnit * 100)}%
-                  {cnt > 0 && <span style={{ color: '#22c55e' }}> ({cnt}대 적용 중)</span>}
+                  {cnt > 0 && <span style={{ color: '#22c55e' }}>{t('ruleActiveCount', { n: cnt })}</span>}
                 </span>
               </div>
             );
           })}
           {(rule.workerBonus || 0) > 0 && (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, padding: '1px 0' }}>
-              <span style={{ color: '#6b7280' }}>작업자 1명당</span>
+              <span style={{ color: '#6b7280' }}>+{Math.round(rule.workerBonus * 100)}%/worker</span>
               <span style={{ color: workers.length > 0 ? '#4ade80' : '#4b5563' }}>
-                +{Math.round(rule.workerBonus * 100)}%
-                {workers.length > 0 && <span style={{ color: '#22c55e' }}> ({workers.length}명)</span>}
+                {workers.length > 0 && <span style={{ color: '#22c55e' }}>{t('ruleWorkerCount', { n: workers.length })}</span>}
               </span>
             </div>
           )}
@@ -145,7 +151,7 @@ function TaskRuleDetail({ task, workers, equipment }) {
       {recs.length > 0 && (
         <div>
           <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            추천
+            {t('ruleRecs')}
           </div>
           {recs.map((rec, i) => (
             <div key={i} style={{
@@ -217,11 +223,12 @@ function BimWbsPanel({ wbsTasks, workers, equipment, t }) {
             <div style={{ fontSize: 9, color: '#374151', padding: '4px 0' }}>{t('wbsNoTasks')}</div>
           ) : (
             wbsTasks.map(tk => {
-              const p          = tk.progress || 0;
-              const c          = PROGRESS_COLOR(p);
-              const statusMeta = STATUS_META[tk.status] || {};
-              const isBimTask  = typeof tk.notes === 'string' && /^BIM:[^:]+:[^:]+/.test(tk.notes);
-              const isSelected = selectedTaskId === tk.taskId;
+              const p           = tk.progress || 0;
+              const c           = PROGRESS_COLOR(p);
+              const statusColor = STATUS_COLOR[tk.status];
+              const statusLabel = STATUS_T_KEY[tk.status] ? t(STATUS_T_KEY[tk.status]) : null;
+              const isBimTask   = typeof tk.notes === 'string' && /^BIM:[^:]+:[^:]+/.test(tk.notes);
+              const isSelected  = selectedTaskId === tk.taskId;
 
               return (
                 <div key={tk.taskId} style={{ marginBottom: 7 }}>
@@ -244,9 +251,9 @@ function BimWbsPanel({ wbsTasks, workers, equipment, t }) {
                         {tk.taskName}
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                        {statusMeta.label && (
-                          <span style={{ fontSize: 8, color: statusMeta.color, fontWeight: 700 }}>
-                            {statusMeta.label}
+                        {statusLabel && (
+                          <span style={{ fontSize: 8, color: statusColor, fontWeight: 700 }}>
+                            {statusLabel}
                           </span>
                         )}
                         <span style={{ fontSize: 9, color: c, fontWeight: 700 }}>{(p).toFixed(1)}%</span>
@@ -738,11 +745,7 @@ function CameraSection({ cameras, projectId, referencePoint, dispatch }) {
   };
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', marginBottom: 8,
-        borderBottom: '1px solid #1e3a5f', paddingBottom: 4 }}>
-        {t('sectionCameras').replace('{n}', cameras?.length || 0)}
-      </div>
+    <div style={{ marginBottom: 0 }}>
 
       {/* 현장 원점 (GPS 기준점) */}
       <div style={{ background: '#071018', border: '1px solid #1e3a5f', borderRadius: 5,
@@ -815,7 +818,7 @@ function CameraSection({ cameras, projectId, referencePoint, dispatch }) {
         </div>
         <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 3 }}>{t('cameraCoordLabel')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 4 }}>
-          {[['X', 'worldX'], ['Y(높이)', 'worldY'], ['Z', 'worldZ']].map(([lbl, key]) => (
+          {[['X', 'worldX'], ['Y(H)', 'worldY'], ['Z', 'worldZ']].map(([lbl, key]) => (
             <div key={key}>
               <div style={{ fontSize: 8, color: '#374151', marginBottom: 2, textAlign: 'center' }}>{lbl}</div>
               <input type="number" step="0.1" value={form[key]}
@@ -848,16 +851,23 @@ function CameraSection({ cameras, projectId, referencePoint, dispatch }) {
 }
 
 // ── 공통 서브 컴포넌트 ────────────────────────────────────────────
-function Section({ title, children }) {
+function Section({ title, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{
-        fontSize: 9, fontWeight: 700, color: '#374151', letterSpacing: '0.1em',
-        textTransform: 'uppercase', padding: '3px 0', borderBottom: '1px solid #111e2d', marginBottom: 8,
-      }}>
-        {title}
+      <div
+        onClick={() => setOpen(v => !v)}
+        style={{
+          fontSize: 9, fontWeight: 700, color: '#374151', letterSpacing: '0.1em',
+          textTransform: 'uppercase', padding: '3px 0', borderBottom: '1px solid #111e2d',
+          marginBottom: open ? 8 : 0, cursor: 'pointer',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}
+      >
+        <span>{title}</span>
+        <span style={{ fontSize: 8, color: '#253347', marginLeft: 4 }}>{open ? '▲' : '▼'}</span>
       </div>
-      {children}
+      {open && children}
     </div>
   );
 }
@@ -870,6 +880,7 @@ function Btn({ onClick, children, color, textColor = '#93c5fd', small, disabled 
       fontSize: small ? 10 : 11, cursor: disabled ? 'not-allowed' : 'pointer',
       fontWeight: 600, opacity: disabled ? 0.5 : 1,
       minHeight: 32, touchAction: 'manipulation',
+      whiteSpace: 'nowrap',
     }}>
       {children}
     </button>
@@ -877,15 +888,16 @@ function Btn({ onClick, children, color, textColor = '#93c5fd', small, disabled 
 }
 
 function Row({ children }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>{children}</div>;
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>{children}</div>;
 }
 
 // ── BIM 프로젝트 재배정 드롭다운 ──────────────────────────────────
 function ReassignRow({ structures, currentStructId, onAssign }) {
+  const t = useT('integrationProject');
   const [sel, setSel] = useState(currentStructId || '');
   const bimList = structures.filter(s => s.type === 'bim' && s.visible !== false);
   if (!bimList.length) return (
-    <div style={{ fontSize: 8, color: '#374151' }}>등록된 BIM 프로젝트 없음</div>
+    <div style={{ fontSize: 8, color: '#374151' }}>{t('reassignNoBim')}</div>
   );
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 4 }}>
@@ -898,7 +910,7 @@ function ReassignRow({ structures, currentStructId, onAssign }) {
           borderRadius: 3, color: '#d1d5db', fontSize: 8, padding: '2px 3px', outline: 'none',
         }}
       >
-        <option value="">— 프로젝트 선택 —</option>
+        <option value="">{t('reassignSelect')}</option>
         {bimList.map(s => (
           <option key={s.id} value={s.id}>{s.name}</option>
         ))}
@@ -912,7 +924,7 @@ function ReassignRow({ structures, currentStructId, onAssign }) {
           borderRadius: 3, color: sel ? '#38bdf8' : '#374151',
           fontSize: 8, padding: '2px 7px', cursor: sel ? 'pointer' : 'default', fontWeight: 700,
         }}
-      >배정</button>
+      >{t('reassignBtn')}</button>
     </div>
   );
 }
@@ -1033,9 +1045,10 @@ function WbsTaskAssignPanel({ entityId, equipType, assignedWbsTaskId, wbsTasks, 
 
 // ── 배정 현황 + 재배정 패널 ────────────────────────────────────────
 function WorkAssignmentPanel({ assignedStructId, assignedBimProjectId, structures, wbsTasks, workableTypes, onReassign }) {
+  const t = useT('integrationProject');
   const assignedStruct = structures.find(s => s.id === assignedStructId);
   const projTasks = assignedBimProjectId
-    ? wbsTasks.filter(t => !t.notes?.match(/^BIM:[^:]+:/) || t.notes.startsWith(`BIM:${assignedBimProjectId}:`))
+    ? wbsTasks.filter(tk => !tk.notes?.match(/^BIM:[^:]+:/) || tk.notes.startsWith(`BIM:${assignedBimProjectId}:`))
     : [];
 
   return (
@@ -1044,7 +1057,7 @@ function WorkAssignmentPanel({ assignedStructId, assignedBimProjectId, structure
       borderRadius: 5, padding: '7px 9px', marginTop: 4, marginBottom: 4,
     }}>
       <div style={{ fontSize: 8, color: '#4b6a8a', fontWeight: 700, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        📌 배정 현황
+        {t('assignPanelTitle')}
       </div>
 
       {assignedStruct ? (
@@ -1054,11 +1067,11 @@ function WorkAssignmentPanel({ assignedStructId, assignedBimProjectId, structure
           </div>
           {workableTypes?.length > 0 && (
             <div style={{ fontSize: 8, color: '#6b7280', marginBottom: 4 }}>
-              담당 공종: <span style={{ color: '#a78bfa' }}>{workableTypes.slice(0, 3).join(' · ')}</span>
+              {t('assignTypes')} <span style={{ color: '#a78bfa' }}>{workableTypes.slice(0, 3).join(' · ')}</span>
             </div>
           )}
           {projTasks.length === 0 ? (
-            <div style={{ fontSize: 8, color: '#374151' }}>연결된 WBS 태스크 없음</div>
+            <div style={{ fontSize: 8, color: '#374151' }}>{t('assignNoTasksLinked')}</div>
           ) : (
             projTasks.slice(0, 4).map(tk => {
               const p = Math.round((tk.progress || 0) * 10) / 10;
@@ -1077,17 +1090,17 @@ function WorkAssignmentPanel({ assignedStructId, assignedBimProjectId, structure
             })
           )}
           {projTasks.length > 4 && (
-            <div style={{ fontSize: 7, color: '#374151' }}>+{projTasks.length - 4}개 태스크 더 있음</div>
+            <div style={{ fontSize: 7, color: '#374151' }}>{t('assignMoreTasks', { n: projTasks.length - 4 })}</div>
           )}
         </div>
       ) : (
         <div style={{ fontSize: 9, color: '#374151', marginBottom: 6 }}>
-          미배정 — 자동 작업 시 자동 배정됩니다
+          {t('assignUnassigned')}
         </div>
       )}
 
       <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: 6, marginTop: 2 }}>
-        <div style={{ fontSize: 8, color: '#4b6a8a', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase' }}>다른 프로젝트로 재배정</div>
+        <div style={{ fontSize: 8, color: '#4b6a8a', fontWeight: 700, marginBottom: 3, textTransform: 'uppercase' }}>{t('assignReassign')}</div>
         <ReassignRow
           structures={structures}
           currentStructId={assignedStructId}
@@ -1279,7 +1292,7 @@ export default function ControlSidebar() {
 
   return (
     <div style={{
-      width: '100%', minWidth: 200, flexShrink: 0, background: '#0a1525',
+      width: '100%', minWidth: 0, flexShrink: 0, background: '#0a1525',
       borderRight: '1px solid #111e2d', overflowY: 'auto', padding: '14px 12px',
       boxSizing: 'border-box', height: '100%',
     }}>
@@ -1379,14 +1392,14 @@ export default function ControlSidebar() {
                     borderRadius: 5, padding: '6px 9px', marginBottom: 6,
                   }}>
                     <div style={{ fontSize: 8, color: '#374151', fontWeight: 700, marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                      📍 BIM 프로젝트 영역 {surveyOrigin ? '(측량 좌표)' : ''}
+                      {t('bimAreaTitle')} {surveyOrigin ? t('bimAreaSurvey') : ''}
                     </div>
                     {/* X 범위 */}
                     <div style={{ marginBottom: 4 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                         <span style={{ fontSize: 8, color: '#ef4444', fontWeight: 700 }}>X</span>
                         <span style={{ fontSize: 9, color: '#d1d5db', fontWeight: 600 }}>{minX.toFixed(2)} ~ {maxX.toFixed(2)}</span>
-                        <span style={{ fontSize: 8, color: '#4b5563' }}>폭 {w.toFixed(1)}m</span>
+                        <span style={{ fontSize: 8, color: '#4b5563' }}>{t('bimAreaWidth', { w: w.toFixed(1) })}</span>
                       </div>
                       <div style={{ height: 2, background: '#111e2d', borderRadius: 1 }}>
                         <div style={{ height: '100%', width: '100%', background: '#ef444488', borderRadius: 1 }} />
@@ -1397,7 +1410,7 @@ export default function ControlSidebar() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                         <span style={{ fontSize: 8, color: '#3b82f6', fontWeight: 700 }}>Z</span>
                         <span style={{ fontSize: 9, color: '#d1d5db', fontWeight: 600 }}>{minZ.toFixed(2)} ~ {maxZ.toFixed(2)}</span>
-                        <span style={{ fontSize: 8, color: '#4b5563' }}>깊이 {d.toFixed(1)}m</span>
+                        <span style={{ fontSize: 8, color: '#4b5563' }}>{t('bimAreaDepth', { d: d.toFixed(1) })}</span>
                       </div>
                       <div style={{ height: 2, background: '#111e2d', borderRadius: 1 }}>
                         <div style={{ height: '100%', width: '100%', background: '#3b82f688', borderRadius: 1 }} />
@@ -1405,7 +1418,7 @@ export default function ControlSidebar() {
                     </div>
                     {/* 오프셋 기준점 */}
                     <div style={{ fontSize: 8, color: '#253347', borderTop: '1px solid #111e2d', paddingTop: 4 }}>
-                      씬 오프셋 X:{off[0].toFixed(1)} Y:{off[1].toFixed(1)} Z:{off[2].toFixed(1)}
+                      {t('bimAreaOffset')} X:{off[0].toFixed(1)} Y:{off[1].toFixed(1)} Z:{off[2].toFixed(1)}
                     </div>
                   </div>
                 );
@@ -1698,12 +1711,14 @@ export default function ControlSidebar() {
       </Section>
 
       {/* 현장 카메라 */}
-      <CameraSection
-        cameras={cameras}
-        projectId={projectMeta?.projectId}
-        referencePoint={referencePoint}
-        dispatch={dispatch}
-      />
+      <Section title={t('sectionCameras', { n: cameras?.length || 0 })} defaultOpen={false}>
+        <CameraSection
+          cameras={cameras}
+          projectId={projectMeta?.projectId}
+          referencePoint={referencePoint}
+          dispatch={dispatch}
+        />
+      </Section>
 
       {/* 작업자 */}
       <Section title={t('sectionWorkers', { n: workers.length })}>
