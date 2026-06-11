@@ -691,27 +691,35 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
 
   const canvasContent = (
       <>
-        <Sky sunPosition={[100, 40, 100]} turbidity={6} rayleigh={0.5} />
+        <Sky sunPosition={[100, -30, 60]} turbidity={6} rayleigh={0.5} />
         <ambientLight intensity={0.5} />
+        {/* Z-up 세계 좌표계: 태양/조명 위치는 world Z-up 기준 (Z=높이) */}
         <directionalLight
-            position={[50, 60, 30]} intensity={1.2} castShadow
+            position={[50, -30, 60]} intensity={1.2} castShadow
             shadow-mapSize-width={2048} shadow-mapSize-height={2048}
             shadow-camera-far={180} shadow-camera-left={-60}
             shadow-camera-right={60} shadow-camera-top={60} shadow-camera-bottom={-60}
         />
-        <pointLight position={[-20, 10, 5]} intensity={0.3} color="#ff9944" />
-        <Ground />
-        <gridHelper args={[80, 40, '#1a3a5f', '#0d2035']} position={[0, 0.01, 0]} />
-        {bimElements.map(elem => (
-            <TransparentBimElement
-                key={elem.elementId}
-                element={elem}
-                offsetX={bimOffset.x}
-                offsetZ={bimOffset.z}
-                isColliding={collidingIds.includes(elem.elementId)}
-            />
-        ))}
-        <ExcavatorModel stateRef={stateRef} machine={MACHINE} />
+        <pointLight position={[-20, 5, 10]} intensity={0.3} color="#ff9944" />
+        {/*
+          Z축 위 좌표계: 내부 Y-up 씬 로직(굴착기 관절, 충돌, BIM 좌표 변환)을 그대로 유지하면서
+          rotation={[Math.PI/2, 0, 0]} 그룹으로 시각적 Z축을 위로 회전.
+          그룹 내부 Y(높이) → 월드 Z(위)  |  그룹 내부 Z(깊이) → 월드 -Y
+        */}
+        <group rotation={[Math.PI / 2, 0, 0]}>
+          <Ground />
+          <gridHelper args={[80, 40, '#1a3a5f', '#0d2035']} position={[0, 0.01, 0]} />
+          {bimElements.map(elem => (
+              <TransparentBimElement
+                  key={elem.elementId}
+                  element={elem}
+                  offsetX={bimOffset.x}
+                  offsetZ={bimOffset.z}
+                  isColliding={collidingIds.includes(elem.elementId)}
+              />
+          ))}
+          <ExcavatorModel stateRef={stateRef} machine={MACHINE} />
+        </group>
         <CollisionDetector
             stateRef={stateRef}
             machine={MACHINE}
@@ -1055,7 +1063,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                     </div>
                 )}
 
-                <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
+                <Canvas shadows camera={{ position: [18, -14, 12], up: [0, 0, 1], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
                   {canvasContent}
                 </Canvas>
               </div>
@@ -1288,7 +1296,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
                     </div>
                 )}
 
-                <Canvas shadows camera={{ position: [18, 12, -12], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
+                <Canvas shadows camera={{ position: [18, -14, 12], up: [0, 0, 1], fov: 52 }} style={{ background: '#131f2e', width: '100%', height: '100%' }}>
                   {canvasContent}
                 </Canvas>
               </div>
