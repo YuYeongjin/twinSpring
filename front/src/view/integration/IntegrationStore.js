@@ -10,14 +10,14 @@ export const useIntegrationDispatch = () => useContext(IntegrationDispatch);
 const MAX_EVENTS = 60;
 
 const DEFAULT_WORKERS = [
-  { id: 'w1', name: '작업자 A', initialPos: [5,  0,  3], gear: true  },
-  { id: 'w2', name: '작업자 B', initialPos: [-3, 0,  8], gear: true  },
-  { id: 'w3', name: '작업자 C', initialPos: [10, 0, -5], gear: false },
+  { id: 'w1', name: '작업자 A', initialPos: [5,  0,  3], gear: true,  gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'w2', name: '작업자 B', initialPos: [-3, 0,  8], gear: true,  gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'w3', name: '작업자 C', initialPos: [10, 0, -5], gear: false, gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
 ];
 const DEFAULT_EQUIPMENT = [
-  { id: 'e1', type: 'excavator', name: '굴착기-1',  initialPos: [0,0,0],   route: [[0,0,0],[10,0,0],[10,0,10],[0,0,10]], speed: 1.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null },
-  { id: 'e2', type: 'dump',      name: '덤프트럭-1', initialPos: [-8,0,-8], route: [[-8,0,-8],[8,0,-8],[8,0,-2],[-8,0,-2]], speed: 2.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null },
-  { id: 'e3', type: 'crane',     name: '크레인-1',   initialPos: [15,0,5],  route: [[15,0,5],[15,0,-5],[20,0,-5],[20,0,5]], speed: 1.0, mode: 'auto', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null },
+  { id: 'e1', type: 'excavator', name: '굴착기-1',  initialPos: [0,0,0],   route: [[0,0,0],[10,0,0],[10,0,10],[0,0,10]], speed: 1.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'e2', type: 'dump',      name: '덤프트럭-1', initialPos: [-8,0,-8], route: [[-8,0,-8],[8,0,-8],[8,0,-2],[-8,0,-2]], speed: 2.5, mode: 'auto',    size: [2.8,2.5,3.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
+  { id: 'e3', type: 'crane',     name: '크레인-1',   initialPos: [15,0,5],  route: [[15,0,5],[15,0,-5],[20,0,-5],[20,0,5]], speed: 1.0, mode: 'auto', size: [1.5,9.0,1.5], gpsDeviceId: null, gpsPos: null, assignedWbsTaskId: null },
 ];
 const DEFAULT_ZONES = [
   { id: 'z1', name: '굴착 위험구역', center: [5,  2, 5], halfSize: [4, 4, 4], type: 'excavation', active: true },
@@ -38,9 +38,13 @@ function makeInitial() {
     // ── 신규 ──────────────────────────────────────────────────────
     structures: [],       // { id, name, type:'bim'|'ifc', bimProjectId?, elements:null|[], offset:[0,0,0], visible:true }
     terrain:    null,     // { imageDataUrl, width, height } or null
+    cameras:    [],       // { cameraId, name, url, worldX, worldY, worldZ, yaw, fovH, active }
 
     isLoading:         false,
     simulationRunning: true,
+    gpsMode:           false,  // true = 전체 GPS 추적 모드 (장비/작업자 모두)
+    // GPS ↔ 물리 좌표 변환 기준점 (현장 원점)
+    // project.refLat/refLng가 설정되면 그 값으로 덮어씀
     referencePoint:    { lat: 37.5665, lng: 126.9780 },
     surveyOrigin:      null,   // { label, x, y, z } — 측량 기준점 (scene 원점의 실좌표)
     selectedEquipId:   null,
@@ -127,8 +131,14 @@ function reducer(state, action) {
     case 'SET_LOADING':
       return { ...state, isLoading: action.value };
 
-    case 'SET_PROJECT_META':
-      return { ...state, projectMeta: action.meta };
+    case 'SET_PROJECT_META': {
+      // project에 refLat/refLng가 있으면 현장 원점으로 즉시 반영
+      const meta = action.meta;
+      const refUpdate = (meta?.refLat != null && meta?.refLng != null)
+        ? { referencePoint: { lat: meta.refLat, lng: meta.refLng } }
+        : {};
+      return { ...state, projectMeta: meta, ...refUpdate };
+    }
 
     case 'SET_REAL_DATA':
       return {
@@ -216,6 +226,58 @@ function reducer(state, action) {
         ...state,
         equipment: state.equipment.map(e => e.id === action.id ? { ...e, gpsPos: action.pos } : e),
       };
+
+    // GPS 장치 ID 할당
+    case 'SET_EQUIP_DEVICE_ID':
+      return {
+        ...state,
+        equipment: state.equipment.map(e => e.id === action.id ? { ...e, gpsDeviceId: action.deviceId } : e),
+      };
+    case 'SET_WORKER_DEVICE_ID':
+      return {
+        ...state,
+        workers: state.workers.map(w => w.id === action.id ? { ...w, gpsDeviceId: action.deviceId } : w),
+      };
+    case 'SET_WORKER_GPS_POS':
+      return {
+        ...state,
+        workers: state.workers.map(w => w.id === action.id ? { ...w, gpsPos: action.pos } : w),
+      };
+
+    // WBS 태스크 배정 (장비 또는 작업자, entityId로 매칭)
+    case 'ASSIGN_WBS_TASK':
+      return {
+        ...state,
+        equipment: state.equipment.map(e =>
+          e.id === action.entityId ? { ...e, assignedWbsTaskId: action.taskId } : e
+        ),
+        workers: state.workers.map(w =>
+          w.id === action.entityId ? { ...w, assignedWbsTaskId: action.taskId } : w
+        ),
+      };
+
+    // GPS 전체 모드 토글
+    // ON  → deviceId 있는 장비를 mode:'gps'로 전환, 이전 mode를 _prevMode에 백업
+    // OFF → _prevMode로 복구 (없으면 'standby'), gpsPos 초기화
+    case 'TOGGLE_GPS_MODE': {
+      const next = !state.gpsMode;
+      return {
+        ...state,
+        gpsMode: next,
+        equipment: state.equipment.map(e =>
+          next
+            ? (e.gpsDeviceId
+                ? { ...e, _prevMode: e.mode, mode: 'gps' }
+                : e)
+            : (e.mode === 'gps'
+                ? { ...e, mode: e._prevMode || 'standby', _prevMode: undefined, gpsPos: null }
+                : e)
+        ),
+        workers: state.workers.map(w =>
+          next ? w : { ...w, gpsPos: null }
+        ),
+      };
+    }
 
     // ── 위험구역 ─────────────────────────────────────────────────
     case 'ADD_ZONE':
@@ -341,6 +403,20 @@ function reducer(state, action) {
     case 'CLEAR_TERRAIN':
       return { ...state, terrain: null };
 
+    // ── 현장 원점 (GPS ↔ 물리 좌표) ─────────────────────────────
+    case 'SET_SITE_ORIGIN':
+      return { ...state, referencePoint: { lat: action.lat, lng: action.lng } };
+
+    // ── 카메라 ──────────────────────────────────────────────────
+    case 'SET_CAMERAS':
+      return { ...state, cameras: action.cameras };
+    case 'ADD_CAMERA':
+      return { ...state, cameras: [...state.cameras, action.camera] };
+    case 'UPDATE_CAMERA':
+      return { ...state, cameras: state.cameras.map(c => c.cameraId === action.cameraId ? { ...c, ...action.updates } : c) };
+    case 'REMOVE_CAMERA':
+      return { ...state, cameras: state.cameras.filter(c => c.cameraId !== action.cameraId) };
+
     // ── 측량 기준점 ──────────────────────────────────────────────
     case 'SET_SURVEY_ORIGIN':
       return { ...state, surveyOrigin: action.origin }; // null이면 해제
@@ -402,9 +478,22 @@ function reducer(state, action) {
       let dumpCount = 0;
       const makeRoute = (e) => {
         const { type } = e;
-        if (type === 'excavator' || type === 'crane') {
+        if (type === 'crane') {
           const [cx, cz] = fixedPos[e.id] || [0, 0];
           return [[cx, 0, cz], [cx, 0, cz]];
+        }
+        if (type === 'excavator') {
+          // 굴착 패턴: 작은 반경으로 천천히 이동 (실제 굴착 동작처럼)
+          const [cx, cz] = fixedPos[e.id] || [0, 0];
+          const r = rng(1.5, 3.0);
+          return [
+            [cx,         0, cz        ],
+            [cx + r,     0, cz        ],
+            [cx + r,     0, cz + r    ],
+            [cx,         0, cz + r    ],
+            [cx - r*0.5, 0, cz + r*0.5],
+            [cx,         0, cz        ],
+          ];
         }
         if (type === 'dump') {
           // 적재: 굴착기 옆으로 접근
@@ -438,9 +527,9 @@ function reducer(state, action) {
         });
       };
       const getSpeed = (type) => {
-        if (type === 'dump')      return rng(2.0, 3.5);
+        if (type === 'dump')      return 4.0;   // 덤프 사이클 시작 속도 (사이클 관리자가 조절)
         if (type === 'crane')     return 0;
-        if (type === 'excavator') return 0;
+        if (type === 'excavator') return 0.8;   // 굴착 작업 속도 (느린 이동)
         if (type === 'vehicle')   return rng(1.5, 2.5);
         return rng(1.0, 2.0);
       };
@@ -481,6 +570,26 @@ function reducer(state, action) {
 export function IntegrationProvider({ projectId, children }) {
   const [state, dispatch] = useReducer(reducer, undefined, makeInitial);
 
+  // WBS 태스크 진행률 변경 감지 → DB 자동 저장 (3초 debounce)
+  const prevProgressRef = useRef({});  // { taskId: progress }
+  const syncTimers      = useRef({});  // { taskId: timeoutId }
+  useEffect(() => {
+    state.wbsTasks.forEach(task => {
+      const prev = prevProgressRef.current[task.taskId];
+      if (prev === undefined) {
+        prevProgressRef.current[task.taskId] = task.progress;
+        return;
+      }
+      if (prev !== task.progress) {
+        prevProgressRef.current[task.taskId] = task.progress;
+        clearTimeout(syncTimers.current[task.taskId]);
+        syncTimers.current[task.taskId] = setTimeout(() => {
+          AxiosCustom.put(`/api/wbs/task/${task.taskId}`, task).catch(() => {});
+        }, 3000);
+      }
+    });
+  }, [state.wbsTasks]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 프로젝트 전환 시 API에서 sim_config 복원
   useEffect(() => {
     if (!projectId) return;
@@ -496,6 +605,8 @@ export function IntegrationProvider({ projectId, children }) {
           wbsProjectId: project.wbsProjectId,
           bimProjectId: project.bimProjectId,
           description:  project.description,
+          refLat:       project.refLat,
+          refLng:       project.refLng,
         }});
         if (project.simConfig) {
           try {
@@ -510,6 +621,16 @@ export function IntegrationProvider({ projectId, children }) {
       }
     }
     loadSimConfig();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  // 프로젝트 전환 시 카메라 목록 로드
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    AxiosCustom.get(`/api/integration/project/${projectId}/cameras`)
+      .then(res => { if (!cancelled) dispatch({ type: 'SET_CAMERAS', cameras: res.data || [] }); })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [projectId]);
 

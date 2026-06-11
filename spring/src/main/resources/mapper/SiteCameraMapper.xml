@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.SiteCameraDAO">
+
+    <select id="getCamerasByProject" parameterType="string" resultType="map">
+        SELECT
+            camera_id  AS "cameraId",
+            project_id AS "projectId",
+            name       AS "name",
+            url        AS "url",
+            world_x    AS "worldX",
+            world_y    AS "worldY",
+            world_z    AS "worldZ",
+            yaw        AS "yaw",
+            fov_h      AS "fovH",
+            active     AS "active",
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM site_camera
+        WHERE project_id = #{projectId}
+        ORDER BY created_at ASC
+    </select>
+
+    <select id="getCameraById" parameterType="string" resultType="map">
+        SELECT
+            camera_id  AS "cameraId",
+            project_id AS "projectId",
+            name       AS "name",
+            url        AS "url",
+            world_x    AS "worldX",
+            world_y    AS "worldY",
+            world_z    AS "worldZ",
+            yaw        AS "yaw",
+            fov_h      AS "fovH",
+            active     AS "active",
+            TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM site_camera
+        WHERE camera_id = #{cameraId}
+    </select>
+
+    <insert id="insertCamera" parameterType="map">
+        INSERT INTO site_camera (
+            camera_id, project_id, name, url,
+            world_x, world_y, world_z, yaw, fov_h, active
+        ) VALUES (
+            #{cameraId}, #{projectId}, #{name}, #{url},
+            #{worldX}, #{worldY}, #{worldZ}, #{yaw}, #{fovH}, #{active}
+        )
+    </insert>
+
+    <update id="updateCamera" parameterType="map">
+        UPDATE site_camera SET
+            name    = #{name},
+            url     = #{url},
+            world_x = #{worldX},
+            world_y = #{worldY},
+            world_z = #{worldZ},
+            yaw     = #{yaw},
+            fov_h   = #{fovH},
+            active  = #{active}
+        WHERE camera_id = #{cameraId}
+    </update>
+
+    <delete id="deleteCamera" parameterType="string">
+        DELETE FROM site_camera WHERE camera_id = #{cameraId}
+    </delete>
+
+</mapper>

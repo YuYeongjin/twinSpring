@@ -5,6 +5,11 @@ import * as THREE from 'three';
 import { useIntegration, useIntegrationDispatch, computeStructureBounds } from '../IntegrationStore';
 import { BimElement, getBaseColor } from '../../bim/element/BimElement';
 import { useT } from '../../../i18n/LanguageContext';
+import { TASK_RULES, calcProgressRate, RECALC_INTERVAL_MS } from '../progressEngine';
+import {
+  detectFloors, getFloorLabel, getElementFloorIndex, getFloorProgress,
+  getFloorStatus, getFloorStatusColor,
+} from '../floorUtils';
 
 // ── 선택된 엔티티의 실시간 좌표 툴팁 ──────────────────────────
 // groupRef: Three.js Group ref (position이 매 프레임 업데이트됨)
@@ -267,7 +272,43 @@ function StructuresLayer() {
   const { structures, wbsTasks, surveyOrigin } = useIntegration();
   const [selectedStructId, setSelectedStructId] = useState(null);
 
+  // WBS notes 형식(BIM:<id>:<type>) 기반 공종별 진도 맵
   const progressMap = useMemo(() => buildProgressMap(wbsTasks), [wbsTasks]);
+
+  // WBS 전체 평균 (notes 없는 태스크 기준)
+  const overallWbsProgress = useMemo(() => {
+    if (wbsTasks.length === 0) return 0;
+    return wbsTasks.reduce((s, tk) => s + (tk.progress || 0), 0) / wbsTasks.length;
+  }, [wbsTasks]);
+
+  // BIM 프로젝트별 평균 진행률 — notes BIM:<id>:* 태스크가 있으면 해당 태스크만, 없으면 전체 평균 fallback
+  const perProjectProgress = useMemo(() => {
+    const result = {};
+    structures.forEach(s => {
+      if (s.type !== 'bim' || !s.bimProjectId || s.bimProjectId in result) return;
+      const matching = wbsTasks.filter(t =>
+        typeof t.notes === 'string' && t.notes.startsWith(`BIM:${s.bimProjectId}:`)
+      );
+      result[s.bimProjectId] = matching.length > 0
+        ? matching.reduce((acc, t) => acc + (t.progress || 0), 0) / matching.length
+        : overallWbsProgress;
+    });
+    return result;
+  }, [structures, wbsTasks, overallWbsProgress]);
+
+  // BIM 구조물별 층 데이터 — raw positionY 기준 grouping
+  const floorsPerStruct = useMemo(() => {
+    const map = {};
+    structures.forEach(s => {
+      if (s.type === 'bim' && s.elements?.length) {
+        map[s.id] = detectFloors(s.elements);
+      }
+    });
+    return map;
+  }, [structures]);
+
+  const progressColor = p =>
+    p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#374151';
 
   if (!structures?.length) return null;
 
@@ -281,15 +322,30 @@ function StructuresLayer() {
         const isBim   = s.type === 'bim';
         const isStructSelected = selectedStructId === s.id;
 
-        // 기준좌표 기준 오프셋 표시
         const dispX = surveyOrigin ? offset[0] + surveyOrigin.x : offset[0];
         const dispY = surveyOrigin ? offset[1] + surveyOrigin.y : offset[1];
         const dispZ = surveyOrigin ? offset[2] + surveyOrigin.z : offset[2];
         const coordBadge = surveyOrigin ? t('surveyCoordBadge') : t('currentPosLabel');
 
+        // 이 구조물 전용 진행률 (프로젝트별 분리)
+        const projectAvgRaw = isBim
+          ? (perProjectProgress[s.bimProjectId] ?? overallWbsProgress)
+          : overallWbsProgress;
+        const overall = Math.round(projectAvgRaw * 10) / 10;
+        const overallCol = progressColor(overall);
+
+        // 이 프로젝트에 해당하는 WBS 태스크만 필터 (notes BIM:<id>:* 또는 notes 없는 공통 태스크)
+        const projectTasks = isBim
+          ? wbsTasks.filter(t =>
+              !t.notes ||
+              !t.notes.match(/^BIM:[^:]+:/) ||
+              t.notes.startsWith(`BIM:${s.bimProjectId}:`)
+            )
+          : wbsTasks;
+
         return (
           <group key={s.id} position={offset}>
-            {/* 구조물 클릭 레이블 (항상 표시, 클릭 시 좌표 토글) */}
+            {/* 구조물 클릭 레이블 */}
             <Html center position={[0, 0.4, 0]} distanceFactor={40}>
               <div
                 onClick={() => setSelectedStructId(isStructSelected ? null : s.id)}
@@ -301,6 +357,7 @@ function StructuresLayer() {
                   boxShadow: isStructSelected ? '0 0 8px #3b82f688' : 'none',
                   whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none',
                   lineHeight: 1.6,
+                  minWidth: isStructSelected ? 170 : 'auto',
                 }}
               >
                 🏗 {s.name}
@@ -310,15 +367,89 @@ function StructuresLayer() {
                     <span style={{ fontSize: 7, color: '#60a5fa' }}>
                       📍 {coordBadge}  X:{dispX.toFixed(1)}  Y:{dispY.toFixed(1)}  Z:{dispZ.toFixed(1)}
                     </span>
+                    {isBim && (
+                      <div style={{ marginTop: 5, borderTop: '1px solid #facc1530', paddingTop: 4 }}>
+                        {/* 전체 WBS 진행률 */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontSize: 7, color: '#6b7280', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            WBS 전체 진행률
+                          </span>
+                          <span style={{ fontSize: 10, color: overallCol, fontWeight: 800 }}>{overall.toFixed(1)}%</span>
+                        </div>
+                        <div style={{ background: '#0a1525', borderRadius: 3, height: 5, overflow: 'hidden', marginBottom: 6 }}>
+                          <div style={{ height: '100%', width: `${overall}%`, background: overallCol, borderRadius: 3, transition: 'width 0.8s ease' }} />
+                        </div>
+                        {/* WBS 태스크 목록 (이 프로젝트 관련 태스크만) */}
+                        {projectTasks.length === 0 ? (
+                          <div style={{ fontSize: 7, color: '#4b5563' }}>WBS 태스크 없음</div>
+                        ) : (
+                          projectTasks.slice(0, 6).map(tk => {
+                            const p = Math.round((tk.progress || 0) * 10) / 10;
+                            const col = progressColor(p);
+                            return (
+                              <div key={tk.taskId} style={{ marginBottom: 3 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 7, color: '#c8d8e8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>
+                                    {tk.taskName}
+                                  </span>
+                                  <span style={{ fontSize: 7, color: col, fontWeight: 800, flexShrink: 0 }}>{p.toFixed(1)}%</span>
+                                </div>
+                                <div style={{ background: '#0a1525', borderRadius: 2, height: 2, overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${p}%`, background: col, borderRadius: 2 }} />
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        {projectTasks.length > 6 && (
+                          <div style={{ fontSize: 6, color: '#374151', marginTop: 2 }}>+{projectTasks.length - 6}개 태스크 더 있음</div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
             </Html>
             {/* BIM 선택 하이라이트: 맥동하는 바운딩 박스 */}
             {isBim && isStructSelected && <StructureSelectionBox elements={elems} />}
+            {/* 3D 층 레이블 (BIM + 층 2개 이상) */}
+            {isBim && (() => {
+              const floors = floorsPerStruct[s.id] || [];
+              if (floors.length < 2) return null;
+              return floors.map((floor, fi) => {
+                const label     = getFloorLabel(fi, floors, t);
+                const projectFallback = perProjectProgress[s.bimProjectId] ?? overallWbsProgress;
+                const types     = [...new Set(floor.elements.map(el => el.elementType))];
+                const typePcts  = types.map(tp => progressMap[`${s.bimProjectId}:${tp}`] ?? projectFallback);
+                const avgPct    = typePcts.length ? typePcts.reduce((a, b) => a + b) / typePcts.length : 0;
+                const cascade   = getFloorProgress(fi, floors.length, avgPct);
+                const status    = getFloorStatus(cascade);
+                const color     = getFloorStatusColor(status);
+                // 3D 위치: 층 평균 높이 → toIntegrationCoords 후 Y축 = positionZ
+                const worldZ = floor.avgY;   // raw positionY
+                return (
+                  <Html
+                    key={`fl_${fi}`}
+                    center
+                    position={[-1.5, worldZ + 0.5, 0]}
+                    distanceFactor={35}
+                  >
+                    <div style={{
+                      background: '#071018cc', border: `1px solid ${color}55`,
+                      borderLeft: `2px solid ${color}`,
+                      padding: '1px 5px', borderRadius: 3,
+                      fontSize: 7, color, fontWeight: 700,
+                      whiteSpace: 'nowrap', userSelect: 'none',
+                      lineHeight: 1.7,
+                    }}>
+                      {label}  {cascade.toFixed(0)}%
+                    </div>
+                  </Html>
+                );
+              });
+            })()}
             {elems.map(el => {
               if (isBim) {
-                // BIM 구조물: 공정율 채우기 렌더
                 const cv = toIntegrationCoords(el);
                 const pX = Number(cv.positionX) || 0;
                 const pY = Number(cv.positionY) || 0;
@@ -326,19 +457,26 @@ function StructuresLayer() {
                 const sX = Number(cv.sizeX)     || 0.1;
                 const sY = Number(cv.sizeY)     || 0.1;
                 const sZ = Number(cv.sizeZ)     || 0.1;
+                // 층별 캐스케이딩 진도 적용
+                const projectFallback = perProjectProgress[s.bimProjectId] ?? overallWbsProgress;
+                const typeProgress    = progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback;
+                const floors          = floorsPerStruct[s.id] || [];
+                const floorIdx        = getElementFloorIndex(el, floors);
+                const elemProgress    = floors.length >= 2
+                  ? getFloorProgress(floorIdx, floors.length, typeProgress)
+                  : typeProgress;
                 return (
                   <BimProgressFill
                     key={el.elementId}
                     localPosition={[pX, pZ + sZ / 2, pY]}
                     size={[sX, sZ, sY]}
                     elementType={el.elementType}
-                    progress={progressMap[`${s.bimProjectId}:${el.elementType}`] || 0}
+                    progress={elemProgress}
                     offsetY={offsetY}
                     isSelected={isStructSelected}
                   />
                 );
               }
-              // IFC 구조물: 기존 BimElement 그대로 유지
               return <BimElement key={el.elementId} element={toIntegrationCoords(el)} />;
             })}
           </group>
@@ -355,19 +493,25 @@ function LinkedBimElements() {
   const progressMap  = useMemo(() => buildProgressMap(wbsTasks), [wbsTasks]);
   const bimProjectId = projectMeta?.bimProjectId;
 
+  const overallWbsProgress = useMemo(() => {
+    if (wbsTasks.length === 0) return 0;
+    return wbsTasks.reduce((s, tk) => s + (tk.progress || 0), 0) / wbsTasks.length;
+  }, [wbsTasks]);
+
   if (!bimElements?.length) return null;
   return (
     <>
       {bimElements.map(el => {
         const pY = Number(el.positionY) || 0;
         const sY = Number(el.sizeY) || 3;
+        const elemProgress = progressMap[`${bimProjectId}:${el.elementType}`] ?? overallWbsProgress;
         return (
           <BimProgressFill
             key={el.elementId}
             localPosition={[el.positionX || 0, pY + sY / 2, el.positionZ || 0]}
             size={[el.sizeX || 1, sY, el.sizeZ || 1]}
             elementType={el.elementType}
-            progress={progressMap[`${bimProjectId}:${el.elementType}`] || 0}
+            progress={elemProgress}
             offsetY={0}
           />
         );
@@ -824,13 +968,65 @@ const EquipItem = memo(function EquipItem({ equip, isSelected, modeLabel, equipS
   );
 });
 
+// ── WBS 작업 배정 헬퍼 ────────────────────────────────────────────────
+// BIM 구조물 단위 변환 스케일 (computeStructureBounds 와 동일 기준)
+function getStructureScale(struct) {
+  const els = struct.elements || [];
+  if (!els.length) return 1;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  els.forEach(el => {
+    const px = Number(el.positionX) || 0, pz = Number(el.positionZ) || 0;
+    if (px < minX) minX = px; if (px > maxX) maxX = px;
+    if (pz < minZ) minZ = pz; if (pz > maxZ) maxZ = pz;
+  });
+  return (maxX - minX > 500 || maxZ - minZ > 500) ? 0.001 : 1;
+}
+
+// elementType에 해당하는 부재들의 무게중심 → 씬 XZ 위치
+function findElementCentroid(struct, elementType) {
+  const els = struct.elements.filter(el => el.elementType === elementType);
+  if (!els.length) return null;
+  const offset = struct.offset || [0, 0, 0];
+  const scale  = getStructureScale(struct);
+  const cx = els.reduce((s, el) => s + (Number(el.positionX) || 0), 0) / els.length;
+  const cz = els.reduce((s, el) => s + (Number(el.positionZ) || 0), 0) / els.length;
+  return [offset[0] + cx * scale, 0, offset[2] + cz * scale];
+}
+
+// ── 덤프트럭 작업 사이클 헬퍼 ────────────────────────────────────────
+// from/to: [x, 0, z]  →  중간 우회점 포함 경로 반환
+function buildDumpRoute(from, to) {
+  const mx = (from[0] + to[0]) / 2 + (Math.random() - 0.5) * 6;
+  const mz = (from[2] + to[2]) / 2 + (Math.random() - 0.5) * 6;
+  return [
+    [from[0], 0, from[2]],
+    [mx,      0, mz],
+    [to[0],   0, to[2]],
+  ];
+}
+
+// 굴착기에서 가장 먼 플레이 에어리어 코너 → 토사 반출 지점
+function findDumpZone(excavPos, pa) {
+  const corners = [
+    [pa.minX + 5, 0, pa.minZ + 5],
+    [pa.maxX - 5, 0, pa.minZ + 5],
+    [pa.minX + 5, 0, pa.maxZ - 5],
+    [pa.maxX - 5, 0, pa.maxZ - 5],
+  ];
+  return corners.reduce((best, c) => {
+    const d2  = (c[0]-excavPos[0])**2 + (c[2]-excavPos[2])**2;
+    const bd2 = (best[0]-excavPos[0])**2 + (best[2]-excavPos[2])**2;
+    return d2 > bd2 ? c : best;
+  }, corners[0]);
+}
+
 // ── 시뮬레이션 관리자 ─────────────────────────────────────────────
 function SimulationManager({ running }) {
   const t = useT('integrationProject');
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
 
-  const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId, selectedWorkerId, surveyOrigin, structures } = useIntegration();
+  const { workers: initWorkers, equipment: initEquip, dangerZones, selectedEquipId, selectedWorkerId, surveyOrigin, structures, wbsTasks } = useIntegration();
   const dispatch = useIntegrationDispatch();
 
   // stale-closure 없이 선택 상태를 읽기 위한 ref
@@ -858,13 +1054,17 @@ function SimulationManager({ running }) {
     dispatch({ type: 'SELECT_ZONE',      id: null });
   }, [dispatch]);
 
-  const equipStateRef = useRef({});
+  const equipStateRef  = useRef({});
   const workerStateRef = useRef({});
-  const equipMeshes   = useRef({});
-  const workerMeshes  = useRef({});
-  const throttleMap   = useRef({});
-  const wbsTickRef    = useRef(0);
-  const livePosTimer  = useRef(0);
+  const equipMeshes    = useRef({});
+  const workerMeshes   = useRef({});
+  const throttleMap    = useRef({});
+  const wbsTickRef     = useRef(0);
+  const livePosTimer   = useRef(0);
+  // 덤프트럭 작업 사이클 상태
+  const dumpWorkRef    = useRef({});
+  // WBS 배정 이동 상태 { [entityId]: { taskId, targetPos } }
+  const wbsMoveRef     = useRef({});
 
   // 장비 추가/제거/경로변경 동기화
   useEffect(() => {
@@ -884,6 +1084,8 @@ function SimulationManager({ running }) {
           st.t        = 0;
           if (equipMeshes.current[e.id])
             equipMeshes.current[e.id].position.set(...startPos);
+          // 덤프 사이클 상태 클리어 (외부에서 경로 변경됨 → 사이클 재초기화)
+          if (e.type === 'dump') delete dumpWorkRef.current[e.id];
         }
         st._route = e.route;
       }
@@ -921,6 +1123,72 @@ function SimulationManager({ running }) {
   useEffect(() => { workerRef.current = initWorkers; }, [initWorkers]);
   const structuresRef = useRef(structures);
   useEffect(() => { structuresRef.current = structures; }, [structures]);
+  const wbsTasksRef = useRef(wbsTasks);
+  useEffect(() => { wbsTasksRef.current = wbsTasks; }, [wbsTasks]);
+
+  // ── WBS 태스크 배정 시 이동 목적지 계산 ──────────────────────────
+  useEffect(() => {
+    initEquip.forEach(e => {
+      if (!e.assignedWbsTaskId) {
+        delete wbsMoveRef.current[e.id];
+        return;
+      }
+      const ref = wbsMoveRef.current[e.id];
+      if (ref?.taskId === e.assignedWbsTaskId) return; // 이미 처리됨
+
+      const task = wbsTasksRef.current.find(t => t.taskId === e.assignedWbsTaskId);
+      if (!task?.notes) return;
+      const match = task.notes.match(/^BIM:([^:]+):([^:]+)/);
+      if (!match) return;
+      const [, pid, elementType] = match;
+      const struct = structuresRef.current.find(s => s.bimProjectId === pid && s.elements?.length);
+      if (!struct) return;
+
+      const targetPos = findElementCentroid(struct, elementType);
+      if (!targetPos) return;
+
+      // 작업 루프 경로: 목적지 중심 4점 순환
+      const r = 2.5 + Math.random() * 1.5;
+      const workRoute = [
+        [targetPos[0],   0, targetPos[2]  ],
+        [targetPos[0]+r, 0, targetPos[2]  ],
+        [targetPos[0]+r, 0, targetPos[2]+r],
+        [targetPos[0],   0, targetPos[2]+r],
+      ];
+      const spd = e.type === 'crane' ? 0.3 : e.type === 'excavator' ? 0.6 : 1.5;
+      dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route: workRoute, speed: spd } });
+      const st = equipStateRef.current[e.id];
+      if (st) { st.routeIdx = 0; st.t = 0; }
+      delete dumpWorkRef.current[e.id]; // 덤프 사이클 중단
+      wbsMoveRef.current[e.id] = { taskId: e.assignedWbsTaskId, targetPos };
+    });
+
+    initWorkers.forEach(w => {
+      const ws = workerStateRef.current[w.id];
+      if (!ws) return;
+      if (!w.assignedWbsTaskId) {
+        ws.wbsTarget = null;
+        delete wbsMoveRef.current[w.id];
+        return;
+      }
+      const ref = wbsMoveRef.current[w.id];
+      if (ref?.taskId === w.assignedWbsTaskId) return;
+
+      const task = wbsTasksRef.current.find(t => t.taskId === w.assignedWbsTaskId);
+      if (!task?.notes) return;
+      const match = task.notes.match(/^BIM:([^:]+):([^:]+)/);
+      if (!match) return;
+      const [, pid, elementType] = match;
+      const struct = structuresRef.current.find(s => s.bimProjectId === pid && s.elements?.length);
+      if (!struct) return;
+
+      const targetPos = findElementCentroid(struct, elementType);
+      if (!targetPos) return;
+
+      ws.wbsTarget = targetPos;
+      wbsMoveRef.current[w.id] = { taskId: w.assignedWbsTaskId, targetPos };
+    });
+  }, [initEquip, initWorkers, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // BIM 구조물 전체를 포함하는 play area (동적 클램프 기준)
   const playAreaRef = useRef({ minX: -28, maxX: 28, minZ: -28, maxZ: 28 });
@@ -1060,13 +1328,147 @@ function SimulationManager({ running }) {
       }
     }
 
-    // 작업자 이동 — BIM 구조물 실제 footprint 안에서 분산, 없으면 랜덤워크
+    // ── 덤프트럭 작업 사이클 (굴착기 적재 → 반출 → 복귀 반복) ──────
+    const LOAD_WAIT  = 4.5;   // 적재 대기 시간 (초)
+    const DUMP_WAIT  = 3.0;   // 하역 대기 시간 (초)
+    const ARRIVE_R2  = 3.0 * 3.0;  // 도착 판정 반경² (m)
+
+    // 이 프레임의 굴착기 (auto 모드)
+    const excavator = equips.find(e => e.type === 'excavator' && e.mode === 'auto');
+    const excavSt   = excavator ? equipStateRef.current[excavator.id] : null;
+    const excavPos  = excavSt ? excavSt.pos : null;
+
+    equips.forEach(e => {
+      if (e.type !== 'dump' || e.mode !== 'auto') return;
+      if (e.assignedWbsTaskId) return; // WBS 배정 시 덤프 사이클 스킵
+      const st = equipStateRef.current[e.id];
+      if (!st) return;
+
+      let dw = dumpWorkRef.current[e.id];
+
+      // ── 최초 초기화 또는 외부에서 경로가 완전히 바뀌었을 때 ──
+      if (!dw) {
+        const target = excavPos
+          ? [excavPos[0] + (Math.random()-0.5)*3, 0, excavPos[2] + (Math.random()-0.5)*3]
+          : [2, 0, 2];
+        const route = buildDumpRoute(st.pos, target);
+        dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 4.0 } });
+        st.routeIdx = 0; st.t = 0;
+        dw = { phase: 'to_excav', timer: 0, arrived: false, dumpZone: null };
+        dumpWorkRef.current[e.id] = dw;
+        return;
+      }
+
+      // ── 대기 단계 (적재 / 하역) ──
+      if (dw.phase === 'wait_load' || dw.phase === 'wait_dump') {
+        dw.timer += delta;
+        const waitTime = dw.phase === 'wait_load' ? LOAD_WAIT : DUMP_WAIT;
+
+        if (dw.timer >= waitTime) {
+          dw.timer = 0;
+          const pa = playAreaRef.current;
+
+          if (dw.phase === 'wait_load') {
+            // 적재 완료 → 덤프 사이트로 출발 (흙 실어서 무거움 → 느림)
+            const ep = excavPos || [0, 0, 0];
+            dw.dumpZone = dw.dumpZone || findDumpZone(ep, pa);
+            const route = buildDumpRoute(st.pos, dw.dumpZone);
+            dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 2.5 } });
+            st.routeIdx = 0; st.t = 0;
+            // 굴착기 속도 복구
+            if (excavator) dispatch({ type: 'UPDATE_EQUIPMENT', id: excavator.id, updates: { speed: 0.8 } });
+            dw.phase = 'to_dump';
+            dw.arrived = false;
+
+          } else {
+            // 하역 완료 → 굴착기 쪽으로 복귀 (비어서 빠름)
+            const ep = excavPos || [0, 0, 0];
+            const angle = Math.atan2(st.pos[2] - ep[2], st.pos[0] - ep[0]);
+            const arrivePos = [
+              ep[0] + Math.cos(angle) * (3.5 + Math.random() * 2),
+              0,
+              ep[2] + Math.sin(angle) * (3.5 + Math.random() * 2),
+            ];
+            const route = buildDumpRoute(st.pos, arrivePos);
+            dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 4.5 } });
+            st.routeIdx = 0; st.t = 0;
+            dw.phase = 'to_excav';
+            dw.arrived = false;
+            dw.dumpZone = null; // 다음 사이클에서 재계산
+          }
+        }
+        return;
+      }
+
+      // ── 이동 단계: 마지막 웨이포인트 도착 감지 ──
+      if (!dw.arrived && e.route?.length > 0) {
+        const lastWP = e.route[e.route.length - 1];
+        const dx = st.pos[0] - lastWP[0];
+        const dz = st.pos[2] - lastWP[2];
+
+        if (dx*dx + dz*dz < ARRIVE_R2) {
+          dw.arrived = true;
+          dw.timer   = 0;
+          // 정차 (속도 0, 제자리 경로)
+          const here = [st.pos[0], 0, st.pos[2]];
+          dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: {
+            route: [here, here],
+            speed: 0,
+          }});
+          st.routeIdx = 0; st.t = 0;
+
+          if (dw.phase === 'to_excav') {
+            dw.phase = 'wait_load';
+            // 굴착기 속도 낮춤 (적재 중 = 조심조심)
+            if (excavator) dispatch({ type: 'UPDATE_EQUIPMENT', id: excavator.id, updates: { speed: 0.2 } });
+          } else {
+            dw.phase = 'wait_dump';
+          }
+        }
+      }
+    });
+
+    // 작업자 이동 — GPS 위치 우선, 없으면 BIM footprint 안 랜덤워크
     const bimStructList = structuresRef.current
       .filter(s => s.type === 'bim' && Array.isArray(s.elements) && s.elements.length > 0);
 
     workers.forEach((w, wIdx) => {
       const ws = workerStateRef.current[w.id];
       if (!ws) return;
+      // GPS 위치가 있으면 즉시 반영하고 랜덤워크 스킵
+      if (w.gpsPos) {
+        ws.pos = [w.gpsPos[0], w.gpsPos[1] || 0, w.gpsPos[2]];
+        workerMeshes.current[w.id]?.position.set(...ws.pos);
+        return;
+      }
+
+      // WBS 배정 작업 위치 이동
+      if (ws.wbsTarget) {
+        const tx = ws.wbsTarget[0], tz = ws.wbsTarget[2];
+        const dx = tx - ws.pos[0], dz = tz - ws.pos[2];
+        const dist = Math.sqrt(dx*dx + dz*dz);
+        if (dist > 3.5) {
+          // 목적지까지 이동
+          const spd = 1.8 * delta;
+          ws.pos = [ws.pos[0] + (dx/dist)*spd, 0, ws.pos[2] + (dz/dist)*spd];
+          workerMeshes.current[w.id]?.position.set(...ws.pos);
+          return;
+        }
+        // 목적지 도달 → 주변 반경 2m 내 랜덤워크
+        ws.dirTimer = (ws.dirTimer || 0) + delta;
+        if (!ws.dir || ws.dirTimer > 2.0) {
+          const angle = Math.random() * Math.PI * 2;
+          const r = Math.random() * 2;
+          const localTx = tx + Math.cos(angle)*r, localTz = tz + Math.sin(angle)*r;
+          const ldx = localTx - ws.pos[0], ldz = localTz - ws.pos[2];
+          const ll  = Math.sqrt(ldx*ldx + ldz*ldz) || 1;
+          ws.dir = [ldx/ll, ldz/ll]; ws.dirTimer = 0;
+        }
+        ws.pos = [ws.pos[0] + ws.dir[0]*0.9*delta, 0, ws.pos[2] + ws.dir[1]*0.9*delta];
+        workerMeshes.current[w.id]?.position.set(...ws.pos);
+        return;
+      }
+
       ws.dirTimer = (ws.dirTimer || 0) + delta;
       if (!ws.dir || ws.dirTimer > 2.5) {
         if (bimStructList.length > 0) {
@@ -1148,13 +1550,36 @@ function SimulationManager({ running }) {
       setStatusTick(n => n + 1);  // 최소한의 리렌더만 유발
     }
 
-    // WBS 공정률 자동 증가 (60초마다)
+    // 자동작업 중 WBS 진행률 누적 (RECALC_INTERVAL_MS마다 공정율 기반으로 증가)
     wbsTickRef.current += delta;
-    if (wbsTickRef.current > 60) {
+    if (wbsTickRef.current >= RECALC_INTERVAL_MS / 1000) {
       wbsTickRef.current = 0;
-      const active = equips.filter(e => e.mode === 'auto' && e.speed > 0).length;
-      if (active > 0)
-        dispatch({ type: 'UPDATE_TASK_PROGRESS', delta: 0.05 * active, taskIndex: Math.floor(Math.random() * 4) });
+      const activeEquip   = equips.filter(e => e.mode !== 'standby');
+      const unassignEquip = activeEquip.filter(e => !e.assignedWbsTaskId);
+
+      wbsTasksRef.current.forEach(task => {
+        if ((task.progress || 0) >= 100) return;
+        if (typeof task.notes !== 'string' || !/^BIM:[^:]+:[^:]+/.test(task.notes)) return;
+        const elementType = task.notes.split(':')[2];
+
+        // 이 태스크에 배정된 장비·작업자
+        const assignedEquip   = activeEquip.filter(e => e.assignedWbsTaskId === task.taskId);
+        const assignedWorkers = workers.filter(w => w.assignedWbsTaskId === task.taskId);
+
+        if (assignedEquip.length > 0 || assignedWorkers.length > 0) {
+          // 배정 전용 작업 (2× 속도 부스트)
+          const useEq = assignedEquip.length ? assignedEquip : (unassignEquip.length ? unassignEquip : activeEquip);
+          const useWk = assignedWorkers.length ? assignedWorkers : workers;
+          const { rate, blocked } = calcProgressRate(elementType, useWk, useEq);
+          if (blocked || rate <= 0) return;
+          dispatch({ type: 'UPDATE_TASK_PROGRESS', taskId: task.taskId, delta: rate * 7.0 });
+        } else if (unassignEquip.length > 0) {
+          // 비배정 활성 장비로 일반 작업
+          const { rate, blocked } = calcProgressRate(elementType, workers, unassignEquip);
+          if (blocked || rate <= 0) return;
+          dispatch({ type: 'UPDATE_TASK_PROGRESS', taskId: task.taskId, delta: rate * 3.5 });
+        }
+      });
     }
 
     // 사이드바용 실시간 좌표 — 150ms마다 dispatch (API 저장 트리거 안 함)
@@ -1256,6 +1681,71 @@ function SurveyOriginMarker({ origin }) {
   );
 }
 
+// ── 현장 카메라 마커 ──────────────────────────────────────────────
+function CameraMarkers() {
+  const { cameras } = useIntegration();
+  if (!cameras?.length) return null;
+  return (
+    <>
+      {cameras.filter(c => c.active).map(cam => {
+        const x = Number(cam.worldX) || 0;
+        const y = Number(cam.worldY) || 6;
+        const z = Number(cam.worldZ) || 0;
+        const yawRad = ((Number(cam.yaw) || 0) * Math.PI) / 180;
+        const fovH   = Number(cam.fovH) || 90;
+        const range  = 15; // FOV 가이드 선 길이 (m)
+        const halfFov = (fovH / 2) * Math.PI / 180;
+
+        // FOV 양쪽 가이드 선
+        const lx = x + Math.sin(yawRad - halfFov) * range;
+        const lz = z + Math.cos(yawRad - halfFov) * range;
+        const rx = x + Math.sin(yawRad + halfFov) * range;
+        const rz = z + Math.cos(yawRad + halfFov) * range;
+
+        const lineGeo = (x1, z1, x2, z2) => {
+          const pts = [new THREE.Vector3(x1, y, z1), new THREE.Vector3(x2, y, z2)];
+          return new THREE.BufferGeometry().setFromPoints(pts);
+        };
+
+        return (
+          <group key={cam.cameraId}>
+            {/* 카메라 본체 (작은 박스) */}
+            <mesh position={[x, y, z]}>
+              <boxGeometry args={[0.4, 0.25, 0.25]} />
+              <meshStandardMaterial color="#60a5fa" emissive="#1e40af" emissiveIntensity={0.5} />
+            </mesh>
+            {/* 마운트 기둥 */}
+            <mesh position={[x, y / 2, z]}>
+              <cylinderGeometry args={[0.05, 0.05, y, 6]} />
+              <meshStandardMaterial color="#374151" />
+            </mesh>
+            {/* FOV 가이드 선 */}
+            <line geometry={lineGeo(x, z, lx, lz)}>
+              <lineBasicMaterial color="#3b82f6" transparent opacity={0.35} />
+            </line>
+            <line geometry={lineGeo(x, z, rx, rz)}>
+              <lineBasicMaterial color="#3b82f6" transparent opacity={0.35} />
+            </line>
+            <line geometry={lineGeo(lx, lz, rx, rz)}>
+              <lineBasicMaterial color="#3b82f6" transparent opacity={0.20} />
+            </line>
+            {/* 레이블 */}
+            <Html center distanceFactor={30} position={[x, y + 0.6, z]}>
+              <div style={{
+                background: '#060f1add', color: '#60a5fa', fontSize: 8,
+                padding: '1px 5px', borderRadius: 3, border: '1px solid #1e3a5f',
+                whiteSpace: 'nowrap', pointerEvents: 'none', fontWeight: 700,
+              }}>
+                📷 {cam.name}
+              </div>
+            </Html>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
 // ── 씬 내부 ─────────────────────────────────────────────────────
 function SceneInner() {
   const { dangerZones, simulationRunning, terrain, selectedZoneId, surveyOrigin } = useIntegration();
@@ -1318,6 +1808,9 @@ function SceneInner() {
 
       {/* 측량 기준점 마커 */}
       <SurveyOriginMarker origin={surveyOrigin} />
+
+      {/* 현장 카메라 */}
+      <CameraMarkers />
 
       {/* 원점 축 표시 (X=빨강, Y=초록, Z=파랑) */}
       <axesHelper args={[10]} />

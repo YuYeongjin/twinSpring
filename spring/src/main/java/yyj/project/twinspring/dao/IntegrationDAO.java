@@ -21,5 +21,7 @@ public interface IntegrationDAO {
 
     void updateSimConfig(Map<String, Object> params);
 
+    void updateSiteOrigin(Map<String, Object> params);
+
     void deleteIntegrationProject(@Param("projectId") String projectId);
 }

@@ -177,6 +177,7 @@ public class WbsServiceImpl implements WbsService {
         dto.setSource((String) r.get("source"));
         dto.setSortOrder(toInt(r.get("sortOrder"), 0));
         dto.setCreatedAt((String) r.get("createdAt"));
+        dto.setParentTaskId((String) r.get("parentTaskId"));
         return dto;
     }
 
@@ -196,6 +197,7 @@ public class WbsServiceImpl implements WbsService {
         m.put("notes",          dto.getNotes());
         m.put("source",         dto.getSource() != null ? dto.getSource() : "MANUAL");
         m.put("sortOrder",      dto.getSortOrder() != null ? dto.getSortOrder() : 0);
+        m.put("parentTaskId",   dto.getParentTaskId());
         return m;
     }
 
