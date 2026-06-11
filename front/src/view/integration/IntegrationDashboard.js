@@ -155,24 +155,81 @@ function DataLoader({ selectedProject }) {
   useEffect(() => { liveRef.current = { wbsTasks, workers, equipment }; }, [wbsTasks, workers, equipment]);
 
   useEffect(() => {
+    // CPM 공종 진행 순서 (이 순서대로 하나씩 완료 후 다음 공종 진행)
+    const CPM_ORDER = ['IfcSlab', 'IfcColumn', 'IfcBeam', 'IfcWall', 'IfcPier'];
+
     const tick = () => {
       const { wbsTasks: tasks, workers: ws, equipment: eq } = liveRef.current;
-      tasks.forEach(task => {
-        if (typeof task.notes !== 'string' || !/^BIM:[^:]+:[^:]+/.test(task.notes)) return;
-        const elementType = task.notes.split(':')[2];
-        const { rate } = calcProgressRate(elementType, ws, eq);
-        const newProgress = calcRealTimeProgress(task, rate);
-        if (newProgress !== null) {
-          dispatch({ type: 'SET_TASK_PROGRESS', taskId: task.taskId, progress: newProgress });
+
+      // BIM 루트 태스크별로 CPM 순차 처리
+      const rootTasks = tasks.filter(t => /^BIM:[^:]+:ROOT$/.test(t.notes || ''));
+
+      rootTasks.forEach(rootTask => {
+        const bimId = (rootTask.notes || '').split(':')[1];
+        if (!bimId) return;
+
+        // 공종 태스크 (CPM 순서 정렬, ROOT 제외)
+        const elemTasks = tasks
+          .filter(t => {
+            const m = (t.notes || '').match(/^BIM:([^:]+):([^:]+)$/);
+            return m && m[1] === bimId && m[2] !== 'ROOT';
+          })
+          .sort((a, b) => {
+            const ia = CPM_ORDER.indexOf((a.notes || '').split(':')[2]);
+            const ib = CPM_ORDER.indexOf((b.notes || '').split(':')[2]);
+            return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+          });
+
+        if (elemTasks.length === 0) return;
+
+        // CPM 순서로 첫 번째 미완료 공종만 진행 (이전 공종이 100% 되어야 다음 시작)
+        const activeElem = elemTasks.find(t => (t.progress || 0) < 100);
+        if (!activeElem) {
+          dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: 100 });
+          return;
         }
+
+        const elementType = (activeElem.notes || '').split(':')[2];
+        const { rate, blocked } = calcProgressRate(elementType, ws, eq);
+
+        if (!blocked && rate > 0) {
+          // 세부 공정 태스크 (sortOrder 순 — 터파기→버림콘크리트→거푸집→...)
+          const subTasks = tasks
+            .filter(t => t.parentTaskId === activeElem.taskId)
+            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+          if (subTasks.length === 0) {
+            // 세부 공정 없을 때 공종 직접 진행
+            const p = calcRealTimeProgress(activeElem, rate);
+            if (p !== null) dispatch({ type: 'SET_TASK_PROGRESS', taskId: activeElem.taskId, progress: p });
+          } else {
+            // 첫 번째 미완료 세부 공정에만 진도 적용
+            const activeSub = subTasks.find(t => (t.progress || 0) < 100);
+            if (activeSub) {
+              const p = calcRealTimeProgress(activeSub, rate);
+              if (p !== null) dispatch({ type: 'SET_TASK_PROGRESS', taskId: activeSub.taskId, progress: p });
+            }
+
+            // 공종 진도 = (완료 세부공정 수 + 현재 세부공정 비율) / 전체 세부공정 수
+            const doneSubs = subTasks.filter(t => (t.progress || 0) >= 100).length;
+            const curSubProg = activeSub ? Math.min(100, activeSub.progress || 0) : 0;
+            const elemProg = ((doneSubs + curSubProg / 100) / subTasks.length) * 100;
+            dispatch({ type: 'SET_TASK_PROGRESS', taskId: activeElem.taskId, progress: Math.min(100, elemProg) });
+          }
+        }
+
+        // 루트 진도 = 공종 진도 평균
+        const rootProg = elemTasks.reduce((s, t) => s + (t.progress || 0), 0) / elemTasks.length;
+        dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: rootProg });
       });
-      // 활동 중인 장비 누적 시간 갱신 (mode !== 'standby' 이면 활동으로 간주)
+
+      // 활동 중인 장비 누적 시간 갱신
       dispatch({ type: 'TICK_EQUIP_ACTIVE', equipment: eq, intervalSec: RECALC_INTERVAL_MS / 1000 });
     };
     const id = setInterval(tick, RECALC_INTERVAL_MS);
-    tick(); // 즉시 한 번 실행
+    tick();
     return () => clearInterval(id);
-  }, [dispatch]); // dispatch만 의존 — 실제 데이터는 liveRef로 참조
+  }, [dispatch]);
 
   return null;
 }
