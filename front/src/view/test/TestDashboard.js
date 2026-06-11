@@ -103,14 +103,14 @@ function TransparentBimElement({ element, offsetX, offsetZ, isColliding }) {
   //               sizeY=깊이크기(→Three.js Z), sizeZ=높이크기(→Three.js Y)
   const size = useMemo(() => [
     Math.max(0.1, Number(element.sizeX)),
-    Math.max(0.1, Number(element.sizeZ)),  // Three.js height = BIM sizeZ
-    Math.max(0.1, Number(element.sizeY)),  // Three.js depth  = BIM sizeY
+    Math.max(0.1, Number(element.sizeY)),  // Three.js height = BIM sizeZ
+    Math.max(0.1, Number(element.sizeZ)),  // Three.js depth  = BIM sizeY
   ], [element.sizeX, element.sizeY, element.sizeZ]);
 
   const position = useMemo(() => [
     Number(element.positionX) + offsetX,
-    Number(element.positionZ) + size[1] / 2,  // Three.js Y = BIM positionZ + sizeZ/2
-    Number(element.positionY) + offsetZ,       // Three.js Z = BIM positionY
+    Number(element.positionY) + offsetZ,  // Three.js Y = BIM positionZ + sizeZ/2
+    Number(element.positionZ) + size[1] / 2,        // Three.js Z = BIM positionY
   ], [element.positionX, element.positionY, element.positionZ, size, offsetX, offsetZ]);
 
   const rotation = useMemo(() => [
@@ -533,7 +533,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
     });
     return {
       x: -((minX + maxX) / 2),
-      z: BUILDING_OFFSET_Z - ((minZ + maxZ) / 2),
+      z: -minZ,
     };
   }, [bimElements]);
 
@@ -586,7 +586,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
             });
             offsetRef.current = {
               x: -((minX + maxX) / 2),
-              z: BUILDING_OFFSET_Z - ((minZ + maxZ) / 2),
+              z: -minZ,
             };
           }
           setBimElements(elems);
