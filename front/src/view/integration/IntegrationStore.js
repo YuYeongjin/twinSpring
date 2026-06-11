@@ -54,6 +54,7 @@ function makeInitial() {
     livePositions:     { workers: {}, equipment: {} },
     equipActiveSecs:   {},  // { [equipId]: number } — 누적 활동 초 (mode !== 'standby')
     bimSimProgress:    {},  // { [structureId]: number } — 자동 작업 누적 진척도(%)
+    pendingBimReset:   [],  // BIM 프로젝트 ID 배열 — 다음 SET_REAL_DATA 시 해당 태스크 0% 초기화
   };
 }
 
@@ -141,30 +142,53 @@ function reducer(state, action) {
     }
 
     case 'SET_REAL_DATA': {
-      // 씬에 BIM 구조물이 이미 있는 상태에서 WBS 태스크가 로드되면 진도 초기화
-      // (이전 시뮬레이션에서 DB에 저장된 100% 값이 새 세션에서도 100%로 보이는 문제 방지)
-      const hasBimStructure = state.structures.some(s => s.type === 'bim');
-      const incomingTasks   = action.wbsTasks ?? state.wbsTasks;
-      const resolvedTasks   = hasBimStructure
-        ? incomingTasks.map(t => ({ ...t, progress: 0 }))
+      const incomingTasks = action.wbsTasks ?? state.wbsTasks;
+      const pending = state.pendingBimReset;
+      // pendingBimReset에 있는 BIM 프로젝트 태스크만 0% 초기화
+      // 30초 폴링 시에는 pendingBimReset이 비어있어 리셋하지 않음 → 시뮬 진행률 보존
+      const resolvedTasks = pending.length > 0
+        ? (() => {
+            const pendingSet = new Set(pending);
+            return incomingTasks.map(t => {
+              const m = (t.notes || '').match(/^BIM:([^:]+):/);
+              return (m && pendingSet.has(m[1])) ? { ...t, progress: 0 } : t;
+            });
+          })()
         : incomingTasks;
       return {
         ...state,
-        isLoading:      false,
-        linkedProjects: action.linkedProjects ?? state.linkedProjects,
-        wbsTasks:       resolvedTasks,
-        bimElements:    action.bimElements     ?? state.bimElements,
+        isLoading:        false,
+        linkedProjects:   action.linkedProjects ?? state.linkedProjects,
+        wbsTasks:         resolvedTasks,
+        bimElements:      action.bimElements    ?? state.bimElements,
+        pendingBimReset:  [],  // 처리 후 초기화
       };
     }
 
     case 'LOAD_SIM_CONFIG': {
       const loadedStructures = deserializeStructures(action.config.structures);
       const hasBim = loadedStructures.some(s => s.type === 'bim');
-      // BIM 구조물이 포함된 씬을 불러올 때 WBS 태스크 진도 초기화
-      // SET_REAL_DATA보다 먼저 실행될 경우 state.wbsTasks가 비어있어 무해함
-      const wbsTasks = hasBim && state.wbsTasks.length > 0
-        ? state.wbsTasks.map(t => ({ ...t, progress: 0 }))
-        : state.wbsTasks;
+      const bimIdsFromConfig = loadedStructures
+        .filter(s => s.type === 'bim' && s.bimProjectId)
+        .map(s => String(s.bimProjectId));
+
+      let wbsTasks = state.wbsTasks;
+      let pendingBimReset = state.pendingBimReset;
+
+      if (bimIdsFromConfig.length > 0) {
+        if (state.wbsTasks.length > 0) {
+          // SET_REAL_DATA가 먼저 도착한 경우 → 지금 바로 리셋
+          const bimIdSet = new Set(bimIdsFromConfig);
+          wbsTasks = state.wbsTasks.map(t => {
+            const m = (t.notes || '').match(/^BIM:([^:]+):/);
+            return (m && bimIdSet.has(m[1])) ? { ...t, progress: 0 } : t;
+          });
+        } else {
+          // wbsTasks 아직 미로드 → SET_REAL_DATA 도착 시 리셋하도록 표시
+          pendingBimReset = [...new Set([...state.pendingBimReset, ...bimIdsFromConfig])];
+        }
+      }
+
       return {
         ...state,
         workers:      action.config.workers     || state.workers,
@@ -175,6 +199,7 @@ function reducer(state, action) {
         surveyOrigin: action.config.surveyOrigin !== undefined ? action.config.surveyOrigin : state.surveyOrigin,
         bimSimProgress: hasBim ? {} : state.bimSimProgress,
         wbsTasks,
+        pendingBimReset,
       };
     }
 
@@ -319,15 +344,29 @@ function reducer(state, action) {
     // ── 구조물 ───────────────────────────────────────────────────
     case 'ADD_STRUCTURE': {
       const newStructures = [...state.structures, action.structure];
-      // BIM 구조물 추가 = 새 시뮬레이션 시작 → 전체 WBS 태스크 진도 초기화
-      // (이전 시뮬레이션에서 DB에 저장된 100% 값이 새 추가 시 즉시 100%로 보이는 문제 방지)
-      if (action.structure.type === 'bim') {
-        return {
-          ...state,
-          structures: newStructures,
-          wbsTasks: state.wbsTasks.map(t => ({ ...t, progress: 0 })),
-          bimSimProgress: {},
-        };
+      if (action.structure.type === 'bim' && action.structure.bimProjectId) {
+        const bimId = String(action.structure.bimProjectId);
+        const prefix = `BIM:${bimId}:`;
+
+        if (state.wbsTasks.length > 0) {
+          // 태스크 이미 로드됨 → 해당 BIM 태스크만 즉시 리셋 (기존 WBS 태스크 보호)
+          return {
+            ...state,
+            structures: newStructures,
+            wbsTasks: state.wbsTasks.map(t =>
+              (t.notes || '').startsWith(prefix) ? { ...t, progress: 0 } : t
+            ),
+            bimSimProgress: {},
+          };
+        } else {
+          // 아직 wbsTasks 없음 → SET_REAL_DATA 도착 시 리셋하도록 표시
+          return {
+            ...state,
+            structures: newStructures,
+            pendingBimReset: [...new Set([...state.pendingBimReset, bimId])],
+            bimSimProgress: {},
+          };
+        }
       }
       return { ...state, structures: newStructures };
     }
