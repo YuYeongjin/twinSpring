@@ -425,8 +425,8 @@ function StructuresLayer() {
                 const cascade   = getFloorProgress(fi, floors.length, avgPct);
                 const status    = getFloorStatus(cascade);
                 const color     = getFloorStatusColor(status);
-                // 3D 위치: 층 평균 높이 → toIntegrationCoords 후 Y축 = positionZ
-                const worldZ = floor.avgY;   // raw positionY
+                // 3D 위치: floor.avgY 는 이제 미터 단위 (detectFloors 스케일 보정)
+                const worldZ = floor.avgY;
                 return (
                   <Html
                     key={`fl_${fi}`}
@@ -1078,6 +1078,8 @@ function SimulationManager({ running }) {
   const livePosTimer   = useRef(0);
   // 덤프트럭 작업 사이클 상태
   const dumpWorkRef    = useRef({});
+  // 덤프트럭 물리 경로/속도 — dispatch 비동기 지연 없이 즉시 반영
+  const dumpPhysRef    = useRef({}); // { [id]: { route, speed, stopped } }
   // WBS 배정 이동 상태 { [entityId]: { taskId, targetPos } }
   const wbsMoveRef     = useRef({});
 
@@ -1100,7 +1102,7 @@ function SimulationManager({ running }) {
           if (equipMeshes.current[e.id])
             equipMeshes.current[e.id].position.set(...startPos);
           // 덤프 사이클 상태 클리어 (외부에서 경로 변경됨 → 사이클 재초기화)
-          if (e.type === 'dump') delete dumpWorkRef.current[e.id];
+          if (e.type === 'dump') { delete dumpWorkRef.current[e.id]; delete dumpPhysRef.current[e.id]; }
         }
         st._route = e.route;
       }
@@ -1175,6 +1177,7 @@ function SimulationManager({ running }) {
       const st = equipStateRef.current[e.id];
       if (st) { st.routeIdx = 0; st.t = 0; }
       delete dumpWorkRef.current[e.id]; // 덤프 사이클 중단
+      delete dumpPhysRef.current[e.id];
       wbsMoveRef.current[e.id] = { taskId: e.assignedWbsTaskId, targetPos };
     });
 
@@ -1272,50 +1275,61 @@ function SimulationManager({ running }) {
     equips.forEach(e => {
       const st = equipStateRef.current[e.id];
       if (!st) return;
-      st.prevPos      = [...st.pos];   // 위치
-      st.prevT        = st.t;          // 루트 진행도
-      st.prevRouteIdx = st.routeIdx;   // 루트 구간
+      st.prevPos      = [...st.pos];
+      st.prevT        = st.t;
+      st.prevRouteIdx = st.routeIdx;
+
       if (e.mode === 'gps' && e.gpsPos) {
         st.pos = [e.gpsPos[0], e.gpsPos[1] || 0, e.gpsPos[2]];
         equipMeshes.current[e.id]?.position.set(...st.pos);
-      } else if (e.mode === 'auto' && e.speed > 0 && e.route?.length >= 2) {
-        const n = e.route.length;
-        let fi = st.routeIdx % n;
-        let ti = (fi + 1) % n;
-        let fr = e.route[fi], to = e.route[ti];
-        let dx = to[0] - fr[0], dz = to[2] - fr[2];
-        let len = Math.sqrt(dx * dx + dz * dz);
-
-        if (len < 0.01) {
-          st.routeIdx = ti;
-          fi = ti; ti = (ti + 1) % n;
-          fr = e.route[fi]; to = e.route[ti];
-          dx = to[0] - fr[0]; dz = to[2] - fr[2];
-          len = Math.sqrt(dx * dx + dz * dz) || 0.001;
-        }
-
-        st.t += (e.speed * delta) / len;
-
-        while (st.t >= 1) {
-          st.t -= 1;
-          st.routeIdx = (st.routeIdx + 1) % n;
-          const nfi = st.routeIdx, nti = (nfi + 1) % n;
-          const nlen = Math.hypot(
-            e.route[nti][0] - e.route[nfi][0],
-            e.route[nti][2] - e.route[nfi][2]
-          );
-          if (nlen < 0.01) { st.routeIdx = nti; st.t = 0; break; }
-        }
-
-        const f2 = e.route[st.routeIdx % n];
-        const t2 = e.route[(st.routeIdx + 1) % n];
-        st.pos = [
-          f2[0] + (t2[0] - f2[0]) * st.t,
-          f2[1] || 0,
-          f2[2] + (t2[2] - f2[2]) * st.t,
-        ];
-        equipMeshes.current[e.id]?.position.set(...st.pos);
+        return;
       }
+      if (e.mode !== 'auto') return;
+
+      // 덤프트럭은 dumpPhysRef 우선 (dispatch 비동기 딜레이 없이 즉시 반영)
+      const dp = e.type === 'dump' ? dumpPhysRef.current[e.id] : null;
+      if (dp?.stopped) return; // 정차 중 — 위치 유지
+      const route = dp ? dp.route : e.route;
+      const speed = dp ? dp.speed : e.speed;
+
+      if (!route || route.length < 2 || speed <= 0) return;
+
+      const n = route.length;
+      let fi = st.routeIdx % n;
+      let ti = (fi + 1) % n;
+      let fr = route[fi], to = route[ti];
+      let dx = to[0] - fr[0], dz = to[2] - fr[2];
+      let len = Math.sqrt(dx * dx + dz * dz);
+
+      if (len < 0.01) {
+        st.routeIdx = ti;
+        fi = ti; ti = (ti + 1) % n;
+        fr = route[fi]; to = route[ti];
+        dx = to[0] - fr[0]; dz = to[2] - fr[2];
+        len = Math.sqrt(dx * dx + dz * dz) || 0.001;
+      }
+
+      st.t += (speed * delta) / len;
+
+      while (st.t >= 1) {
+        st.t -= 1;
+        st.routeIdx = (st.routeIdx + 1) % n;
+        const nfi = st.routeIdx, nti = (nfi + 1) % n;
+        const nlen = Math.hypot(
+          route[nti][0] - route[nfi][0],
+          route[nti][2] - route[nfi][2]
+        );
+        if (nlen < 0.01) { st.routeIdx = nti; st.t = 0; break; }
+      }
+
+      const f2 = route[st.routeIdx % n];
+      const t2 = route[(st.routeIdx + 1) % n];
+      st.pos = [
+        f2[0] + (t2[0] - f2[0]) * st.t,
+        f2[1] || 0,
+        f2[2] + (t2[2] - f2[2]) * st.t,
+      ];
+      equipMeshes.current[e.id]?.position.set(...st.pos);
     });
 
     // ── 장비 충돌 차단: 겹치면 이동 취소 (밀어내기 X, 진입 금지) ────
@@ -1364,9 +1378,17 @@ function SimulationManager({ running }) {
 
       let dw = dumpWorkRef.current[e.id];
 
-      // ── 최초 초기화 또는 외부에서 경로가 완전히 바뀌었을 때 ──
+      // ── 헬퍼: dumpPhysRef 갱신 (즉시 적용, dispatch 없음) ──
+      const setDumpPhys = (route, speed) => {
+        dumpPhysRef.current[e.id] = { route, speed, stopped: false };
+        st.routeIdx = 0; st.t = 0;
+      };
+      const stopDump = () => {
+        dumpPhysRef.current[e.id] = { route: null, speed: 0, stopped: true };
+      };
+
+      // ── 최초 초기화 ──
       if (!dw) {
-        // 굴착기 옆 6~8m 지점에 대기 (겹침 방지)
         const target = excavPos
           ? (() => {
               const angle = Math.atan2(st.pos[2] - excavPos[2], st.pos[0] - excavPos[0]);
@@ -1374,9 +1396,7 @@ function SimulationManager({ running }) {
               return [excavPos[0] + Math.cos(angle) * dist, 0, excavPos[2] + Math.sin(angle) * dist];
             })()
           : [8, 0, 2];
-        const route = buildDumpRoute(st.pos, target);
-        dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 4.0 } });
-        st.routeIdx = 0; st.t = 0;
+        setDumpPhys(buildDumpRoute(st.pos, target), 4.0);
         dw = { phase: 'to_excav', timer: 0, arrived: false, dumpZone: null };
         dumpWorkRef.current[e.id] = dw;
         return;
@@ -1392,19 +1412,14 @@ function SimulationManager({ running }) {
           const pa = playAreaRef.current;
 
           if (dw.phase === 'wait_load') {
-            // 적재 완료 → 덤프 사이트로 출발 (흙 실어서 무거움 → 느림)
             const ep = excavPos || [0, 0, 0];
             dw.dumpZone = dw.dumpZone || resolveDumpTarget(ep, pa, zonesRef.current);
-            const route = buildDumpRoute(st.pos, dw.dumpZone);
-            dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 2.5 } });
-            st.routeIdx = 0; st.t = 0;
+            setDumpPhys(buildDumpRoute(st.pos, dw.dumpZone), 2.5);
             // 굴착기 속도 복구
             if (excavator) dispatch({ type: 'UPDATE_EQUIPMENT', id: excavator.id, updates: { speed: 0.8 } });
             dw.phase = 'to_dump';
             dw.arrived = false;
-
           } else {
-            // 하역 완료 → 굴착기 옆 6~8m 지점으로 복귀 (비어서 빠름)
             const ep = excavPos || [0, 0, 0];
             const angle = Math.atan2(st.pos[2] - ep[2], st.pos[0] - ep[0]);
             const arrivePos = [
@@ -1412,37 +1427,31 @@ function SimulationManager({ running }) {
               0,
               ep[2] + Math.sin(angle) * (6 + Math.random() * 2),
             ];
-            const route = buildDumpRoute(st.pos, arrivePos);
-            dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: { route, speed: 4.5 } });
-            st.routeIdx = 0; st.t = 0;
+            setDumpPhys(buildDumpRoute(st.pos, arrivePos), 4.5);
             dw.phase = 'to_excav';
             dw.arrived = false;
-            dw.dumpZone = null; // 다음 사이클에서 재계산
+            dw.dumpZone = null;
           }
         }
         return;
       }
 
       // ── 이동 단계: 마지막 웨이포인트 도착 감지 ──
-      if (!dw.arrived && e.route?.length > 0) {
-        const lastWP = e.route[e.route.length - 1];
+      if (!dw.arrived) {
+        const dp = dumpPhysRef.current[e.id];
+        const route = dp?.route;
+        if (!route?.length) return;
+        const lastWP = route[route.length - 1];
         const dx = st.pos[0] - lastWP[0];
         const dz = st.pos[2] - lastWP[2];
 
         if (dx*dx + dz*dz < ARRIVE_R2) {
           dw.arrived = true;
           dw.timer   = 0;
-          // 정차 (속도 0, 제자리 경로)
-          const here = [st.pos[0], 0, st.pos[2]];
-          dispatch({ type: 'UPDATE_EQUIPMENT', id: e.id, updates: {
-            route: [here, here],
-            speed: 0,
-          }});
-          st.routeIdx = 0; st.t = 0;
+          stopDump(); // 즉시 정차 — dispatch 불필요
 
           if (dw.phase === 'to_excav') {
             dw.phase = 'wait_load';
-            // 굴착기 속도 낮춤 (적재 중 = 조심조심)
             if (excavator) dispatch({ type: 'UPDATE_EQUIPMENT', id: excavator.id, updates: { speed: 0.2 } });
           } else {
             dw.phase = 'wait_dump';
