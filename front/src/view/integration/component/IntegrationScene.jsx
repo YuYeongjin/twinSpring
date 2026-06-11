@@ -1346,6 +1346,9 @@ function SimulationManager({ running }) {
         // 굴착기-덤프트럭 쌍은 협동 작업이므로 충돌 무시
         if ((ea.type === 'excavator' && eb.type === 'dump') ||
             (ea.type === 'dump'      && eb.type === 'excavator')) continue;
+        // 덤프 사이클 진행 중인 덤프트럭은 이동 경로 우선권 — 충돌 롤백 제외
+        if (ea.type === 'dump' && dumpWorkRef.current[ea.id]) continue;
+        if (eb.type === 'dump' && dumpWorkRef.current[eb.id]) continue;
         const dx = sa.pos[0] - sb.pos[0];
         const dz = sa.pos[2] - sb.pos[2];
         const rb = (eb.size ? Math.max(eb.size[0], eb.size[2]) : 3.5) / 2 + 1.0;
