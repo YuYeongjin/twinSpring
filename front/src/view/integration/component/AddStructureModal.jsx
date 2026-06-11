@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import AxiosCustom from '../../../axios/AxiosCustom';
 import { parseIfcFile } from '../../../utils/ifcImporter';
-import { useIntegrationDispatch } from '../IntegrationStore';
+import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
 import { useT } from '../../../i18n/LanguageContext';
 
 const TAB = { BIM: 'bim', IFC: 'ifc' };
@@ -316,10 +316,22 @@ function IfcTab({ onAdd, onClose }) {
 export default function AddStructureModal({ onClose }) {
   const t = useT('integrationProject');
   const dispatch = useIntegrationDispatch();
+  const { projectMeta } = useIntegration();
   const [tab, setTab] = useState(TAB.BIM);
 
-  const handleAdd = (structure) => {
+  const handleAdd = async (structure) => {
     dispatch({ type: 'ADD_STRUCTURE', structure });
+    // BIM 구조물 추가 시 통합 프로젝트의 WBS와 project_link 자동 생성
+    if (structure.type === 'bim' && structure.bimProjectId && projectMeta?.wbsProjectId) {
+      try {
+        await AxiosCustom.post('/api/project-link', {
+          wbsProjectId:    projectMeta.wbsProjectId,
+          linkedType:      'BIM',
+          linkedProjectId: String(structure.bimProjectId),
+          note:            'auto',
+        });
+      } catch { /* 이미 연결됐거나 서버 에러 — 무시 */ }
+    }
   };
 
   const tabBtn = (tabKey, label) => (

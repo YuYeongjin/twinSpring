@@ -534,9 +534,22 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
 
   function renderReadCell(task, col) {
     if (col.key === "progress") {
+      const isBimLinked = /^BIM:[^:]+:[^:]+/.test(task.notes || '');
       return (
-        <ProgressCell startDate={task.startDate} endDate={task.endDate}
-                      execProgress={task.progress ?? 0} isEditing={false} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <ProgressCell startDate={task.startDate} endDate={task.endDate}
+                        execProgress={task.progress ?? 0} isEditing={false} />
+          {isBimLinked && (
+            <span style={{
+              fontSize: 8, color: '#4ade80', background: '#0c2a1a',
+              border: '1px solid #22c55e30', borderRadius: 3,
+              padding: '0 4px', lineHeight: '14px', alignSelf: 'flex-start',
+              whiteSpace: 'nowrap',
+            }}>
+              통합관제
+            </span>
+          )}
+        </div>
       );
     }
     if (col.key === "predecessorIds") return renderPredLabel(task.predecessorIds);
