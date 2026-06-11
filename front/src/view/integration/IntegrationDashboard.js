@@ -14,24 +14,32 @@ import DailyReport                     from './component/DailyReport';
 import { useT }                        from '../../i18n/LanguageContext';
 import { calcProgressRate, calcRealTimeProgress, RECALC_INTERVAL_MS } from './progressEngine';
 
-// ── GPS WebSocket 구독 (장비 ID별 개별 토픽) ────────────────
+// ── GPS WebSocket 구독 (장비·작업자 ID별 개별 토픽) ────────────────
 function GpsLoader() {
-  const { equipment, referencePoint } = useIntegration();
+  const { equipment, workers, gpsMode, referencePoint } = useIntegration();
   const dispatch    = useIntegrationDispatch();
   const equipRef    = useRef(equipment);
+  const workerRef   = useRef(workers);
   const refPointRef = useRef(referencePoint);
 
   useEffect(() => { equipRef.current    = equipment;      }, [equipment]);
+  useEffect(() => { workerRef.current   = workers;        }, [workers]);
   useEffect(() => { refPointRef.current = referencePoint; }, [referencePoint]);
 
-  // GPS 모드이면서 deviceId 가 설정된 장비 → 고유 ID 목록
-  const deviceIds = [...new Set(
+  // 장비: GPS 모드이면서 deviceId 있는 것 / 작업자: gpsMode ON + deviceId 있는 것
+  const equipDeviceIds  = [...new Set(
     equipment.filter(e => e.mode === 'gps' && e.gpsDeviceId).map(e => e.gpsDeviceId)
   )];
-  const deviceIdsKey = deviceIds.join(',');
+  const workerDeviceIds = [...new Set(
+    gpsMode
+      ? workers.filter(w => w.gpsDeviceId).map(w => w.gpsDeviceId)
+      : []
+  )];
+  const allIds    = [...new Set([...equipDeviceIds, ...workerDeviceIds])];
+  const allIdsKey = allIds.join(',');
 
   useEffect(() => {
-    if (deviceIds.length === 0) return;
+    if (allIds.length === 0) return;
 
     function buildWsUrl() {
       if (process.env.REACT_APP_API_URL)
@@ -49,9 +57,14 @@ function GpsLoader() {
         const x = (data.lng - refLng) * 111320 * Math.cos(refLat * Math.PI / 180);
         const z = -(data.lat - refLat) * 110540;
         const pos = [x, 0, z];
+        // 장비 위치 갱신
         equipRef.current
           .filter(e => e.mode === 'gps' && e.gpsDeviceId === deviceId)
           .forEach(e => dispatch({ type: 'SET_EQUIP_GPS_POS', id: e.id, pos }));
+        // 작업자 위치 갱신
+        workerRef.current
+          .filter(w => w.gpsDeviceId === deviceId)
+          .forEach(w => dispatch({ type: 'SET_WORKER_GPS_POS', id: w.id, pos }));
       } catch { /* parse 실패 무시 */ }
     }
 
@@ -59,15 +72,14 @@ function GpsLoader() {
       webSocketFactory: () => new SockJS(buildWsUrl()),
       reconnectDelay: 5000,
       onConnect: () => {
-        // 각 장비 ID별로 /topic/gps/{deviceId} 구독
-        deviceIds.forEach(deviceId => {
+        allIds.forEach(deviceId => {
           client.subscribe(`/topic/gps/${deviceId}`, msg => handleMsg(deviceId, msg));
         });
       },
     });
     client.activate();
     return () => { client.deactivate(); };
-  }, [deviceIdsKey, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allIdsKey, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return null;
 }
