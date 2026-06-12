@@ -25,6 +25,17 @@ public class BimElementDTO {
     private Double rotationY;
     private Double rotationZ;
 
+    // ── IFC 원본 좌표 (Z-up, 정규화 전) — GIS / AI Agent 위치 추적용 ─
+    private Double ifcWorldX;
+    private Double ifcWorldY;
+    private Double ifcWorldZ;
+
+    // ── IFC 구조 분석 결과 — GlobalId, Name, 층, 동 ────────────────
+    private String globalId;
+    private String ifcName;
+    private String storey;
+    private String building;
+
     /*
     @Override
     public String toString() {

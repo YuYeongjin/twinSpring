@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 const HIT_MATERIAL = new THREE.MeshBasicMaterial({
@@ -8,10 +9,22 @@ const HIT_MATERIAL = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
+// ── 진척도 색상 ────────────────────────────────────────────────────
+function getProgressColor(progress) {
+  if (progress === 0)   return new THREE.Color('#6b7280'); // 미시공 회색
+  if (progress === 100) return new THREE.Color('#4ade80'); // 완료 초록
+  if (progress >= 70)   return new THREE.Color('#60a5fa'); // 시공중 파랑
+  if (progress >= 30)   return new THREE.Color('#fbbf24'); // 시공중 노랑
+  return new THREE.Color('#f97316');                        // 시공중 주황
+}
+
 // ================================================================
 // 단일 IFC 요소 메시
 // ================================================================
-function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedElements, onMeshMount }) {
+function IFCMesh({
+  mesh, onElementSelect, modelData, selectedElement, selectedElements,
+  onMeshMount, progressMap, progressMode,
+}) {
   const meshRef = useRef();
 
   const elementId = mesh.elementId;
@@ -22,6 +35,8 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
 
   const isSelected      = selectedElement?.data?.elementId === elementId;
   const isMultiSelected = selectedElements?.has(elementId) && !isSelected;
+  const progress        = progressMode ? (progressMap?.get(elementId) ?? -1) : -1;
+  const hasProgress     = progress >= 0;
 
   // meshRef 등록 / 해제
   useEffect(() => {
@@ -47,24 +62,58 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
 
   useEffect(() => () => geometry.dispose(), [geometry]);
 
-  const material = useMemo(() => {
+  // ── 기본 재질 (진척도 없을 때) ─────────────────────────────────
+  const baseMaterial = useMemo(() => {
     const [r, g, b, a] = mesh.color;
     let color;
     if (isSelected)           color = new THREE.Color('#00d4ff');
     else if (isMultiSelected) color = new THREE.Color('#a78bfa');
+    else if (hasProgress)     color = getProgressColor(progress);
     else                      color = new THREE.Color(r, g, b);
 
     return new THREE.MeshStandardMaterial({
       color,
       transparent: isSelected || isMultiSelected ? false : a < 0.99,
-      opacity:     isSelected || isMultiSelected ? 1.0 : a,
+      opacity:     isSelected || isMultiSelected ? 1.0  : a,
       side: THREE.DoubleSide,
       roughness: 0.7,
       metalness: 0.05,
     });
-  }, [mesh.color, isSelected, isMultiSelected]);
+  }, [mesh.color, isSelected, isMultiSelected, hasProgress, progress]);
 
-  useEffect(() => () => material.dispose(), [material]);
+  useEffect(() => () => baseMaterial.dispose(), [baseMaterial]);
+
+  // ── 진척도 분할 재질 (1~99% 시공중) ───────────────────────────
+  const { completedMat, remainingMat, clipHeight } = useMemo(() => {
+    if (!hasProgress || progress <= 0 || progress >= 100 || !element) {
+      return { completedMat: null, remainingMat: null, clipHeight: null };
+    }
+
+    // Three.js 좌표: positionZ = 높이 기저, sizeZ = 높이
+    const base = (Number(element.positionZ) || 0);
+    const height = (Number(element.sizeZ) || 1);
+    const ch = base + (progress / 100) * height;
+
+    // 완료 부분: y < ch 유지  →  clip where y > ch  →  Plane(0,-1,0, ch)
+    const cMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color('#4ade80'),
+      side: THREE.DoubleSide, roughness: 0.6, metalness: 0.1,
+      clippingPlanes: [new THREE.Plane(new THREE.Vector3(0, -1, 0), ch)],
+    });
+
+    // 잔여 부분: y > ch 유지  →  clip where y < ch  →  Plane(0,1,0,-ch)
+    const rMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color('#6b7280'),
+      transparent: true, opacity: 0.55,
+      side: THREE.DoubleSide, roughness: 0.8, metalness: 0,
+      clippingPlanes: [new THREE.Plane(new THREE.Vector3(0, 1, 0), -ch)],
+    });
+
+    return { completedMat: cMat, remainingMat: rMat, clipHeight: ch };
+  }, [hasProgress, progress, element]);
+
+  useEffect(() => () => { completedMat?.dispose(); remainingMat?.dispose(); },
+    [completedMat, remainingMat]);
 
   const handleClick = (e) => {
     e.stopPropagation();
@@ -79,8 +128,7 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
     onElementSelect(target, meshRef, e.shiftKey);
   };
 
-  // 좌표 규칙: positionX/Y = 평면(2D), positionZ = 높이(3D)
-  // Three.js: X=posX, Y(up)=posZ+sizeZ/2, Z(depth)=posY
+  // 히트박스
   const hitPos = useMemo(() => {
     if (!element) return null;
     return [
@@ -99,19 +147,57 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
     ];
   }, [element]);
 
+  // 진척도 1~99%: 두 개의 메시로 분할 렌더링
+  if (completedMat && remainingMat && clipHeight !== null) {
+    return (
+      <>
+        {/* 완료 부분 (녹색, 아래) */}
+        <mesh
+          ref={meshRef}
+          geometry={geometry}
+          material={completedMat}
+          onClick={handleClick}
+          onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+          onPointerOut={() => { document.body.style.cursor = ''; }}
+          castShadow receiveShadow
+        />
+        {/* 잔여 부분 (회색 반투명, 위) */}
+        <mesh
+          geometry={geometry}
+          material={remainingMat}
+          onClick={handleClick}
+          onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+          onPointerOut={() => { document.body.style.cursor = ''; }}
+          castShadow receiveShadow
+        />
+        {hitPos && hitArgs && (
+          <mesh
+            position={hitPos}
+            material={HIT_MATERIAL}
+            onClick={handleClick}
+            onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+            onPointerOut={() => { document.body.style.cursor = ''; }}
+          >
+            <boxGeometry args={hitArgs} />
+          </mesh>
+        )}
+      </>
+    );
+  }
+
+  // 단일 메시 (기본)
   return (
     <>
       <mesh
         ref={meshRef}
         geometry={geometry}
-        material={material}
+        material={baseMaterial}
         onClick={handleClick}
         onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
         onPointerOut={() => { document.body.style.cursor = ''; }}
         castShadow
         receiveShadow
       />
-
       {hitPos && hitArgs && (
         <mesh
           position={hitPos}
@@ -128,14 +214,25 @@ function IFCMesh({ mesh, onElementSelect, modelData, selectedElement, selectedEl
 }
 
 // ================================================================
+// localClippingEnabled 활성화 (ClippingPlane 사용을 위해 필요)
+// ================================================================
+function ClippingEnabler() {
+  const { gl } = useThree();
+  useEffect(() => {
+    gl.localClippingEnabled = true;
+    return () => { gl.localClippingEnabled = false; };
+  }, [gl]);
+  return null;
+}
+
+// ================================================================
 // IFC 메시 그룹
-// ref를 통해 선택된 메시의 Three.js transform을 직접 조작한다.
 // ================================================================
 export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
-  { ifcMeshes, modelData, onElementSelect, selectedElement, selectedElements },
+  { ifcMeshes, modelData, onElementSelect, selectedElement, selectedElements,
+    progressMap, progressMode },
   ref
 ) {
-  // elementId → React ref(meshRef) 맵
   const meshRefsMap = useRef(new Map());
 
   const handleMeshMount = useCallback((elementId, meshRef) => {
@@ -143,16 +240,13 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
     else         meshRefsMap.current.delete(elementId);
   }, []);
 
-  // Scene이 호출할 imperative API
   useImperativeHandle(ref, () => ({
-    // 현재 메시 position 반환 (드래그 시작 시점 스냅샷용)
     getMeshPosition(elementId) {
       const mRef = meshRefsMap.current.get(elementId);
       if (!mRef?.current) return { x: 0, y: 0, z: 0 };
       const { x, y, z } = mRef.current.position;
       return { x, y, z };
     },
-    // translate: 초기 position + delta로 절대 위치 설정 (드래그 중 연속 호출용)
     applyTranslateAbsolute(selectedIds, initialMeshPositions, dx, dy, dz) {
       for (const id of selectedIds) {
         const mRef = meshRefsMap.current.get(id);
@@ -161,7 +255,6 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
         mRef.current.position.set(init.x + dx, init.y + dy, init.z + dz);
       }
     },
-    // translate: 선택된 메시들의 position에 델타를 더한다 (릴리즈 후 1회 호출용)
     applyTranslate(selectedIds, dx, dy, dz) {
       for (const id of selectedIds) {
         const mRef = meshRefsMap.current.get(id);
@@ -172,7 +265,6 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
         }
       }
     },
-    // rotate: 각 메시를 centroid(THREE.Vector3) 주위로 quaternion 회전
     applyRotate(selectedIds, centroid, quaternion) {
       for (const id of selectedIds) {
         const mRef = meshRefsMap.current.get(id);
@@ -184,7 +276,6 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
         mRef.current.rotation.setFromQuaternion(q);
       }
     },
-    // scale: 각 메시를 centroid 기준으로 (sx,sy,sz) 배율 적용
     applyScale(selectedIds, centroid, sx, sy, sz) {
       const scaleVec = new THREE.Vector3(sx, sy, sz);
       for (const id of selectedIds) {
@@ -201,6 +292,9 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
 
   return (
     <group>
+      {/* 진척도 시각화 모드일 때 localClippingEnabled 활성화 */}
+      {progressMode && <ClippingEnabler />}
+
       {ifcMeshes.map(mesh => (
         <IFCMesh
           key={mesh.expressId}
@@ -210,6 +304,8 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
           selectedElement={selectedElement}
           selectedElements={selectedElements}
           onMeshMount={handleMeshMount}
+          progressMap={progressMap}
+          progressMode={progressMode}
         />
       ))}
     </group>
