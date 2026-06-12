@@ -426,8 +426,8 @@ function IfcImportModal({ onClose, onImport }) {
         setErrorMsg(t('projectCreationFailed'));
         setPhase("error");
       }
-    }, storeys);
-  }, [parsedData, projectName, projectType, onImport, onClose, t]);
+    }, storeys, selectedFile);
+  }, [parsedData, projectName, projectType, onImport, onClose, t, selectedFile]);
 
   const parsedElements = parsedData?.elements ?? null;
   const typeStats = parsedElements

@@ -23,6 +23,8 @@ public interface BimDAO {
 
     void deleteLayersByProject(@Param("projectId") String projectId);
 
+    void insertLayersBatch(List<Map<String, Object>> layers);
+
     // ── 부재 커스텀 색상 ────────────────────────────────────────────
     List<Map<String, Object>> getColorsByProject(@Param("projectId") String projectId);
 
@@ -54,6 +56,9 @@ public interface BimDAO {
     Map<String, Object> getProjectById(@Param("projectId") String projectId);
 
     void updateProjectName(Map<String, Object> params);
+
+    /** IFC 파일 업로드 완료 후 storage 정보 저장 */
+    void updateProjectStorage(Map<String, Object> params);
 
     List<Map<String, Object>> getElementStatsByProject(@Param("projectId") String projectId);
 

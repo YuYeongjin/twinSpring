@@ -22,6 +22,11 @@ public class BimProjectDTO {
     private Double ifcOffsetZ;    // Three.js Y 정규화 오프셋 (IFC Z 최솟값)
     private Double ifcScale;      // IFC 단위 스케일 (mm→m: 0.001)
 
+    // ── Object Storage 연동 (IFC 원본 파일) ──────────────────────────
+    private String storageKey;        // MinIO/S3 오브젝트 키
+    private String originalFilename;  // 사용자 업로드 원본 파일명
+    private String uploadedAt;        // 업로드 완료 시각 (ISO-8601)
+
     public void setProjectId(String projectId) {
         this.projectId = projectId;
     }

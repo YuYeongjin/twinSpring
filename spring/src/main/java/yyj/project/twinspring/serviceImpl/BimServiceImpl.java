@@ -21,7 +21,12 @@ import yyj.project.twinspring.dto.BimProjectDTO;
 import yyj.project.twinspring.dto.BimStoreyDTO;
 import yyj.project.twinspring.dto.BimWbsNodeDTO;
 import yyj.project.twinspring.service.BimService;
+import yyj.project.twinspring.storage.StorageException;
+import yyj.project.twinspring.storage.StorageService;
 
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.InputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -32,13 +37,15 @@ public class BimServiceImpl implements BimService {
 
     private final WebClient webClient;
     private final BimDAO bimDAO;
+    private final StorageService storageService;
 
     @Autowired
     private ObjectMapper objectMapper;
 
-    public BimServiceImpl(WebClient webClient, BimDAO bimDAO) {
+    public BimServiceImpl(WebClient webClient, BimDAO bimDAO, StorageService storageService) {
         this.webClient = webClient;
         this.bimDAO = bimDAO;
+        this.storageService = storageService;
     }
 
     // ── JSON 변환 헬퍼 ─────────────────────────────────────────────
@@ -116,11 +123,34 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public ResponseEntity<Mono<Void>> deleteProject(String projectId) {
-        return ResponseEntity.ok(
-                webClient.delete()
-                        .uri("/api/bim/project/{projectId}", projectId)
-                        .retrieve()
-                        .bodyToMono(Void.class));
+        // storage_key를 미리 조회해 두어야 C# 삭제 후에도 사용 가능
+        String storageKey = getStorageKey(projectId);
+
+        Mono<Void> deleteMono = webClient.delete()
+                .uri("/api/bim/project/{projectId}", projectId)
+                .retrieve()
+                .bodyToMono(Void.class)
+                .doOnSuccess(v -> {
+                    // 로컬 전용 테이블 정리 (CASCADE 미적용 테이블)
+                    try {
+                        bimDAO.deleteLayersByProject(projectId);
+                        bimDAO.deleteColorsByProject(projectId);
+                        bimDAO.deleteLinesByProject(projectId);
+                    } catch (Exception e) {
+                        log.warn("[BIM] 프로젝트 로컬 리소스 정리 실패: projectId={}, {}", projectId, e.getMessage());
+                    }
+                    // Object Storage 파일 삭제
+                    if (storageKey != null) {
+                        try {
+                            storageService.delete(storageKey);
+                            log.info("[BIM] IFC 원본 파일 삭제 완료: projectId={}, key={}", projectId, storageKey);
+                        } catch (Exception e) {
+                            log.warn("[BIM] IFC 원본 파일 삭제 실패(무시): projectId={}, key={}, {}", projectId, storageKey, e.getMessage());
+                        }
+                    }
+                });
+
+        return ResponseEntity.ok(deleteMono);
     }
 
     @Override
@@ -328,15 +358,41 @@ public class BimServiceImpl implements BimService {
         if (layer.getSortOrder() == null) layer.setSortOrder(0);
 
         Map<String, Object> params = new HashMap<>();
-        params.put("layerId",    layer.getLayerId());
-        params.put("projectId",  layer.getProjectId());
-        params.put("layerName",  layer.getLayerName());
-        params.put("color",      layer.getColor());
-        params.put("visible",    layer.getVisible());
-        params.put("elementIds", toJson(layer.getElementIds() != null ? layer.getElementIds() : new ArrayList<>()));
-        params.put("sortOrder",  layer.getSortOrder());
+        params.put("layerId",       layer.getLayerId());
+        params.put("projectId",     layer.getProjectId());
+        params.put("parentLayerId", layer.getParentLayerId());
+        params.put("layerName",     layer.getLayerName());
+        params.put("color",         layer.getColor());
+        params.put("visible",       layer.getVisible());
+        params.put("elementIds",    toJson(layer.getElementIds() != null ? layer.getElementIds() : new ArrayList<>()));
+        params.put("sortOrder",     layer.getSortOrder());
         bimDAO.insertLayer(params);
         return layer;
+    }
+
+    @Override
+    public void createLayersBatch(List<BimLayerDTO> layers) {
+        if (layers == null || layers.isEmpty()) return;
+        List<Map<String, Object>> params = layers.stream()
+                .map(layer -> {
+                    if (layer.getLayerId() == null || layer.getLayerId().isBlank()) {
+                        layer.setLayerId("layer-" + UUID.randomUUID().toString().substring(0, 8));
+                    }
+                    if (layer.getVisible() == null) layer.setVisible(true);
+                    if (layer.getSortOrder() == null) layer.setSortOrder(0);
+                    Map<String, Object> p = new HashMap<>();
+                    p.put("layerId",       layer.getLayerId());
+                    p.put("projectId",     layer.getProjectId());
+                    p.put("parentLayerId", layer.getParentLayerId());
+                    p.put("layerName",     layer.getLayerName());
+                    p.put("color",         layer.getColor());
+                    p.put("visible",       layer.getVisible());
+                    p.put("elementIds",    toJson(layer.getElementIds() != null ? layer.getElementIds() : new ArrayList<>()));
+                    p.put("sortOrder",     layer.getSortOrder());
+                    return p;
+                })
+                .collect(Collectors.toList());
+        bimDAO.insertLayersBatch(params);
     }
 
     @Override
@@ -645,5 +701,45 @@ public class BimServiceImpl implements BimService {
     @Override
     public String getWbsIdByElement(String elementId) {
         return bimDAO.getWbsIdByElement(elementId);
+    }
+
+    // ── IFC 원본 파일 Object Storage 연동 ──────────────────────────
+
+    @Override
+    public String uploadIfcFile(String projectId, MultipartFile file) {
+        try {
+            String key = "projects/" + projectId + "/original.ifc";
+            long size = file.getSize();
+            storageService.upload(key, file.getInputStream(), size, "application/octet-stream");
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("projectId", projectId);
+            params.put("storageKey", key);
+            params.put("originalFilename", file.getOriginalFilename());
+            bimDAO.updateProjectStorage(params);
+
+            log.info("[BIM] IFC 원본 파일 업로드 완료: projectId={}, key={}, size={}bytes", projectId, key, size);
+            return key;
+        } catch (StorageException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new StorageException("IFC 파일 업로드 처리 실패: projectId=" + projectId, e);
+        }
+    }
+
+    @Override
+    public InputStream downloadIfcFile(String projectId) {
+        String storageKey = getStorageKey(projectId);
+        if (storageKey == null) {
+            throw new StorageException("IFC 원본 파일이 없습니다: projectId=" + projectId);
+        }
+        return storageService.download(storageKey);
+    }
+
+    @Override
+    public String getStorageKey(String projectId) {
+        Map<String, Object> project = bimDAO.getProjectById(projectId);
+        if (project == null) return null;
+        return (String) project.get("storageKey");
     }
 }

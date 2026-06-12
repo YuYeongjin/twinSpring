@@ -10,6 +10,7 @@ import java.util.List;
 public class BimLayerDTO {
     private String layerId;
     private String projectId;
+    private String parentLayerId;
     private String layerName;
     private String color;
     private Boolean visible;
