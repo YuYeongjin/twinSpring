@@ -1,9 +1,12 @@
 package yyj.project.twinspring.controller;
 
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import yyj.project.twinspring.storage.StorageException;
 import reactor.core.publisher.Mono;
 import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
@@ -136,6 +139,13 @@ public class BimController {
     @PostMapping("/layer")
     public ResponseEntity<BimLayerDTO> createLayer(@RequestBody BimLayerDTO layer) {
         return ResponseEntity.status(HttpStatus.CREATED).body(bimService.createLayer(layer));
+    }
+
+    @PostMapping("/layers/batch")
+    public ResponseEntity<Void> createLayersBatch(@RequestBody List<BimLayerDTO> layers) {
+        if (layers == null || layers.isEmpty()) return ResponseEntity.ok().build();
+        bimService.createLayersBatch(layers);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
     @PutMapping("/layer")
@@ -374,5 +384,79 @@ public class BimController {
         String wbsId = bimService.getWbsIdByElement(elementId);
         if (wbsId == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(wbsId);
+    }
+
+    // ================================================================
+    // IFC 원본 파일 Object Storage 연동
+    // ================================================================
+
+    /**
+     * IFC 원본 파일 업로드
+     * POST /api/bim/project/{projectId}/ifc
+     *
+     * IFC 파싱 성공 후 프론트에서 비동기로 호출한다.
+     * 업로드 실패가 프로젝트 생성 흐름을 막지 않도록 에러를 소프트하게 처리한다.
+     */
+    @PostMapping(value = "/project/{projectId}/ifc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, String>> uploadIfcFile(
+            @PathVariable String projectId,
+            @RequestParam("file") MultipartFile file) {
+
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "파일이 비어 있습니다."));
+        }
+        try {
+            String storageKey = bimService.uploadIfcFile(projectId, file);
+            return ResponseEntity.ok(Map.of(
+                    "storageKey", storageKey,
+                    "originalFilename", file.getOriginalFilename() != null ? file.getOriginalFilename() : "",
+                    "size", String.valueOf(file.getSize())
+            ));
+        } catch (StorageException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * IFC 원본 파일 다운로드
+     * GET /api/bim/project/{projectId}/ifc/download
+     *
+     * 향후 재분석, WBS 재생성, IFC Export 등에서 원본 파일 재사용 시 호출한다.
+     */
+    @GetMapping("/project/{projectId}/ifc/download")
+    public ResponseEntity<InputStreamResource> downloadIfcFile(@PathVariable String projectId) {
+        try {
+            String storageKey = bimService.getStorageKey(projectId);
+            if (storageKey == null) {
+                return ResponseEntity.notFound().build();
+            }
+            // originalFilename 조회 (없으면 기본값)
+            String filename = storageKey.substring(storageKey.lastIndexOf('/') + 1);
+
+            InputStreamResource resource = new InputStreamResource(bimService.downloadIfcFile(projectId));
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(resource);
+        } catch (StorageException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * IFC 원본 파일 보유 여부 확인
+     * GET /api/bim/project/{projectId}/ifc/status
+     *
+     * 프론트에서 재업로드 버튼 노출 여부 결정 등에 사용
+     */
+    @GetMapping("/project/{projectId}/ifc/status")
+    public ResponseEntity<Map<String, Object>> getIfcStatus(@PathVariable String projectId) {
+        String storageKey = bimService.getStorageKey(projectId);
+        return ResponseEntity.ok(Map.of(
+                "hasIfcFile", storageKey != null,
+                "storageKey", storageKey != null ? storageKey : ""
+        ));
     }
 }

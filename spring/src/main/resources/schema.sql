@@ -150,6 +150,8 @@ CREATE TABLE IF NOT EXISTS bim_layer
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_bim_layer_project ON bim_layer (project_id);
+ALTER TABLE bim_layer ADD COLUMN IF NOT EXISTS parent_layer_id TEXT NULL;
+CREATE INDEX IF NOT EXISTS idx_bim_layer_parent ON bim_layer (parent_layer_id);
 
 -- ================================================================
 -- BIM 부재 커스텀 색상 테이블
@@ -555,6 +557,16 @@ ALTER TABLE integration_project ADD COLUMN IF NOT EXISTS ref_lat DOUBLE PRECISIO
 ALTER TABLE integration_project ADD COLUMN IF NOT EXISTS ref_lng DOUBLE PRECISION NULL;
 
 -- ================================================================
+-- bim_project Object Storage 연동 컬럼 (IFC 원본 파일 영구 보관)
+-- storage_key      : MinIO/S3 오브젝트 키 (예: projects/{id}/original.ifc)
+-- original_filename: 사용자가 업로드한 원본 파일명
+-- uploaded_at      : 업로드 완료 시각
+-- ================================================================
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS storage_key       TEXT        NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS original_filename TEXT        NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS uploaded_at       TIMESTAMPTZ NULL;
+
+-- ================================================================
 -- bim_project geoOrigin 마이그레이션 (IFC → GIS 연동용)
 -- geo_latitude / geo_longitude / geo_elevation : IfcSite 위경도 (없으면 NULL)
 -- ifc_offset_x/y/z : Three.js 원점 정규화 오프셋 (역산용)
@@ -623,6 +635,20 @@ CREATE TABLE IF NOT EXISTS bim_wbs_node
 );
 CREATE INDEX IF NOT EXISTS idx_bim_wbs_project    ON bim_wbs_node (project_id);
 CREATE INDEX IF NOT EXISTS idx_bim_wbs_parent     ON bim_wbs_node (parent_wbs_id);
+
+-- ================================================================
+-- bim_wbs_node 수량 산출 컬럼 (공사 단계 기반 WBS 확장)
+-- quantity : 산출 수량 (철근 kg, 거푸집 m², 콘크리트 m³, 양생 일)
+-- unit     : 단위 문자열
+-- formula  : 계산식 설명 (UI hover 표시)
+-- reason   : 시방서 근거 (KDS/AIJ/ACI 조항)
+-- standard : 적용 기준 (KDS | AIJ | ACI)
+-- ================================================================
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS quantity  DOUBLE PRECISION NULL;
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS unit      TEXT             NULL;
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS formula   TEXT             NULL;
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS reason    TEXT             NULL;
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS standard  TEXT             NOT NULL DEFAULT 'KDS';
 
 -- ================================================================
 -- BIM 부재 ↔ WBS 양방향 매핑 테이블

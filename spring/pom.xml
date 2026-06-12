@@ -86,6 +86,20 @@
             <version>1.7.1</version>
         </dependency>
 
+        <!-- MinIO (S3-compatible Object Storage) -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.9</version>
+        </dependency>
+
+        <!-- Spring Boot Configuration Processor (for @ConfigurationProperties) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
     </dependencies>
 
     <build>

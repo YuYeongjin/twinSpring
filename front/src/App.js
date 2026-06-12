@@ -58,6 +58,88 @@ function OrientationLockOverlay() {
   );
 }
 
+// ── IFC 임포트 시 레이어 자동 생성 ─────────────────────────────
+const IFC_LAYER_LABEL = {
+  IfcColumn: '기둥', IfcBeam: '보',    IfcWall:   '벽체',
+  IfcSlab:   '슬래브', IfcPier: '교각', IfcMember: '부재',
+  IfcWindow: '창호',  IfcDoor: '문',   IfcStair:  '계단', IfcRoof: '지붕',
+};
+const IFC_LAYER_COLOR = {
+  IfcColumn: '#3b82f6', IfcBeam:   '#22c55e', IfcWall:   '#64748b',
+  IfcSlab:   '#f59e0b', IfcPier:   '#ec4899', IfcMember: '#84cc16',
+  IfcWindow: '#06b6d4', IfcDoor:   '#8b5cf6', IfcStair:  '#f97316', IfcRoof: '#6366f1',
+};
+const IFC_TYPE_ORDER = ['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier','IfcMember','IfcWindow','IfcDoor','IfcStair','IfcRoof'];
+
+function storeyRank(name) {
+  if (!name || name === '(층 미지정)') return 9999;
+  const lc = name.toLowerCase();
+  const b = lc.match(/^b(\d+)/); if (b) return -parseInt(b[1], 10);
+  const f = name.match(/^(\d+)/); if (f) return parseInt(f[1], 10);
+  if (lc.includes('roof') || lc.includes('옥상')) return 1000;
+  return 500;
+}
+
+function generateLayersFromElements(elements, projectId) {
+  // building → storey → type 3단계 그루핑
+  const byBuilding = new Map();
+  for (const el of elements) {
+    if (!IFC_LAYER_LABEL[el.elementType]) continue;
+    const building = el.building || '(동 없음)';
+    const storey   = el.storey   || '(층 미지정)';
+    if (!byBuilding.has(building)) byBuilding.set(building, new Map());
+    const byStorey = byBuilding.get(building);
+    if (!byStorey.has(storey)) byStorey.set(storey, new Map());
+    const byType = byStorey.get(storey);
+    if (!byType.has(el.elementType)) byType.set(el.elementType, []);
+    byType.get(el.elementType).push(el.elementId);
+  }
+
+  const layers = [];
+  const sortedBuildings = [...byBuilding.keys()].sort((a, b) => a.localeCompare(b, 'ko'));
+
+  sortedBuildings.forEach((building, bIdx) => {
+    const buildingId = `layer-${projectId}-B${bIdx}`;
+    layers.push({
+      layerId: buildingId, projectId, parentLayerId: null,
+      layerName: building, color: '#94a3b8',
+      visible: true, elementIds: [], sortOrder: bIdx * 10000,
+    });
+
+    const byStorey = byBuilding.get(building);
+    const sortedStoreys = [...byStorey.keys()].sort((a, b) => storeyRank(a) - storeyRank(b));
+
+    sortedStoreys.forEach((storey, sIdx) => {
+      const storeyId = `layer-${projectId}-B${bIdx}-S${sIdx}`;
+      layers.push({
+        layerId: storeyId, projectId, parentLayerId: buildingId,
+        layerName: storey, color: '#64748b',
+        visible: true, elementIds: [], sortOrder: bIdx * 10000 + sIdx * 100,
+      });
+
+      const byType = byStorey.get(storey);
+      const sortedTypes = [...byType.keys()].sort(
+        (a, b) => IFC_TYPE_ORDER.indexOf(a) - IFC_TYPE_ORDER.indexOf(b)
+      );
+
+      sortedTypes.forEach((type, tIdx) => {
+        layers.push({
+          layerId:       `layer-${projectId}-B${bIdx}-S${sIdx}-T${tIdx}`,
+          projectId,
+          parentLayerId: storeyId,
+          layerName:     IFC_LAYER_LABEL[type],
+          color:         IFC_LAYER_COLOR[type] || '#888888',
+          visible:       true,
+          elementIds:    byType.get(type),
+          sortOrder:     bIdx * 10000 + sIdx * 100 + tIdx,
+        });
+      });
+    });
+  });
+
+  return layers;
+}
+
 function App() {
   const t = useT('app');
 
@@ -333,7 +415,7 @@ function App() {
   // Import BIM project from IFC elements
   // ifcMeshes: 실제 Three.js 지오메트리 (클라이언트 캐시, DB 미저장)
   // ---------------------------------------------------------------
-  const importIfcProject = useCallback(async (type, name, elements, ifcMeshes, geoOrigin, callback, storeys) => {
+  const importIfcProject = useCallback(async (type, name, elements, ifcMeshes, geoOrigin, callback, storeys, ifcFile) => {
     try {
       // 이름 중복 시 자동 증가
       const existingNames = new Set((projectList || []).map(p => p.projectName));
@@ -392,7 +474,11 @@ function App() {
             ...el,
             elementId: idMap[el.elementId] || `${el.elementId}-${project.projectId}`,
           }));
-          const { wbsNodes, mappings } = generateWbsFromElements(renamedElements, project.projectId);
+          const { wbsNodes, mappings } = generateWbsFromElements(renamedElements, project.projectId, {
+            storeys:   storeys || [],
+            geoOrigin: geoOrigin || null,
+            standard:  'KDS',
+          });
           if (wbsNodes.length > 0) {
             await AxiosCustom.post('/api/bim/wbs/batch', wbsNodes);
           }
@@ -404,6 +490,22 @@ function App() {
         }
       }
 
+      // 레이어 자동 생성 (동-층-공종 조합)
+      if (elements.length > 0) {
+        try {
+          const renamedElements = elements.map(el => ({
+            ...el,
+            elementId: idMap[el.elementId] || `${el.elementId}-${project.projectId}`,
+          }));
+          const layers = generateLayersFromElements(renamedElements, project.projectId);
+          if (layers.length > 0) {
+            await AxiosCustom.post('/api/bim/layers/batch', layers);
+          }
+        } catch (e) {
+          console.warn('레이어 자동 생성 실패(무시):', e.message);
+        }
+      }
+
       // IFC 지오메트리 클라이언트 캐시 (DB 미저장)
       if (ifcMeshes && ifcMeshes.length > 0) {
         const renamedMeshes = ifcMeshes.map(mesh => ({
@@ -411,6 +513,17 @@ function App() {
           elementId: `${mesh.elementId}-${project.projectId}`,
         }));
         ifcMeshesRef.current.set(project.projectId, renamedMeshes);
+      }
+
+      // IFC 원본 파일 Object Storage 업로드 (파싱 성공 후에만, fire-and-forget)
+      if (ifcFile && project?.projectId) {
+        const formData = new FormData();
+        formData.append('file', ifcFile);
+        AxiosCustom.post(`/api/bim/project/${project.projectId}/ifc`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+          .then(() => console.log(`[IFC] 원본 파일 업로드 완료: ${project.projectId}`))
+          .catch(e => console.warn('[IFC] 원본 파일 업로드 실패(무시):', e?.message));
       }
 
       await refreshProjectList();

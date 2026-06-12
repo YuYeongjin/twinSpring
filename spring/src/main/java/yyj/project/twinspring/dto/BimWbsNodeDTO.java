@@ -16,4 +16,9 @@ public class BimWbsNodeDTO {
     private Integer elementCount;
     private Integer progress;
     private Integer sortOrder;
+    private Double  quantity;
+    private String  unit;
+    private String  formula;
+    private String  reason;
+    private String  standard;
 }

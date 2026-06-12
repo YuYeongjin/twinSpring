@@ -5,7 +5,9 @@ import { useT } from '../../../i18n/LanguageContext';
 const NODE_TYPE_ICON = {
   [WBS_NODE_TYPES.PROJECT]:  '🏗',
   [WBS_NODE_TYPES.BUILDING]: '🏢',
+  [WBS_NODE_TYPES.PHASE]:    '⚙',
   [WBS_NODE_TYPES.STOREY]:   '📐',
+  [WBS_NODE_TYPES.ELEMENT]:  '▣',
   [WBS_NODE_TYPES.TASK]:     '🔧',
 };
 
@@ -17,14 +19,55 @@ function progressColor(p) {
   return '#f97316';
 }
 
+// ── 수량 툴팁 (? 버튼) ────────────────────────────────────────────────
+function QuantityBadge({ quantity, unit, formula, reason }) {
+  const [show, setShow] = useState(false);
+  if (quantity == null) return null;
+
+  return (
+    <span style={{ position: 'relative', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      <span style={{ fontSize: 10, color: '#94a3b8', fontVariantNumeric: 'tabular-nums' }}>
+        {Number(quantity).toLocaleString()} {unit}
+      </span>
+      <span
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        style={{
+          width: 14, height: 14, borderRadius: '50%',
+          background: '#1e3a5f', border: '1px solid #3b82f6',
+          color: '#60a5fa', fontSize: 9, fontWeight: 700,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'default', flexShrink: 0,
+        }}
+      >
+        ?
+      </span>
+      {show && (
+        <span style={{
+          position: 'absolute', bottom: '120%', right: 0, zIndex: 100,
+          background: '#0f2237', border: '1px solid #253347',
+          borderRadius: 6, padding: '7px 10px',
+          width: 220, boxShadow: '0 4px 16px #0006',
+          pointerEvents: 'none',
+        }}>
+          <p style={{ margin: '0 0 4px', fontSize: 10, color: '#64748b', fontWeight: 600 }}>계산식</p>
+          <p style={{ margin: '0 0 6px', fontSize: 11, color: '#93c5fd', wordBreak: 'break-all' }}>{formula}</p>
+          <p style={{ margin: '0 0 4px', fontSize: 10, color: '#64748b', fontWeight: 600 }}>시방서 근거</p>
+          <p style={{ margin: 0, fontSize: 11, color: '#cbd5e1', wordBreak: 'break-all' }}>{reason}</p>
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── WBS 노드 행 ──────────────────────────────────────────────────────
 function WbsRow({
   node, depth, isOpen, hasChildren, isSelected,
   onClick, onToggle, onProgressChange, editingId, setEditingId, t,
 }) {
-  const indent = depth * 14;
-  const color  = progressColor(node.progress || 0);
-  const isTask = node.nodeType === WBS_NODE_TYPES.TASK;
+  const indent  = depth * 14;
+  const color   = progressColor(node.progress || 0);
+  const isTask  = node.nodeType === WBS_NODE_TYPES.TASK;
 
   const progressLabel = (p) => {
     if (p === 0)   return t('wbsNotStarted');
@@ -43,7 +86,7 @@ function WbsRow({
       <div
         onClick={onClick}
         style={{
-          display: 'flex', alignItems: 'center', gap: 5,
+          display: 'flex', alignItems: 'center', gap: 4,
           paddingLeft: 6 + indent, paddingRight: 8,
           paddingTop: 5, paddingBottom: 5,
           cursor: 'pointer', borderRadius: 6,
@@ -91,6 +134,14 @@ function WbsRow({
           </span>
         )}
 
+        {/* 수량 + (?) 툴팁 */}
+        <QuantityBadge
+          quantity={node.quantity}
+          unit={node.unit}
+          formula={node.formula}
+          reason={node.reason}
+        />
+
         {isTask && (
           <span
             onClick={e => { e.stopPropagation(); setEditingId(node.wbsId); }}
@@ -98,7 +149,6 @@ function WbsRow({
               fontSize: 11, fontWeight: 700, color,
               minWidth: 40, textAlign: 'right', flexShrink: 0, cursor: 'text',
             }}
-            title={t('wbsNotStarted')}
           >
             {editingId === node.wbsId ? null : progressLabel(node.progress || 0)}
           </span>
@@ -210,10 +260,17 @@ export default function IfcWbsPanel({
   const handleNodeClick = useCallback(node => {
     setSelected(node.wbsId);
     setEditingId(null);
-    if (elementWbsMap && node.nodeType === WBS_NODE_TYPES.TASK) {
+    if (!elementWbsMap) return;
+
+    // ELEMENT 노드: 직접 매핑 조회
+    // TASK 노드(공종 서브태스크): 부모 ELEMENT ID로 조회
+    const { ELEMENT, TASK } = WBS_NODE_TYPES;
+    if (node.nodeType === ELEMENT || node.nodeType === TASK) {
+      const lookupId = node.nodeType === TASK ? node.parentWbsId : node.wbsId;
+      if (!lookupId) return;
       const ids = [];
       for (const [elId, wId] of elementWbsMap.entries()) {
-        if (wId === node.wbsId) ids.push(elId);
+        if (wId === lookupId) ids.push(elId);
       }
       onSelectElements?.(ids);
     }
