@@ -90,6 +90,9 @@ public interface BimService {
     void updateWbsProgress(String wbsId, int progress);
     void deleteWbsByProject(String projectId);
 
+    // ── WBS 진척도 요약 (통합관제 시각화용) ────────────────────────
+    Map<String, Object> getWbsProgressSummary(String projectId);
+
     // ── 부재 ↔ WBS 매핑 ────────────────────────────────────────────
     List<Map<String, Object>> getElementWbsMappings(String projectId);
     void saveElementWbsMappings(List<Map<String, Object>> mappings);

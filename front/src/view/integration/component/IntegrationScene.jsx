@@ -269,7 +269,7 @@ function StructureSelectionBox({ elements }) {
 // ── 구조물 레이어 (여러 BIM/IFC 구조물) ──────────────────────────
 function StructuresLayer() {
   const t = useT('integrationProject');
-  const { structures, wbsTasks, surveyOrigin } = useIntegration();
+  const { structures, wbsTasks, surveyOrigin, bimWbsProgress } = useIntegration();
   const [selectedStructId, setSelectedStructId] = useState(null);
 
   // WBS notes 형식(BIM:<id>:<type>) 기반 공종별 진도 맵
@@ -419,9 +419,14 @@ function StructuresLayer() {
               return floors.map((floor, fi) => {
                 const label     = getFloorLabel(fi, floors, t);
                 const projectFallback = perProjectProgress[s.bimProjectId] ?? overallWbsProgress;
-                const types     = [...new Set(floor.elements.map(el => el.elementType))];
-                const typePcts  = types.map(tp => progressMap[`${s.bimProjectId}:${tp}`] ?? projectFallback);
-                const avgPct    = typePcts.length ? typePcts.reduce((a, b) => a + b) / typePcts.length : 0;
+                const wbsData   = bimWbsProgress?.[s.bimProjectId];
+                // 층 평균 진행률: BIM WBS 부재별 데이터 우선, 없으면 공종별 fallback
+                const floorPcts = floor.elements.map(el => {
+                  const wbsEl = wbsData?.elements?.[el.elementId];
+                  if (wbsEl != null) return wbsEl.progress ?? 0;
+                  return progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback;
+                });
+                const avgPct    = floorPcts.length ? floorPcts.reduce((a, b) => a + b) / floorPcts.length : 0;
                 const cascade   = getFloorProgress(fi, floors.length, avgPct);
                 const status    = getFloorStatus(cascade);
                 const color     = getFloorStatusColor(status);
@@ -457,14 +462,19 @@ function StructuresLayer() {
                 const sX = Number(cv.sizeX)     || 0.1;
                 const sY = Number(cv.sizeY)     || 0.1;
                 const sZ = Number(cv.sizeZ)     || 0.1;
-                // 층별 캐스케이딩 진도 적용
+                // BIM WBS 부재별 진행률 우선 적용, 없으면 공종별 fallback
                 const projectFallback = perProjectProgress[s.bimProjectId] ?? overallWbsProgress;
                 const typeProgress    = progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback;
+                const wbsData         = bimWbsProgress?.[s.bimProjectId];
+                const wbsElemData     = wbsData?.elements?.[el.elementId];
+                const baseProgress    = wbsElemData != null
+                  ? wbsElemData.progress ?? 0
+                  : typeProgress;
                 const floors          = floorsPerStruct[s.id] || [];
                 const floorIdx        = getElementFloorIndex(el, floors);
                 const elemProgress    = floors.length >= 2
-                  ? getFloorProgress(floorIdx, floors.length, typeProgress)
-                  : typeProgress;
+                  ? getFloorProgress(floorIdx, floors.length, baseProgress)
+                  : baseProgress;
                 return (
                   <BimProgressFill
                     key={el.elementId}
