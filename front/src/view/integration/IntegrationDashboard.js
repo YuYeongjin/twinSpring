@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import SockJS                              from 'sockjs-client';
 import { Client }                          from '@stomp/stompjs';
 import AxiosCustom                          from '../../axios/AxiosCustom';
@@ -282,6 +282,42 @@ function BimLinkSync({ selectedProject }) {
 
     syncBimLinks();
   }, [projectMeta?.wbsProjectId, structures, dispatch]);
+
+  return null;
+}
+
+// ── BIM WBS 진척도 폴링 (통합관제 3D 시각화용) ─────────────────────
+function BimWbsProgressPoller() {
+  const { structures } = useIntegration();
+  const dispatch = useIntegrationDispatch();
+
+  const bimProjectIds = useMemo(
+    () => [...new Set(
+      structures
+        .filter(s => s.type === 'bim' && s.bimProjectId)
+        .map(s => String(s.bimProjectId))
+    )],
+    [structures],
+  );
+  const idsKey = bimProjectIds.join(',');
+
+  useEffect(() => {
+    if (bimProjectIds.length === 0) return;
+
+    const poll = async () => {
+      for (const id of bimProjectIds) {
+        try {
+          const r = await AxiosCustom.get(`/api/bim/wbs/progress-summary?projectId=${id}`);
+          dispatch({ type: 'SET_BIM_WBS_PROGRESS', bimProjectId: id, data: r.data });
+        } catch { /* 갱신 실패 무시 */ }
+      }
+    };
+
+    poll();
+    const timer = setInterval(poll, 30000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, dispatch]);
 
   return null;
 }
@@ -636,6 +672,7 @@ export default function IntegrationDashboard({ selectedProject, onBack }) {
     <IntegrationProvider projectId={selectedProject?.projectId}>
       <DataLoader selectedProject={selectedProject} />
       <StructureLoader />
+      <BimWbsProgressPoller />
       <BimLinkSync selectedProject={selectedProject} />
       <GpsLoader />
       <DashboardLayout selectedProject={selectedProject} />

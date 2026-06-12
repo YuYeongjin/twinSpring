@@ -55,6 +55,7 @@ function makeInitial() {
     equipActiveSecs:   {},  // { [equipId]: number } — 누적 활동 초 (mode !== 'standby')
     bimSimProgress:    {},  // { [structureId]: number } — 자동 작업 누적 진척도(%)
     pendingBimReset:   [],  // BIM 프로젝트 ID 배열 — 다음 SET_REAL_DATA 시 해당 태스크 0% 초기화
+    bimWbsProgress:    {},  // { [bimProjectId]: { phases, elements } } — BIM WBS 공정 요약
   };
 }
 
@@ -246,6 +247,15 @@ function reducer(state, action) {
       });
       return { ...state, wbsTasks: updated };
     }
+
+    case 'SET_BIM_WBS_PROGRESS':
+      return {
+        ...state,
+        bimWbsProgress: {
+          ...state.bimWbsProgress,
+          [action.bimProjectId]: action.data,
+        },
+      };
 
     // ── 작업자 ──────────────────────────────────────────────────
     case 'ADD_WORKER':

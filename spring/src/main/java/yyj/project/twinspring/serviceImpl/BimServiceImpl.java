@@ -680,6 +680,129 @@ public class BimServiceImpl implements BimService {
         bimDAO.deleteWbsByProject(projectId);
     }
 
+    // ── WBS 진척도 요약 (통합관제 시각화용) ────────────────────────
+
+    @Override
+    public Map<String, Object> getWbsProgressSummary(String projectId) {
+        List<BimWbsNodeDTO> nodes = bimDAO.getWbsByProject(projectId);
+        List<Map<String, Object>> mappings = bimDAO.getElementWbsMappings(projectId);
+
+        Map<String, BimWbsNodeDTO>         nodeMap     = new HashMap<>();
+        Map<String, List<BimWbsNodeDTO>>   childrenMap = new HashMap<>();
+        for (BimWbsNodeDTO n : nodes) {
+            nodeMap.put(n.getWbsId(), n);
+            if (n.getParentWbsId() != null)
+                childrenMap.computeIfAbsent(n.getParentWbsId(), k -> new ArrayList<>()).add(n);
+        }
+
+        final List<String> PHASE_ORDER = List.of("TEMP", "EARTH", "FOUND", "UNDER", "ABOVE");
+
+        // PHASE 노드 수집 → 각 phase 의 TASK 후손 평균 진행률
+        List<BimWbsNodeDTO> phaseNodes = nodes.stream()
+            .filter(n -> "PHASE".equals(n.getNodeType()))
+            .sorted(Comparator.comparingInt(n -> (n.getSortOrder() == null ? 999 : n.getSortOrder())))
+            .collect(Collectors.toList());
+
+        List<Map<String, Object>> phaseList = new ArrayList<>();
+        for (BimWbsNodeDTO ph : phaseNodes) {
+            String phaseKey      = extractPhaseKey(ph.getWbsId());
+            double phaseProgress = computePhaseProgress(ph.getWbsId(), childrenMap);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("phaseKey",  phaseKey);
+            m.put("phaseName", ph.getWbsName());
+            m.put("progress",  Math.round(phaseProgress * 10.0) / 10.0);
+            m.put("sortOrder", ph.getSortOrder() != null ? ph.getSortOrder() : 999);
+            phaseList.add(m);
+        }
+
+        // 활성 phase 인덱스 = 진행률 < 100인 첫 번째 phase
+        int activePhaseIdx = PHASE_ORDER.size();
+        for (int i = 0; i < PHASE_ORDER.size(); i++) {
+            final String pk = PHASE_ORDER.get(i);
+            java.util.Optional<Map<String, Object>> found = phaseList.stream()
+                .filter(p -> pk.equals(p.get("phaseKey"))).findFirst();
+            if (found.isEmpty()) continue;
+            double prog = ((Number) found.get().get("progress")).doubleValue();
+            if (prog < 100) { activePhaseIdx = i; break; }
+        }
+
+        // 부재별 진행률 계산 (cascade 적용)
+        Map<String, Map<String, Object>> elementMap = new LinkedHashMap<>();
+        for (Map<String, Object> mapping : mappings) {
+            String elementId = (String) mapping.get("elementId");
+            String wbsId     = (String) mapping.get("wbsId");
+
+            List<BimWbsNodeDTO> taskChildren = childrenMap.getOrDefault(wbsId, Collections.emptyList())
+                .stream().filter(n -> "TASK".equals(n.getNodeType())).collect(Collectors.toList());
+
+            double rawProgress;
+            if (taskChildren.isEmpty()) {
+                BimWbsNodeDTO el = nodeMap.get(wbsId);
+                rawProgress = (el != null && el.getProgress() != null) ? el.getProgress() : 0;
+            } else {
+                rawProgress = taskChildren.stream()
+                    .mapToInt(t -> t.getProgress() != null ? t.getProgress() : 0)
+                    .average().orElse(0);
+            }
+
+            String phaseKey = findPhaseKey(wbsId, nodeMap);
+            int phaseIdx    = PHASE_ORDER.indexOf(phaseKey);
+            double cascaded = (phaseIdx >= 0 && phaseIdx > activePhaseIdx) ? 0 : rawProgress;
+
+            Map<String, Object> el = new LinkedHashMap<>();
+            el.put("progress", Math.round(cascaded * 10.0) / 10.0);
+            el.put("phaseKey", phaseKey);
+            elementMap.put(elementId, el);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("phases",   phaseList);
+        result.put("elements", elementMap);
+        return result;
+    }
+
+    private double computePhaseProgress(String phaseWbsId,
+                                        Map<String, List<BimWbsNodeDTO>> childrenMap) {
+        List<Integer> taskProgress = new ArrayList<>();
+        collectTaskProgress(phaseWbsId, childrenMap, taskProgress, 0);
+        if (taskProgress.isEmpty()) return 0;
+        return taskProgress.stream().mapToInt(Integer::intValue).average().orElse(0);
+    }
+
+    private void collectTaskProgress(String wbsId,
+                                     Map<String, List<BimWbsNodeDTO>> childrenMap,
+                                     List<Integer> result, int depth) {
+        if (depth > 8) return;
+        for (BimWbsNodeDTO child : childrenMap.getOrDefault(wbsId, Collections.emptyList())) {
+            if ("TASK".equals(child.getNodeType())) {
+                result.add(child.getProgress() != null ? child.getProgress() : 0);
+            } else {
+                collectTaskProgress(child.getWbsId(), childrenMap, result, depth + 1);
+            }
+        }
+    }
+
+    private String extractPhaseKey(String wbsId) {
+        if (wbsId == null) return null;
+        List<String> keys = List.of("TEMP", "EARTH", "FOUND", "UNDER", "ABOVE");
+        String[] parts = wbsId.split("-");
+        String last = parts[parts.length - 1];
+        if (keys.contains(last)) return last;
+        for (String k : keys) { if (wbsId.endsWith("-" + k)) return k; }
+        return null;
+    }
+
+    private String findPhaseKey(String elementWbsId, Map<String, BimWbsNodeDTO> nodeMap) {
+        BimWbsNodeDTO node = nodeMap.get(elementWbsId);
+        for (int i = 0; i < 5; i++) {
+            if (node == null) break;
+            if ("PHASE".equals(node.getNodeType())) return extractPhaseKey(node.getWbsId());
+            if (node.getParentWbsId() == null) break;
+            node = nodeMap.get(node.getParentWbsId());
+        }
+        return "ABOVE";
+    }
+
     // ── 부재 ↔ WBS 매핑 ────────────────────────────────────────────
 
     @Override

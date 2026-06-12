@@ -359,6 +359,11 @@ public class BimController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/wbs/progress-summary")
+    public ResponseEntity<Map<String, Object>> getWbsProgressSummary(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getWbsProgressSummary(projectId));
+    }
+
     // ================================================================
     // 부재 ↔ WBS 매핑 API
     // ================================================================
