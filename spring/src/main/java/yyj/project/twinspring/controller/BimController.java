@@ -10,6 +10,8 @@ import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
+import yyj.project.twinspring.dto.BimStoreyDTO;
+import yyj.project.twinspring.dto.BimWbsNodeDTO;
 import yyj.project.twinspring.service.BimService;
 
 import java.nio.charset.StandardCharsets;
@@ -267,14 +269,110 @@ public class BimController {
     }
 
     @PostMapping("/project")
-    public Mono<ResponseEntity<BimProjectDTO>> newProject(@RequestBody Map<String,String> project){
+    public Mono<ResponseEntity<BimProjectDTO>> newProject(@RequestBody Map<String, Object> project) {
         System.out.println("PROJECT CREATE : " + project);
         BimProjectDTO projectDTO = new BimProjectDTO();
-        projectDTO.setProjectName(project.get("projectName"));
-        projectDTO.setSpanCount((project.get("spanCount")));
-        projectDTO.setStructureType(project.get("structureType"));
+        projectDTO.setProjectName(asString(project.get("projectName")));
+        projectDTO.setSpanCount(asString(project.get("spanCount")));
+        projectDTO.setStructureType(asString(project.get("structureType")));
+        // geoOrigin 필드 (IFC 임포트 시 전달됨, 없으면 null)
+        projectDTO.setGeoLatitude(asDouble(project.get("geoLatitude")));
+        projectDTO.setGeoLongitude(asDouble(project.get("geoLongitude")));
+        projectDTO.setGeoElevation(asDouble(project.get("geoElevation")));
+        projectDTO.setIfcOffsetX(asDouble(project.get("ifcOffsetX")));
+        projectDTO.setIfcOffsetY(asDouble(project.get("ifcOffsetY")));
+        projectDTO.setIfcOffsetZ(asDouble(project.get("ifcOffsetZ")));
+        projectDTO.setIfcScale(asDouble(project.get("ifcScale")));
         return bimService.createProject(projectDTO)
-                // C# 서버가 반환한 DTO 객체를 201 Created 상태와 함께 반환
                 .map(createdProject -> ResponseEntity.status(HttpStatus.CREATED).body(createdProject));
+    }
+
+    private String asString(Object val) {
+        return val == null ? null : val.toString();
+    }
+
+    private Double asDouble(Object val) {
+        if (val == null) return null;
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        try { return Double.parseDouble(val.toString()); } catch (NumberFormatException e) { return null; }
+    }
+
+    // ================================================================
+    // 층(BuildingStorey) API
+    // ================================================================
+
+    @GetMapping("/storeys")
+    public ResponseEntity<List<BimStoreyDTO>> getStoreys(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getStoreysByProject(projectId));
+    }
+
+    @PostMapping("/storeys/batch")
+    public ResponseEntity<Void> saveStoreys(@RequestBody List<BimStoreyDTO> storeys) {
+        bimService.saveStoreys(storeys);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/storeys")
+    public ResponseEntity<Void> deleteStoreys(@RequestParam String projectId) {
+        bimService.deleteStoreysByProject(projectId);
+        return ResponseEntity.ok().build();
+    }
+
+    // ================================================================
+    // WBS 노드 API
+    // ================================================================
+
+    @GetMapping("/wbs")
+    public ResponseEntity<List<BimWbsNodeDTO>> getWbs(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getWbsByProject(projectId));
+    }
+
+    @PostMapping("/wbs/batch")
+    public ResponseEntity<Void> saveWbsNodes(@RequestBody List<BimWbsNodeDTO> nodes) {
+        bimService.saveWbsNodes(nodes);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/wbs/{wbsId}/progress")
+    public ResponseEntity<Void> updateWbsProgress(
+            @PathVariable String wbsId,
+            @RequestBody Map<String, Integer> body) {
+        Integer progress = body.get("progress");
+        if (progress == null) return ResponseEntity.badRequest().build();
+        bimService.updateWbsProgress(wbsId, progress);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/wbs")
+    public ResponseEntity<Void> deleteWbs(@RequestParam String projectId) {
+        bimService.deleteWbsByProject(projectId);
+        return ResponseEntity.ok().build();
+    }
+
+    // ================================================================
+    // 부재 ↔ WBS 매핑 API
+    // ================================================================
+
+    @GetMapping("/element-wbs")
+    public ResponseEntity<List<Map<String, Object>>> getElementWbsMappings(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getElementWbsMappings(projectId));
+    }
+
+    @PostMapping("/element-wbs/batch")
+    public ResponseEntity<Void> saveElementWbsMappings(@RequestBody List<Map<String, Object>> mappings) {
+        bimService.saveElementWbsMappings(mappings);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/wbs/{wbsId}/elements")
+    public ResponseEntity<List<String>> getElementsByWbs(@PathVariable String wbsId) {
+        return ResponseEntity.ok(bimService.getElementIdsByWbs(wbsId));
+    }
+
+    @GetMapping("/element/{elementId}/wbs")
+    public ResponseEntity<String> getWbsByElement(@PathVariable String elementId) {
+        String wbsId = bimService.getWbsIdByElement(elementId);
+        if (wbsId == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(wbsId);
     }
 }

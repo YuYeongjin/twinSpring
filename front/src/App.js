@@ -333,9 +333,9 @@ function App() {
   // Import BIM project from IFC elements
   // ifcMeshes: 실제 Three.js 지오메트리 (클라이언트 캐시, DB 미저장)
   // ---------------------------------------------------------------
-  const importIfcProject = useCallback(async (type, name, elements, ifcMeshes, callback) => {
+  const importIfcProject = useCallback(async (type, name, elements, ifcMeshes, geoOrigin, callback, storeys) => {
     try {
-      // 이름 중복 시 자동 증가: "이름" → "이름 (1)" → "이름 (2)"
+      // 이름 중복 시 자동 증가
       const existingNames = new Set((projectList || []).map(p => p.projectName));
       let uniqueName = name;
       let counter = 1;
@@ -347,21 +347,64 @@ function App() {
         structureType: type,
         projectName: uniqueName,
         spanCount: 0,
+        ...(geoOrigin ? {
+          geoLatitude:  geoOrigin.latitude,
+          geoLongitude: geoOrigin.longitude,
+          geoElevation: geoOrigin.elevation,
+          ifcOffsetX:   geoOrigin.ifcOffsetX,
+          ifcOffsetY:   geoOrigin.ifcOffsetY,
+          ifcOffsetZ:   geoOrigin.ifcOffsetZ,
+          ifcScale:     geoOrigin.scale,
+        } : {}),
       });
       const project = projectRes.data;
 
+      // 부재 일괄 저장 (projectId suffix 적용 — PK 충돌 방지)
+      const idMap = {}; // 'IFC-{expressId}' → 최종 elementId
       if (elements.length > 0) {
-        // projectId를 suffix로 붙여 동일 IFC 파일을 여러 프로젝트에 임포트해도 PK 충돌 방지
-        const payload = elements.map(el => ({
-          ...el,
-          projectId: project.projectId,
-          elementId: `${el.elementId}-${project.projectId}`,
-        }));
+        const payload = elements.map(el => {
+          const newId = `${el.elementId}-${project.projectId}`;
+          idMap[el.elementId] = newId;
+          return { ...el, projectId: project.projectId, elementId: newId };
+        });
         await AxiosCustom.post('/api/bim/elements/batch', payload);
       }
 
-      // IFC 실제 지오메트리를 클라이언트 캐시에 저장 (DB 미저장)
-      // DB elementId와 동일한 suffix를 ifcMeshes에도 적용해 IFCMeshGroup 매칭 유지
+      // 층(BuildingStorey) 저장
+      if (storeys && storeys.length > 0) {
+        const storeyPayload = storeys.map((s, idx) => ({
+          storeyId:   `${project.projectId}-STOREY-${idx}`,
+          projectId:  project.projectId,
+          storeyName: s.name,
+          elevation:  s.elevation ?? null,
+          building:   s.building  ?? null,
+          sortOrder:  idx,
+        }));
+        try { await AxiosCustom.post('/api/bim/storeys/batch', storeyPayload); }
+        catch (e) { console.warn('층 저장 실패(무시):', e.message); }
+      }
+
+      // WBS 자동 생성 및 저장
+      if (elements.length > 0) {
+        try {
+          const { generateWbsFromElements } = await import('./utils/wbsGenerator');
+          const renamedElements = elements.map(el => ({
+            ...el,
+            elementId: idMap[el.elementId] || `${el.elementId}-${project.projectId}`,
+          }));
+          const { wbsNodes, mappings } = generateWbsFromElements(renamedElements, project.projectId);
+          if (wbsNodes.length > 0) {
+            await AxiosCustom.post('/api/bim/wbs/batch', wbsNodes);
+          }
+          if (mappings.length > 0) {
+            await AxiosCustom.post('/api/bim/element-wbs/batch', mappings);
+          }
+        } catch (e) {
+          console.warn('WBS 자동 생성 실패(무시):', e.message);
+        }
+      }
+
+      // IFC 지오메트리 클라이언트 캐시 (DB 미저장)
       if (ifcMeshes && ifcMeshes.length > 0) {
         const renamedMeshes = ifcMeshes.map(mesh => ({
           ...mesh,

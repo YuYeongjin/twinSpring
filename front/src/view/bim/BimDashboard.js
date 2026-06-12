@@ -13,8 +13,11 @@ import AxiosCustom from '../../axios/AxiosCustom';
 import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
 import StructuralDashboard from '../structural/StructuralDashboard';
 import WorkPlanDashboard from './component/WorkPlanDashboard';
+import IfcStoreyTree from './component/IfcStoreyTree';
+import IfcWbsPanel from './component/IfcWbsPanel';
 import DroneAnalysisModal from './component/DroneAnalysisModal';
 import BimAgentChat from './component/BimAgentChat';
+import { buildWbsTree } from '../../utils/wbsGenerator';
 import { useT } from '../../i18n/LanguageContext';
 
 const API_BASE = '/api/bim';
@@ -1138,6 +1141,76 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const [selectedLineId, setSelectedLineId] = useState(null);
     const [multiSelectedLineIds, setMultiSelectedLineIds] = useState(new Set());
 
+    // ── WBS / 층 상태 ────────────────────────────────────────────────
+    const [wbsNodes, setWbsNodes]           = useState([]);
+    const [elementWbsMappings, setElementWbsMappings] = useState([]);
+    const [progressMode, setProgressMode]   = useState(false);
+
+    // WBS 트리 (buildWbsTree 결과)
+    const wbsTree = React.useMemo(() => buildWbsTree(wbsNodes), [wbsNodes]);
+
+    // elementId → wbsId Map (WBS→BIM 하이라이트용)
+    const elementWbsMap = React.useMemo(() => {
+        const m = new Map();
+        for (const row of elementWbsMappings) {
+            m.set(row.elementId, row.wbsId);
+        }
+        return m;
+    }, [elementWbsMappings]);
+
+    // wbsId → elementId[] Map (BIM→WBS 하이라이트용)
+    const wbsElementMap = React.useMemo(() => {
+        const m = new Map();
+        for (const row of elementWbsMappings) {
+            if (!m.has(row.wbsId)) m.set(row.wbsId, []);
+            m.get(row.wbsId).push(row.elementId);
+        }
+        return m;
+    }, [elementWbsMappings]);
+
+    // 진척도 Map (elementId → progress)
+    const progressMap = React.useMemo(() => {
+        if (!progressMode) return null;
+        const m = new Map();
+        for (const node of wbsNodes) {
+            if (node.elementType && node.progress > 0) {
+                const ids = wbsElementMap.get(node.wbsId) || [];
+                for (const id of ids) m.set(id, node.progress);
+            }
+        }
+        return m;
+    }, [progressMode, wbsNodes, wbsElementMap]);
+
+    // 프로젝트 변경 시 WBS/매핑 로드
+    useEffect(() => {
+        const pid = selectedProject?.projectId;
+        if (!pid) { setWbsNodes([]); setElementWbsMappings([]); return; }
+        AxiosCustom.get(`${API_BASE}/wbs?projectId=${pid}`)
+            .then(res => setWbsNodes(res.data || []))
+            .catch(() => setWbsNodes([]));
+        AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`)
+            .then(res => setElementWbsMappings(res.data || []))
+            .catch(() => setElementWbsMappings([]));
+    }, [selectedProject]);
+
+    // WBS 진척도 업데이트
+    const handleWbsProgressChange = React.useCallback((wbsId, progress) => {
+        setWbsNodes(prev => prev.map(n => n.wbsId === wbsId ? { ...n, progress } : n));
+        AxiosCustom.put(`${API_BASE}/wbs/${wbsId}/progress`, { progress })
+            .catch(e => console.warn('WBS 진척도 저장 실패:', e.message));
+    }, []);
+
+    // WBS/층 트리에서 BIM 부재 하이라이트 (다중 선택)
+    const handleWbsSelectElements = React.useCallback((ids) => {
+        setSelectedElements(new Set(ids));
+        if (ids && ids.length > 0) {
+            const first = modelData.find(e => e.elementId === ids[0]);
+            if (first) setSelectedElement({ data: first, meshRef: null });
+        } else {
+            setSelectedElement(null);
+        }
+    }, [setSelectedElements, setSelectedElement, modelData]);
+
     useEffect(() => {
         const pid = selectedProject?.projectId;
         if (!pid) return;
@@ -2078,8 +2151,28 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 <StructuralDashboard selectedProject={selectedProject} modelData={modelData} />
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'block' : 'none' }}>
-                <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} />
+            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'flex' : 'none', gap: 0 }}>
+                {/* 왼쪽: WBS 트리 + 진척도 */}
+                <div style={{
+                    width: 280, minWidth: 220, flexShrink: 0,
+                    borderRight: '1px solid #1a2a3a',
+                    overflowY: 'auto',
+                    background: '#060e1a',
+                }}>
+                    <IfcWbsPanel
+                        wbsTree={wbsTree}
+                        elementWbsMap={elementWbsMap}
+                        selectedElement={selectedElement}
+                        onSelectElements={handleWbsSelectElements}
+                        onProgressChange={handleWbsProgressChange}
+                        progressMode={progressMode}
+                        onToggleProgress={() => setProgressMode(v => !v)}
+                    />
+                </div>
+                {/* 오른쪽: 기존 공정 대시보드 */}
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                    <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} />
+                </div>
             </div>
 
             <div
@@ -2364,6 +2457,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             walkMode={walkMode}
                                             onWalkModeExit={() => setWalkMode(false)}
                                             orbitTargetRef={orbitTargetRef}
+                                            progressMap={progressMap}
+                                            progressMode={progressMode}
                                         />
                                         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
                                             <GizmoViewport axisColors={['#ff4060', '#80ff80', '#2080ff']} labelColor="white"/>
@@ -2649,6 +2744,29 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 selectedLineId={selectedLineId}
                             />
                         </Card>
+
+                        {/* 층/타입/부재 트리 */}
+                        {modelData.length > 0 && (
+                            <Card
+                                title={t('storeyTreeTitle')}
+                                right={<Chip color="blue">{modelData.length}</Chip>}
+                                style={{ padding: '8px 0 0' }}
+                            >
+                                <div style={{ maxHeight: 360, overflowY: 'auto', marginTop: -8 }}>
+                                    <IfcStoreyTree
+                                        modelData={modelData}
+                                        selectedElement={selectedElement}
+                                        onSelectElements={handleWbsSelectElements}
+                                        onSelectElement={(el) =>
+                                            handleElementSelectAndClearLine(el, null, false)
+                                        }
+                                        layers={layers}
+                                        onAssignToLayer={assignToLayer}
+                                        onRemoveFromLayer={removeFromLayer}
+                                    />
+                                </div>
+                            </Card>
+                        )}
 
                         <Card title={t('elementList')} right={<Chip color="green">{t('liveChip')}</Chip>} className="shrink-0">
                             <p className="text-xs text-gray-600 mb-2">{t('tapToSelectAll')}</p>

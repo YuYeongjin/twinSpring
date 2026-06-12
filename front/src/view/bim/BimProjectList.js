@@ -418,15 +418,15 @@ function IfcImportModal({ onClose, onImport }) {
 
   const handleImport = useCallback(() => {
     if (!parsedData || !projectName.trim()) return;
-    const { elements, ifcMeshes } = parsedData;
+    const { elements, ifcMeshes, geoOrigin, storeys } = parsedData;
     setPhase("importing");
-    onImport(projectType, projectName.trim(), elements, ifcMeshes, (project) => {
+    onImport(projectType, projectName.trim(), elements, ifcMeshes, geoOrigin, (project) => {
       if (project) onClose();
       else {
         setErrorMsg(t('projectCreationFailed'));
         setPhase("error");
       }
-    });
+    }, storeys);
   }, [parsedData, projectName, projectType, onImport, onClose, t]);
 
   const parsedElements = parsedData?.elements ?? null;

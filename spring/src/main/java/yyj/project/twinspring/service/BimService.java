@@ -8,6 +8,8 @@ import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
+import yyj.project.twinspring.dto.BimStoreyDTO;
+import yyj.project.twinspring.dto.BimWbsNodeDTO;
 
 import java.util.List;
 import java.util.Map;
@@ -72,6 +74,22 @@ public interface BimService {
     String exportBimElementsCsv(String projectId);
 
     // ── 구조 분석 (C# 서버 프록시) ────────────────────────────────
-    /** 프로젝트 부재 타입/재료별 구조 분석 통계 (C# structural 엔드포인트 호출) */
     Mono<Map<String, Object>> getStructuralAnalysis(String projectId);
+
+    // ── 층(BuildingStorey) ──────────────────────────────────────────
+    List<BimStoreyDTO> getStoreysByProject(String projectId);
+    void saveStoreys(List<BimStoreyDTO> storeys);
+    void deleteStoreysByProject(String projectId);
+
+    // ── WBS 노드 ────────────────────────────────────────────────────
+    List<BimWbsNodeDTO> getWbsByProject(String projectId);
+    void saveWbsNodes(List<BimWbsNodeDTO> nodes);
+    void updateWbsProgress(String wbsId, int progress);
+    void deleteWbsByProject(String projectId);
+
+    // ── 부재 ↔ WBS 매핑 ────────────────────────────────────────────
+    List<Map<String, Object>> getElementWbsMappings(String projectId);
+    void saveElementWbsMappings(List<Map<String, Object>> mappings);
+    List<String> getElementIdsByWbs(String wbsId);
+    String getWbsIdByElement(String elementId);
 }

@@ -18,6 +18,8 @@ import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
+import yyj.project.twinspring.dto.BimStoreyDTO;
+import yyj.project.twinspring.dto.BimWbsNodeDTO;
 import yyj.project.twinspring.service.BimService;
 
 import java.util.*;
@@ -159,14 +161,22 @@ public class BimServiceImpl implements BimService {
                 })
                 .bodyToMono(BimProjectDTO.class)
                 .doOnSuccess(created -> {
-                    // C# 성공 후 PostgreSQL에도 동기화 (에이전트 목록 조회 일관성 보장)
+                    // C# 성공 후 PostgreSQL에도 동기화 (geoOrigin 포함)
                     try {
                         Map<String, Object> params = new HashMap<>();
                         params.put("projectId",     created != null && created.getProjectId() != null ? created.getProjectId() : projectId);
                         params.put("projectName",   project.getProjectName());
                         params.put("structureType", project.getStructureType());
+                        params.put("geoLatitude",   project.getGeoLatitude());
+                        params.put("geoLongitude",  project.getGeoLongitude());
+                        params.put("geoElevation",  project.getGeoElevation());
+                        params.put("ifcOffsetX",    project.getIfcOffsetX());
+                        params.put("ifcOffsetY",    project.getIfcOffsetY());
+                        params.put("ifcOffsetZ",    project.getIfcOffsetZ());
+                        params.put("ifcScale",      project.getIfcScale());
                         bimDAO.insertProject(params);
-                        log.info("PostgreSQL project 동기화 완료: projectId={}", params.get("projectId"));
+                        log.info("PostgreSQL project 동기화 완료: projectId={}, lat={}, lng={}",
+                                params.get("projectId"), params.get("geoLatitude"), params.get("geoLongitude"));
                     } catch (Exception e) {
                         log.warn("PostgreSQL project 동기화 실패 (무시): {}", e.getMessage());
                     }
@@ -206,6 +216,9 @@ public class BimServiceImpl implements BimService {
                     dto.setRotationX(row.get("rotationX") == null ? null : toDouble(row.get("rotationX")));
                     dto.setRotationY(row.get("rotationY") == null ? null : toDouble(row.get("rotationY")));
                     dto.setRotationZ(row.get("rotationZ") == null ? null : toDouble(row.get("rotationZ")));
+                    dto.setIfcWorldX(row.get("ifcWorldX") == null ? null : toDouble(row.get("ifcWorldX")));
+                    dto.setIfcWorldY(row.get("ifcWorldY") == null ? null : toDouble(row.get("ifcWorldY")));
+                    dto.setIfcWorldZ(row.get("ifcWorldZ") == null ? null : toDouble(row.get("ifcWorldZ")));
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -511,6 +524,13 @@ public class BimServiceImpl implements BimService {
                     dto.setProjectName((String) row.get("projectName"));
                     dto.setStructureType((String) row.get("structureType"));
                     dto.setSpanCount((String) row.get("spanCount"));
+                    dto.setGeoLatitude(row.get("geoLatitude") == null ? null : toDouble(row.get("geoLatitude")));
+                    dto.setGeoLongitude(row.get("geoLongitude") == null ? null : toDouble(row.get("geoLongitude")));
+                    dto.setGeoElevation(row.get("geoElevation") == null ? null : toDouble(row.get("geoElevation")));
+                    dto.setIfcOffsetX(row.get("ifcOffsetX") == null ? null : toDouble(row.get("ifcOffsetX")));
+                    dto.setIfcOffsetY(row.get("ifcOffsetY") == null ? null : toDouble(row.get("ifcOffsetY")));
+                    dto.setIfcOffsetZ(row.get("ifcOffsetZ") == null ? null : toDouble(row.get("ifcOffsetZ")));
+                    dto.setIfcScale(row.get("ifcScale") == null ? null : toDouble(row.get("ifcScale")));
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -540,7 +560,7 @@ public class BimServiceImpl implements BimService {
     public String exportBimElementsCsv(String projectId) {
         List<Map<String, Object>> rows = bimDAO.getElementsByProject(projectId);
         StringBuilder sb = new StringBuilder();
-        sb.append("elementId,elementType,material,positionX,positionY,positionZ,sizeX,sizeY,sizeZ,rotationX,rotationY,rotationZ\n");
+        sb.append("elementId,elementType,material,positionX,positionY,positionZ,sizeX,sizeY,sizeZ,rotationX,rotationY,rotationZ,globalId,ifcName,storey,building\n");
         for (Map<String, Object> row : rows) {
             sb.append(row.getOrDefault("elementId", "")).append(",");
             sb.append(row.getOrDefault("elementType", "")).append(",");
@@ -553,8 +573,77 @@ public class BimServiceImpl implements BimService {
             sb.append(row.getOrDefault("sizeZ", "")).append(",");
             sb.append(row.getOrDefault("rotationX", "")).append(",");
             sb.append(row.getOrDefault("rotationY", "")).append(",");
-            sb.append(row.getOrDefault("rotationZ", "")).append("\n");
+            sb.append(row.getOrDefault("rotationZ", "")).append(",");
+            sb.append(row.getOrDefault("globalId", "")).append(",");
+            sb.append(row.getOrDefault("ifcName",  "")).append(",");
+            sb.append(row.getOrDefault("storey",   "")).append(",");
+            sb.append(row.getOrDefault("building", "")).append("\n");
         }
         return sb.toString();
+    }
+
+    // ── 층(BuildingStorey) ──────────────────────────────────────────
+
+    @Override
+    public List<BimStoreyDTO> getStoreysByProject(String projectId) {
+        return bimDAO.getStoreysByProject(projectId);
+    }
+
+    @Override
+    public void saveStoreys(List<BimStoreyDTO> storeys) {
+        if (storeys == null || storeys.isEmpty()) return;
+        bimDAO.insertStoreysBatch(storeys);
+    }
+
+    @Override
+    public void deleteStoreysByProject(String projectId) {
+        bimDAO.deleteStoreysByProject(projectId);
+    }
+
+    // ── WBS 노드 ────────────────────────────────────────────────────
+
+    @Override
+    public List<BimWbsNodeDTO> getWbsByProject(String projectId) {
+        return bimDAO.getWbsByProject(projectId);
+    }
+
+    @Override
+    public void saveWbsNodes(List<BimWbsNodeDTO> nodes) {
+        if (nodes == null || nodes.isEmpty()) return;
+        bimDAO.insertWbsNodesBatch(nodes);
+    }
+
+    @Override
+    public void updateWbsProgress(String wbsId, int progress) {
+        bimDAO.updateWbsProgress(wbsId, Math.max(0, Math.min(100, progress)));
+    }
+
+    @Override
+    public void deleteWbsByProject(String projectId) {
+        bimDAO.deleteElementWbsMappingsByProject(projectId);
+        bimDAO.deleteWbsByProject(projectId);
+    }
+
+    // ── 부재 ↔ WBS 매핑 ────────────────────────────────────────────
+
+    @Override
+    public List<Map<String, Object>> getElementWbsMappings(String projectId) {
+        return bimDAO.getElementWbsMappings(projectId);
+    }
+
+    @Override
+    public void saveElementWbsMappings(List<Map<String, Object>> mappings) {
+        if (mappings == null || mappings.isEmpty()) return;
+        bimDAO.insertElementWbsMappingsBatch(mappings);
+    }
+
+    @Override
+    public List<String> getElementIdsByWbs(String wbsId) {
+        return bimDAO.getElementIdsByWbs(wbsId);
+    }
+
+    @Override
+    public String getWbsIdByElement(String elementId) {
+        return bimDAO.getWbsIdByElement(elementId);
     }
 }
