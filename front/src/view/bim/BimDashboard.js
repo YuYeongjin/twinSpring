@@ -1630,6 +1630,28 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         return ids.size;
     }, [selectedElements, selectedElement]);
 
+    // IFC 임포트된 데이터 여부 (층/GlobalId 존재 시 true)
+    const hasIfcData = useMemo(
+        () => modelData.some(e => e.storey || e.globalId || e.building),
+        [modelData]
+    );
+
+    // 현재 모델에 존재하는 부재 타입 목록 (개수 내림차순)
+    const presentTypes = useMemo(() => {
+        const counts = {};
+        for (const el of modelData) {
+            counts[el.elementType] = (counts[el.elementType] || 0) + 1;
+        }
+        const TYPE_ORDER = ['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcDoor','IfcWindow','IfcStair','IfcRoof','IfcPier','IfcMember','IfcRebar'];
+        return Object.entries(counts)
+            .sort(([a,ca],[b,cb]) => {
+                const oa = TYPE_ORDER.indexOf(a), ob = TYPE_ORDER.indexOf(b);
+                if (oa !== ob) return (oa < 0 ? 99 : oa) - (ob < 0 ? 99 : ob);
+                return cb - ca;
+            })
+            .map(([type, count]) => ({ type, count }));
+    }, [modelData]);
+
     const resolvedModelData = useMemo(() => {
         return modelData.map(el => {
             const layer = layers.find(l => l.elementIds.includes(el.elementId));
@@ -2745,8 +2767,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             />
                         </Card>
 
-                        {/* 층/타입/부재 트리 */}
-                        {modelData.length > 0 && (
+                        {/* 층/타입/부재 트리 — IFC 임포트된 경우에만 표시 */}
+                        {hasIfcData && (
                             <Card
                                 title={t('storeyTreeTitle')}
                                 right={<Chip color="blue">{modelData.length}</Chip>}
@@ -2768,42 +2790,54 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             </Card>
                         )}
 
-                        <Card title={t('elementList')} right={<Chip color="green">{t('liveChip')}</Chip>} className="shrink-0">
-                            <p className="text-xs text-gray-600 mb-2">{t('tapToSelectAll')}</p>
-                            <CardGridWrapper>
-                                {['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcSlab', 'IfcPier', 'IfcRebar'].map(type => {
-                                    const matching = modelData.filter(e => e.elementType === type);
-                                    const count = matching.length;
-                                    const isAllSelected = count > 0 && matching.every(e => selectedElements.has(e.elementId));
-                                    return (
-                                        <div
-                                            key={type}
-                                            onClick={() => {
-                                                if (count === 0) return;
-                                                setSelectedElement(null);
-                                                setSelectedElements(new Set(matching.map(e => e.elementId)));
-                                            }}
-                                            className="rounded-lg p-2 flex flex-col items-center gap-0.5 transition-all"
-                                            style={{
-                                                backgroundColor: isAllSelected ? 'rgba(59,130,246,0.25)' : 'rgba(51,65,85,0.6)',
-                                                border: isAllSelected ? '1px solid #3b82f6' : '1px solid transparent',
-                                                cursor: count > 0 ? 'pointer' : 'default',
-                                                opacity: count === 0 ? 0.4 : 1,
-                                            }}
-                                        >
-                                            <span className="text-xs truncate w-full text-center"
-                                                  style={{ color: isAllSelected ? '#93c5fd' : '#9ca3af' }}>
-                                                {type.replace('Ifc', '')}
-                                            </span>
-                                            <span className="text-lg font-bold"
-                                                  style={{ color: isAllSelected ? '#60a5fa' : '#f1f5f9' }}>
-                                                {count}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </CardGridWrapper>
-                        </Card>
+                        {/* 부재 타입별 현황 — 모델에 존재하는 타입만 동적으로 표시 */}
+                        {presentTypes.length > 0 && (
+                            <Card
+                                title={t('elementList')}
+                                right={<Chip color="green">{t('liveChip')}</Chip>}
+                                className="shrink-0"
+                            >
+                                <p className="text-xs text-gray-600 mb-2">{t('tapToSelectAll')}</p>
+                                <CardGridWrapper>
+                                    {presentTypes.map(({ type, count }) => {
+                                        const matching = modelData.filter(e => e.elementType === type);
+                                        const isAllSelected = count > 0 && matching.every(e => selectedElements.has(e.elementId));
+                                        const typeLabel = t(`typeIfc${type.replace('Ifc', '')}`) || type.replace('Ifc', '');
+                                        return (
+                                            <div
+                                                key={type}
+                                                onClick={() => {
+                                                    if (count === 0) return;
+                                                    const first = matching[0];
+                                                    setSelectedElements(new Set(matching.map(e => e.elementId)));
+                                                    if (first) setSelectedElement({ data: first, meshRef: null });
+                                                }}
+                                                className="rounded-lg p-2 flex flex-col items-center gap-0.5 transition-all"
+                                                style={{
+                                                    backgroundColor: isAllSelected ? 'rgba(59,130,246,0.25)' : 'rgba(51,65,85,0.6)',
+                                                    border: isAllSelected ? '1px solid #3b82f6' : '1px solid transparent',
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
+                                                <span
+                                                    className="text-xs truncate w-full text-center"
+                                                    style={{ color: isAllSelected ? '#93c5fd' : '#9ca3af' }}
+                                                    title={type}
+                                                >
+                                                    {typeLabel}
+                                                </span>
+                                                <span
+                                                    className="text-lg font-bold"
+                                                    style={{ color: isAllSelected ? '#60a5fa' : '#f1f5f9' }}
+                                                >
+                                                    {count}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </CardGridWrapper>
+                            </Card>
+                        )}
                     </div>{/* end content wrapper */}
                     </div>{/* end panel overlay div */}
                     </>
