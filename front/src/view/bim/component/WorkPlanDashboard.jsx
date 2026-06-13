@@ -114,20 +114,45 @@ function fwArea(el) {
 
 function detectFloors(elements) {
   if (!elements.length) return [];
-  const sorted = [...elements].sort((a,b)=>elZ(a)-elZ(b));
+
+  // IFC 공간 구조의 storey 정보가 있으면 그것으로 그루핑 (scale 독립적)
+  const hasStorey = elements.some(e => e.storey);
+  if (hasStorey) {
+    const storeyMap = new Map();
+    for (const el of elements) {
+      const key = el.storey ?? '__none__';
+      if (!storeyMap.has(key)) storeyMap.set(key, []);
+      storeyMap.get(key).push(el);
+    }
+    return [...storeyMap.entries()]
+      .map(([key, els]) => {
+        const zs = els.map(elZ);
+        return { avgZ: zs.reduce((a, b) => a + b) / zs.length, elements: els };
+      })
+      .sort((a, b) => a.avgZ - b.avgZ);
+  }
+
+  // storey 미할당 요소만 있을 때: positionZ 범위 대비 상대적 비율로 층 구분
+  const sorted = [...elements].sort((a, b) => elZ(a) - elZ(b));
+  const zRange = elZ(sorted[sorted.length - 1]) - elZ(sorted[0]);
+  const gap = Math.max(zRange * 0.15, 0.001); // 전체 높이의 15%를 기준으로
   const groups = [[sorted[0]]];
-  for (let i=1; i<sorted.length; i++) {
-    const prev = groups[groups.length-1];
-    if (elZ(sorted[i]) - elZ(prev[prev.length-1]) >= FLOOR_GAP) groups.push([sorted[i]]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = groups[groups.length - 1];
+    if (elZ(sorted[i]) - elZ(prev[prev.length - 1]) >= gap) groups.push([sorted[i]]);
     else prev.push(sorted[i]);
   }
   return groups.map(g => {
-    const zs=g.map(elZ);
-    return { avgZ:zs.reduce((a,b)=>a+b)/zs.length, elements:g };
+    const zs = g.map(elZ);
+    return { avgZ: zs.reduce((a, b) => a + b) / zs.length, elements: g };
   });
 }
 
 function floorLabel(idx, floors, t) {
+  // storey 이름이 있으면 직접 사용 (IFC 공간 구조 정보 우선)
+  const storeyName = floors[idx]?.elements?.[0]?.storey;
+  if (storeyName) return storeyName;
+  // fallback: avgZ 기반 지상/지하 판단
   const above = floors.map((_,i)=>i).filter(i=>floors[i].avgZ>=0.5);
   const below  = floors.map((_,i)=>i).filter(i=>floors[i].avgZ<0.5);
   if (above.includes(idx)) return t('floorAbove', {n: above.indexOf(idx)+1});
@@ -261,9 +286,35 @@ function buildTasks(elements, startDate, t) {
   return tasks;
 }
 
-export function computeWorkPlan(modelData, t) {
+/**
+ * Layer의 elementIds를 이용해 C# 서버가 누락한 storey 필드를 보강합니다.
+ * type 레이어 → 부모 storey 레이어의 layerName 으로 매핑합니다.
+ */
+function enrichWithStorey(elements, layers) {
+  if (!layers || layers.length === 0) return elements;
+  const layerMap = new Map(layers.map(l => [l.layerId, l]));
+  const elementToStorey = new Map();
+
+  for (const layer of layers) {
+    if (!layer.elementIds || layer.elementIds.length === 0) continue;
+    const parent = layerMap.get(layer.parentLayerId);
+    if (!parent || !parent.layerName) continue;
+    for (const id of layer.elementIds) {
+      elementToStorey.set(id, parent.layerName);
+    }
+  }
+
+  if (elementToStorey.size === 0) return elements;
+  return elements.map(el => ({
+    ...el,
+    storey: elementToStorey.get(el.elementId) ?? el.storey ?? null,
+  }));
+}
+
+export function computeWorkPlan(modelData, t, layers) {
   if (!modelData?.length) return null;
-  const relevant=modelData.filter(e=>['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcPier'].includes(e.elementType));
+  const enriched = enrichWithStorey(modelData, layers);
+  const relevant = enriched.filter(e => ['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcPier'].includes(e.elementType));
   if (!relevant.length) return null;
   const today=new Date(); today.setHours(0,0,0,0);
   const tasks=buildTasks(relevant,today,t);
@@ -791,11 +842,11 @@ function printPlan(plan, projectName, t) {
 // 메인
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function WorkPlanDashboard({ selectedProject, modelData }) {
+export default function WorkPlanDashboard({ selectedProject, modelData, layers }) {
   const { lang } = useLanguage();
   const t    = useT('workPlan');
   const [view, setView] = useState('gantt');
-  const plan = useMemo(() => computeWorkPlan(modelData, t), [modelData, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+  const plan = useMemo(() => computeWorkPlan(modelData, t, layers), [modelData, layers, lang]); // eslint-disable-line react-hooks/exhaustive-deps
   const projectName = selectedProject?.projectName || t('title');
 
   if (!plan) return (

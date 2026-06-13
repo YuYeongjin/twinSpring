@@ -74,6 +74,7 @@ public class BimServiceImpl implements BimService {
         BimLayerDTO dto = new BimLayerDTO();
         dto.setLayerId((String) row.get("layerId"));
         dto.setProjectId((String) row.get("projectId"));
+        dto.setParentLayerId((String) row.get("parentLayerId"));
         dto.setLayerName((String) row.get("layerName"));
         dto.setColor((String) row.get("color"));
         Object vis = row.get("visible");

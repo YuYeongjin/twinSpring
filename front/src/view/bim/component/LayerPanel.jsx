@@ -1,13 +1,35 @@
 import React, { useState, useMemo } from 'react';
 
+// IFC 자동 생성 시 들어오는 더미 building 이름 — 레이어 트리에서 투명 처리
+const DUMMY_ROOT_NAMES = new Set([
+    '// building/name //', 'building name', 'building/name', 'building', 'default',
+    'unnamed', 'no building', 'building_0', 'building_1', 'building_2', 'none', '(none)',
+]);
+function isDummyRoot(layer) {
+    return (
+        !layer.parentLayerId &&
+        (!layer.elementIds || layer.elementIds.length === 0) &&
+        DUMMY_ROOT_NAMES.has((layer.layerName || '').trim().toLowerCase())
+    );
+}
+
 // ── Tree helpers ──────────────────────────────────────────────────────
 function buildLayerTree(layers) {
+    // 더미 루트 레이어(building name 등) ID 수집 → 트리에서 제거, 자식은 루트로 승격
+    const dummyIds = new Set(layers.filter(isDummyRoot).map(l => l.layerId));
+
     const map = {};
-    for (const l of layers) map[l.layerId] = { ...l, children: [] };
+    for (const l of layers) {
+        if (dummyIds.has(l.layerId)) continue;
+        map[l.layerId] = { ...l, children: [] };
+    }
     const roots = [];
     for (const l of layers) {
-        if (l.parentLayerId && map[l.parentLayerId]) {
-            map[l.parentLayerId].children.push(map[l.layerId]);
+        if (dummyIds.has(l.layerId)) continue;
+        // 부모가 더미 레이어면 루트로 승격
+        const parentId = dummyIds.has(l.parentLayerId) ? null : l.parentLayerId;
+        if (parentId && map[parentId]) {
+            map[parentId].children.push(map[l.layerId]);
         } else {
             roots.push(map[l.layerId]);
         }

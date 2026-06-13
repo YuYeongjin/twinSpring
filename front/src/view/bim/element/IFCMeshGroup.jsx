@@ -147,6 +147,9 @@ function IFCMesh({
     ];
   }, [element]);
 
+  // 레이어 비가시 상태 = visibleModelData에서 제외됨 → element 없으면 렌더 안 함
+  if (!element) return null;
+
   // 진척도 1~99%: 두 개의 메시로 분할 렌더링
   if (completedMat && remainingMat && clipHeight !== null) {
     return (
