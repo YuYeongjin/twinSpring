@@ -121,6 +121,57 @@ function toIntegrationCoords(el) {
   };
 }
 
+// ── CPM 공종 → 건설 phase 매핑 ───────────────────────────────────
+// IfcSlab = 기초공사(FOUND) 완료 기준
+// IfcColumn/Beam/Pier = 지하구조(UNDER) 완료 기준
+// IfcWall/Member = 지상구조(ABOVE) 완료 기준
+// TEMP/EARTH 는 BIM 부재 미매핑 → 자동 100% 처리
+const ELEM_TYPE_TO_SIM_PHASE = {
+  IfcSlab:   'FOUND',
+  IfcPier:   'UNDER',
+  IfcColumn: 'UNDER',
+  IfcBeam:   'UNDER',
+  IfcWall:   'ABOVE',
+  IfcMember: 'ABOVE',
+};
+const SIM_PHASE_ORDER = ['TEMP', 'EARTH', 'FOUND', 'UNDER', 'ABOVE'];
+
+/**
+ * wbsTasks (General WBS 시뮬)에서 특정 BIM 프로젝트의 phase 진도를 계산.
+ * ELEM_TYPE_TO_SIM_PHASE 매핑으로 공종 진도를 phase 진도로 변환하고
+ * 활성 phase 인덱스(activePhaseIdx)를 반환 — cascade 적용에 사용.
+ */
+function computeSimPhaseProgress(wbsTasks, bimProjectId) {
+  const typeProgress = {};
+  wbsTasks.forEach(t => {
+    const m = (t.notes || '').match(/^BIM:([^:]+):([^:]+)$/);
+    if (m && m[1] === bimProjectId && m[2] !== 'ROOT')
+      typeProgress[m[2]] = Math.min(100, Math.max(0, t.progress || 0));
+  });
+
+  const accum = {}, counts = {};
+  Object.entries(ELEM_TYPE_TO_SIM_PHASE).forEach(([type, phase]) => {
+    if (type in typeProgress) {
+      accum[phase]  = (accum[phase]  || 0) + typeProgress[type];
+      counts[phase] = (counts[phase] || 0) + 1;
+    }
+  });
+
+  const phaseProgress = {};
+  SIM_PHASE_ORDER.forEach(ph => {
+    phaseProgress[ph] = counts[ph]
+      ? accum[ph] / counts[ph]
+      : (ph === 'TEMP' || ph === 'EARTH') ? 100 : 0;
+  });
+
+  let activePhaseIdx = SIM_PHASE_ORDER.length;
+  for (let i = 0; i < SIM_PHASE_ORDER.length; i++) {
+    if (phaseProgress[SIM_PHASE_ORDER[i]] < 100) { activePhaseIdx = i; break; }
+  }
+
+  return { phaseProgress, activePhaseIdx };
+}
+
 // ── WBS 태스크에서 BIM 공정율 맵 빌드 ────────────────────────────
 // 반환: { "bimProjectId:IfcColumn": 42, "bimProjectId:IfcSlab": 100, ... }
 function buildProgressMap(wbsTasks) {
@@ -269,7 +320,7 @@ function StructureSelectionBox({ elements }) {
 // ── 구조물 레이어 (여러 BIM/IFC 구조물) ──────────────────────────
 function StructuresLayer() {
   const t = useT('integrationProject');
-  const { structures, wbsTasks, surveyOrigin } = useIntegration();
+  const { structures, wbsTasks, surveyOrigin, bimWbsProgress } = useIntegration();
   const [selectedStructId, setSelectedStructId] = useState(null);
 
   // WBS notes 형식(BIM:<id>:<type>) 기반 공종별 진도 맵
@@ -295,6 +346,16 @@ function StructuresLayer() {
     });
     return result;
   }, [structures, wbsTasks, overallWbsProgress]);
+
+  // BIM 프로젝트별 시뮬 phase 진도 (CPM → phase 매핑, cascade용)
+  const simPhaseProgressPerStruct = useMemo(() => {
+    const result = {};
+    structures.forEach(s => {
+      if (s.type !== 'bim' || !s.bimProjectId) return;
+      result[s.bimProjectId] = computeSimPhaseProgress(wbsTasks, s.bimProjectId);
+    });
+    return result;
+  }, [structures, wbsTasks]);
 
   // BIM 구조물별 층 데이터 — raw positionY 기준 grouping
   const floorsPerStruct = useMemo(() => {
@@ -419,9 +480,19 @@ function StructuresLayer() {
               return floors.map((floor, fi) => {
                 const label     = getFloorLabel(fi, floors, t);
                 const projectFallback = perProjectProgress[s.bimProjectId] ?? overallWbsProgress;
-                const types     = [...new Set(floor.elements.map(el => el.elementType))];
-                const typePcts  = types.map(tp => progressMap[`${s.bimProjectId}:${tp}`] ?? projectFallback);
-                const avgPct    = typePcts.length ? typePcts.reduce((a, b) => a + b) / typePcts.length : 0;
+                const wbsData   = bimWbsProgress?.[s.bimProjectId];
+                const simPhase  = simPhaseProgressPerStruct[s.bimProjectId]
+                  || { phaseProgress: {}, activePhaseIdx: SIM_PHASE_ORDER.length };
+                // 층 평균 진행률: BIM WBS 부재별 우선, 없으면 시뮬 phase cascade
+                const floorPcts = floor.elements.map(el => {
+                  const wbsEl = wbsData?.elements?.[el.elementId];
+                  if (wbsEl != null) return wbsEl.progress ?? 0;
+                  const ph  = ELEM_TYPE_TO_SIM_PHASE[el.elementType] ?? 'ABOVE';
+                  const idx = SIM_PHASE_ORDER.indexOf(ph);
+                  if (idx > simPhase.activePhaseIdx) return 0;
+                  return progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback;
+                });
+                const avgPct    = floorPcts.length ? floorPcts.reduce((a, b) => a + b) / floorPcts.length : 0;
                 const cascade   = getFloorProgress(fi, floors.length, avgPct);
                 const status    = getFloorStatus(cascade);
                 const color     = getFloorStatusColor(status);
@@ -457,14 +528,24 @@ function StructuresLayer() {
                 const sX = Number(cv.sizeX)     || 0.1;
                 const sY = Number(cv.sizeY)     || 0.1;
                 const sZ = Number(cv.sizeZ)     || 0.1;
-                // 층별 캐스케이딩 진도 적용
+                // BIM WBS 부재별(DB) 우선 → 없으면 시뮬 phase cascade 적용
                 const projectFallback = perProjectProgress[s.bimProjectId] ?? overallWbsProgress;
-                const typeProgress    = progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback;
+                const wbsData         = bimWbsProgress?.[s.bimProjectId];
+                const wbsElemData     = wbsData?.elements?.[el.elementId];
+                const simPhase        = simPhaseProgressPerStruct[s.bimProjectId]
+                  || { phaseProgress: {}, activePhaseIdx: SIM_PHASE_ORDER.length };
+                const elemPhaseKey    = ELEM_TYPE_TO_SIM_PHASE[el.elementType] ?? 'ABOVE';
+                const elemPhaseIdx    = SIM_PHASE_ORDER.indexOf(elemPhaseKey);
+                const baseProgress    = wbsElemData != null
+                  ? wbsElemData.progress ?? 0
+                  : elemPhaseIdx > simPhase.activePhaseIdx
+                    ? 0
+                    : (progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback);
                 const floors          = floorsPerStruct[s.id] || [];
                 const floorIdx        = getElementFloorIndex(el, floors);
                 const elemProgress    = floors.length >= 2
-                  ? getFloorProgress(floorIdx, floors.length, typeProgress)
-                  : typeProgress;
+                  ? getFloorProgress(floorIdx, floors.length, baseProgress)
+                  : baseProgress;
                 return (
                   <BimProgressFill
                     key={el.elementId}

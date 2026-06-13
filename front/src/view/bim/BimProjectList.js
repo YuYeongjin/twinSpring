@@ -385,7 +385,7 @@ function IfcImportModal({ onClose, onImport }) {
       setErrorMsg(t('ifcOnly'));
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
+    if (file.size > 100 * 1024 * 1024) {
       setErrorMsg(t('fileTooLarge'));
       return;
     }
@@ -418,16 +418,16 @@ function IfcImportModal({ onClose, onImport }) {
 
   const handleImport = useCallback(() => {
     if (!parsedData || !projectName.trim()) return;
-    const { elements, ifcMeshes } = parsedData;
+    const { elements, ifcMeshes, geoOrigin, storeys } = parsedData;
     setPhase("importing");
-    onImport(projectType, projectName.trim(), elements, ifcMeshes, (project) => {
+    onImport(projectType, projectName.trim(), elements, ifcMeshes, geoOrigin, (project) => {
       if (project) onClose();
       else {
         setErrorMsg(t('projectCreationFailed'));
         setPhase("error");
       }
-    });
-  }, [parsedData, projectName, projectType, onImport, onClose, t]);
+    }, storeys, selectedFile);
+  }, [parsedData, projectName, projectType, onImport, onClose, t, selectedFile]);
 
   const parsedElements = parsedData?.elements ?? null;
   const typeStats = parsedElements

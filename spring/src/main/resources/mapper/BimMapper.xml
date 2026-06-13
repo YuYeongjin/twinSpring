@@ -3,20 +3,21 @@
 
 <mapper namespace="yyj.project.twinspring.dao.BimDAO">
     <select id="getLayersByProject" parameterType="string" resultType="map">
-        SELECT layer_id    AS "layerId",
-               project_id  AS "projectId",
-               layer_name  AS "layerName",
+        SELECT layer_id         AS "layerId",
+               project_id       AS "projectId",
+               parent_layer_id  AS "parentLayerId",
+               layer_name       AS "layerName",
                color,
                visible,
-               element_ids AS "elementIds",
-               sort_order  AS "sortOrder"
+               element_ids      AS "elementIds",
+               sort_order       AS "sortOrder"
         FROM bim_layer
         WHERE project_id = #{projectId}
         ORDER BY sort_order ASC, created_at ASC
     </select>
     <insert id="insertLayer" parameterType="map">
-        INSERT INTO bim_layer (layer_id, project_id, layer_name, color, visible, element_ids, sort_order)
-        VALUES (#{layerId}, #{projectId}, #{layerName}, #{color}, #{visible}, #{elementIds}, #{sortOrder})
+        INSERT INTO bim_layer (layer_id, project_id, parent_layer_id, layer_name, color, visible, element_ids, sort_order)
+        VALUES (#{layerId}, #{projectId}, #{parentLayerId,jdbcType=VARCHAR}, #{layerName}, #{color}, #{visible}, #{elementIds}, #{sortOrder})
     </insert>
 
     <update id="updateLayer" parameterType="map">
@@ -38,6 +39,15 @@
         DELETE FROM bim_layer
         WHERE project_id = #{projectId}
     </delete>
+
+    <insert id="insertLayersBatch">
+        INSERT INTO bim_layer (layer_id, project_id, parent_layer_id, layer_name, color, visible, element_ids, sort_order)
+        VALUES
+        <foreach collection="list" item="l" separator=",">
+            (#{l.layerId}, #{l.projectId}, #{l.parentLayerId,jdbcType=VARCHAR}, #{l.layerName}, #{l.color}, #{l.visible}, #{l.elementIds}, #{l.sortOrder})
+        </foreach>
+        ON CONFLICT (layer_id) DO NOTHING
+    </insert>
 
 
     <select id="getColorsByProject" parameterType="string" resultType="map">
@@ -133,16 +143,38 @@
     </delete>
 
     <insert id="insertProject" parameterType="map">
-        INSERT INTO bim_project (project_id, project_name, structure_type)
-        VALUES (#{projectId}, #{projectName}, #{structureType})
-        ON CONFLICT (project_id) DO NOTHING
+        INSERT INTO bim_project (project_id, project_name, structure_type,
+                                  geo_latitude, geo_longitude, geo_elevation,
+                                  ifc_offset_x, ifc_offset_y, ifc_offset_z, ifc_scale)
+        VALUES (#{projectId}, #{projectName}, #{structureType},
+                #{geoLatitude,jdbcType=DOUBLE}, #{geoLongitude,jdbcType=DOUBLE}, #{geoElevation,jdbcType=DOUBLE},
+                #{ifcOffsetX,jdbcType=DOUBLE}, #{ifcOffsetY,jdbcType=DOUBLE}, #{ifcOffsetZ,jdbcType=DOUBLE},
+                #{ifcScale,jdbcType=DOUBLE})
+        ON CONFLICT (project_id) DO UPDATE
+            SET geo_latitude  = EXCLUDED.geo_latitude,
+                geo_longitude = EXCLUDED.geo_longitude,
+                geo_elevation = EXCLUDED.geo_elevation,
+                ifc_offset_x  = EXCLUDED.ifc_offset_x,
+                ifc_offset_y  = EXCLUDED.ifc_offset_y,
+                ifc_offset_z  = EXCLUDED.ifc_offset_z,
+                ifc_scale     = EXCLUDED.ifc_scale
     </insert>
 
     <select id="getAllProjects" resultType="map">
-        SELECT project_id     AS "projectId",
-               project_name   AS "projectName",
-               structure_type AS "structureType",
-               span_count     AS "spanCount"
+        SELECT project_id        AS "projectId",
+               project_name      AS "projectName",
+               structure_type    AS "structureType",
+               span_count        AS "spanCount",
+               geo_latitude      AS "geoLatitude",
+               geo_longitude     AS "geoLongitude",
+               geo_elevation     AS "geoElevation",
+               ifc_offset_x      AS "ifcOffsetX",
+               ifc_offset_y      AS "ifcOffsetY",
+               ifc_offset_z      AS "ifcOffsetZ",
+               ifc_scale         AS "ifcScale",
+               storage_key       AS "storageKey",
+               original_filename AS "originalFilename",
+               uploaded_at       AS "uploadedAt"
         FROM bim_project
         ORDER BY project_name ASC
     </select>
@@ -154,13 +186,32 @@
     </update>
 
     <select id="getProjectById" parameterType="string" resultType="map">
-        SELECT project_id     AS "projectId",
-               project_name   AS "projectName",
-               structure_type AS "structureType",
-               span_count     AS "spanCount"
+        SELECT project_id        AS "projectId",
+               project_name      AS "projectName",
+               structure_type    AS "structureType",
+               span_count        AS "spanCount",
+               geo_latitude      AS "geoLatitude",
+               geo_longitude     AS "geoLongitude",
+               geo_elevation     AS "geoElevation",
+               ifc_offset_x      AS "ifcOffsetX",
+               ifc_offset_y      AS "ifcOffsetY",
+               ifc_offset_z      AS "ifcOffsetZ",
+               ifc_scale         AS "ifcScale",
+               storage_key       AS "storageKey",
+               original_filename AS "originalFilename",
+               uploaded_at       AS "uploadedAt"
         FROM bim_project
         WHERE project_id = #{projectId}
     </select>
+
+    <!-- IFC 원본 파일 업로드 완료 후 storage 정보 갱신 -->
+    <update id="updateProjectStorage" parameterType="map">
+        UPDATE bim_project
+        SET storage_key       = #{storageKey},
+            original_filename = #{originalFilename},
+            uploaded_at       = CURRENT_TIMESTAMP
+        WHERE project_id = #{projectId}
+    </update>
 
     <select id="getElementStatsByProject" parameterType="string" resultType="map">
         SELECT element_type AS "elementType",
@@ -171,6 +222,28 @@
         ORDER BY 2 DESC
     </select>
 
+    <!-- IFC 임포트 시 부재 배치 로컬 저장 (globalId/storey/building 포함) -->
+    <insert id="insertElementsBatch">
+        INSERT INTO bim_element (element_id, project_id, element_type, material,
+                                  position_x, position_y, position_z,
+                                  size_x, size_y, size_z,
+                                  rotation_x, rotation_y, rotation_z,
+                                  ifc_world_x, ifc_world_y, ifc_world_z,
+                                  global_id, ifc_name, storey, building)
+        VALUES
+        <foreach collection="list" item="e" separator=",">
+            (#{e.elementId}, #{e.projectId}, #{e.elementType}, #{e.material,jdbcType=VARCHAR},
+             #{e.positionX,jdbcType=DOUBLE}, #{e.positionY,jdbcType=DOUBLE}, #{e.positionZ,jdbcType=DOUBLE},
+             #{e.sizeX,jdbcType=DOUBLE}, #{e.sizeY,jdbcType=DOUBLE}, #{e.sizeZ,jdbcType=DOUBLE},
+             #{e.rotationX,jdbcType=DOUBLE}, #{e.rotationY,jdbcType=DOUBLE}, #{e.rotationZ,jdbcType=DOUBLE},
+             #{e.ifcWorldX,jdbcType=DOUBLE}, #{e.ifcWorldY,jdbcType=DOUBLE}, #{e.ifcWorldZ,jdbcType=DOUBLE},
+             #{e.globalId,jdbcType=VARCHAR}, #{e.ifcName,jdbcType=VARCHAR},
+             #{e.storey,jdbcType=VARCHAR}, #{e.building,jdbcType=VARCHAR})
+        </foreach>
+        ON CONFLICT (element_id) DO NOTHING
+    </insert>
+
+    <!-- getElementsByProject: globalId/storey/building 포함 -->
     <select id="getElementsByProject" parameterType="string" resultType="map">
         SELECT element_id   AS "elementId",
                element_type AS "elementType",
@@ -183,10 +256,129 @@
                size_z       AS "sizeZ",
                rotation_x   AS "rotationX",
                rotation_y   AS "rotationY",
-               rotation_z   AS "rotationZ"
+               rotation_z   AS "rotationZ",
+               ifc_world_x  AS "ifcWorldX",
+               ifc_world_y  AS "ifcWorldY",
+               ifc_world_z  AS "ifcWorldZ",
+               global_id    AS "globalId",
+               ifc_name     AS "ifcName",
+               storey,
+               building
         FROM bim_element
         WHERE project_id = #{projectId}
         ORDER BY element_type, element_id
+    </select>
+
+    <!-- ── 층(BuildingStorey) ──────────────────────────────────── -->
+    <select id="getStoreysByProject" parameterType="string" resultType="yyj.project.twinspring.dto.BimStoreyDTO">
+        SELECT storey_id   AS "storeyId",
+               project_id  AS "projectId",
+               storey_name AS "storeyName",
+               elevation,
+               building,
+               sort_order  AS "sortOrder"
+        FROM bim_storey
+        WHERE project_id = #{projectId}
+        ORDER BY building ASC NULLS LAST, sort_order ASC, elevation ASC NULLS LAST
+    </select>
+
+    <insert id="insertStoreysBatch">
+        INSERT INTO bim_storey (storey_id, project_id, storey_name, elevation, building, sort_order)
+        VALUES
+        <foreach collection="list" item="s" separator=",">
+            (#{s.storeyId}, #{s.projectId}, #{s.storeyName},
+             #{s.elevation,jdbcType=DOUBLE}, #{s.building,jdbcType=VARCHAR}, #{s.sortOrder})
+        </foreach>
+        ON CONFLICT (storey_id) DO UPDATE
+            SET storey_name = EXCLUDED.storey_name,
+                elevation   = EXCLUDED.elevation,
+                building    = EXCLUDED.building,
+                sort_order  = EXCLUDED.sort_order
+    </insert>
+
+    <delete id="deleteStoreysByProject" parameterType="string">
+        DELETE FROM bim_storey WHERE project_id = #{projectId}
+    </delete>
+
+    <!-- ── WBS 노드 ─────────────────────────────────────────────── -->
+    <select id="getWbsByProject" parameterType="string" resultType="yyj.project.twinspring.dto.BimWbsNodeDTO">
+        SELECT wbs_id         AS "wbsId",
+               project_id     AS "projectId",
+               parent_wbs_id  AS "parentWbsId",
+               wbs_code       AS "wbsCode",
+               wbs_name       AS "wbsName",
+               node_type      AS "nodeType",
+               building,
+               storey,
+               element_type   AS "elementType",
+               element_count  AS "elementCount",
+               progress,
+               sort_order     AS "sortOrder",
+               quantity,
+               unit,
+               formula,
+               reason,
+               standard
+        FROM bim_wbs_node
+        WHERE project_id = #{projectId}
+        ORDER BY sort_order ASC, wbs_id ASC
+    </select>
+
+    <insert id="insertWbsNodesBatch">
+        INSERT INTO bim_wbs_node (wbs_id, project_id, parent_wbs_id, wbs_code,
+                                   wbs_name, node_type, building, storey,
+                                   element_type, element_count, progress, sort_order,
+                                   quantity, unit, formula, reason, standard)
+        VALUES
+        <foreach collection="list" item="n" separator=",">
+            (#{n.wbsId}, #{n.projectId}, #{n.parentWbsId,jdbcType=VARCHAR}, #{n.wbsCode,jdbcType=VARCHAR},
+             #{n.wbsName}, #{n.nodeType}, #{n.building,jdbcType=VARCHAR}, #{n.storey,jdbcType=VARCHAR},
+             #{n.elementType,jdbcType=VARCHAR}, #{n.elementCount}, #{n.progress}, #{n.sortOrder},
+             #{n.quantity,jdbcType=DOUBLE}, #{n.unit,jdbcType=VARCHAR}, #{n.formula,jdbcType=VARCHAR},
+             #{n.reason,jdbcType=VARCHAR}, #{n.standard,jdbcType=VARCHAR})
+        </foreach>
+        ON CONFLICT (wbs_id) DO NOTHING
+    </insert>
+
+    <update id="updateWbsProgress">
+        UPDATE bim_wbs_node
+        SET progress   = #{progress},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE wbs_id = #{wbsId}
+    </update>
+
+    <delete id="deleteWbsByProject" parameterType="string">
+        DELETE FROM bim_wbs_node WHERE project_id = #{projectId}
+    </delete>
+
+    <!-- ── 부재 ↔ WBS 매핑 ──────────────────────────────────────── -->
+    <select id="getElementWbsMappings" parameterType="string" resultType="map">
+        SELECT element_id AS "elementId",
+               wbs_id     AS "wbsId",
+               project_id AS "projectId"
+        FROM bim_element_wbs
+        WHERE project_id = #{projectId}
+    </select>
+
+    <insert id="insertElementWbsMappingsBatch">
+        INSERT INTO bim_element_wbs (element_id, wbs_id, project_id)
+        VALUES
+        <foreach collection="list" item="m" separator=",">
+            (#{m.elementId}, #{m.wbsId}, #{m.projectId})
+        </foreach>
+        ON CONFLICT (element_id, wbs_id) DO NOTHING
+    </insert>
+
+    <delete id="deleteElementWbsMappingsByProject" parameterType="string">
+        DELETE FROM bim_element_wbs WHERE project_id = #{projectId}
+    </delete>
+
+    <select id="getElementIdsByWbs" parameterType="string" resultType="string">
+        SELECT element_id FROM bim_element_wbs WHERE wbs_id = #{wbsId}
+    </select>
+
+    <select id="getWbsIdByElement" parameterType="string" resultType="string">
+        SELECT wbs_id FROM bim_element_wbs WHERE element_id = #{elementId} LIMIT 1
     </select>
 
 </mapper>

@@ -18,8 +18,15 @@ import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
+import yyj.project.twinspring.dto.BimStoreyDTO;
+import yyj.project.twinspring.dto.BimWbsNodeDTO;
 import yyj.project.twinspring.service.BimService;
+import yyj.project.twinspring.storage.StorageException;
+import yyj.project.twinspring.storage.StorageService;
 
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.InputStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -30,13 +37,15 @@ public class BimServiceImpl implements BimService {
 
     private final WebClient webClient;
     private final BimDAO bimDAO;
+    private final StorageService storageService;
 
     @Autowired
     private ObjectMapper objectMapper;
 
-    public BimServiceImpl(WebClient webClient, BimDAO bimDAO) {
+    public BimServiceImpl(WebClient webClient, BimDAO bimDAO, StorageService storageService) {
         this.webClient = webClient;
         this.bimDAO = bimDAO;
+        this.storageService = storageService;
     }
 
     // ── JSON 변환 헬퍼 ─────────────────────────────────────────────
@@ -65,6 +74,7 @@ public class BimServiceImpl implements BimService {
         BimLayerDTO dto = new BimLayerDTO();
         dto.setLayerId((String) row.get("layerId"));
         dto.setProjectId((String) row.get("projectId"));
+        dto.setParentLayerId((String) row.get("parentLayerId"));
         dto.setLayerName((String) row.get("layerName"));
         dto.setColor((String) row.get("color"));
         Object vis = row.get("visible");
@@ -114,11 +124,34 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public ResponseEntity<Mono<Void>> deleteProject(String projectId) {
-        return ResponseEntity.ok(
-                webClient.delete()
-                        .uri("/api/bim/project/{projectId}", projectId)
-                        .retrieve()
-                        .bodyToMono(Void.class));
+        // storage_key를 미리 조회해 두어야 C# 삭제 후에도 사용 가능
+        String storageKey = getStorageKey(projectId);
+
+        Mono<Void> deleteMono = webClient.delete()
+                .uri("/api/bim/project/{projectId}", projectId)
+                .retrieve()
+                .bodyToMono(Void.class)
+                .doOnSuccess(v -> {
+                    // 로컬 전용 테이블 정리 (CASCADE 미적용 테이블)
+                    try {
+                        bimDAO.deleteLayersByProject(projectId);
+                        bimDAO.deleteColorsByProject(projectId);
+                        bimDAO.deleteLinesByProject(projectId);
+                    } catch (Exception e) {
+                        log.warn("[BIM] 프로젝트 로컬 리소스 정리 실패: projectId={}, {}", projectId, e.getMessage());
+                    }
+                    // Object Storage 파일 삭제
+                    if (storageKey != null) {
+                        try {
+                            storageService.delete(storageKey);
+                            log.info("[BIM] IFC 원본 파일 삭제 완료: projectId={}, key={}", projectId, storageKey);
+                        } catch (Exception e) {
+                            log.warn("[BIM] IFC 원본 파일 삭제 실패(무시): projectId={}, key={}, {}", projectId, storageKey, e.getMessage());
+                        }
+                    }
+                });
+
+        return ResponseEntity.ok(deleteMono);
     }
 
     @Override
@@ -159,14 +192,22 @@ public class BimServiceImpl implements BimService {
                 })
                 .bodyToMono(BimProjectDTO.class)
                 .doOnSuccess(created -> {
-                    // C# 성공 후 PostgreSQL에도 동기화 (에이전트 목록 조회 일관성 보장)
+                    // C# 성공 후 PostgreSQL에도 동기화 (geoOrigin 포함)
                     try {
                         Map<String, Object> params = new HashMap<>();
                         params.put("projectId",     created != null && created.getProjectId() != null ? created.getProjectId() : projectId);
                         params.put("projectName",   project.getProjectName());
                         params.put("structureType", project.getStructureType());
+                        params.put("geoLatitude",   project.getGeoLatitude());
+                        params.put("geoLongitude",  project.getGeoLongitude());
+                        params.put("geoElevation",  project.getGeoElevation());
+                        params.put("ifcOffsetX",    project.getIfcOffsetX());
+                        params.put("ifcOffsetY",    project.getIfcOffsetY());
+                        params.put("ifcOffsetZ",    project.getIfcOffsetZ());
+                        params.put("ifcScale",      project.getIfcScale());
                         bimDAO.insertProject(params);
-                        log.info("PostgreSQL project 동기화 완료: projectId={}", params.get("projectId"));
+                        log.info("PostgreSQL project 동기화 완료: projectId={}, lat={}, lng={}",
+                                params.get("projectId"), params.get("geoLatitude"), params.get("geoLongitude"));
                     } catch (Exception e) {
                         log.warn("PostgreSQL project 동기화 실패 (무시): {}", e.getMessage());
                     }
@@ -206,6 +247,9 @@ public class BimServiceImpl implements BimService {
                     dto.setRotationX(row.get("rotationX") == null ? null : toDouble(row.get("rotationX")));
                     dto.setRotationY(row.get("rotationY") == null ? null : toDouble(row.get("rotationY")));
                     dto.setRotationZ(row.get("rotationZ") == null ? null : toDouble(row.get("rotationZ")));
+                    dto.setIfcWorldX(row.get("ifcWorldX") == null ? null : toDouble(row.get("ifcWorldX")));
+                    dto.setIfcWorldY(row.get("ifcWorldY") == null ? null : toDouble(row.get("ifcWorldY")));
+                    dto.setIfcWorldZ(row.get("ifcWorldZ") == null ? null : toDouble(row.get("ifcWorldZ")));
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -315,15 +359,41 @@ public class BimServiceImpl implements BimService {
         if (layer.getSortOrder() == null) layer.setSortOrder(0);
 
         Map<String, Object> params = new HashMap<>();
-        params.put("layerId",    layer.getLayerId());
-        params.put("projectId",  layer.getProjectId());
-        params.put("layerName",  layer.getLayerName());
-        params.put("color",      layer.getColor());
-        params.put("visible",    layer.getVisible());
-        params.put("elementIds", toJson(layer.getElementIds() != null ? layer.getElementIds() : new ArrayList<>()));
-        params.put("sortOrder",  layer.getSortOrder());
+        params.put("layerId",       layer.getLayerId());
+        params.put("projectId",     layer.getProjectId());
+        params.put("parentLayerId", layer.getParentLayerId());
+        params.put("layerName",     layer.getLayerName());
+        params.put("color",         layer.getColor());
+        params.put("visible",       layer.getVisible());
+        params.put("elementIds",    toJson(layer.getElementIds() != null ? layer.getElementIds() : new ArrayList<>()));
+        params.put("sortOrder",     layer.getSortOrder());
         bimDAO.insertLayer(params);
         return layer;
+    }
+
+    @Override
+    public void createLayersBatch(List<BimLayerDTO> layers) {
+        if (layers == null || layers.isEmpty()) return;
+        List<Map<String, Object>> params = layers.stream()
+                .map(layer -> {
+                    if (layer.getLayerId() == null || layer.getLayerId().isBlank()) {
+                        layer.setLayerId("layer-" + UUID.randomUUID().toString().substring(0, 8));
+                    }
+                    if (layer.getVisible() == null) layer.setVisible(true);
+                    if (layer.getSortOrder() == null) layer.setSortOrder(0);
+                    Map<String, Object> p = new HashMap<>();
+                    p.put("layerId",       layer.getLayerId());
+                    p.put("projectId",     layer.getProjectId());
+                    p.put("parentLayerId", layer.getParentLayerId());
+                    p.put("layerName",     layer.getLayerName());
+                    p.put("color",         layer.getColor());
+                    p.put("visible",       layer.getVisible());
+                    p.put("elementIds",    toJson(layer.getElementIds() != null ? layer.getElementIds() : new ArrayList<>()));
+                    p.put("sortOrder",     layer.getSortOrder());
+                    return p;
+                })
+                .collect(Collectors.toList());
+        bimDAO.insertLayersBatch(params);
     }
 
     @Override
@@ -511,6 +581,13 @@ public class BimServiceImpl implements BimService {
                     dto.setProjectName((String) row.get("projectName"));
                     dto.setStructureType((String) row.get("structureType"));
                     dto.setSpanCount((String) row.get("spanCount"));
+                    dto.setGeoLatitude(row.get("geoLatitude") == null ? null : toDouble(row.get("geoLatitude")));
+                    dto.setGeoLongitude(row.get("geoLongitude") == null ? null : toDouble(row.get("geoLongitude")));
+                    dto.setGeoElevation(row.get("geoElevation") == null ? null : toDouble(row.get("geoElevation")));
+                    dto.setIfcOffsetX(row.get("ifcOffsetX") == null ? null : toDouble(row.get("ifcOffsetX")));
+                    dto.setIfcOffsetY(row.get("ifcOffsetY") == null ? null : toDouble(row.get("ifcOffsetY")));
+                    dto.setIfcOffsetZ(row.get("ifcOffsetZ") == null ? null : toDouble(row.get("ifcOffsetZ")));
+                    dto.setIfcScale(row.get("ifcScale") == null ? null : toDouble(row.get("ifcScale")));
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -540,7 +617,7 @@ public class BimServiceImpl implements BimService {
     public String exportBimElementsCsv(String projectId) {
         List<Map<String, Object>> rows = bimDAO.getElementsByProject(projectId);
         StringBuilder sb = new StringBuilder();
-        sb.append("elementId,elementType,material,positionX,positionY,positionZ,sizeX,sizeY,sizeZ,rotationX,rotationY,rotationZ\n");
+        sb.append("elementId,elementType,material,positionX,positionY,positionZ,sizeX,sizeY,sizeZ,rotationX,rotationY,rotationZ,globalId,ifcName,storey,building\n");
         for (Map<String, Object> row : rows) {
             sb.append(row.getOrDefault("elementId", "")).append(",");
             sb.append(row.getOrDefault("elementType", "")).append(",");
@@ -553,8 +630,240 @@ public class BimServiceImpl implements BimService {
             sb.append(row.getOrDefault("sizeZ", "")).append(",");
             sb.append(row.getOrDefault("rotationX", "")).append(",");
             sb.append(row.getOrDefault("rotationY", "")).append(",");
-            sb.append(row.getOrDefault("rotationZ", "")).append("\n");
+            sb.append(row.getOrDefault("rotationZ", "")).append(",");
+            sb.append(row.getOrDefault("globalId", "")).append(",");
+            sb.append(row.getOrDefault("ifcName",  "")).append(",");
+            sb.append(row.getOrDefault("storey",   "")).append(",");
+            sb.append(row.getOrDefault("building", "")).append("\n");
         }
         return sb.toString();
+    }
+
+    // ── 층(BuildingStorey) ──────────────────────────────────────────
+
+    @Override
+    public List<BimStoreyDTO> getStoreysByProject(String projectId) {
+        return bimDAO.getStoreysByProject(projectId);
+    }
+
+    @Override
+    public void saveStoreys(List<BimStoreyDTO> storeys) {
+        if (storeys == null || storeys.isEmpty()) return;
+        bimDAO.insertStoreysBatch(storeys);
+    }
+
+    @Override
+    public void deleteStoreysByProject(String projectId) {
+        bimDAO.deleteStoreysByProject(projectId);
+    }
+
+    // ── WBS 노드 ────────────────────────────────────────────────────
+
+    @Override
+    public List<BimWbsNodeDTO> getWbsByProject(String projectId) {
+        return bimDAO.getWbsByProject(projectId);
+    }
+
+    @Override
+    public void saveWbsNodes(List<BimWbsNodeDTO> nodes) {
+        if (nodes == null || nodes.isEmpty()) return;
+        bimDAO.insertWbsNodesBatch(nodes);
+    }
+
+    @Override
+    public void updateWbsProgress(String wbsId, int progress) {
+        bimDAO.updateWbsProgress(wbsId, Math.max(0, Math.min(100, progress)));
+    }
+
+    @Override
+    public void deleteWbsByProject(String projectId) {
+        bimDAO.deleteElementWbsMappingsByProject(projectId);
+        bimDAO.deleteWbsByProject(projectId);
+    }
+
+    // ── WBS 진척도 요약 (통합관제 시각화용) ────────────────────────
+
+    @Override
+    public Map<String, Object> getWbsProgressSummary(String projectId) {
+        List<BimWbsNodeDTO> nodes = bimDAO.getWbsByProject(projectId);
+        List<Map<String, Object>> mappings = bimDAO.getElementWbsMappings(projectId);
+
+        Map<String, BimWbsNodeDTO>         nodeMap     = new HashMap<>();
+        Map<String, List<BimWbsNodeDTO>>   childrenMap = new HashMap<>();
+        for (BimWbsNodeDTO n : nodes) {
+            nodeMap.put(n.getWbsId(), n);
+            if (n.getParentWbsId() != null)
+                childrenMap.computeIfAbsent(n.getParentWbsId(), k -> new ArrayList<>()).add(n);
+        }
+
+        final List<String> PHASE_ORDER = List.of("TEMP", "EARTH", "FOUND", "UNDER", "ABOVE");
+
+        // PHASE 노드 수집 → 각 phase 의 TASK 후손 평균 진행률
+        List<BimWbsNodeDTO> phaseNodes = nodes.stream()
+            .filter(n -> "PHASE".equals(n.getNodeType()))
+            .sorted(Comparator.comparingInt(n -> (n.getSortOrder() == null ? 999 : n.getSortOrder())))
+            .collect(Collectors.toList());
+
+        List<Map<String, Object>> phaseList = new ArrayList<>();
+        for (BimWbsNodeDTO ph : phaseNodes) {
+            String phaseKey      = extractPhaseKey(ph.getWbsId());
+            double phaseProgress = computePhaseProgress(ph.getWbsId(), childrenMap);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("phaseKey",  phaseKey);
+            m.put("phaseName", ph.getWbsName());
+            m.put("progress",  Math.round(phaseProgress * 10.0) / 10.0);
+            m.put("sortOrder", ph.getSortOrder() != null ? ph.getSortOrder() : 999);
+            phaseList.add(m);
+        }
+
+        // 활성 phase 인덱스 = 진행률 < 100인 첫 번째 phase
+        int activePhaseIdx = PHASE_ORDER.size();
+        for (int i = 0; i < PHASE_ORDER.size(); i++) {
+            final String pk = PHASE_ORDER.get(i);
+            java.util.Optional<Map<String, Object>> found = phaseList.stream()
+                .filter(p -> pk.equals(p.get("phaseKey"))).findFirst();
+            if (found.isEmpty()) continue;
+            double prog = ((Number) found.get().get("progress")).doubleValue();
+            if (prog < 100) { activePhaseIdx = i; break; }
+        }
+
+        // 부재별 진행률 계산 (cascade 적용)
+        Map<String, Map<String, Object>> elementMap = new LinkedHashMap<>();
+        for (Map<String, Object> mapping : mappings) {
+            String elementId = (String) mapping.get("elementId");
+            String wbsId     = (String) mapping.get("wbsId");
+
+            List<BimWbsNodeDTO> taskChildren = childrenMap.getOrDefault(wbsId, Collections.emptyList())
+                .stream().filter(n -> "TASK".equals(n.getNodeType())).collect(Collectors.toList());
+
+            double rawProgress;
+            if (taskChildren.isEmpty()) {
+                BimWbsNodeDTO el = nodeMap.get(wbsId);
+                rawProgress = (el != null && el.getProgress() != null) ? el.getProgress() : 0;
+            } else {
+                rawProgress = taskChildren.stream()
+                    .mapToInt(t -> t.getProgress() != null ? t.getProgress() : 0)
+                    .average().orElse(0);
+            }
+
+            String phaseKey = findPhaseKey(wbsId, nodeMap);
+            int phaseIdx    = PHASE_ORDER.indexOf(phaseKey);
+            double cascaded = (phaseIdx >= 0 && phaseIdx > activePhaseIdx) ? 0 : rawProgress;
+
+            Map<String, Object> el = new LinkedHashMap<>();
+            el.put("progress", Math.round(cascaded * 10.0) / 10.0);
+            el.put("phaseKey", phaseKey);
+            elementMap.put(elementId, el);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("phases",   phaseList);
+        result.put("elements", elementMap);
+        return result;
+    }
+
+    private double computePhaseProgress(String phaseWbsId,
+                                        Map<String, List<BimWbsNodeDTO>> childrenMap) {
+        List<Integer> taskProgress = new ArrayList<>();
+        collectTaskProgress(phaseWbsId, childrenMap, taskProgress, 0);
+        if (taskProgress.isEmpty()) return 0;
+        return taskProgress.stream().mapToInt(Integer::intValue).average().orElse(0);
+    }
+
+    private void collectTaskProgress(String wbsId,
+                                     Map<String, List<BimWbsNodeDTO>> childrenMap,
+                                     List<Integer> result, int depth) {
+        if (depth > 8) return;
+        for (BimWbsNodeDTO child : childrenMap.getOrDefault(wbsId, Collections.emptyList())) {
+            if ("TASK".equals(child.getNodeType())) {
+                result.add(child.getProgress() != null ? child.getProgress() : 0);
+            } else {
+                collectTaskProgress(child.getWbsId(), childrenMap, result, depth + 1);
+            }
+        }
+    }
+
+    private String extractPhaseKey(String wbsId) {
+        if (wbsId == null) return null;
+        List<String> keys = List.of("TEMP", "EARTH", "FOUND", "UNDER", "ABOVE");
+        String[] parts = wbsId.split("-");
+        String last = parts[parts.length - 1];
+        if (keys.contains(last)) return last;
+        for (String k : keys) { if (wbsId.endsWith("-" + k)) return k; }
+        return null;
+    }
+
+    private String findPhaseKey(String elementWbsId, Map<String, BimWbsNodeDTO> nodeMap) {
+        BimWbsNodeDTO node = nodeMap.get(elementWbsId);
+        for (int i = 0; i < 5; i++) {
+            if (node == null) break;
+            if ("PHASE".equals(node.getNodeType())) return extractPhaseKey(node.getWbsId());
+            if (node.getParentWbsId() == null) break;
+            node = nodeMap.get(node.getParentWbsId());
+        }
+        return "ABOVE";
+    }
+
+    // ── 부재 ↔ WBS 매핑 ────────────────────────────────────────────
+
+    @Override
+    public List<Map<String, Object>> getElementWbsMappings(String projectId) {
+        return bimDAO.getElementWbsMappings(projectId);
+    }
+
+    @Override
+    public void saveElementWbsMappings(List<Map<String, Object>> mappings) {
+        if (mappings == null || mappings.isEmpty()) return;
+        bimDAO.insertElementWbsMappingsBatch(mappings);
+    }
+
+    @Override
+    public List<String> getElementIdsByWbs(String wbsId) {
+        return bimDAO.getElementIdsByWbs(wbsId);
+    }
+
+    @Override
+    public String getWbsIdByElement(String elementId) {
+        return bimDAO.getWbsIdByElement(elementId);
+    }
+
+    // ── IFC 원본 파일 Object Storage 연동 ──────────────────────────
+
+    @Override
+    public String uploadIfcFile(String projectId, MultipartFile file) {
+        try {
+            String key = "projects/" + projectId + "/original.ifc";
+            long size = file.getSize();
+            storageService.upload(key, file.getInputStream(), size, "application/octet-stream");
+
+            Map<String, Object> params = new HashMap<>();
+            params.put("projectId", projectId);
+            params.put("storageKey", key);
+            params.put("originalFilename", file.getOriginalFilename());
+            bimDAO.updateProjectStorage(params);
+
+            log.info("[BIM] IFC 원본 파일 업로드 완료: projectId={}, key={}, size={}bytes", projectId, key, size);
+            return key;
+        } catch (StorageException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new StorageException("IFC 파일 업로드 처리 실패: projectId=" + projectId, e);
+        }
+    }
+
+    @Override
+    public InputStream downloadIfcFile(String projectId) {
+        String storageKey = getStorageKey(projectId);
+        if (storageKey == null) {
+            throw new StorageException("IFC 원본 파일이 없습니다: projectId=" + projectId);
+        }
+        return storageService.download(storageKey);
+    }
+
+    @Override
+    public String getStorageKey(String projectId) {
+        Map<String, Object> project = bimDAO.getProjectById(projectId);
+        if (project == null) return null;
+        return (String) project.get("storageKey");
     }
 }

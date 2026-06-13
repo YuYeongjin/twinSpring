@@ -2,6 +2,9 @@ package yyj.project.twinspring.dao;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import yyj.project.twinspring.dto.BimElementDTO;
+import yyj.project.twinspring.dto.BimStoreyDTO;
+import yyj.project.twinspring.dto.BimWbsNodeDTO;
 
 import java.util.List;
 import java.util.Map;
@@ -19,6 +22,8 @@ public interface BimDAO {
     void deleteLayer(@Param("layerId") String layerId);
 
     void deleteLayersByProject(@Param("projectId") String projectId);
+
+    void insertLayersBatch(List<Map<String, Object>> layers);
 
     // ── 부재 커스텀 색상 ────────────────────────────────────────────
     List<Map<String, Object>> getColorsByProject(@Param("projectId") String projectId);
@@ -52,7 +57,40 @@ public interface BimDAO {
 
     void updateProjectName(Map<String, Object> params);
 
+    /** IFC 파일 업로드 완료 후 storage 정보 저장 */
+    void updateProjectStorage(Map<String, Object> params);
+
     List<Map<String, Object>> getElementStatsByProject(@Param("projectId") String projectId);
 
     List<Map<String, Object>> getElementsByProject(@Param("projectId") String projectId);
+
+    /** IFC 임포트 시 부재 배치 로컬 저장 (ifcWorldX/Y/Z, globalId, storey 포함) */
+    void insertElementsBatch(List<BimElementDTO> elements);
+
+    // ── 층(BuildingStorey) ──────────────────────────────────────────
+    List<BimStoreyDTO> getStoreysByProject(@Param("projectId") String projectId);
+
+    void insertStoreysBatch(List<BimStoreyDTO> storeys);
+
+    void deleteStoreysByProject(@Param("projectId") String projectId);
+
+    // ── WBS 노드 ────────────────────────────────────────────────────
+    List<BimWbsNodeDTO> getWbsByProject(@Param("projectId") String projectId);
+
+    void insertWbsNodesBatch(List<BimWbsNodeDTO> nodes);
+
+    void updateWbsProgress(@Param("wbsId") String wbsId, @Param("progress") int progress);
+
+    void deleteWbsByProject(@Param("projectId") String projectId);
+
+    // ── 부재 ↔ WBS 매핑 ────────────────────────────────────────────
+    List<Map<String, Object>> getElementWbsMappings(@Param("projectId") String projectId);
+
+    void insertElementWbsMappingsBatch(List<Map<String, Object>> mappings);
+
+    void deleteElementWbsMappingsByProject(@Param("projectId") String projectId);
+
+    List<String> getElementIdsByWbs(@Param("wbsId") String wbsId);
+
+    String getWbsIdByElement(@Param("elementId") String elementId);
 }

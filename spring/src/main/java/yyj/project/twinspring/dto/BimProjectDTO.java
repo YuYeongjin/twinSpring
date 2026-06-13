@@ -12,6 +12,21 @@ public class BimProjectDTO {
     private String projectName;
     private String structureType;
     private String spanCount;
+
+    // ── geoOrigin (IFC 파싱 시 추출, PostgreSQL 로컬 저장용) ─────────
+    private Double geoLatitude;   // IfcSite 위도 (없으면 null)
+    private Double geoLongitude;  // IfcSite 경도 (없으면 null)
+    private Double geoElevation;  // IfcSite 표고 (없으면 null)
+    private Double ifcOffsetX;    // Three.js X 정규화 오프셋 (IFC X 중심)
+    private Double ifcOffsetY;    // Three.js Z 정규화 오프셋 (IFC Y 최솟값)
+    private Double ifcOffsetZ;    // Three.js Y 정규화 오프셋 (IFC Z 최솟값)
+    private Double ifcScale;      // IFC 단위 스케일 (mm→m: 0.001)
+
+    // ── Object Storage 연동 (IFC 원본 파일) ──────────────────────────
+    private String storageKey;        // MinIO/S3 오브젝트 키
+    private String originalFilename;  // 사용자 업로드 원본 파일명
+    private String uploadedAt;        // 업로드 완료 시각 (ISO-8601)
+
     public void setProjectId(String projectId) {
         this.projectId = projectId;
     }
@@ -24,14 +39,14 @@ public class BimProjectDTO {
     public void setSpanCount(String spanCount) {
         this.spanCount = spanCount;
     }
-@Override
-public String toString(){
-    // JSON 문자열을 생성
-    return "{"
-            + "\"projectId\":\"" + projectId + "\","
-            + "\"projectName\":\"" + projectName + "\","
-            + "\"structureType\":\"" + structureType + "\","
-            + "\"spanCount\": \"" + spanCount+ "\""
-            + "}";
-}
+
+    @Override
+    public String toString() {
+        return "{"
+                + "\"projectId\":\"" + projectId + "\","
+                + "\"projectName\":\"" + projectName + "\","
+                + "\"structureType\":\"" + structureType + "\","
+                + "\"spanCount\": \"" + spanCount + "\""
+                + "}";
+    }
 }
