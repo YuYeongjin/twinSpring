@@ -13,6 +13,7 @@ const REBAR_DENSITY = {
     IfcBeam:   { avg: 130, formula: 'V(m³) × 130 kg/m³', reason: 'KDS 14 20 22 보 철근비 약 1.30% 적용' },
     IfcWall:   { avg:  80, formula: 'V(m³) × 80 kg/m³',  reason: 'KDS 14 20 72 전단벽 철근비 0.25~0.6% 평균' },
     IfcSlab:   { avg: 110, formula: 'V(m³) × 110 kg/m³', reason: 'KDS 14 20 50 슬래브 철근비 약 1.10% 적용' },
+    IfcRoof:   { avg: 110, formula: 'V(m³) × 110 kg/m³', reason: 'KDS 지붕 슬래브 — 슬래브 동일 기준 적용' },
     IfcPier:   { avg: 160, formula: 'V(m³) × 160 kg/m³', reason: 'KDS 기둥형 교각 철근비 기준' },
     IfcMember: { avg: 100, formula: 'V(m³) × 100 kg/m³', reason: 'KDS 일반 구조부재 평균 철근비' },
   },
@@ -21,6 +22,7 @@ const REBAR_DENSITY = {
     IfcBeam:   { avg: 145, formula: 'V(m³) × 145 kg/m³', reason: 'AIJ 보 철근비 기준' },
     IfcWall:   { avg:  90, formula: 'V(m³) × 90 kg/m³',  reason: 'AIJ 벽 철근비 기준' },
     IfcSlab:   { avg: 120, formula: 'V(m³) × 120 kg/m³', reason: 'AIJ 슬래브 철근비 기준' },
+    IfcRoof:   { avg: 120, formula: 'V(m³) × 120 kg/m³', reason: 'AIJ 지붕 슬래브 — 슬래브 동일 기준 적용' },
     IfcPier:   { avg: 180, formula: 'V(m³) × 180 kg/m³', reason: 'AIJ 교각형 기둥 철근비 기준' },
     IfcMember: { avg: 110, formula: 'V(m³) × 110 kg/m³', reason: 'AIJ 일반 구조부재 평균 철근비' },
   },
@@ -29,6 +31,7 @@ const REBAR_DENSITY = {
     IfcBeam:   { avg: 125, formula: 'V(m³) × 125 kg/m³', reason: 'ACI 318 §9.6 보 최소/최대 철근비 기준' },
     IfcWall:   { avg:  75, formula: 'V(m³) × 75 kg/m³',  reason: 'ACI 318 §11.6 전단벽 0.25~0.5%' },
     IfcSlab:   { avg: 105, formula: 'V(m³) × 105 kg/m³', reason: 'ACI 318 §7.6 슬래브 철근비 기준' },
+    IfcRoof:   { avg: 105, formula: 'V(m³) × 105 kg/m³', reason: 'ACI 318 지붕 슬래브 — 슬래브 동일 기준 적용' },
     IfcPier:   { avg: 155, formula: 'V(m³) × 155 kg/m³', reason: 'ACI 318 기둥형 교각 철근비 기준' },
     IfcMember: { avg:  95, formula: 'V(m³) × 95 kg/m³',  reason: 'ACI 318 일반 구조부재 평균 철근비' },
   },
@@ -40,6 +43,7 @@ const FORMWORK_RATIO = {
   IfcBeam:   { ratio: 3.5, formula: 'V(m³) × 3.5 m²/m³', reason: '보 밑면+양측면 기준' },
   IfcWall:   { ratio: 5.0, formula: 'V(m³) × 5.0 m²/m³', reason: '벽체 양면 기준 (두께 대비)' },
   IfcSlab:   { ratio: 2.5, formula: 'V(m³) × 2.5 m²/m³', reason: '슬래브 밑면 기준' },
+  IfcRoof:   { ratio: 3.0, formula: 'V(m³) × 3.0 m²/m³', reason: '지붕 슬래브 — 경사면 거푸집 면적 포함' },
   IfcPier:   { ratio: 3.8, formula: 'V(m³) × 3.8 m²/m³', reason: '교각 단면(원형/사각) 기준' },
   IfcMember: { ratio: 3.0, formula: 'V(m³) × 3.0 m²/m³', reason: '일반 구조부재 평균 비율' },
 };
@@ -50,6 +54,7 @@ const CURING_DAYS = {
   IfcBeam:   { days:  7, formula:  '7일', reason: 'KDS 보 지지하중 고려 양생 최소 7일' },
   IfcWall:   { days:  5, formula:  '5일', reason: 'KDS 벽체 양생 기준 최소 5일' },
   IfcSlab:   { days: 14, formula: '14일', reason: 'KDS 슬래브 구조 양생 최소 14일' },
+  IfcRoof:   { days: 14, formula: '14일', reason: 'KDS 지붕 슬래브 — 슬래브 동일 양생 기준' },
   IfcPier:   { days:  7, formula:  '7일', reason: 'KDS 교각 양생 기준 최소 7일' },
   IfcMember: { days:  5, formula:  '5일', reason: 'KDS 일반 구조부재 양생 기준' },
 };
@@ -60,6 +65,7 @@ const VOLUME_CORRECTION = {
   IfcBeam:   0.80,
   IfcWall:   0.85,
   IfcSlab:   0.95,
+  IfcRoof:   0.90,
   IfcPier:   0.90,
   IfcMember: 0.88,
 };

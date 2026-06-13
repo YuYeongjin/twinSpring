@@ -116,9 +116,9 @@ function extractSiteInfo(ifcAPI, modelId) {
     const hasRealGeo = latitude !== null && longitude !== null &&
                        !(latitude === 0 && longitude === 0);
     if (hasRealGeo) {
-      console.log('✅ GIS 연동 가능: 실제 위경도 포함');
+      console.log('GIS 연동 가능: 실제 위경도 포함');
     } else {
-      console.warn('⚠️  GIS 연동 불가: 위경도가 null 이거나 (0,0)');
+      console.warn('GIS 연동 불가: 위경도가 null 이거나 (0,0)');
     }
     console.groupEnd();
 
@@ -284,6 +284,37 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
       if (!elemTypeMap.has(id)) elemTypeMap.set(id, ourType);
     }
   }
+
+  // IfcRoof 재분류 (두 가지 패턴 처리)
+  // 1) IfcSlab with PredefinedType=ROOF
+  for (const [id, ourType] of elemTypeMap.entries()) {
+    if (ourType !== 'IfcSlab') continue;
+    try {
+      const line = ifcAPI.GetLine(modelId, id, false);
+      if (line?.PredefinedType?.value === 'ROOF') elemTypeMap.set(id, 'IfcRoof');
+    } catch { /* skip */ }
+  }
+  // 2) IfcRoof 컨테이너의 자식 요소 (IfcRelAggregates)
+  try {
+    const roofIds = new Set();
+    const rIds = ifcAPI.GetLineIDsWithType(modelId, IFCROOF, false);
+    for (let i = 0; i < rIds.size(); i++) roofIds.add(rIds.get(i));
+
+    if (roofIds.size > 0) {
+      const aggIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELAGGREGATES, false);
+      for (let i = 0; i < aggIds.size(); i++) {
+        const rel = ifcAPI.GetLine(modelId, aggIds.get(i), false);
+        const parentId = rel?.RelatingObject?.value;
+        if (!roofIds.has(parentId)) continue;
+        const related = rel?.RelatedObjects;
+        if (!Array.isArray(related)) continue;
+        for (const ref of related) {
+          const childId = typeof ref === 'object' ? ref.value : ref;
+          if (elemTypeMap.has(childId)) elemTypeMap.set(childId, 'IfcRoof');
+        }
+      }
+    }
+  } catch { /* skip */ }
 
   if (elemTypeMap.size === 0) {
     ifcAPI.CloseModel(modelId);
@@ -538,6 +569,7 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     ifcOffsetY: actualMinZ,
     ifcOffsetZ: minZ,
     scale,
+    detectedScale,  // WBS 물량 정규화 시 사용 (userScale 역산)
   };
 
   console.group('[IFC GeoOrigin] 최종 geoOrigin');

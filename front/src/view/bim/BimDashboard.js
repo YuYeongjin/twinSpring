@@ -1653,18 +1653,32 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     }, [modelData]);
 
     const resolvedModelData = useMemo(() => {
+        const layerMap = new Map(layers.map(l => [l.layerId, l]));
+
+        function isLayerHidden(layer) {
+            if (!layer.visible) return true;
+            if (layer.parentLayerId) {
+                const parent = layerMap.get(layer.parentLayerId);
+                if (parent && isLayerHidden(parent)) return true;
+            }
+            return false;
+        }
+
         return modelData.map(el => {
             const layer = layers.find(l => l.elementIds.includes(el.elementId));
-            const hidden = layer ? !layer.visible : false;
+            const hidden = layer ? isLayerHidden(layer) : false;
             const resolvedColor   = elementColors[el.elementId] || layer?.color || null;
             const resolvedOpacity = elementOpacities[el.elementId] ?? null;
             return { ...el, resolvedColor, resolvedOpacity, hidden };
         });
     }, [modelData, layers, elementColors, elementOpacities]);
 
+    // IfcStoreyTree에서 동/층 가시성 토글로 숨긴 element ID Set
+    const [ifcHiddenIds, setIfcHiddenIds] = useState(new Set());
+
     const visibleModelData = useMemo(
-        () => resolvedModelData.filter(el => !el.hidden),
-        [resolvedModelData]
+        () => resolvedModelData.filter(el => !el.hidden && !ifcHiddenIds.has(el.elementId)),
+        [resolvedModelData, ifcHiddenIds]
     );
 
     const [exporting, setExporting] = useState(false);
@@ -2193,7 +2207,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 </div>
                 {/* 오른쪽: 기존 공정 대시보드 */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
-                    <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} />
+                    <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} layers={layers} />
                 </div>
             </div>
 
@@ -2785,6 +2799,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         layers={layers}
                                         onAssignToLayer={assignToLayer}
                                         onRemoveFromLayer={removeFromLayer}
+                                        onHiddenIdsChange={setIfcHiddenIds}
                                     />
                                 </div>
                             </Card>

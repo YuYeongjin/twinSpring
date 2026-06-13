@@ -28,7 +28,6 @@ const TYPE_ICON = {
   IfcPier:    '⬛',
 };
 
-// type → translation key 매핑
 const TYPE_TKEY = {
   IfcWall:    'typeIfcWall',
   IfcColumn:  'typeIfcColumn',
@@ -41,6 +40,32 @@ const TYPE_TKEY = {
   IfcMember:  'typeIfcMember',
   IfcPier:    'typeIfcPier',
 };
+
+// ── 가시성 아이콘 ────────────────────────────────────────────────────
+function EyeBtn({ visible, onToggle, parentHidden }) {
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onToggle(); }}
+      title={visible ? '숨기기' : '보이기'}
+      style={{
+        flexShrink: 0, background: 'none', border: 'none',
+        cursor: parentHidden ? 'default' : 'pointer',
+        padding: '0 2px', lineHeight: 1, display: 'flex', alignItems: 'center',
+        color: parentHidden ? '#1f2937' : visible ? '#fbbf24' : '#374151',
+        opacity: parentHidden ? 0.4 : 1,
+      }}
+    >
+      {visible
+        ? <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5C21.27 7.61 17 4.5 12 4.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+          </svg>
+        : <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" d="M3 3l18 18M10.5 10.677A3 3 0 0013.323 13.5M6.362 6.228C4.886 7.354 3.71 8.968 3 12c1.73 4.39 6 7.5 11 7.5 1.737 0 3.396-.38 4.862-1.063M10 4.646A9.07 9.07 0 0112 4.5c5 0 9.27 3.11 11 7.5a17.5 17.5 0 01-2.61 4.25"/>
+          </svg>
+      }
+    </button>
+  );
+}
 
 // ── 레이어 팝오버 ────────────────────────────────────────────────────
 function LayerPopover({ ids, layers, onAssignToLayer, onRemoveFromLayer, onClose, t }) {
@@ -170,6 +195,7 @@ function ElementInfoPanel({ element, onClose, t }) {
 // ── 노드 컴포넌트 ────────────────────────────────────────────────────
 function TreeRow({
   label, count, color, icon, depth, isOpen, hasChildren, isSelected,
+  isVisible = true, onToggleVisible, parentHidden = false,
   onClick, onToggle, ids,
   layers, onAssignToLayer, onRemoveFromLayer, t,
 }) {
@@ -178,6 +204,7 @@ function TreeRow({
   const indent = depth * 12;
 
   const hasLayers = layers && layers.length > 0 && ids && ids.length > 0;
+  const dimmed = !isVisible || parentHidden;
 
   return (
     <div style={{ position: 'relative' }}>
@@ -193,6 +220,7 @@ function TreeRow({
           background: isSelected ? '#1e3a5f' : hovered ? '#12253a' : 'transparent',
           userSelect: 'none',
           transition: 'background 0.1s',
+          opacity: dimmed ? 0.4 : 1,
         }}
       >
         <span
@@ -226,6 +254,15 @@ function TreeRow({
           }}>
             {count}
           </span>
+        )}
+
+        {/* 가시성 토글 — 동/층 레벨에서만 표시 */}
+        {onToggleVisible && (hovered || !isVisible) && (
+          <EyeBtn
+            visible={isVisible}
+            onToggle={parentHidden ? () => {} : onToggleVisible}
+            parentHidden={parentHidden}
+          />
         )}
 
         {hasLayers && (hovered || showLayers) && (
@@ -268,6 +305,7 @@ export default function IfcStoreyTree({
   layers = [],
   onAssignToLayer,
   onRemoveFromLayer,
+  onHiddenIdsChange,
 }) {
   const t = useT('bimDashboard');
 
@@ -277,12 +315,17 @@ export default function IfcStoreyTree({
   const [selectedKey, setSelectedKey]     = useState(null);
   const [infoElement, setInfoElement]     = useState(null);
 
+  // 가시성 상태: 꺼진 동/층 key 추적
+  const [hiddenBuildings, setHiddenBuildings] = useState(new Set());
+  // storeyHiddenKey = `${buildingKey}:${storeyKey}`
+  const [hiddenStoreys, setHiddenStoreys]     = useState(new Set());
+
   const tree = useMemo(() => {
     if (!modelData || modelData.length === 0) return [];
 
     const byBuilding = {};
     for (const el of modelData) {
-      const bKey = el.building || '__common__';
+      const bKey = normBuildingKey(el.building);
       if (!byBuilding[bKey]) byBuilding[bKey] = {};
       const sKey = el.storey || '__unassigned__';
       if (!byBuilding[bKey][sKey]) byBuilding[bKey][sKey] = {};
@@ -306,10 +349,66 @@ export default function IfcStoreyTree({
       }));
   }, [modelData]);
 
+  // 처음 데이터가 로드될 때 동·층 전부 자동 펼침
+  const prevTreeLenRef = useRef(0);
+  useEffect(() => {
+    if (prevTreeLenRef.current === 0 && tree.length > 0) {
+      setOpenBuildings(new Set(tree.map(b => b.buildingKey)));
+      const storeyKeys = new Set();
+      for (const { buildingKey, storeys } of tree) {
+        for (const { storeyKey } of storeys) {
+          storeyKeys.add(`S:${buildingKey}:${storeyKey}`);
+        }
+      }
+      setOpenStoreys(storeyKeys);
+    }
+    prevTreeLenRef.current = tree.length;
+  }, [tree]);
+
+  // 숨김 상태가 바뀔 때 숨겨진 elementId Set을 상위로 전달
+  useEffect(() => {
+    const hiddenIds = new Set();
+    for (const { buildingKey, storeys } of tree) {
+      if (hiddenBuildings.has(buildingKey)) {
+        storeys.forEach(({ types }) =>
+          types.forEach(({ elements }) =>
+            elements.forEach(el => hiddenIds.add(el.elementId))
+          )
+        );
+      } else {
+        for (const { storeyKey, types } of storeys) {
+          if (hiddenStoreys.has(`${buildingKey}:${storeyKey}`)) {
+            types.forEach(({ elements }) =>
+              elements.forEach(el => hiddenIds.add(el.elementId))
+            );
+          }
+        }
+      }
+    }
+    onHiddenIdsChange?.(hiddenIds);
+  }, [hiddenBuildings, hiddenStoreys, tree, onHiddenIdsChange]);
+
   const toggle = useCallback((setFn, key) => {
     setFn(prev => {
       const next = new Set(prev);
       next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleBuildingVisible = useCallback((buildingKey) => {
+    setHiddenBuildings(prev => {
+      const next = new Set(prev);
+      next.has(buildingKey) ? next.delete(buildingKey) : next.add(buildingKey);
+      return next;
+    });
+  }, []);
+
+  const toggleStoreyVisible = useCallback((buildingKey, storeyKey) => {
+    const sk = `${buildingKey}:${storeyKey}`;
+    setHiddenStoreys(prev => {
+      const next = new Set(prev);
+      next.has(sk) ? next.delete(sk) : next.add(sk);
       return next;
     });
   }, []);
@@ -353,48 +452,69 @@ export default function IfcStoreyTree({
   return (
     <div style={{ overflowY: 'auto', height: '100%', padding: '4px 0' }}>
       {tree.map(({ buildingKey, storeys }) => {
-        const bKey    = `B:${buildingKey}`;
-        const bIsOpen = openBuildings.has(buildingKey);
-        const bLabel  = buildingKey === '__common__' ? t('storeyTreeCommon') : buildingKey;
-        const bAllIds = storeys.flatMap(s => s.types.flatMap(tp => tp.elements.map(e => e.elementId)));
+        // '동 없음' 가상 노드 → 행 자체를 렌더링하지 않음
+        const bIsVirtual = buildingKey === '__common__';
+        const bKey       = `B:${buildingKey}`;
+        const bIsOpen    = bIsVirtual || openBuildings.has(buildingKey);
+        const bAllIds    = storeys.flatMap(s => s.types.flatMap(tp => tp.elements.map(e => e.elementId)));
+        const bIsHidden  = hiddenBuildings.has(buildingKey);
 
         return (
           <div key={buildingKey}>
-            <TreeRow
-              label={bLabel}
-              count={bAllIds.length}
-              icon="🏢"
-              depth={0}
-              isOpen={bIsOpen}
-              hasChildren={storeys.length > 0}
-              isSelected={selectedKey === bKey}
-              onClick={() => handleBuildingClick(buildingKey, bAllIds)}
-              onToggle={() => toggle(setOpenBuildings, buildingKey)}
-              ids={bAllIds}
-              {...layerProps}
-            />
+            {/* 실제 동(building)만 행 렌더링 — 가상 노드는 스킵 */}
+            {!bIsVirtual && (
+              <TreeRow
+                label={buildingKey}
+                count={bAllIds.length}
+                icon="🏢"
+                depth={0}
+                isOpen={bIsOpen}
+                hasChildren={storeys.length > 0}
+                isSelected={selectedKey === bKey}
+                isVisible={!bIsHidden}
+                onToggleVisible={() => toggleBuildingVisible(buildingKey)}
+                onClick={() => handleBuildingClick(buildingKey, bAllIds)}
+                onToggle={() => toggle(setOpenBuildings, buildingKey)}
+                ids={bAllIds}
+                {...layerProps}
+              />
+            )}
 
             {bIsOpen && storeys.map(({ storeyKey, types }) => {
-              const sKey    = `S:${buildingKey}:${storeyKey}`;
-              const sIsOpen = openStoreys.has(sKey);
-              const sLabel  = storeyKey === '__unassigned__' ? t('storeyTreeUnassigned') : storeyKey;
-              const sAllIds = types.flatMap(tp => tp.elements.map(e => e.elementId));
+              // '층 미지정' 가상 노드 → 행 자체를 렌더링하지 않음
+              const sIsVirtual   = storeyKey === '__unassigned__';
+              const sKey         = `S:${buildingKey}:${storeyKey}`;
+              const sIsOpen      = sIsVirtual || openStoreys.has(sKey);
+              const sAllIds      = types.flatMap(tp => tp.elements.map(e => e.elementId));
+              const storeyHidKey = `${buildingKey}:${storeyKey}`;
+              const sIsHidden    = bIsHidden || hiddenStoreys.has(storeyHidKey);
+
+              // depth 기준: 가상 동이면 -1 (층이 depth 0 역할)
+              const storeyDepth = bIsVirtual ? 0 : 1;
+              const typeDepth   = storeyDepth + (sIsVirtual ? 0 : 1);
+              const elemDepth   = typeDepth + 1;
 
               return (
                 <div key={storeyKey}>
-                  <TreeRow
-                    label={sLabel}
-                    count={sAllIds.length}
-                    icon="📐"
-                    depth={1}
-                    isOpen={sIsOpen}
-                    hasChildren={types.length > 0}
-                    isSelected={selectedKey === sKey}
-                    onClick={() => handleStoreyClick(buildingKey, storeyKey, sAllIds)}
-                    onToggle={() => toggle(setOpenStoreys, sKey)}
-                    ids={sAllIds}
-                    {...layerProps}
-                  />
+                  {/* 실제 층(storey)만 행 렌더링 */}
+                  {!sIsVirtual && (
+                    <TreeRow
+                      label={storeyKey}
+                      count={sAllIds.length}
+                      icon="📐"
+                      depth={storeyDepth}
+                      isOpen={sIsOpen}
+                      hasChildren={types.length > 0}
+                      isSelected={selectedKey === sKey}
+                      isVisible={!sIsHidden}
+                      parentHidden={bIsHidden}
+                      onToggleVisible={() => toggleStoreyVisible(buildingKey, storeyKey)}
+                      onClick={() => handleStoreyClick(buildingKey, storeyKey, sAllIds)}
+                      onToggle={() => toggle(setOpenStoreys, sKey)}
+                      ids={sAllIds}
+                      {...layerProps}
+                    />
+                  )}
 
                   {sIsOpen && types.map(({ type, elements: typeEls }) => {
                     const tKey    = `T:${buildingKey}:${storeyKey}:${type}`;
@@ -410,10 +530,11 @@ export default function IfcStoreyTree({
                           count={typeEls.length}
                           icon={TYPE_ICON[type]}
                           color={color}
-                          depth={2}
+                          depth={typeDepth}
                           isOpen={tIsOpen}
                           hasChildren={typeEls.length > 0}
                           isSelected={selectedKey === tKey}
+                          parentHidden={sIsHidden}
                           onClick={() => handleTypeClick(buildingKey, storeyKey, type, tIds)}
                           onToggle={() => toggle(setOpenTypes, tKey)}
                           ids={tIds}
@@ -431,10 +552,11 @@ export default function IfcStoreyTree({
                               label={label}
                               icon="▸"
                               color={color}
-                              depth={3}
+                              depth={elemDepth}
                               isOpen={false}
                               hasChildren={false}
                               isSelected={isSel}
+                              parentHidden={sIsHidden}
                               onClick={() => handleElementClick(el)}
                               ids={[el.elementId]}
                               {...layerProps}
@@ -463,6 +585,16 @@ export default function IfcStoreyTree({
 }
 
 // ── 헬퍼 ──────────────────────────────────────────────────────────
+
+const DUMMY_BUILDING_NAMES = new Set([
+  '// building/name //', 'building name', 'building/name', 'building', 'default',
+  'unnamed', 'no building', 'building_0', 'building_1', 'building_2', 'none', '',
+]);
+function normBuildingKey(name) {
+  if (!name) return '__common__';
+  if (DUMMY_BUILDING_NAMES.has(name.trim().toLowerCase())) return '__common__';
+  return name;
+}
 
 function storeyRank(key) {
   if (!key || key === '__unassigned__') return 9999;
