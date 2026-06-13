@@ -1,15 +1,20 @@
 package yyj.project.twinspring.controller;
 
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import yyj.project.twinspring.storage.StorageException;
 import reactor.core.publisher.Mono;
 import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
+import yyj.project.twinspring.dto.BimStoreyDTO;
+import yyj.project.twinspring.dto.BimWbsNodeDTO;
 import yyj.project.twinspring.service.BimService;
 
 import java.nio.charset.StandardCharsets;
@@ -134,6 +139,13 @@ public class BimController {
     @PostMapping("/layer")
     public ResponseEntity<BimLayerDTO> createLayer(@RequestBody BimLayerDTO layer) {
         return ResponseEntity.status(HttpStatus.CREATED).body(bimService.createLayer(layer));
+    }
+
+    @PostMapping("/layers/batch")
+    public ResponseEntity<Void> createLayersBatch(@RequestBody List<BimLayerDTO> layers) {
+        if (layers == null || layers.isEmpty()) return ResponseEntity.ok().build();
+        bimService.createLayersBatch(layers);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
     @PutMapping("/layer")
@@ -267,14 +279,189 @@ public class BimController {
     }
 
     @PostMapping("/project")
-    public Mono<ResponseEntity<BimProjectDTO>> newProject(@RequestBody Map<String,String> project){
+    public Mono<ResponseEntity<BimProjectDTO>> newProject(@RequestBody Map<String, Object> project) {
         System.out.println("PROJECT CREATE : " + project);
         BimProjectDTO projectDTO = new BimProjectDTO();
-        projectDTO.setProjectName(project.get("projectName"));
-        projectDTO.setSpanCount((project.get("spanCount")));
-        projectDTO.setStructureType(project.get("structureType"));
+        projectDTO.setProjectName(asString(project.get("projectName")));
+        projectDTO.setSpanCount(asString(project.get("spanCount")));
+        projectDTO.setStructureType(asString(project.get("structureType")));
+        // geoOrigin 필드 (IFC 임포트 시 전달됨, 없으면 null)
+        projectDTO.setGeoLatitude(asDouble(project.get("geoLatitude")));
+        projectDTO.setGeoLongitude(asDouble(project.get("geoLongitude")));
+        projectDTO.setGeoElevation(asDouble(project.get("geoElevation")));
+        projectDTO.setIfcOffsetX(asDouble(project.get("ifcOffsetX")));
+        projectDTO.setIfcOffsetY(asDouble(project.get("ifcOffsetY")));
+        projectDTO.setIfcOffsetZ(asDouble(project.get("ifcOffsetZ")));
+        projectDTO.setIfcScale(asDouble(project.get("ifcScale")));
         return bimService.createProject(projectDTO)
-                // C# 서버가 반환한 DTO 객체를 201 Created 상태와 함께 반환
                 .map(createdProject -> ResponseEntity.status(HttpStatus.CREATED).body(createdProject));
+    }
+
+    private String asString(Object val) {
+        return val == null ? null : val.toString();
+    }
+
+    private Double asDouble(Object val) {
+        if (val == null) return null;
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        try { return Double.parseDouble(val.toString()); } catch (NumberFormatException e) { return null; }
+    }
+
+    // ================================================================
+    // 층(BuildingStorey) API
+    // ================================================================
+
+    @GetMapping("/storeys")
+    public ResponseEntity<List<BimStoreyDTO>> getStoreys(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getStoreysByProject(projectId));
+    }
+
+    @PostMapping("/storeys/batch")
+    public ResponseEntity<Void> saveStoreys(@RequestBody List<BimStoreyDTO> storeys) {
+        bimService.saveStoreys(storeys);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/storeys")
+    public ResponseEntity<Void> deleteStoreys(@RequestParam String projectId) {
+        bimService.deleteStoreysByProject(projectId);
+        return ResponseEntity.ok().build();
+    }
+
+    // ================================================================
+    // WBS 노드 API
+    // ================================================================
+
+    @GetMapping("/wbs")
+    public ResponseEntity<List<BimWbsNodeDTO>> getWbs(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getWbsByProject(projectId));
+    }
+
+    @PostMapping("/wbs/batch")
+    public ResponseEntity<Void> saveWbsNodes(@RequestBody List<BimWbsNodeDTO> nodes) {
+        bimService.saveWbsNodes(nodes);
+        return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/wbs/{wbsId}/progress")
+    public ResponseEntity<Void> updateWbsProgress(
+            @PathVariable String wbsId,
+            @RequestBody Map<String, Integer> body) {
+        Integer progress = body.get("progress");
+        if (progress == null) return ResponseEntity.badRequest().build();
+        bimService.updateWbsProgress(wbsId, progress);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/wbs")
+    public ResponseEntity<Void> deleteWbs(@RequestParam String projectId) {
+        bimService.deleteWbsByProject(projectId);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/wbs/progress-summary")
+    public ResponseEntity<Map<String, Object>> getWbsProgressSummary(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getWbsProgressSummary(projectId));
+    }
+
+    // ================================================================
+    // 부재 ↔ WBS 매핑 API
+    // ================================================================
+
+    @GetMapping("/element-wbs")
+    public ResponseEntity<List<Map<String, Object>>> getElementWbsMappings(@RequestParam String projectId) {
+        return ResponseEntity.ok(bimService.getElementWbsMappings(projectId));
+    }
+
+    @PostMapping("/element-wbs/batch")
+    public ResponseEntity<Void> saveElementWbsMappings(@RequestBody List<Map<String, Object>> mappings) {
+        bimService.saveElementWbsMappings(mappings);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/wbs/{wbsId}/elements")
+    public ResponseEntity<List<String>> getElementsByWbs(@PathVariable String wbsId) {
+        return ResponseEntity.ok(bimService.getElementIdsByWbs(wbsId));
+    }
+
+    @GetMapping("/element/{elementId}/wbs")
+    public ResponseEntity<String> getWbsByElement(@PathVariable String elementId) {
+        String wbsId = bimService.getWbsIdByElement(elementId);
+        if (wbsId == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(wbsId);
+    }
+
+    // ================================================================
+    // IFC 원본 파일 Object Storage 연동
+    // ================================================================
+
+    /**
+     * IFC 원본 파일 업로드
+     * POST /api/bim/project/{projectId}/ifc
+     *
+     * IFC 파싱 성공 후 프론트에서 비동기로 호출한다.
+     * 업로드 실패가 프로젝트 생성 흐름을 막지 않도록 에러를 소프트하게 처리한다.
+     */
+    @PostMapping(value = "/project/{projectId}/ifc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, String>> uploadIfcFile(
+            @PathVariable String projectId,
+            @RequestParam("file") MultipartFile file) {
+
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "파일이 비어 있습니다."));
+        }
+        try {
+            String storageKey = bimService.uploadIfcFile(projectId, file);
+            return ResponseEntity.ok(Map.of(
+                    "storageKey", storageKey,
+                    "originalFilename", file.getOriginalFilename() != null ? file.getOriginalFilename() : "",
+                    "size", String.valueOf(file.getSize())
+            ));
+        } catch (StorageException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * IFC 원본 파일 다운로드
+     * GET /api/bim/project/{projectId}/ifc/download
+     *
+     * 향후 재분석, WBS 재생성, IFC Export 등에서 원본 파일 재사용 시 호출한다.
+     */
+    @GetMapping("/project/{projectId}/ifc/download")
+    public ResponseEntity<InputStreamResource> downloadIfcFile(@PathVariable String projectId) {
+        try {
+            String storageKey = bimService.getStorageKey(projectId);
+            if (storageKey == null) {
+                return ResponseEntity.notFound().build();
+            }
+            // originalFilename 조회 (없으면 기본값)
+            String filename = storageKey.substring(storageKey.lastIndexOf('/') + 1);
+
+            InputStreamResource resource = new InputStreamResource(bimService.downloadIfcFile(projectId));
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(resource);
+        } catch (StorageException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * IFC 원본 파일 보유 여부 확인
+     * GET /api/bim/project/{projectId}/ifc/status
+     *
+     * 프론트에서 재업로드 버튼 노출 여부 결정 등에 사용
+     */
+    @GetMapping("/project/{projectId}/ifc/status")
+    public ResponseEntity<Map<String, Object>> getIfcStatus(@PathVariable String projectId) {
+        String storageKey = bimService.getStorageKey(projectId);
+        return ResponseEntity.ok(Map.of(
+                "hasIfcFile", storageKey != null,
+                "storageKey", storageKey != null ? storageKey : ""
+        ));
     }
 }

@@ -2,13 +2,17 @@ package yyj.project.twinspring.service;
 
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Mono;
 import yyj.project.twinspring.dto.BimElementColorDTO;
 import yyj.project.twinspring.dto.BimElementDTO;
 import yyj.project.twinspring.dto.BimLayerDTO;
 import yyj.project.twinspring.dto.BimLineDTO;
 import yyj.project.twinspring.dto.BimProjectDTO;
+import yyj.project.twinspring.dto.BimStoreyDTO;
+import yyj.project.twinspring.dto.BimWbsNodeDTO;
 
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +50,7 @@ public interface BimService {
     // ── 레이어 (로컬 MariaDB) ──────────────────────────────────────
     List<BimLayerDTO> getLayersByProject(String projectId);
     BimLayerDTO createLayer(BimLayerDTO layer);
+    void createLayersBatch(List<BimLayerDTO> layers);
     BimLayerDTO updateLayer(BimLayerDTO layer);
     void deleteLayer(String layerId);
 
@@ -72,6 +77,54 @@ public interface BimService {
     String exportBimElementsCsv(String projectId);
 
     // ── 구조 분석 (C# 서버 프록시) ────────────────────────────────
-    /** 프로젝트 부재 타입/재료별 구조 분석 통계 (C# structural 엔드포인트 호출) */
     Mono<Map<String, Object>> getStructuralAnalysis(String projectId);
+
+    // ── 층(BuildingStorey) ──────────────────────────────────────────
+    List<BimStoreyDTO> getStoreysByProject(String projectId);
+    void saveStoreys(List<BimStoreyDTO> storeys);
+    void deleteStoreysByProject(String projectId);
+
+    // ── WBS 노드 ────────────────────────────────────────────────────
+    List<BimWbsNodeDTO> getWbsByProject(String projectId);
+    void saveWbsNodes(List<BimWbsNodeDTO> nodes);
+    void updateWbsProgress(String wbsId, int progress);
+    void deleteWbsByProject(String projectId);
+
+    // ── WBS 진척도 요약 (통합관제 시각화용) ────────────────────────
+    Map<String, Object> getWbsProgressSummary(String projectId);
+
+    // ── 부재 ↔ WBS 매핑 ────────────────────────────────────────────
+    List<Map<String, Object>> getElementWbsMappings(String projectId);
+    void saveElementWbsMappings(List<Map<String, Object>> mappings);
+    List<String> getElementIdsByWbs(String wbsId);
+    String getWbsIdByElement(String elementId);
+
+    // ── IFC 원본 파일 Object Storage 연동 ──────────────────────────
+
+    /**
+     * IFC 원본 파일을 Object Storage에 업로드하고 bim_project에 storage_key를 저장한다.
+     * 파싱 성공 후 비동기로 호출되므로 예외 발생 시 프로젝트 생성 흐름에 영향을 주지 않는다.
+     *
+     * @param projectId 대상 프로젝트 ID
+     * @param file      업로드할 MultipartFile (원본 IFC)
+     * @return 저장된 storage key
+     */
+    String uploadIfcFile(String projectId, MultipartFile file);
+
+    /**
+     * Object Storage에서 IFC 원본 파일 스트림을 반환한다.
+     * 호출자가 스트림을 닫아야 한다.
+     *
+     * @param projectId 대상 프로젝트 ID
+     * @return IFC 파일 InputStream
+     */
+    InputStream downloadIfcFile(String projectId);
+
+    /**
+     * 프로젝트의 storage_key 조회 (삭제 연동 및 재분석 진입점용)
+     *
+     * @param projectId 대상 프로젝트 ID
+     * @return storage key (없으면 null)
+     */
+    String getStorageKey(String projectId);
 }

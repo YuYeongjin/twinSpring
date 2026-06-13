@@ -13,8 +13,11 @@ import AxiosCustom from '../../axios/AxiosCustom';
 import { exportQuantityToExcel, exportToPDF } from '../../utils/exportUtils';
 import StructuralDashboard from '../structural/StructuralDashboard';
 import WorkPlanDashboard from './component/WorkPlanDashboard';
+import IfcStoreyTree from './component/IfcStoreyTree';
+import IfcWbsPanel from './component/IfcWbsPanel';
 import DroneAnalysisModal from './component/DroneAnalysisModal';
 import BimAgentChat from './component/BimAgentChat';
+import { buildWbsTree } from '../../utils/wbsGenerator';
 import { useT } from '../../i18n/LanguageContext';
 
 const API_BASE = '/api/bim';
@@ -1138,6 +1141,76 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const [selectedLineId, setSelectedLineId] = useState(null);
     const [multiSelectedLineIds, setMultiSelectedLineIds] = useState(new Set());
 
+    // ── WBS / 층 상태 ────────────────────────────────────────────────
+    const [wbsNodes, setWbsNodes]           = useState([]);
+    const [elementWbsMappings, setElementWbsMappings] = useState([]);
+    const [progressMode, setProgressMode]   = useState(false);
+
+    // WBS 트리 (buildWbsTree 결과)
+    const wbsTree = React.useMemo(() => buildWbsTree(wbsNodes), [wbsNodes]);
+
+    // elementId → wbsId Map (WBS→BIM 하이라이트용)
+    const elementWbsMap = React.useMemo(() => {
+        const m = new Map();
+        for (const row of elementWbsMappings) {
+            m.set(row.elementId, row.wbsId);
+        }
+        return m;
+    }, [elementWbsMappings]);
+
+    // wbsId → elementId[] Map (BIM→WBS 하이라이트용)
+    const wbsElementMap = React.useMemo(() => {
+        const m = new Map();
+        for (const row of elementWbsMappings) {
+            if (!m.has(row.wbsId)) m.set(row.wbsId, []);
+            m.get(row.wbsId).push(row.elementId);
+        }
+        return m;
+    }, [elementWbsMappings]);
+
+    // 진척도 Map (elementId → progress)
+    const progressMap = React.useMemo(() => {
+        if (!progressMode) return null;
+        const m = new Map();
+        for (const node of wbsNodes) {
+            if (node.elementType && node.progress > 0) {
+                const ids = wbsElementMap.get(node.wbsId) || [];
+                for (const id of ids) m.set(id, node.progress);
+            }
+        }
+        return m;
+    }, [progressMode, wbsNodes, wbsElementMap]);
+
+    // 프로젝트 변경 시 WBS/매핑 로드
+    useEffect(() => {
+        const pid = selectedProject?.projectId;
+        if (!pid) { setWbsNodes([]); setElementWbsMappings([]); return; }
+        AxiosCustom.get(`${API_BASE}/wbs?projectId=${pid}`)
+            .then(res => setWbsNodes(res.data || []))
+            .catch(() => setWbsNodes([]));
+        AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`)
+            .then(res => setElementWbsMappings(res.data || []))
+            .catch(() => setElementWbsMappings([]));
+    }, [selectedProject]);
+
+    // WBS 진척도 업데이트
+    const handleWbsProgressChange = React.useCallback((wbsId, progress) => {
+        setWbsNodes(prev => prev.map(n => n.wbsId === wbsId ? { ...n, progress } : n));
+        AxiosCustom.put(`${API_BASE}/wbs/${wbsId}/progress`, { progress })
+            .catch(e => console.warn('WBS 진척도 저장 실패:', e.message));
+    }, []);
+
+    // WBS/층 트리에서 BIM 부재 하이라이트 (다중 선택)
+    const handleWbsSelectElements = React.useCallback((ids) => {
+        setSelectedElements(new Set(ids));
+        if (ids && ids.length > 0) {
+            const first = modelData.find(e => e.elementId === ids[0]);
+            if (first) setSelectedElement({ data: first, meshRef: null });
+        } else {
+            setSelectedElement(null);
+        }
+    }, [setSelectedElements, setSelectedElement, modelData]);
+
     useEffect(() => {
         const pid = selectedProject?.projectId;
         if (!pid) return;
@@ -1557,19 +1630,55 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         return ids.size;
     }, [selectedElements, selectedElement]);
 
+    // IFC 임포트된 데이터 여부 (층/GlobalId 존재 시 true)
+    const hasIfcData = useMemo(
+        () => modelData.some(e => e.storey || e.globalId || e.building),
+        [modelData]
+    );
+
+    // 현재 모델에 존재하는 부재 타입 목록 (개수 내림차순)
+    const presentTypes = useMemo(() => {
+        const counts = {};
+        for (const el of modelData) {
+            counts[el.elementType] = (counts[el.elementType] || 0) + 1;
+        }
+        const TYPE_ORDER = ['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcDoor','IfcWindow','IfcStair','IfcRoof','IfcPier','IfcMember','IfcRebar'];
+        return Object.entries(counts)
+            .sort(([a,ca],[b,cb]) => {
+                const oa = TYPE_ORDER.indexOf(a), ob = TYPE_ORDER.indexOf(b);
+                if (oa !== ob) return (oa < 0 ? 99 : oa) - (ob < 0 ? 99 : ob);
+                return cb - ca;
+            })
+            .map(([type, count]) => ({ type, count }));
+    }, [modelData]);
+
     const resolvedModelData = useMemo(() => {
+        const layerMap = new Map(layers.map(l => [l.layerId, l]));
+
+        function isLayerHidden(layer) {
+            if (!layer.visible) return true;
+            if (layer.parentLayerId) {
+                const parent = layerMap.get(layer.parentLayerId);
+                if (parent && isLayerHidden(parent)) return true;
+            }
+            return false;
+        }
+
         return modelData.map(el => {
             const layer = layers.find(l => l.elementIds.includes(el.elementId));
-            const hidden = layer ? !layer.visible : false;
+            const hidden = layer ? isLayerHidden(layer) : false;
             const resolvedColor   = elementColors[el.elementId] || layer?.color || null;
             const resolvedOpacity = elementOpacities[el.elementId] ?? null;
             return { ...el, resolvedColor, resolvedOpacity, hidden };
         });
     }, [modelData, layers, elementColors, elementOpacities]);
 
+    // IfcStoreyTree에서 동/층 가시성 토글로 숨긴 element ID Set
+    const [ifcHiddenIds, setIfcHiddenIds] = useState(new Set());
+
     const visibleModelData = useMemo(
-        () => resolvedModelData.filter(el => !el.hidden),
-        [resolvedModelData]
+        () => resolvedModelData.filter(el => !el.hidden && !ifcHiddenIds.has(el.elementId)),
+        [resolvedModelData, ifcHiddenIds]
     );
 
     const [exporting, setExporting] = useState(false);
@@ -2078,8 +2187,28 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 <StructuralDashboard selectedProject={selectedProject} modelData={modelData} />
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'block' : 'none' }}>
-                <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} />
+            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'flex' : 'none', gap: 0 }}>
+                {/* 왼쪽: WBS 트리 + 진척도 */}
+                <div style={{
+                    width: 280, minWidth: 220, flexShrink: 0,
+                    borderRight: '1px solid #1a2a3a',
+                    overflowY: 'auto',
+                    background: '#060e1a',
+                }}>
+                    <IfcWbsPanel
+                        wbsTree={wbsTree}
+                        elementWbsMap={elementWbsMap}
+                        selectedElement={selectedElement}
+                        onSelectElements={handleWbsSelectElements}
+                        onProgressChange={handleWbsProgressChange}
+                        progressMode={progressMode}
+                        onToggleProgress={() => setProgressMode(v => !v)}
+                    />
+                </div>
+                {/* 오른쪽: 기존 공정 대시보드 */}
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                    <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} layers={layers} />
+                </div>
             </div>
 
             <div
@@ -2364,6 +2493,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             walkMode={walkMode}
                                             onWalkModeExit={() => setWalkMode(false)}
                                             orbitTargetRef={orbitTargetRef}
+                                            progressMap={progressMap}
+                                            progressMode={progressMode}
                                         />
                                         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
                                             <GizmoViewport axisColors={['#ff4060', '#80ff80', '#2080ff']} labelColor="white"/>
@@ -2650,42 +2781,78 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             />
                         </Card>
 
-                        <Card title={t('elementList')} right={<Chip color="green">{t('liveChip')}</Chip>} className="shrink-0">
-                            <p className="text-xs text-gray-600 mb-2">{t('tapToSelectAll')}</p>
-                            <CardGridWrapper>
-                                {['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcSlab', 'IfcPier', 'IfcRebar'].map(type => {
-                                    const matching = modelData.filter(e => e.elementType === type);
-                                    const count = matching.length;
-                                    const isAllSelected = count > 0 && matching.every(e => selectedElements.has(e.elementId));
-                                    return (
-                                        <div
-                                            key={type}
-                                            onClick={() => {
-                                                if (count === 0) return;
-                                                setSelectedElement(null);
-                                                setSelectedElements(new Set(matching.map(e => e.elementId)));
-                                            }}
-                                            className="rounded-lg p-2 flex flex-col items-center gap-0.5 transition-all"
-                                            style={{
-                                                backgroundColor: isAllSelected ? 'rgba(59,130,246,0.25)' : 'rgba(51,65,85,0.6)',
-                                                border: isAllSelected ? '1px solid #3b82f6' : '1px solid transparent',
-                                                cursor: count > 0 ? 'pointer' : 'default',
-                                                opacity: count === 0 ? 0.4 : 1,
-                                            }}
-                                        >
-                                            <span className="text-xs truncate w-full text-center"
-                                                  style={{ color: isAllSelected ? '#93c5fd' : '#9ca3af' }}>
-                                                {type.replace('Ifc', '')}
-                                            </span>
-                                            <span className="text-lg font-bold"
-                                                  style={{ color: isAllSelected ? '#60a5fa' : '#f1f5f9' }}>
-                                                {count}
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </CardGridWrapper>
-                        </Card>
+                        {/* 층/타입/부재 트리 — IFC 임포트된 경우에만 표시 */}
+                        {hasIfcData && (
+                            <Card
+                                title={t('storeyTreeTitle')}
+                                right={<Chip color="blue">{modelData.length}</Chip>}
+                                style={{ padding: '8px 0 0' }}
+                            >
+                                <div style={{ maxHeight: 360, overflowY: 'auto', marginTop: -8 }}>
+                                    <IfcStoreyTree
+                                        modelData={modelData}
+                                        selectedElement={selectedElement}
+                                        onSelectElements={handleWbsSelectElements}
+                                        onSelectElement={(el) =>
+                                            handleElementSelectAndClearLine(el, null, false)
+                                        }
+                                        layers={layers}
+                                        onAssignToLayer={assignToLayer}
+                                        onRemoveFromLayer={removeFromLayer}
+                                        onHiddenIdsChange={setIfcHiddenIds}
+                                    />
+                                </div>
+                            </Card>
+                        )}
+
+                        {/* 부재 타입별 현황 — 모델에 존재하는 타입만 동적으로 표시 */}
+                        {presentTypes.length > 0 && (
+                            <Card
+                                title={t('elementList')}
+                                right={<Chip color="green">{t('liveChip')}</Chip>}
+                                className="shrink-0"
+                            >
+                                <p className="text-xs text-gray-600 mb-2">{t('tapToSelectAll')}</p>
+                                <CardGridWrapper>
+                                    {presentTypes.map(({ type, count }) => {
+                                        const matching = modelData.filter(e => e.elementType === type);
+                                        const isAllSelected = count > 0 && matching.every(e => selectedElements.has(e.elementId));
+                                        const typeLabel = t(`typeIfc${type.replace('Ifc', '')}`) || type.replace('Ifc', '');
+                                        return (
+                                            <div
+                                                key={type}
+                                                onClick={() => {
+                                                    if (count === 0) return;
+                                                    const first = matching[0];
+                                                    setSelectedElements(new Set(matching.map(e => e.elementId)));
+                                                    if (first) setSelectedElement({ data: first, meshRef: null });
+                                                }}
+                                                className="rounded-lg p-2 flex flex-col items-center gap-0.5 transition-all"
+                                                style={{
+                                                    backgroundColor: isAllSelected ? 'rgba(59,130,246,0.25)' : 'rgba(51,65,85,0.6)',
+                                                    border: isAllSelected ? '1px solid #3b82f6' : '1px solid transparent',
+                                                    cursor: 'pointer',
+                                                }}
+                                            >
+                                                <span
+                                                    className="text-xs truncate w-full text-center"
+                                                    style={{ color: isAllSelected ? '#93c5fd' : '#9ca3af' }}
+                                                    title={type}
+                                                >
+                                                    {typeLabel}
+                                                </span>
+                                                <span
+                                                    className="text-lg font-bold"
+                                                    style={{ color: isAllSelected ? '#60a5fa' : '#f1f5f9' }}
+                                                >
+                                                    {count}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </CardGridWrapper>
+                            </Card>
+                        )}
                     </div>{/* end content wrapper */}
                     </div>{/* end panel overlay div */}
                     </>

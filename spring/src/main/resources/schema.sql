@@ -150,6 +150,8 @@ CREATE TABLE IF NOT EXISTS bim_layer
     created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_bim_layer_project ON bim_layer (project_id);
+ALTER TABLE bim_layer ADD COLUMN IF NOT EXISTS parent_layer_id TEXT NULL;
+CREATE INDEX IF NOT EXISTS idx_bim_layer_parent ON bim_layer (parent_layer_id);
 
 -- ================================================================
 -- BIM 부재 커스텀 색상 테이블
@@ -553,3 +555,111 @@ CREATE INDEX IF NOT EXISTS idx_site_camera_project ON site_camera (project_id);
 -- ================================================================
 ALTER TABLE integration_project ADD COLUMN IF NOT EXISTS ref_lat DOUBLE PRECISION NULL;
 ALTER TABLE integration_project ADD COLUMN IF NOT EXISTS ref_lng DOUBLE PRECISION NULL;
+
+-- ================================================================
+-- bim_project Object Storage 연동 컬럼 (IFC 원본 파일 영구 보관)
+-- storage_key      : MinIO/S3 오브젝트 키 (예: projects/{id}/original.ifc)
+-- original_filename: 사용자가 업로드한 원본 파일명
+-- uploaded_at      : 업로드 완료 시각
+-- ================================================================
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS storage_key       TEXT        NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS original_filename TEXT        NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS uploaded_at       TIMESTAMPTZ NULL;
+
+-- ================================================================
+-- bim_project geoOrigin 마이그레이션 (IFC → GIS 연동용)
+-- geo_latitude / geo_longitude / geo_elevation : IfcSite 위경도 (없으면 NULL)
+-- ifc_offset_x/y/z : Three.js 원점 정규화 오프셋 (역산용)
+-- ifc_scale        : IFC 단위 스케일 (mm→m 등)
+-- ================================================================
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS geo_latitude  DOUBLE PRECISION NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS geo_longitude DOUBLE PRECISION NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS geo_elevation DOUBLE PRECISION NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS ifc_offset_x  DOUBLE PRECISION NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS ifc_offset_y  DOUBLE PRECISION NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS ifc_offset_z  DOUBLE PRECISION NULL;
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS ifc_scale     DOUBLE PRECISION NOT NULL DEFAULT 1;
+
+-- ================================================================
+-- bim_element IFC 원본 좌표 마이그레이션 (GIS 역산 / AI Agent 위치 추적용)
+-- ifc_world_x/y/z : IFC Z-up 좌표계 기준 부재 중심 (정규화 전 원본)
+-- ================================================================
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS ifc_world_x   DOUBLE PRECISION NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS ifc_world_y   DOUBLE PRECISION NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS ifc_world_z   DOUBLE PRECISION NULL;
+
+-- ================================================================
+-- bim_element IFC 구조 분석 컬럼 (GlobalId, Name, 층, 동)
+-- ================================================================
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS global_id  TEXT NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS ifc_name   TEXT NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS storey     TEXT NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS building   TEXT NULL;
+
+-- ================================================================
+-- BIM 층(BuildingStorey) 테이블
+-- IFC IfcBuildingStorey 계층 구조를 프로젝트별로 저장
+-- ================================================================
+CREATE TABLE IF NOT EXISTS bim_storey
+(
+    storey_id    TEXT        NOT NULL PRIMARY KEY,
+    project_id   TEXT        NOT NULL REFERENCES bim_project (project_id) ON DELETE CASCADE,
+    storey_name  TEXT        NOT NULL,
+    elevation    DOUBLE PRECISION NULL,
+    building     TEXT        NULL,
+    sort_order   INT         NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bim_storey_project ON bim_storey (project_id);
+
+-- ================================================================
+-- BIM WBS 노드 테이블 (IFC 구조 기반 자동 생성)
+-- 계층: 프로젝트 → 동 → 층 → 공종
+-- ================================================================
+CREATE TABLE IF NOT EXISTS bim_wbs_node
+(
+    wbs_id        TEXT        NOT NULL PRIMARY KEY,
+    project_id    TEXT        NOT NULL REFERENCES bim_project (project_id) ON DELETE CASCADE,
+    parent_wbs_id TEXT        NULL,
+    wbs_code      TEXT        NULL,
+    wbs_name      TEXT        NOT NULL,
+    node_type     TEXT        NOT NULL DEFAULT 'TASK',  -- PROJECT|BUILDING|STOREY|TASK
+    building      TEXT        NULL,
+    storey        TEXT        NULL,
+    element_type  TEXT        NULL,  -- IfcWall / IfcColumn / ...
+    element_count INT         NOT NULL DEFAULT 0,
+    progress      INT         NOT NULL DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+    sort_order    INT         NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bim_wbs_project    ON bim_wbs_node (project_id);
+CREATE INDEX IF NOT EXISTS idx_bim_wbs_parent     ON bim_wbs_node (parent_wbs_id);
+
+-- ================================================================
+-- bim_wbs_node 수량 산출 컬럼 (공사 단계 기반 WBS 확장)
+-- quantity : 산출 수량 (철근 kg, 거푸집 m², 콘크리트 m³, 양생 일)
+-- unit     : 단위 문자열
+-- formula  : 계산식 설명 (UI hover 표시)
+-- reason   : 시방서 근거 (KDS/AIJ/ACI 조항)
+-- standard : 적용 기준 (KDS | AIJ | ACI)
+-- ================================================================
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS quantity  DOUBLE PRECISION NULL;
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS unit      TEXT             NULL;
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS formula   TEXT             NULL;
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS reason    TEXT             NULL;
+ALTER TABLE bim_wbs_node ADD COLUMN IF NOT EXISTS standard  TEXT             NOT NULL DEFAULT 'KDS';
+
+-- ================================================================
+-- BIM 부재 ↔ WBS 양방향 매핑 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS bim_element_wbs
+(
+    element_id TEXT NOT NULL,
+    wbs_id     TEXT NOT NULL REFERENCES bim_wbs_node (wbs_id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    PRIMARY KEY (element_id, wbs_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bim_element_wbs_element ON bim_element_wbs (element_id);
+CREATE INDEX IF NOT EXISTS idx_bim_element_wbs_wbs     ON bim_element_wbs (wbs_id);
+CREATE INDEX IF NOT EXISTS idx_bim_element_wbs_project ON bim_element_wbs (project_id);

@@ -10,9 +10,19 @@ import {
   IFCPILE,
   IFCPLATE,
   IFCSIUNIT,
+  IFCSITE,
+  IFCBUILDING,
+  IFCBUILDINGSTOREY,
+  IFCDOOR,
+  IFCWINDOW,
+  IFCSTAIR,
+  IFCSTAIRFLIGHT,
+  IFCROOF,
+  IFCRELCONTAINEDINSPATIALSTRUCTURE,
+  IFCRELAGGREGATES,
 } from 'web-ifc';
 
-// IFC 엔티티 타입 → 우리 서비스 elementType 매핑
+// IFC 엔티티 타입 → 서비스 elementType 매핑
 const ELEMENT_TYPE_MAP = [
   { ifcType: IFCCOLUMN,           ourType: 'IfcColumn' },
   { ifcType: IFCBEAM,             ourType: 'IfcBeam'   },
@@ -23,6 +33,11 @@ const ELEMENT_TYPE_MAP = [
   { ifcType: IFCFOOTING,          ourType: 'IfcSlab'   },
   { ifcType: IFCPILE,             ourType: 'IfcPier'   },
   { ifcType: IFCPLATE,            ourType: 'IfcMember' },
+  { ifcType: IFCDOOR,             ourType: 'IfcDoor'   },
+  { ifcType: IFCWINDOW,           ourType: 'IfcWindow' },
+  { ifcType: IFCSTAIR,            ourType: 'IfcStair'  },
+  { ifcType: IFCSTAIRFLIGHT,      ourType: 'IfcStair'  },
+  { ifcType: IFCROOF,             ourType: 'IfcRoof'   },
 ];
 
 // IFC 파일의 길이 단위 → 미터 스케일 팩터 감지
@@ -52,7 +67,7 @@ function transformPoint(mat, x, y, z) {
   ];
 }
 
-// 4x4 컬럼-메이저 행렬의 3x3 회전 부분으로 법선 변환 (이동 없음)
+// 4x4 컬럼-메이저 행렬의 3x3 회전 부분으로 법선 변환
 function transformNormal(mat, nx, ny, nz) {
   return [
     mat[0]*nx + mat[4]*ny + mat[8]*nz,
@@ -67,17 +82,184 @@ function getMaterial(ourType) {
   return 'Concrete C30';
 }
 
+// ── IfcSite 파싱 ───────────────────────────────────────────────────
+function dmsToDecimal(arr) {
+  if (!Array.isArray(arr) || arr.length < 3) return null;
+  const [deg, min, sec, micro = 0] = arr;
+  return deg + min / 60 + (sec + micro / 1_000_000) / 3600;
+}
+
+function extractSiteInfo(ifcAPI, modelId) {
+  try {
+    const siteIds = ifcAPI.GetLineIDsWithType(modelId, IFCSITE, false);
+    if (siteIds.size() === 0) {
+      console.warn('[IFC GeoOrigin] IfcSite 엔티티 없음 → 위경도 정보 없음');
+      return null;
+    }
+
+    const site = ifcAPI.GetLine(modelId, siteIds.get(0), true);
+
+    const rawLat = site.RefLatitude?.value;
+    const rawLon = site.RefLongitude?.value;
+    const rawElev = site.RefElevation?.value ?? null;
+
+    const latitude  = dmsToDecimal(rawLat);
+    const longitude = dmsToDecimal(rawLon);
+    const elevation = typeof rawElev === 'number' ? rawElev : null;
+
+    console.group('[IFC GeoOrigin] IfcSite 파싱 결과');
+    console.log('Name       :', site.Name?.value ?? '(없음)');
+    console.log('RefLatitude:', rawLat,  '→', latitude  !== null ? `${latitude.toFixed(6)}°`  : 'null');
+    console.log('RefLongitude:', rawLon, '→', longitude !== null ? `${longitude.toFixed(6)}°` : 'null');
+    console.log('RefElevation:', rawElev, 'm');
+
+    const hasRealGeo = latitude !== null && longitude !== null &&
+                       !(latitude === 0 && longitude === 0);
+    if (hasRealGeo) {
+      console.log('GIS 연동 가능: 실제 위경도 포함');
+    } else {
+      console.warn('GIS 연동 불가: 위경도가 null 이거나 (0,0)');
+    }
+    console.groupEnd();
+
+    return { latitude, longitude, elevation };
+  } catch (e) {
+    console.warn('[IFC GeoOrigin] IfcSite 파싱 실패:', e);
+    return null;
+  }
+}
+
+// ── IFC 공간 구조(층/동) 추출 ──────────────────────────────────────
+/**
+ * IfcBuildingStorey / IfcBuilding 계층을 파싱하여
+ * expressId → { storey, storeyElevation, building } 매핑과
+ * 층 목록을 반환한다.
+ */
+function extractSpatialStructure(ifcAPI, modelId) {
+  const elemToSpatial = new Map(); // expressId → { storey, storeyElevation, building }
+  const storeys = [];              // { expressId, name, elevation, building, elementExpressIds[] }
+
+  try {
+    // Step 1: 층(IfcBuildingStorey) 목록 수집
+    const storeyInfoMap = new Map();
+    try {
+      const storeyIds = ifcAPI.GetLineIDsWithType(modelId, IFCBUILDINGSTOREY, false);
+      for (let i = 0; i < storeyIds.size(); i++) {
+        const id = storeyIds.get(i);
+        const ent = ifcAPI.GetLine(modelId, id, false);
+        const name = ent?.LongName?.value || ent?.Name?.value || `Level_${i + 1}`;
+        const elevation = typeof ent?.Elevation?.value === 'number' ? ent.Elevation.value : null;
+        storeyInfoMap.set(id, { name, elevation, expressId: id });
+      }
+    } catch {}
+
+    // Step 2: 건물(IfcBuilding) 목록 수집
+    const buildingInfoMap = new Map();
+    try {
+      const bldgIds = ifcAPI.GetLineIDsWithType(modelId, IFCBUILDING, false);
+      for (let i = 0; i < bldgIds.size(); i++) {
+        const id = bldgIds.get(i);
+        const ent = ifcAPI.GetLine(modelId, id, false);
+        const name = ent?.LongName?.value || ent?.Name?.value || `Building_${i + 1}`;
+        buildingInfoMap.set(id, { name, expressId: id });
+      }
+    } catch {}
+
+    // Step 3: IfcRelAggregates로 층 → 건물 매핑
+    const storeyToBuilding = new Map();
+    try {
+      const aggIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELAGGREGATES, false);
+      for (let i = 0; i < aggIds.size(); i++) {
+        const rel = ifcAPI.GetLine(modelId, aggIds.get(i), false);
+        const parentId = rel?.RelatingObject?.value;
+        if (parentId === undefined || !buildingInfoMap.has(parentId)) continue;
+        const related = rel?.RelatedObjects;
+        if (!Array.isArray(related)) continue;
+        for (const ref of related) {
+          const childId = typeof ref === 'object' ? ref.value : ref;
+          if (storeyInfoMap.has(childId)) storeyToBuilding.set(childId, parentId);
+        }
+      }
+    } catch {}
+
+    // Step 4: storeys 배열 초기화 (elevation 기준 정렬)
+    for (const [sid, info] of storeyInfoMap) {
+      const buildingId = storeyToBuilding.get(sid);
+      const building = buildingId ? buildingInfoMap.get(buildingId) : null;
+      storeys.push({
+        expressId: sid,
+        name: info.name,
+        elevation: info.elevation,
+        building: building?.name || null,
+        buildingExpressId: buildingId || null,
+        elementExpressIds: [],
+      });
+    }
+    storeys.sort((a, b) => {
+      if (a.building !== b.building) return (a.building || '').localeCompare(b.building || '');
+      return (a.elevation ?? 0) - (b.elevation ?? 0);
+    });
+
+    // Step 5: IfcRelContainedInSpatialStructure로 부재 → 층 매핑
+    try {
+      const contIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELCONTAINEDINSPATIALSTRUCTURE, false);
+      for (let i = 0; i < contIds.size(); i++) {
+        const rel = ifcAPI.GetLine(modelId, contIds.get(i), false);
+        const structureId = rel?.RelatingStructure?.value;
+        if (structureId === undefined) continue;
+        const storeyInfo = storeyInfoMap.get(structureId);
+        if (!storeyInfo) continue;
+
+        const buildingId = storeyToBuilding.get(structureId);
+        const buildingInfo = buildingId ? buildingInfoMap.get(buildingId) : null;
+        const related = rel?.RelatedElements;
+        if (!Array.isArray(related)) continue;
+
+        const storeyEntry = storeys.find(s => s.expressId === structureId);
+        for (const ref of related) {
+          const elId = typeof ref === 'object' ? ref.value : ref;
+          elemToSpatial.set(elId, {
+            storey: storeyInfo.name,
+            storeyElevation: storeyInfo.elevation,
+            building: buildingInfo?.name || null,
+          });
+          if (storeyEntry && !storeyEntry.elementExpressIds.includes(elId)) {
+            storeyEntry.elementExpressIds.push(elId);
+          }
+        }
+      }
+    } catch {}
+  } catch (e) {
+    console.warn('[IFC Spatial] 공간 구조 파싱 실패:', e);
+  }
+
+  console.log(`[IFC Spatial] 층 ${storeys.length}개 추출`, storeys.map(s => `${s.building || '-'}/${s.name}`));
+  return { elemToSpatial, storeys };
+}
+
+// ── Three.js 정규화 좌표 → IFC 월드 좌표 역산 ─────────────────────
+export function toIfcWorld(normX, normY, normZ, geoOrigin) {
+  const { ifcOffsetX, ifcOffsetY, ifcOffsetZ, scale } = geoOrigin;
+  const tx = normX + ifcOffsetX;
+  const ty = normY + ifcOffsetZ;
+  const tz = normZ + ifcOffsetY;
+  return {
+    ifc_X: tx / scale,
+    ifc_Y: tz / scale,
+    ifc_Z: ty / scale,
+  };
+}
+
 /**
  * IFC 파일을 파싱하여 BimElementDTO 배열 + 실제 Three.js 지오메트리 데이터를 반환한다.
  *
- * 좌표계 변환:
- *   IFC  : X=오른쪽, Y=앞방향, Z=위
- *   Three.js: X=오른쪽, Y=위, Z=앞방향
- *
- * @param {File}     file       .ifc 파일 객체
- * @param {Function} onProgress 진행률 콜백 (0~100)
- * @param {number}   userScale  사용자 지정 스케일 배율 (기본 1.0)
- * @returns {{ elements: BimElementDTO[], ifcMeshes: IfcMeshData[], detectedScale: number }}
+ * @returns {{
+ *   elements:      BimElementDTO[],  // globalId/ifcName/storey/building 포함
+ *   ifcMeshes:     IfcMeshData[],
+ *   detectedScale: number,
+ *   geoOrigin:     object,
+ *   storeys:       object[],          // 층 계층 구조 { name, elevation, building, elementIds }
+ * }}
  */
 export async function parseIfcFile(file, onProgress, userScale = 1.0) {
   const ifcAPI = new IfcAPI();
@@ -91,7 +273,9 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
 
   onProgress?.(5);
 
-  // ── Step 1: expressId → ourType 맵 구축 ─────────────────────────
+  const siteInfo = extractSiteInfo(ifcAPI, modelId);
+
+  // ── expressId → ourType 맵 ─────────────────────────────────────
   const elemTypeMap = new Map();
   for (const { ifcType, ourType } of ELEMENT_TYPE_MAP) {
     const ids = ifcAPI.GetLineIDsWithType(modelId, ifcType, false);
@@ -101,16 +285,72 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     }
   }
 
+  // IfcRoof 재분류 (두 가지 패턴 처리)
+  // 1) IfcSlab with PredefinedType=ROOF
+  for (const [id, ourType] of elemTypeMap.entries()) {
+    if (ourType !== 'IfcSlab') continue;
+    try {
+      const line = ifcAPI.GetLine(modelId, id, false);
+      if (line?.PredefinedType?.value === 'ROOF') elemTypeMap.set(id, 'IfcRoof');
+    } catch { /* skip */ }
+  }
+  // 2) IfcRoof 컨테이너의 자식 요소 (IfcRelAggregates)
+  try {
+    const roofIds = new Set();
+    const rIds = ifcAPI.GetLineIDsWithType(modelId, IFCROOF, false);
+    for (let i = 0; i < rIds.size(); i++) roofIds.add(rIds.get(i));
+
+    if (roofIds.size > 0) {
+      const aggIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELAGGREGATES, false);
+      for (let i = 0; i < aggIds.size(); i++) {
+        const rel = ifcAPI.GetLine(modelId, aggIds.get(i), false);
+        const parentId = rel?.RelatingObject?.value;
+        if (!roofIds.has(parentId)) continue;
+        const related = rel?.RelatedObjects;
+        if (!Array.isArray(related)) continue;
+        for (const ref of related) {
+          const childId = typeof ref === 'object' ? ref.value : ref;
+          if (elemTypeMap.has(childId)) elemTypeMap.set(childId, 'IfcRoof');
+        }
+      }
+    }
+  } catch { /* skip */ }
+
   if (elemTypeMap.size === 0) {
     ifcAPI.CloseModel(modelId);
     onProgress?.(100);
-    return { elements: [], ifcMeshes: [] };
+    return {
+      elements: [], ifcMeshes: [], detectedScale, storeys: [],
+      geoOrigin: {
+        ...(siteInfo ?? { latitude: null, longitude: null, elevation: null }),
+        ifcOffsetX: 0, ifcOffsetY: 0, ifcOffsetZ: 0, scale,
+      },
+    };
   }
 
-  // ── Step 2: StreamAllMeshesWithTypes로 지오메트리 스트리밍 ────────
+  onProgress?.(10);
+
+  // ── 공간 구조 추출 (층/동) ─────────────────────────────────────
+  const { elemToSpatial, storeys } = extractSpatialStructure(ifcAPI, modelId);
+
+  // ── GlobalId / Name 일괄 추출 ──────────────────────────────────
+  const elemInfoMap = new Map(); // expressId → { globalId, name }
+  for (const expressId of elemTypeMap.keys()) {
+    try {
+      const line = ifcAPI.GetLine(modelId, expressId, false);
+      elemInfoMap.set(expressId, {
+        globalId: line?.GlobalId?.value ?? null,
+        name:     line?.Name?.value     ?? null,
+      });
+    } catch { /* 개별 실패 무시 */ }
+  }
+
+  onProgress?.(15);
+
+  // ── StreamAllMeshesWithTypes로 지오메트리 스트리밍 ────────────
   const uniqueTypes = [...new Set(ELEMENT_TYPE_MAP.map(m => m.ifcType))];
-  const elements    = [];  // AABB 기반 BimElementDTO (DB 저장용)
-  const ifcMeshes   = [];  // 실제 Three.js 지오메트리 (클라이언트 렌더링용)
+  const elements    = [];
+  const ifcMeshes   = [];
   let   processed   = 0;
   const total       = elemTypeMap.size;
 
@@ -119,22 +359,21 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     const ourType   = elemTypeMap.get(expressId);
     if (!ourType || mesh.geometries.size() === 0) return;
 
-    // ── AABB 누산 + 실제 지오메트리 수집 ─────────────────────────
     let wMinX = Infinity, wMinY = Infinity, wMinZ = Infinity;
     let wMaxX = -Infinity, wMaxY = -Infinity, wMaxZ = -Infinity;
+    let ifcMinX = Infinity, ifcMinY = Infinity, ifcMinZ = Infinity;
+    let ifcMaxX = -Infinity, ifcMaxY = -Infinity, ifcMaxZ = -Infinity;
 
-    // Three.js 공간에서 이 요소의 모든 정점/법선/인덱스
-    const chunkPositions = [];  // Float32Array[]
-    const chunkNormals   = [];  // Float32Array[]
-    const chunkIndices   = [];  // Uint32Array[]
+    const chunkPositions = [];
+    const chunkNormals   = [];
+    const chunkIndices   = [];
     let   baseIndex      = 0;
     let   meshColor      = null;
 
     for (let g = 0; g < mesh.geometries.size(); g++) {
       const geom = mesh.geometries.get(g);
-      const mat  = geom.flatTransformation; // Float64Array, column-major 4×4
+      const mat  = geom.flatTransformation;
 
-      // 첫 번째 지오메트리의 색상 사용
       if (!meshColor && geom.color) {
         meshColor = [geom.color.x, geom.color.y, geom.color.z, geom.color.w];
       }
@@ -151,7 +390,7 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
           geomData.GetIndexDataSize()
         );
 
-        const vertCount = verts.length / 6; // stride 6: x,y,z, nx,ny,nz
+        const vertCount = verts.length / 6;
         const posArr    = new Float32Array(vertCount * 3);
         const normArr   = new Float32Array(vertCount * 3);
 
@@ -159,13 +398,12 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
           const lx = verts[vi*6],   ly = verts[vi*6+1], lz = verts[vi*6+2];
           const nx = verts[vi*6+3], ny = verts[vi*6+4], nz = verts[vi*6+5];
 
-          // 4×4 행렬 적용 → IFC 월드 좌표
           const [wx, wy, wz] = transformPoint(mat, lx, ly, lz);
 
-          // 스케일 + IFC(Z-up) → Three.js(Y-up) 좌표 변환
-          //   Three.js X = IFC X * scale
-          //   Three.js Y = IFC Z * scale  (높이 방향)
-          //   Three.js Z = IFC Y * scale  (깊이 방향)
+          if (wx < ifcMinX) ifcMinX = wx; if (wx > ifcMaxX) ifcMaxX = wx;
+          if (wy < ifcMinY) ifcMinY = wy; if (wy > ifcMaxY) ifcMaxY = wy;
+          if (wz < ifcMinZ) ifcMinZ = wz; if (wz > ifcMaxZ) ifcMaxZ = wz;
+
           const tx = wx * scale;
           const ty = wz * scale;
           const tz = wy * scale;
@@ -174,13 +412,11 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
           posArr[vi*3+1] = ty;
           posArr[vi*3+2] = tz;
 
-          // 법선 변환 (3×3 회전 부분만, 스케일 없음)
           const [wnx, wny, wnz] = transformNormal(mat, nx, ny, nz);
           normArr[vi*3]   = wnx;
-          normArr[vi*3+1] = wnz; // IFC NZ → Three.js NY
-          normArr[vi*3+2] = wny; // IFC NY → Three.js NZ
+          normArr[vi*3+1] = wnz;
+          normArr[vi*3+2] = wny;
 
-          // AABB 갱신 (Three.js 공간 기준)
           if (tx < wMinX) wMinX = tx; if (tx > wMaxX) wMaxX = tx;
           if (ty < wMinY) wMinY = ty; if (ty > wMaxY) wMaxY = ty;
           if (tz < wMinZ) wMinZ = tz; if (tz > wMaxZ) wMaxZ = tz;
@@ -189,40 +425,48 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
         chunkPositions.push(posArr);
         chunkNormals.push(normArr);
 
-        // 인덱스를 baseIndex만큼 오프셋해서 병합
         const adjIdx = new Uint32Array(idxs.length);
         for (let ii = 0; ii < idxs.length; ii++) adjIdx[ii] = idxs[ii] + baseIndex;
         chunkIndices.push(adjIdx);
         baseIndex += vertCount;
 
-      } catch { /* 개별 지오메트리 오류는 스킵 */ }
+      } catch { /* 개별 지오메트리 오류 스킵 */ }
       finally { geomData?.delete(); }
     }
 
     if (!isFinite(wMinX)) return;
 
-    // ── AABB → BimElementDTO ─────────────────────────────────────
-    // 좌표 규칙: positionX/Y = 평면(2D), positionZ = 높이
-    // Three.js: X=ThreeX, Y(height)=ThreeY, Z(depth)=ThreeZ
-    // → DTO:    positionX=ThreeX, positionY=ThreeZ(depth), positionZ=ThreeY(height)
     const sX = Math.max(wMaxX - wMinX, 0.05);
-    const sY = Math.max(wMaxZ - wMinZ, 0.05);  // DTO sizeY = Three.js Z depth
-    const sZ = Math.max(wMaxY - wMinY, 0.05);  // DTO sizeZ = Three.js Y height
+    const sY = Math.max(wMaxZ - wMinZ, 0.05);
+    const sZ = Math.max(wMaxY - wMinY, 0.05);
+
+    const spatial  = elemToSpatial.get(expressId) ?? {};
+    const elemInfo = elemInfoMap.get(expressId)   ?? {};
 
     elements.push({
       elementId:   `IFC-${expressId}`,
       elementType: ourType,
       positionX:   parseFloat(((wMinX + wMaxX) / 2).toFixed(4)),
-      positionY:   parseFloat(((wMinZ + wMaxZ) / 2).toFixed(4)),  // depth center
-      positionZ:   parseFloat(wMinY.toFixed(4)),                   // height base
+      positionY:   parseFloat(((wMinZ + wMaxZ) / 2).toFixed(4)),
+      positionZ:   parseFloat(wMinY.toFixed(4)),
       sizeX:       parseFloat(sX.toFixed(4)),
-      sizeY:       parseFloat(sY.toFixed(4)),  // depth
-      sizeZ:       parseFloat(sZ.toFixed(4)),  // height
+      sizeY:       parseFloat(sY.toFixed(4)),
+      sizeZ:       parseFloat(sZ.toFixed(4)),
       rotationX: 0, rotationY: 0, rotationZ: 0,
       material:  getMaterial(ourType),
+
+      // IFC 원본 좌표 (GIS용)
+      ifcWorldX: isFinite(ifcMinX) ? parseFloat(((ifcMinX + ifcMaxX) / 2).toFixed(4)) : null,
+      ifcWorldY: isFinite(ifcMinY) ? parseFloat(((ifcMinY + ifcMaxY) / 2).toFixed(4)) : null,
+      ifcWorldZ: isFinite(ifcMinZ) ? parseFloat(((ifcMinZ + ifcMaxZ) / 2).toFixed(4)) : null,
+
+      // IFC 구조 분석 결과
+      globalId: elemInfo.globalId,
+      ifcName:  elemInfo.name,
+      storey:   spatial.storey   ?? null,
+      building: spatial.building ?? null,
     });
 
-    // ── 지오메트리 청크 병합 → ifcMesh ─────────────────────────────
     if (chunkPositions.length > 0) {
       const totalVerts = chunkPositions.reduce((s, a) => s + a.length, 0);
       const totalIdxs  = chunkIndices.reduce((s, a) => s + a.length, 0);
@@ -242,9 +486,9 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
 
       ifcMeshes.push({
         expressId,
-        elementId: `IFC-${expressId}`,
+        elementId:   `IFC-${expressId}`,
         elementType: ourType,
-        color: meshColor || [0.7, 0.7, 0.7, 1.0], // [r, g, b, a]
+        color: meshColor || [0.7, 0.7, 0.7, 1.0],
         positions: mergedPos,
         normals:   mergedNorm,
         indices:   mergedIdx,
@@ -252,36 +496,37 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     }
 
     processed++;
-    onProgress?.(5 + Math.round((processed / total) * 85));
+    onProgress?.(15 + Math.round((processed / total) * 75));
   });
 
   ifcAPI.CloseModel(modelId);
 
   if (elements.length === 0) {
     onProgress?.(100);
-    return { elements: [], ifcMeshes: [], detectedScale };
+    return {
+      elements: [], ifcMeshes: [], detectedScale, storeys: [],
+      geoOrigin: {
+        ...(siteInfo ?? { latitude: null, longitude: null, elevation: null }),
+        ifcOffsetX: 0, ifcOffsetY: 0, ifcOffsetZ: 0, scale,
+      },
+    };
   }
 
-  // ── Step 3: 중앙 정렬 — XY 중심 = 원점, Z 기저(높이) = 0 ──────────────
-  // DTO: positionX/Y = 평면 좌표, positionZ = 높이
-  // ifcMeshes 정점은 Three.js 공간: X=ThreeX, Y=ThreeY(height), Z=ThreeZ(depth)
+  // ── Step 3: 중앙 정렬 ────────────────────────────────────────────
   let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;  // DTO Y = Three.js Z = 평면 depth
-  let minZ = Infinity;                     // DTO Z = Three.js Y = 높이 최솟값
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity;
 
   for (const el of elements) {
     if (el.positionX < minX) minX = el.positionX;
     if (el.positionX > maxX) maxX = el.positionX;
-    if (el.positionY < minY) minY = el.positionY;   // 평면 Y
+    if (el.positionY < minY) minY = el.positionY;
     if (el.positionY > maxY) maxY = el.positionY;
-    if (el.positionZ < minZ) minZ = el.positionZ;   // 높이 base
+    if (el.positionZ < minZ) minZ = el.positionZ;
   }
 
   const cx = (minX + maxX) / 2;
 
-  // Three.js Z(depth) 실제 최솟값을 정점에서 직접 계산
-  // cy(중심) 대신 actualMinZ를 쓰면 건물 앞면이 Z=0(기준 평면)에 딱 붙고
-  // 건물 전체가 Z≥0 쪽(기준 평면 앞)에 위치해 좌표 평면에 가려지지 않는다.
   let actualMinZ = Infinity;
   for (const m of ifcMeshes) {
     const p = m.positions;
@@ -291,25 +536,53 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
   }
   if (!isFinite(actualMinZ)) actualMinZ = (minY + maxY) / 2;
 
-  // elements 정렬 — X 중앙, depth min=0, height base=0
   const centered = elements.map(el => ({
     ...el,
     positionX: parseFloat((el.positionX - cx).toFixed(3)),
-    positionY: parseFloat((el.positionY - actualMinZ).toFixed(3)), // depth min → 0
-    positionZ: parseFloat((el.positionZ - minZ).toFixed(3)),        // height base → 0
+    positionY: parseFloat((el.positionY - actualMinZ).toFixed(3)),
+    positionZ: parseFloat((el.positionZ - minZ).toFixed(3)),
   }));
 
-  // ifcMeshes 정점 정렬
-  // ThreeX -= cx, ThreeY(height) -= minZ, ThreeZ(depth) -= actualMinZ
   for (const mesh of ifcMeshes) {
     const pos = mesh.positions;
     for (let i = 0; i < pos.length; i += 3) {
-      pos[i]   -= cx;          // ThreeX
-      pos[i+1] -= minZ;        // ThreeY (height) — base → 0
-      pos[i+2] -= actualMinZ;  // ThreeZ (depth) — minimum → 0, 기준 평면(Z=0) 뒤로
+      pos[i]   -= cx;
+      pos[i+1] -= minZ;
+      pos[i+2] -= actualMinZ;
     }
   }
 
+  // ── 층 목록에 정규화된 elementId 매핑 추가 ────────────────────────
+  // expressId → 'IFC-{expressId}' 변환 (App.js에서 projectId suffix 추가 전 단계)
+  const normalizedStoreys = storeys.map(s => ({
+    name:      s.name,
+    elevation: s.elevation,
+    building:  s.building,
+    elementIds: s.elementExpressIds.map(xid => `IFC-${xid}`),
+  }));
+
+  const geoOrigin = {
+    latitude:   siteInfo?.latitude  ?? null,
+    longitude:  siteInfo?.longitude ?? null,
+    elevation:  siteInfo?.elevation ?? null,
+    ifcOffsetX: cx,
+    ifcOffsetY: actualMinZ,
+    ifcOffsetZ: minZ,
+    scale,
+    detectedScale,  // WBS 물량 정규화 시 사용 (userScale 역산)
+  };
+
+  console.group('[IFC GeoOrigin] 최종 geoOrigin');
+  console.log('latitude  :', geoOrigin.latitude);
+  console.log('longitude :', geoOrigin.longitude);
+  console.log('elevation :', geoOrigin.elevation, 'm');
+  console.log('ifcOffsetX:', geoOrigin.ifcOffsetX.toFixed(4));
+  console.log('ifcOffsetY:', geoOrigin.ifcOffsetY.toFixed(4));
+  console.log('ifcOffsetZ:', geoOrigin.ifcOffsetZ.toFixed(4));
+  console.log('scale     :', geoOrigin.scale);
+  console.groupEnd();
+
+  console.log(`[IFC Parse] 부재 ${centered.length}개, 층 ${normalizedStoreys.length}개 완료`);
   onProgress?.(100);
-  return { elements: centered, ifcMeshes, detectedScale };
+  return { elements: centered, ifcMeshes, detectedScale, geoOrigin, storeys: normalizedStoreys };
 }

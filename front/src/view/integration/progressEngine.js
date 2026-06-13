@@ -67,7 +67,7 @@ export const TASK_RULES = {
   },
 };
 
-export const RECALC_INTERVAL_MS = 10000; // 10초마다 실시간 진도 재계산
+export const RECALC_INTERVAL_MS = 30000; // 30초마다 실시간 진도 재계산
 
 /**
  * 자원 구성 기반 공정 진도 속도 계산
