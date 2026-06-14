@@ -38,6 +38,10 @@ public interface WbsDAO {
 
     void deleteTasksByProject(@Param("projectId") String projectId);
 
+    /** BIM 연결 해제 시 notes가 'BIM:{bimProjectId}:%' 인 태스크와 그 세부공정을 일괄 삭제 */
+    void deleteTasksByBimMarker(@Param("wbsProjectId") String wbsProjectId,
+                                @Param("bimProjectId") String bimProjectId);
+
     /** Agent가 CPM/균열 이벤트로 자동 추가할 때 사용 */
     void insertTaskBatch(List<Map<String, Object>> tasks);
 }

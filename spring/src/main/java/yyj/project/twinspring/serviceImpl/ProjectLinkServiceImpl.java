@@ -1,7 +1,10 @@
 package yyj.project.twinspring.serviceImpl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import yyj.project.twinspring.dao.ProjectLinkDAO;
+import yyj.project.twinspring.dao.WbsDAO;
 import yyj.project.twinspring.dto.ProjectLinkDTO;
 import yyj.project.twinspring.service.ProjectLinkService;
 
@@ -11,10 +14,14 @@ import java.util.stream.Collectors;
 @Service
 public class ProjectLinkServiceImpl implements ProjectLinkService {
 
-    private final ProjectLinkDAO linkDAO;
+    private static final Logger log = LoggerFactory.getLogger(ProjectLinkServiceImpl.class);
 
-    public ProjectLinkServiceImpl(ProjectLinkDAO linkDAO) {
+    private final ProjectLinkDAO linkDAO;
+    private final WbsDAO wbsDAO;
+
+    public ProjectLinkServiceImpl(ProjectLinkDAO linkDAO, WbsDAO wbsDAO) {
         this.linkDAO = linkDAO;
+        this.wbsDAO  = wbsDAO;
     }
 
     @Override
@@ -53,6 +60,17 @@ public class ProjectLinkServiceImpl implements ProjectLinkService {
 
     @Override
     public void deleteLink(String linkId) {
+        Map<String, Object> link = linkDAO.getLinkById(linkId);
+        if (link != null && "BIM".equals(link.get("linkedType"))) {
+            String wbsProjectId = (String) link.get("wbsProjectId");
+            String bimProjectId = (String) link.get("linkedProjectId");
+            try {
+                wbsDAO.deleteTasksByBimMarker(wbsProjectId, bimProjectId);
+                log.info("[ProjectLink] BIM WBS 태스크 삭제: wbsProjectId={}, bimProjectId={}", wbsProjectId, bimProjectId);
+            } catch (Exception e) {
+                log.warn("[ProjectLink] BIM WBS 태스크 삭제 실패(무시): {}", e.getMessage());
+            }
+        }
         linkDAO.deleteLink(linkId);
     }
 
