@@ -1304,9 +1304,6 @@ export default function Scene({
     lineLockedAxes = null,
     // IFC 실제 지오메트리 (옵션) — 있으면 BimElement 박스 대신 렌더링
     ifcMeshes = null,
-    // 공정 진척도 시각화
-    progressMap = null,
-    progressMode = false,
     // 카메라 자동 맞춤 수동 트리거 (숫자가 바뀌면 재맞춤)
     fitCameraTrigger = 0,
     // 표준 뷰 프리셋: 'iso'|'top'|'front'|'right'|'left'|'back' + 타임스탬프
@@ -1833,9 +1830,7 @@ export default function Scene({
                     onElementSelect={(measureMode || lineDrawMode === 'click') ? null : onElementSelect}
                     selectedElement={selectedElement}
                     selectedElements={selectedElements}
-                    progressMap={progressMap}
-                    progressMode={progressMode}
-                />
+/>
             ) : (
                 modelData.map(element => (
                     <BimElement

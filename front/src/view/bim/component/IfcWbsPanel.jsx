@@ -235,8 +235,6 @@ export default function IfcWbsPanel({
   selectedElement,
   onSelectElements,
   onProgressChange,
-  progressMode,
-  onToggleProgress,
 }) {
   const t = useT('bimDashboard');
 
@@ -294,20 +292,6 @@ export default function IfcWbsPanel({
         <span style={{ fontSize: 11, color: '#64748b', flex: 1 }}>
           {t('wbsTaskCount', { n: countTasks(wbsTree) })}
         </span>
-
-        <button
-          onClick={onToggleProgress}
-          title={progressMode ? t('wbsVizOn') : t('wbsVizOff')}
-          style={{
-            padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-            border: `1px solid ${progressMode ? '#3b82f6' : '#253347'}`,
-            background: progressMode ? '#1e3a5f' : '#0d1b2a',
-            color: progressMode ? '#60a5fa' : '#64748b',
-            cursor: 'pointer',
-          }}
-        >
-          {progressMode ? t('wbsVizOn') : t('wbsVizOff')}
-        </button>
 
         <button
           onClick={() => setOpenSet(new Set(collectAllIds(wbsTree)))}
