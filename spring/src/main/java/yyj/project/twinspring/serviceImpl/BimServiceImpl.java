@@ -131,12 +131,20 @@ public class BimServiceImpl implements BimService {
                 .uri("/api/bim/project/{projectId}", projectId)
                 .retrieve()
                 .bodyToMono(Void.class)
+                .onErrorResume(e -> {
+                    log.warn("[BIM] C# 서버 프로젝트 삭제 실패 — 로컬만 정리: projectId={}, {}", projectId, e.getMessage());
+                    return Mono.empty();
+                })
                 .doOnSuccess(v -> {
-                    // 로컬 전용 테이블 정리 (CASCADE 미적용 테이블)
+                    // FK 순서: 매핑 → 부재 → Layer/Color/Line → bim_project
+                    // (bim_storey/bim_wbs_node 는 bim_project ON DELETE CASCADE 로 자동 삭제)
                     try {
+                        bimDAO.deleteElementWbsMappingsByProject(projectId);
+                        bimDAO.deleteElementsByProject(projectId);
                         bimDAO.deleteLayersByProject(projectId);
                         bimDAO.deleteColorsByProject(projectId);
                         bimDAO.deleteLinesByProject(projectId);
+                        bimDAO.deleteProjectById(projectId);
                     } catch (Exception e) {
                         log.warn("[BIM] 프로젝트 로컬 리소스 정리 실패: projectId={}, {}", projectId, e.getMessage());
                     }
