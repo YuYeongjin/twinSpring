@@ -1144,7 +1144,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ── WBS / 층 상태 ────────────────────────────────────────────────
     const [wbsNodes, setWbsNodes]           = useState([]);
     const [elementWbsMappings, setElementWbsMappings] = useState([]);
-    const [progressMode, setProgressMode]   = useState(false);
 
     // WBS 트리 (buildWbsTree 결과)
     const wbsTree = React.useMemo(() => buildWbsTree(wbsNodes), [wbsNodes]);
@@ -1167,19 +1166,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         }
         return m;
     }, [elementWbsMappings]);
-
-    // 진척도 Map (elementId → progress)
-    const progressMap = React.useMemo(() => {
-        if (!progressMode) return null;
-        const m = new Map();
-        for (const node of wbsNodes) {
-            if (node.elementType && node.progress > 0) {
-                const ids = wbsElementMap.get(node.wbsId) || [];
-                for (const id of ids) m.set(id, node.progress);
-            }
-        }
-        return m;
-    }, [progressMode, wbsNodes, wbsElementMap]);
 
     // 프로젝트 변경 시 WBS/매핑 로드
     useEffect(() => {
@@ -1667,7 +1653,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         return modelData.map(el => {
             const layer = layers.find(l => l.elementIds.includes(el.elementId));
             const hidden = layer ? isLayerHidden(layer) : false;
-            const resolvedColor   = elementColors[el.elementId] || layer?.color || null;
+            const parentLayer     = layer?.parentLayerId ? layers.find(l => l.layerId === layer.parentLayerId) : null;
+            const resolvedColor   = elementColors[el.elementId] || layer?.color || parentLayer?.color || null;
             const resolvedOpacity = elementOpacities[el.elementId] ?? null;
             return { ...el, resolvedColor, resolvedOpacity, hidden };
         });
@@ -2201,8 +2188,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         selectedElement={selectedElement}
                         onSelectElements={handleWbsSelectElements}
                         onProgressChange={handleWbsProgressChange}
-                        progressMode={progressMode}
-                        onToggleProgress={() => setProgressMode(v => !v)}
                     />
                 </div>
                 {/* 오른쪽: 기존 공정 대시보드 */}
@@ -2493,8 +2478,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             walkMode={walkMode}
                                             onWalkModeExit={() => setWalkMode(false)}
                                             orbitTargetRef={orbitTargetRef}
-                                            progressMap={progressMap}
-                                            progressMode={progressMode}
                                         />
                                         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
                                             <GizmoViewport axisColors={['#ff4060', '#80ff80', '#2080ff']} labelColor="white"/>
