@@ -182,6 +182,20 @@
         DELETE FROM wbs_task WHERE wbs_project_id = #{projectId}
     </delete>
 
+    <delete id="deleteTasksByBimMarker">
+        WITH bim_parents AS (
+            SELECT task_id FROM wbs_task
+            WHERE wbs_project_id = #{wbsProjectId}
+              AND notes LIKE 'BIM:' || #{bimProjectId} || ':%'
+        )
+        DELETE FROM wbs_task
+        WHERE wbs_project_id = #{wbsProjectId}
+          AND (
+              notes LIKE 'BIM:' || #{bimProjectId} || ':%'
+              OR parent_task_id IN (SELECT task_id FROM bim_parents)
+          )
+    </delete>
+
     <insert id="insertTaskBatch" parameterType="list">
         INSERT INTO wbs_task (
             task_id, wbs_project_id, wbs_code, task_name,
