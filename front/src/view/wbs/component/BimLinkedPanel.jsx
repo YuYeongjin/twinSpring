@@ -13,33 +13,7 @@ const daysBetween = (a, b) => {
   return Math.max(1, Math.round(ms / 86400000));
 };
 
-// notes 필드에 저장하는 연결 마커: "BIM:{bimProjectId}:{elementType}"
-const makeMarker = (bimProjectId, elementType) =>
-  `BIM:${bimProjectId}:${elementType}`;
 
-// ── 공정률 바 ────────────────────────────────────────────────────
-function ProgressBar({ value, color }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <div style={{
-        flex: 1, height: 4, background: '#0d1b2a',
-        borderRadius: 2, overflow: 'hidden',
-      }}>
-        <div style={{
-          width: `${Math.min(100, value || 0)}%`, height: '100%',
-          background: color, borderRadius: 2,
-          transition: 'width 0.6s ease',
-        }} />
-      </div>
-      <span style={{
-        fontSize: 9, color, fontWeight: 700,
-        minWidth: 28, textAlign: 'right',
-      }}>
-        {Math.round(value || 0)}%
-      </span>
-    </div>
-  );
-}
 
 // ════════════════════════════════════════════════════════════════
 //  메인 컴포넌트
@@ -102,7 +76,11 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── BIM 프로젝트의 총 man-days 및 인원 추산 ─────────────────
+  // ── WBS root 태스크 존재 여부 확인 (공사 단계별 WBS 생성 완료 여부) ──
+  const hasWbsRoot = (bimProjectId) =>
+    !!tasks.find(t => t.notes === `BIM:${bimProjectId}:ROOT`);
+
+  // ── BIM 프로젝트의 총 man-days 및 인원 추산 (데이터 확인용) ──
   const calcProjectStats = (bimProjectId) => {
     const data = bimData[bimProjectId];
     if (!data?.elements?.length) return { totalManDays: 0, seqDays1: 0, workers: 1, actualDays: 0, tgt: 90 };
@@ -163,22 +141,10 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
     };
   };
 
-  // ── notes 마커로 연결된 WBS 태스크 탐색 (부모 태스크만) ──────
-  const findLinkedTask = (bimProjectId, elementType) => {
-    const marker = makeMarker(bimProjectId, elementType);
-    return tasks.find(t => t.notes === marker);
-  };
-
-  // ── 세부 공정 태스크 탐색 ─────────────────────────────────
-  const findSubTasks = (parentTaskId) =>
-    tasks.filter(t => t.parentTaskId === parentTaskId)
-         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-
-  // ── 일정 자동 생성 (공종별 세부 공정 포함) ────────────────────
+  // ── 일정 자동 생성 (작업계획 차트와 동일한 공사 단계별 구조) ──
   const handleAutoGenerate = async (bimProjectId) => {
     const data = bimData[bimProjectId];
     if (!data || generating) return;
-    const { workers } = calcProjectStats(bimProjectId);
     setGenerating(bimProjectId);
     try {
       await generateBimWbsTasks({
@@ -187,7 +153,6 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
         bimProjectName: data.name || null,
         elements:      data.elements,
         existingTasks: tasks,
-        workers,
         startDate:     projectStartDate || null,
       });
       onReload();
@@ -223,19 +188,13 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
         ];
 
         const totalTypes  = orderedTypes.length;
-        const linkedCount = orderedTypes.filter(t => findLinkedTask(link.linkedProjectId, t)).length;
+        const wbsGenerated = hasWbsRoot(link.linkedProjectId);
 
-        // 전체 평균 공정률 (연결된 태스크 기준)
-        const avgProgress = linkedCount > 0
-          ? Math.round(
-              orderedTypes.reduce((sum, t) => {
-                const tk = findLinkedTask(link.linkedProjectId, t);
-                return sum + (tk?.progress || 0);
-              }, 0) / totalTypes
-            )
-          : null;
+        // WBS root 태스크 공정률 (생성된 경우)
+        const rootTask = tasks.find(t => t.notes === `BIM:${link.linkedProjectId}:ROOT`);
+        const rootProgress = rootTask ? rootTask.progress : null;
 
-        // 인원 추산
+        // 인원 추산 (데이터 확인용)
         const stats = calcProjectStats(link.linkedProjectId);
 
         return (
@@ -271,7 +230,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                 </div>
                 <div style={{ fontSize: 9, color: '#4b5563' }}>
                   BIM 연동 · 요소 {elements.length}개 · {totalTypes}개 공종
-                  {avgProgress !== null && ` · 평균 공정률 ${avgProgress}%`}
+                  {rootProgress !== null && ` · 전체 공정률 ${rootProgress}%`}
                 </div>
               </div>
 
@@ -280,19 +239,19 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                 style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}
                 onClick={e => e.stopPropagation()}
               >
-                {/* WBS 연결 뱃지 */}
+                {/* WBS 생성 여부 뱃지 */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span style={{
                     fontSize:   10,
                     padding:    '2px 8px',
                     borderRadius: 10,
-                    background: linkedCount === totalTypes && totalTypes > 0 ? '#14532d' : '#1e293b',
-                    color:      linkedCount === totalTypes && totalTypes > 0 ? '#4ade80' : '#64748b',
-                    border:     `1px solid ${linkedCount === totalTypes && totalTypes > 0 ? '#166534' : '#253347'}`,
+                    background: wbsGenerated ? '#14532d' : '#1e293b',
+                    color:      wbsGenerated ? '#4ade80' : '#64748b',
+                    border:     `1px solid ${wbsGenerated ? '#166534' : '#253347'}`,
                     fontWeight: 700,
                     whiteSpace: 'nowrap',
                   }}>
-                    WBS {linkedCount}/{totalTypes}
+                    {wbsGenerated ? 'WBS 생성됨' : 'WBS 미생성'}
                   </span>
                 </div>
 
@@ -387,8 +346,6 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                     const meta        = ELEMENT_META[elementType] || { name: elementType, icon: '📦', color: '#94a3b8', daysPerM3: 0.3 };
                     const typeKey     = `${link.linkedProjectId}_${elementType}`;
                     const isTypeOpen  = !!expandedType[typeKey];
-                    const linkedTask  = findLinkedTask(link.linkedProjectId, elementType);
-                    const progress    = linkedTask?.progress ?? null;
                     const subDefs     = SUB_TASKS[elementType];
                     const estDays     = subDefs
                       ? subDefs.reduce((s, sub) => s + calcSubDays(sub, totalVol, stats.workers), 0)
@@ -419,7 +376,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                           </span>
 
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: progress !== null ? 4 : 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ fontSize: 11, fontWeight: 600, color: '#d1d5db' }}>
                                 {meta.name}
                               </span>
@@ -436,23 +393,9 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                                 ({totalVol.toFixed(1)}m³)
                               </span>
                             </div>
-                            {progress !== null && <ProgressBar value={progress} color={meta.color} />}
                           </div>
 
                           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexShrink: 0 }}>
-                            {linkedTask ? (
-                              <span style={{
-                                fontSize: 9, padding: '2px 7px', borderRadius: 5,
-                                background: '#0c2a1a', color: '#4ade80',
-                                border: '1px solid #166534', fontWeight: 700,
-                              }}>✓ WBS</span>
-                            ) : (
-                              <span style={{
-                                fontSize: 9, padding: '2px 7px', borderRadius: 5,
-                                background: '#111e2d', color: '#374151',
-                                border: '1px solid #1e293b',
-                              }}>미연결</span>
-                            )}
                             <span style={{ fontSize: 9, color: '#253347' }}>{isTypeOpen ? '▲' : '▼'}</span>
                           </div>
                         </div>
@@ -460,68 +403,6 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                         {/* 세부 요소 목록 */}
                         {isTypeOpen && (
                           <div style={{ background: '#050d17', padding: '6px 14px 10px 42px' }}>
-                            {/* 연결된 태스크 + 세부 공정 */}
-                            {linkedTask && (() => {
-                              const subTasks = findSubTasks(linkedTask.taskId);
-                              return (
-                                <div style={{ marginBottom: 8 }}>
-                                  {/* 부모 태스크 행 */}
-                                  <div style={{
-                                    display: 'flex', alignItems: 'center', gap: 8,
-                                    padding: '5px 8px', marginBottom: subTasks.length ? 2 : 0,
-                                    background: '#0a1e10', borderRadius: subTasks.length ? '5px 5px 0 0' : 5,
-                                    border: '1px solid #166534',
-                                  }}>
-                                    <span style={{ fontSize: 9, color: '#4ade80', fontWeight: 700 }}>WBS</span>
-                                    <span style={{ fontSize: 9, color: '#94a3b8', fontFamily: 'monospace' }}>{linkedTask.wbsCode}</span>
-                                    <span style={{ fontSize: 10, color: '#d1d5db', flex: 1 }}>{linkedTask.taskName}</span>
-                                    <span style={{ fontSize: 9, color: '#4b5563' }}>
-                                      {linkedTask.startDate} ~ {linkedTask.endDate}
-                                    </span>
-                                    <span style={{ fontSize: 10, color: '#4ade80', fontWeight: 700 }}>
-                                      {linkedTask.progress}%
-                                    </span>
-                                  </div>
-                                  {/* 세부 공정 행 */}
-                                  {subTasks.map((sub, si) => {
-                                    const statusColor = sub.status === 'COMPLETED' ? '#4ade80'
-                                      : sub.status === 'IN_PROGRESS' ? '#60a5fa'
-                                      : sub.status === 'DELAYED' ? '#f87171' : '#374151';
-                                    return (
-                                      <div key={sub.taskId} style={{
-                                        display: 'flex', alignItems: 'center', gap: 6,
-                                        padding: '4px 8px',
-                                        background: '#060e18',
-                                        borderLeft: '1px solid #166534',
-                                        borderRight: '1px solid #166534',
-                                        borderBottom: si === subTasks.length - 1 ? '1px solid #166534' : '1px solid #0a1810',
-                                        borderRadius: si === subTasks.length - 1 ? '0 0 5px 5px' : 0,
-                                      }}>
-                                        <span style={{ fontSize: 9, color: '#253347', marginLeft: 6 }}>└</span>
-                                        <span style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace', minWidth: 24 }}>
-                                          {sub.wbsCode}
-                                        </span>
-                                        <span style={{ fontSize: 10, color: '#94a3b8', flex: 1 }}>{sub.taskName}</span>
-                                        <span style={{ fontSize: 9, color: '#374151' }}>{sub.duration}일</span>
-                                        <div style={{
-                                          width: 48, height: 3, background: '#0d1b2a',
-                                          borderRadius: 2, overflow: 'hidden',
-                                        }}>
-                                          <div style={{
-                                            width: `${sub.progress || 0}%`, height: '100%',
-                                            background: meta.color, borderRadius: 2,
-                                          }} />
-                                        </div>
-                                        <span style={{ fontSize: 9, color: statusColor, minWidth: 22, textAlign: 'right' }}>
-                                          {sub.progress || 0}%
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })()}
-
                             {/* 요소 목록 헤더 */}
                             <div style={{
                               display: 'grid', gridTemplateColumns: '28px 1fr 90px 110px',

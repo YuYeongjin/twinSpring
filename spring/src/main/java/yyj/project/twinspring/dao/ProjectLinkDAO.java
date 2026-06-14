@@ -22,6 +22,8 @@ public interface ProjectLinkDAO {
             @Param("linkedType") String linkedType,
             @Param("linkedProjectId") String linkedProjectId);
 
+    Map<String, Object> getLinkById(@Param("linkId") String linkId);
+
     void insertLink(Map<String, Object> params);
 
     void deleteLink(@Param("linkId") String linkId);
