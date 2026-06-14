@@ -112,6 +112,28 @@ function fwArea(el) {
   }
 }
 
+/**
+ * 층 이름을 논리적 정렬 키로 변환.
+ * 지하층 → 음수, 지상층 → 양수, RF → 9999, 알 수 없으면 null(avgZ 폴백)
+ */
+function storeyOrder(name) {
+  if (!name || name === '__none__') return null;
+  const s = name.trim();
+
+  // 지하: B1, B2, 지하1층, 지하 2층 등
+  let m = s.match(/^[Bb](\d+)$/) || s.match(/^지하\s*(\d+)\s*층?$/i);
+  if (m) return -parseInt(m[1], 10);
+
+  // 지상: 1F, 2F, 1층, 2층 등
+  m = s.match(/^(\d+)\s*[Ff]$/) || s.match(/^(\d+)\s*층$/i);
+  if (m) return parseInt(m[1], 10);
+
+  // 옥탑·지붕층: RF, R/F, 옥상, 옥탑, 지붕
+  if (/^r\/?f$/i.test(s) || /옥상|옥탑|지붕/i.test(s)) return 9999;
+
+  return null; // 알 수 없는 이름 → avgZ 폴백
+}
+
 function detectFloors(elements) {
   if (!elements.length) return [];
 
@@ -124,12 +146,21 @@ function detectFloors(elements) {
       if (!storeyMap.has(key)) storeyMap.set(key, []);
       storeyMap.get(key).push(el);
     }
-    return [...storeyMap.entries()]
-      .map(([key, els]) => {
-        const zs = els.map(elZ);
-        return { avgZ: zs.reduce((a, b) => a + b) / zs.length, elements: els };
-      })
-      .sort((a, b) => a.avgZ - b.avgZ);
+    const floors = [...storeyMap.entries()].map(([key, els]) => {
+      const zs = els.map(elZ);
+      return { storey: key, avgZ: zs.reduce((a, b) => a + b) / zs.length, elements: els };
+    });
+
+    // 층 이름 기반 정렬 우선, 파싱 불가 이름은 avgZ 폴백
+    floors.sort((a, b) => {
+      const ka = storeyOrder(a.storey);
+      const kb = storeyOrder(b.storey);
+      if (ka !== null && kb !== null) return ka - kb;
+      if (ka !== null && kb === null) return ka < 0 ? -1 : 1;
+      if (ka === null && kb !== null) return kb < 0 ? 1 : -1;
+      return a.avgZ - b.avgZ;
+    });
+    return floors;
   }
 
   // storey 미할당 요소만 있을 때: positionZ 범위 대비 상대적 비율로 층 구분
