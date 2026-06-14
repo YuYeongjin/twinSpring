@@ -70,6 +70,15 @@
         ORDER BY pl.created_at ASC
     </select>
 
+    <select id="getLinkById" parameterType="string" resultType="map">
+        SELECT link_id           AS "linkId",
+               wbs_project_id   AS "wbsProjectId",
+               linked_type      AS "linkedType",
+               linked_project_id AS "linkedProjectId"
+        FROM project_link
+        WHERE link_id = #{linkId}
+    </select>
+
     <insert id="insertLink" parameterType="map">
         INSERT INTO project_link (link_id, wbs_project_id, linked_type, linked_project_id, note)
         VALUES (#{linkId}, #{wbsProjectId}, #{linkedType}, #{linkedProjectId}, #{note})
