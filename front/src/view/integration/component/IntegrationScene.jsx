@@ -142,6 +142,7 @@ const SIM_PHASE_ORDER = ['TEMP', 'EARTH', 'FOUND', 'UNDER', 'ABOVE'];
  * 활성 phase 인덱스(activePhaseIdx)를 반환 — cascade 적용에 사용.
  */
 function computeSimPhaseProgress(wbsTasks, bimProjectId) {
+  // ── IfcType 태스크 기반 (BIM:<id>:IfcSlab 등) ──────────────────
   const typeProgress = {};
   wbsTasks.forEach(t => {
     const m = (t.notes || '').match(/^BIM:([^:]+):([^:]+)$/);
@@ -149,6 +150,41 @@ function computeSimPhaseProgress(wbsTasks, bimProjectId) {
       typeProgress[m[2]] = Math.min(100, Math.max(0, t.progress || 0));
   });
 
+  const hasElemTasks = Object.keys(typeProgress).length > 0;
+
+  // ── PLAN 태스크 기반 (BIM:<id>:PLAN:<i>, generateBimWbsTasks 구조) ──
+  if (!hasElemTasks) {
+    const planTasks = wbsTasks
+      .filter(t => /^BIM:[^:]+:PLAN:\d+$/.test(t.notes || '') && (t.notes || '').split(':')[1] === bimProjectId)
+      .sort((a, b) => parseInt((a.notes || '').split(':')[3] || '0') - parseInt((b.notes || '').split(':')[3] || '0'));
+
+    if (planTasks.length > 0) {
+      const n = planTasks.length;
+      const avg = (arr) => arr.length ? arr.reduce((s, t) => s + (t.progress || 0), 0) / arr.length : 0;
+
+      // PLAN:0 → EARTH, PLAN:1 → FOUND, PLAN:2..n-3 → UNDER, PLAN:n-2..n-1 → ABOVE
+      const p0 = avg(planTasks.slice(0, 1));
+      const p1 = avg(planTasks.slice(1, 2));
+      const pUnder = avg(planTasks.slice(2, Math.max(2, n - 2)));
+      const pAbove = avg(planTasks.slice(Math.max(2, n - 2)));
+
+      const phaseProgress = {
+        TEMP:  100,
+        EARTH: p0,
+        FOUND: p0 >= 100 ? p1    : 0,
+        UNDER: p1 >= 100 ? pUnder : 0,
+        ABOVE: (pUnder >= 100 || n <= 4) ? pAbove : 0,
+      };
+
+      let activePhaseIdx = SIM_PHASE_ORDER.length;
+      for (let i = 0; i < SIM_PHASE_ORDER.length; i++) {
+        if (phaseProgress[SIM_PHASE_ORDER[i]] < 100) { activePhaseIdx = i; break; }
+      }
+      return { phaseProgress, activePhaseIdx };
+    }
+  }
+
+  // ── IfcType 기반 기존 로직 ──────────────────────────────────────
   const accum = {}, counts = {};
   Object.entries(ELEM_TYPE_TO_SIM_PHASE).forEach(([type, phase]) => {
     if (type in typeProgress) {
@@ -168,7 +204,6 @@ function computeSimPhaseProgress(wbsTasks, bimProjectId) {
   for (let i = 0; i < SIM_PHASE_ORDER.length; i++) {
     if (phaseProgress[SIM_PHASE_ORDER[i]] < 100) { activePhaseIdx = i; break; }
   }
-
   return { phaseProgress, activePhaseIdx };
 }
 

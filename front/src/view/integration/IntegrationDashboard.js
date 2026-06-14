@@ -180,7 +180,33 @@ function DataLoader({ selectedProject }) {
             return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
           });
 
-        if (elemTasks.length === 0) return;
+        if (elemTasks.length === 0) {
+          // PLAN:<i> 형식 태스크 처리 (generateBimWbsTasks 가 생성하는 공사 단계별 구조)
+          const planTasks = tasks
+            .filter(t => /^BIM:[^:]+:PLAN:\d+$/.test(t.notes || '') && (t.notes || '').split(':')[1] === bimId)
+            .sort((a, b) => {
+              const ia = parseInt((a.notes || '').split(':')[3] || '0');
+              const ib = parseInt((b.notes || '').split(':')[3] || '0');
+              return ia - ib;
+            });
+
+          if (planTasks.length === 0) return;
+
+          // 순차 진행: 이전 태스크 100% 후 다음 태스크 시작
+          const activePlan = planTasks.find(t => (t.progress || 0) < 100);
+          if (!activePlan) {
+            dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: 100 });
+            return;
+          }
+
+          // 달력 시간 기반 진도 계산 (startDate/endDate 기준)
+          const p = calcRealTimeProgress(activePlan, 1.0);
+          if (p !== null) dispatch({ type: 'SET_TASK_PROGRESS', taskId: activePlan.taskId, progress: p });
+
+          const rootProg = planTasks.reduce((s, t) => s + (t.progress || 0), 0) / planTasks.length;
+          dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: rootProg });
+          return;
+        }
 
         // CPM 순서로 첫 번째 미완료 공종만 진행 (이전 공종이 100% 되어야 다음 시작)
         const activeElem = elemTasks.find(t => (t.progress || 0) < 100);
