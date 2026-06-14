@@ -67,6 +67,10 @@ public interface BimDAO {
     /** IFC 임포트 시 부재 배치 로컬 저장 (ifcWorldX/Y/Z, globalId, storey 포함) */
     void insertElementsBatch(List<BimElementDTO> elements);
 
+    void deleteElementsByProject(@Param("projectId") String projectId);
+
+    void deleteProjectById(@Param("projectId") String projectId);
+
     // ── 층(BuildingStorey) ──────────────────────────────────────────
     List<BimStoreyDTO> getStoreysByProject(@Param("projectId") String projectId);
 
