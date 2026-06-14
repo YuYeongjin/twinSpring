@@ -1,5 +1,4 @@
 import React, { useMemo, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 const HIT_MATERIAL = new THREE.MeshBasicMaterial({
@@ -9,21 +8,12 @@ const HIT_MATERIAL = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
-// ── 진척도 색상 ────────────────────────────────────────────────────
-function getProgressColor(progress) {
-  if (progress === 0)   return new THREE.Color('#6b7280'); // 미시공 회색
-  if (progress === 100) return new THREE.Color('#4ade80'); // 완료 초록
-  if (progress >= 70)   return new THREE.Color('#60a5fa'); // 시공중 파랑
-  if (progress >= 30)   return new THREE.Color('#fbbf24'); // 시공중 노랑
-  return new THREE.Color('#f97316');                        // 시공중 주황
-}
-
 // ================================================================
 // 단일 IFC 요소 메시
 // ================================================================
 function IFCMesh({
   mesh, onElementSelect, modelData, selectedElement, selectedElements,
-  onMeshMount, progressMap, progressMode,
+  onMeshMount,
 }) {
   const meshRef = useRef();
 
@@ -35,8 +25,6 @@ function IFCMesh({
 
   const isSelected      = selectedElement?.data?.elementId === elementId;
   const isMultiSelected = selectedElements?.has(elementId) && !isSelected;
-  const progress        = progressMode ? (progressMap?.get(elementId) ?? -1) : -1;
-  const hasProgress     = progress >= 0;
 
   // meshRef 등록 / 해제
   useEffect(() => {
@@ -62,14 +50,15 @@ function IFCMesh({
 
   useEffect(() => () => geometry.dispose(), [geometry]);
 
-  // ── 기본 재질 (진척도 없을 때) ─────────────────────────────────
+  // ── 기본 재질 ──────────────────────────────────────────────────
+  // 우선순위: 선택 하이라이트 > 레이어 색상 > IFC raw
   const baseMaterial = useMemo(() => {
     const [r, g, b, a] = mesh.color;
     let color;
-    if (isSelected)           color = new THREE.Color('#00d4ff');
-    else if (isMultiSelected) color = new THREE.Color('#a78bfa');
-    else if (hasProgress)     color = getProgressColor(progress);
-    else                      color = new THREE.Color(r, g, b);
+    if (isSelected)                  color = new THREE.Color('#00d4ff');
+    else if (isMultiSelected)        color = new THREE.Color('#a78bfa');
+    else if (element?.resolvedColor) color = new THREE.Color(element.resolvedColor);
+    else                             color = new THREE.Color(r, g, b);
 
     return new THREE.MeshStandardMaterial({
       color,
@@ -79,41 +68,9 @@ function IFCMesh({
       roughness: 0.7,
       metalness: 0.05,
     });
-  }, [mesh.color, isSelected, isMultiSelected, hasProgress, progress]);
+  }, [mesh.color, isSelected, isMultiSelected, element?.resolvedColor]);
 
   useEffect(() => () => baseMaterial.dispose(), [baseMaterial]);
-
-  // ── 진척도 분할 재질 (1~99% 시공중) ───────────────────────────
-  const { completedMat, remainingMat, clipHeight } = useMemo(() => {
-    if (!hasProgress || progress <= 0 || progress >= 100 || !element) {
-      return { completedMat: null, remainingMat: null, clipHeight: null };
-    }
-
-    // Three.js 좌표: positionZ = 높이 기저, sizeZ = 높이
-    const base = (Number(element.positionZ) || 0);
-    const height = (Number(element.sizeZ) || 1);
-    const ch = base + (progress / 100) * height;
-
-    // 완료 부분: y < ch 유지  →  clip where y > ch  →  Plane(0,-1,0, ch)
-    const cMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#4ade80'),
-      side: THREE.DoubleSide, roughness: 0.6, metalness: 0.1,
-      clippingPlanes: [new THREE.Plane(new THREE.Vector3(0, -1, 0), ch)],
-    });
-
-    // 잔여 부분: y > ch 유지  →  clip where y < ch  →  Plane(0,1,0,-ch)
-    const rMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#6b7280'),
-      transparent: true, opacity: 0.55,
-      side: THREE.DoubleSide, roughness: 0.8, metalness: 0,
-      clippingPlanes: [new THREE.Plane(new THREE.Vector3(0, 1, 0), -ch)],
-    });
-
-    return { completedMat: cMat, remainingMat: rMat, clipHeight: ch };
-  }, [hasProgress, progress, element]);
-
-  useEffect(() => () => { completedMat?.dispose(); remainingMat?.dispose(); },
-    [completedMat, remainingMat]);
 
   const handleClick = (e) => {
     e.stopPropagation();
@@ -150,45 +107,7 @@ function IFCMesh({
   // 레이어 비가시 상태 = visibleModelData에서 제외됨 → element 없으면 렌더 안 함
   if (!element) return null;
 
-  // 진척도 1~99%: 두 개의 메시로 분할 렌더링
-  if (completedMat && remainingMat && clipHeight !== null) {
-    return (
-      <>
-        {/* 완료 부분 (녹색, 아래) */}
-        <mesh
-          ref={meshRef}
-          geometry={geometry}
-          material={completedMat}
-          onClick={handleClick}
-          onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-          onPointerOut={() => { document.body.style.cursor = ''; }}
-          castShadow receiveShadow
-        />
-        {/* 잔여 부분 (회색 반투명, 위) */}
-        <mesh
-          geometry={geometry}
-          material={remainingMat}
-          onClick={handleClick}
-          onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-          onPointerOut={() => { document.body.style.cursor = ''; }}
-          castShadow receiveShadow
-        />
-        {hitPos && hitArgs && (
-          <mesh
-            position={hitPos}
-            material={HIT_MATERIAL}
-            onClick={handleClick}
-            onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-            onPointerOut={() => { document.body.style.cursor = ''; }}
-          >
-            <boxGeometry args={hitArgs} />
-          </mesh>
-        )}
-      </>
-    );
-  }
-
-  // 단일 메시 (기본)
+  // 단일 메시
   return (
     <>
       <mesh
@@ -216,24 +135,12 @@ function IFCMesh({
   );
 }
 
-// ================================================================
-// localClippingEnabled 활성화 (ClippingPlane 사용을 위해 필요)
-// ================================================================
-function ClippingEnabler() {
-  const { gl } = useThree();
-  useEffect(() => {
-    gl.localClippingEnabled = true;
-    return () => { gl.localClippingEnabled = false; };
-  }, [gl]);
-  return null;
-}
 
 // ================================================================
 // IFC 메시 그룹
 // ================================================================
 export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
-  { ifcMeshes, modelData, onElementSelect, selectedElement, selectedElements,
-    progressMap, progressMode },
+  { ifcMeshes, modelData, onElementSelect, selectedElement, selectedElements },
   ref
 ) {
   const meshRefsMap = useRef(new Map());
@@ -295,9 +202,6 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
 
   return (
     <group>
-      {/* 진척도 시각화 모드일 때 localClippingEnabled 활성화 */}
-      {progressMode && <ClippingEnabler />}
-
       {ifcMeshes.map(mesh => (
         <IFCMesh
           key={mesh.expressId}
@@ -307,8 +211,6 @@ export const IFCMeshGroup = forwardRef(function IFCMeshGroup(
           selectedElement={selectedElement}
           selectedElements={selectedElements}
           onMeshMount={handleMeshMount}
-          progressMap={progressMap}
-          progressMode={progressMode}
         />
       ))}
     </group>
