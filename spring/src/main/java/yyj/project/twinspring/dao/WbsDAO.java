@@ -36,11 +36,21 @@ public interface WbsDAO {
 
     void deleteTask(@Param("taskId") String taskId);
 
+    /** 진도 분석 로그에서 해당 태스크 + 모든 하위 항목 로그 삭제 (재귀 삭제 전 선행 호출) */
+    void deleteProgressLogsByTaskTree(@Param("taskId") String taskId);
+
+    /** 해당 태스크 + 모든 하위 항목(재귀) 일괄 삭제 */
+    void deleteTaskWithDescendants(@Param("taskId") String taskId);
+
     void deleteTasksByProject(@Param("projectId") String projectId);
 
     /** BIM 연결 해제 시 notes가 'BIM:{bimProjectId}:%' 인 태스크와 그 세부공정을 일괄 삭제 */
     void deleteTasksByBimMarker(@Param("wbsProjectId") String wbsProjectId,
                                 @Param("bimProjectId") String bimProjectId);
+
+    /** 특정 BIM 루트(rootMarker)와 그 하위만 삭제 (동일 BIM 여러 개일 때 개별 삭제) */
+    void deleteTasksByRootMarker(@Param("wbsProjectId") String wbsProjectId,
+                                 @Param("rootMarker") String rootMarker);
 
     /** Agent가 CPM/균열 이벤트로 자동 추가할 때 사용 */
     void insertTaskBatch(List<Map<String, Object>> tasks);

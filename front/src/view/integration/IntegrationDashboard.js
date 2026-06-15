@@ -316,17 +316,24 @@ function BimLinkSync({ selectedProject }) {
         const res = await AxiosCustom.get(`/api/project-link/wbs/${wbsProjectId}`);
         const bimLinks = (res.data || []).filter(l => l.linkedType === 'BIM');
         for (const link of bimLinks) {
-          const alreadyInScene = structures.some(
-            s => s.type === 'bim' && String(s.bimProjectId) === String(link.linkedProjectId)
-          );
+          // note에서 instanceKey 추출 (BIM:{bimId}:ROOT:{instanceKey})
+          const noteMatch = link.note?.match(/^BIM:[^:]+:ROOT:(.+)$/);
+          const instanceKey = noteMatch ? noteMatch[1] : null;
+
+          // instanceKey가 있으면 id 기준으로, 없으면 bimProjectId 기준으로 중복 체크
+          const alreadyInScene = instanceKey
+            ? structures.some(s => s.type === 'bim' && s.id === instanceKey)
+            : structures.some(s => s.type === 'bim' && String(s.bimProjectId) === String(link.linkedProjectId) && !s.linkId);
           if (alreadyInScene) continue;
+
           // 씬에 없는 BIM 프로젝트를 자동으로 추가
           try {
             const bimRes = await AxiosCustom.get(`/api/bim/project/${link.linkedProjectId}`);
             dispatch({
               type: 'ADD_STRUCTURE',
               structure: {
-                id:           `s_${Date.now()}_${link.linkedProjectId}`,
+                id:           instanceKey || `s_${Date.now()}_${link.linkedProjectId}`,
+                linkId:       link.linkId,  // 삭제 시 직접 사용
                 name:         link.linkedProjectName || `BIM ${link.linkedProjectId}`,
                 type:         'bim',
                 bimProjectId: link.linkedProjectId,
@@ -342,6 +349,18 @@ function BimLinkSync({ selectedProject }) {
 
     syncBimLinks();
   }, [projectMeta?.wbsProjectId, structures, dispatch]);
+
+  // WBS 탭에서 BIM 루트 태스크를 삭제하면 통합관제 씬에서도 즉시 제거
+  useEffect(() => {
+    const handler = (e) => {
+      const { note } = e.detail || {};
+      const noteMatch = note?.match(/^BIM:[^:]+:ROOT:(.+)$/);
+      const instanceKey = noteMatch ? noteMatch[1] : null;
+      if (instanceKey) dispatch({ type: 'REMOVE_STRUCTURE', id: instanceKey });
+    };
+    window.addEventListener('bim-structure-removed', handler);
+    return () => window.removeEventListener('bim-structure-removed', handler);
+  }, [dispatch]);
 
   return null;
 }
