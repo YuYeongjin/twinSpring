@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
 import { BimLine } from '../element/BimLine';
 import { IFCMeshGroup } from '../element/IFCMeshGroup';
+import { GltfBimViewerSuspense } from '../element/GltfBimViewer';
 import SkyEnvironment from './SkyEnvironment';
 
 // ================================================================
@@ -119,18 +120,19 @@ function CameraSync({ cameraRef }) {
 // IFC 모델의 AABB를 계산해 전체가 화면에 들어오도록 카메라를 재배치한다.
 // fitTrigger 가 바뀌면 수동으로도 재실행된다.
 // ================================================================
-function CameraAutoFit({ ifcMeshes, modelData, orbitRef, fitTrigger }) {
+function CameraAutoFit({ ifcMeshes, glbUrl, modelData, orbitRef, fitTrigger }) {
     const { camera } = useThree();
-    const prevRef = useRef({ meshes: null, trigger: -1 });
+    const prevRef = useRef({ key: null, trigger: -1 });
 
     useEffect(() => {
-        if (!ifcMeshes || ifcMeshes.length === 0) {
-            prevRef.current = { meshes: null, trigger: -1 };
+        const hasData = glbUrl || (ifcMeshes && ifcMeshes.length > 0);
+        if (!hasData) {
+            prevRef.current = { key: null, trigger: -1 };
             return;
         }
-        // 메시도 같고 트리거도 같으면 이미 처리된 것
-        if (prevRef.current.meshes === ifcMeshes && prevRef.current.trigger === fitTrigger) return;
-        prevRef.current = { meshes: ifcMeshes, trigger: fitTrigger };
+        const currentKey = glbUrl || ifcMeshes;
+        if (prevRef.current.key === currentKey && prevRef.current.trigger === fitTrigger) return;
+        prevRef.current = { key: currentKey, trigger: fitTrigger };
 
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -151,8 +153,8 @@ function CameraAutoFit({ ifcMeshes, modelData, orbitRef, fitTrigger }) {
                 if (py - hy < minZ) minZ = py - hy;      // Three.js Z = data Y
                 if (py + hy > maxZ) maxZ = py + hy;
             }
-        } else {
-            // 느린 경로: 첫 번째 메시 정점 직접 순회 (fallback)
+        } else if (ifcMeshes && ifcMeshes.length > 0) {
+            // ifcMeshes 모드 fallback: 첫 번째 메시 정점 직접 순회
             const m = ifcMeshes[0];
             for (let i = 0; i < m.positions.length; i += 3) {
                 const x = m.positions[i], y = m.positions[i + 1], z = m.positions[i + 2];
@@ -185,7 +187,7 @@ function CameraAutoFit({ ifcMeshes, modelData, orbitRef, fitTrigger }) {
             orbitRef.current.target.set(cx, cy, cz);
             orbitRef.current.update();
         }
-    }, [ifcMeshes, modelData, fitTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [ifcMeshes, glbUrl, modelData, fitTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return null;
 }
@@ -1302,8 +1304,10 @@ export default function Scene({
     // 고정된 축 ({x,y,z} 각 null|number)
     placementLockedAxes = null,
     lineLockedAxes = null,
-    // IFC 실제 지오메트리 (옵션) — 있으면 BimElement 박스 대신 렌더링
+    // IFC 실제 지오메트리 (옵션, 구방식 WASM) — 있으면 BimElement 박스 대신 렌더링
     ifcMeshes = null,
+    // 서버 변환 GLB URL (신방식) — ifcMeshes보다 우선 적용
+    glbUrl = null,
     // 카메라 자동 맞춤 수동 트리거 (숫자가 바뀌면 재맞춤)
     fitCameraTrigger = 0,
     // 표준 뷰 프리셋: 'iso'|'top'|'front'|'right'|'left'|'back' + 타임스탬프
@@ -1360,7 +1364,7 @@ export default function Scene({
     // 다중 선택 시 피벗을 선택 요소들의 무게중심으로 이동 (IFC/비IFC 공통)
     useEffect(() => {
         if (allSelectedIds.size === 0) return;
-        if (!ifcMeshes?.length && allSelectedIds.size < 2) return;
+        if (!glbUrl && !ifcMeshes?.length && allSelectedIds.size < 2) return;
         let sumX = 0, sumY = 0, sumZ = 0, count = 0;
         for (const el of modelData) {
             if (!allSelectedIds.has(el.elementId)) continue;
@@ -1375,7 +1379,7 @@ export default function Scene({
             pivotObj.rotation.set(0, 0, 0);
             pivotObj.scale.set(1, 1, 1);
         }
-    }, [allSelectedIds, modelData, ifcMeshes, pivotObj]);
+    }, [allSelectedIds, modelData, ifcMeshes, glbUrl, pivotObj]);
 
     const [isDragging,            setIsDragging]            = useState(false);
     const [isResizeDragging,      setIsResizeDragging]      = useState(false);
@@ -1503,7 +1507,7 @@ export default function Scene({
 
     // ── TransformControls 드래그 완료 ────────────────────────────────
     const handleTransformComplete = useCallback(() => {
-        const isIfcMode = !!(ifcMeshes?.length);
+        const isIfcMode = !!(glbUrl || ifcMeshes?.length);
         const isMultiSelect = allSelectedIdsRef.current.size > 1;
 
         // ── 피벗 모드: IFC 또는 비-IFC 다중선택 ───────────────────────
@@ -1661,7 +1665,7 @@ export default function Scene({
                 }
             }
         }
-    }, [transformMode, selectedElements, updateElementData, ifcMeshes, pivotObj]);
+    }, [transformMode, selectedElements, updateElementData, ifcMeshes, glbUrl, pivotObj]);
 
     useEffect(() => {
         const ctrl = transformRef.current;
@@ -1672,7 +1676,7 @@ export default function Scene({
             if (e.value) {
                 pushUndo?.();
                 const isMultiSelect = allSelectedIdsRef.current.size > 1;
-                if (ifcMeshes?.length || isMultiSelect) {
+                if (glbUrl || ifcMeshes?.length || isMultiSelect) {
                     // 피벗 모드: IFC 또는 비-IFC 다중선택
                     const elements = {};
                     for (const id of allSelectedIdsRef.current) {
@@ -1680,7 +1684,7 @@ export default function Scene({
                         if (el) elements[id] = { ...el };
                     }
                     const meshPositions = {};
-                    if (ifcMeshes?.length) {
+                    if (glbUrl || ifcMeshes?.length) {
                         for (const id of allSelectedIdsRef.current) {
                             const mp = ifcMeshGroupRef.current?.getMeshPosition(id);
                             if (mp) meshPositions[id] = mp;
@@ -1716,7 +1720,7 @@ export default function Scene({
 
         // IFC translate 전용: 드래그 중 메시가 기즈모를 실시간으로 따라오게 한다
         const onChange = () => {
-            if (!ifcMeshes?.length || transformMode !== 'translate') return;
+            if (!(glbUrl || ifcMeshes?.length) || transformMode !== 'translate') return;
             const initial = pivotInitialState.current;
             if (!initial?.meshPositions) return;
             const ids = allSelectedIdsRef.current;
@@ -1732,7 +1736,7 @@ export default function Scene({
             ctrl.removeEventListener('dragging-changed', onDrag);
             ctrl.removeEventListener('change', onChange);
         };
-    }, [transformMode, modelData, selectedElement, selectedElements, handleTransformComplete, pushUndo, ifcMeshes, pivotObj]);
+    }, [transformMode, modelData, selectedElement, selectedElements, handleTransformComplete, pushUndo, ifcMeshes, glbUrl, pivotObj]);
 
     // HoverTracker가 계산한 최신 선 위치 (스냅·고정축·shift 직교 모두 반영)
     const lineHoverPosRef = useRef({ x: 0, y: 0, z: 0 });
@@ -1765,10 +1769,11 @@ export default function Scene({
                 />
             )}
 
-            {/* IFC 로드 시 카메라 자동 맞춤 */}
-            {ifcMeshes && ifcMeshes.length > 0 && (
+            {/* IFC/GLB 로드 시 카메라 자동 맞춤 */}
+            {(glbUrl || (ifcMeshes && ifcMeshes.length > 0)) && (
                 <CameraAutoFit
                     ifcMeshes={ifcMeshes}
+                    glbUrl={glbUrl}
                     modelData={modelData}
                     orbitRef={orbitRef}
                     fitTrigger={fitCameraTrigger}
@@ -1802,7 +1807,7 @@ export default function Scene({
                 - 비-IFC 단일선택: selectedElement mesh에 직접 연결 */}
             {!isResizeDragging && (() => {
                 if (allSelectedIds.size === 0) return null;
-                if (ifcMeshes?.length || allSelectedIds.size > 1) {
+                if (glbUrl || ifcMeshes?.length || allSelectedIds.size > 1) {
                     return (
                         <TransformControls
                             ref={transformRef}
@@ -1821,8 +1826,19 @@ export default function Scene({
                 );
             })()}
 
-            {/* BIM 부재 — IFC 실제 지오메트리가 있으면 대체 렌더링 */}
-            {ifcMeshes && ifcMeshes.length > 0 ? (
+            {/* BIM 부재 렌더링
+                우선순위: GLB(서버변환) > WASM ifcMeshes(구방식) > BimElement 박스 */}
+            {glbUrl ? (
+                <GltfBimViewerSuspense
+                    ref={ifcMeshGroupRef}
+                    glbUrl={glbUrl}
+                    modelData={modelData}
+                    onElementSelect={(measureMode || lineDrawMode === 'click') ? null : onElementSelect}
+                    selectedElement={selectedElement}
+                    selectedElements={selectedElements}
+                    onMeshMount={null}
+                />
+            ) : ifcMeshes && ifcMeshes.length > 0 ? (
                 <IFCMeshGroup
                     ref={ifcMeshGroupRef}
                     ifcMeshes={ifcMeshes}
@@ -1830,7 +1846,7 @@ export default function Scene({
                     onElementSelect={(measureMode || lineDrawMode === 'click') ? null : onElementSelect}
                     selectedElement={selectedElement}
                     selectedElements={selectedElements}
-/>
+                />
             ) : (
                 modelData.map(element => (
                     <BimElement
@@ -1848,7 +1864,7 @@ export default function Scene({
             )}
 
             {/* CAD 리사이즈 핸들 — IFC 모드에서는 숨김 */}
-            {showHandles && !ifcMeshes?.length && (
+            {showHandles && !ifcMeshes?.length && !glbUrl && (
                 <ElementResizeHandles
                     element={selectedElement.data}
                     updateElementData={updateElementData}

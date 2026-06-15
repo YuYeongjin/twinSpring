@@ -60,6 +60,8 @@ public interface BimDAO {
     /** IFC 파일 업로드 완료 후 storage 정보 저장 */
     void updateProjectStorage(Map<String, Object> params);
 
+    void updateProjectGlbStorage(Map<String, Object> params);
+
     List<Map<String, Object>> getElementStatsByProject(@Param("projectId") String projectId);
 
     List<Map<String, Object>> getElementsByProject(@Param("projectId") String projectId);

@@ -129,6 +129,21 @@ public interface BimService {
     String getStorageKey(String projectId);
 
     /**
+     * IFC 파일을 Python 변환 서비스로 전송해 GLB로 변환하고
+     * GLB는 Minio에, 부재/층 정보는 DB에 저장한다.
+     */
+    Mono<Map<String, Object>> convertAndStoreIfc(String projectId, MultipartFile file);
+
+    /** GLB 파일을 Minio에 업로드하고 glb_storage_key를 DB에 저장한다. */
+    String uploadGlbFile(String projectId, byte[] glbBytes);
+
+    /** Minio에서 GLB 파일 스트림을 반환한다. */
+    InputStream downloadGlbFile(String projectId);
+
+    /** GLB storage key 조회 (없으면 null). */
+    String getGlbStorageKey(String projectId);
+
+    /**
      * 프로젝트 전체 부재를 지정 오프셋만큼 일괄 이동합니다.
      * C# 서버에 부재 수만큼 PUT 요청을 병렬로 전송합니다.
      *

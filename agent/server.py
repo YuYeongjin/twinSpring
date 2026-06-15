@@ -967,6 +967,43 @@ def health_detail():
     return {"status": "ok", "rag": rag_ok}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# IFC → GLB 변환 API
+# POST /api/ifc/convert  — IFC 파일 업로드 → GLB + 메타데이터 반환
+# ══════════════════════════════════════════════════════════════════════════════
+
+from fastapi import UploadFile, File
+from fastapi.responses import JSONResponse
+import base64
+
+@app.post("/api/ifc/convert")
+async def convert_ifc(file: UploadFile = File(...)):
+    """
+    IFC 파일을 GLB 바이너리로 변환하고 부재/층/geoOrigin 메타데이터를 반환.
+
+    Request:  multipart/form-data  field=file (.ifc)
+    Response: {
+        glbBase64: string,          — base64 인코딩된 GLB 바이너리
+        elements:  BimElementDTO[], — DB 저장용 부재 목록
+        storeys:   BimStoreyDTO[],
+        geoOrigin: {...}
+    }
+    """
+    try:
+        from ifc_converter import convert_ifc_to_glb
+        ifc_bytes = await file.read()
+        result = convert_ifc_to_glb(ifc_bytes)
+        return JSONResponse({
+            "glbBase64": base64.b64encode(result["glb_bytes"]).decode("utf-8"),
+            "elements":  result["elements"],
+            "storeys":   result["storeys"],
+            "geoOrigin": result["geo_origin"],
+        })
+    except Exception as e:
+        logger.exception("[IFC Convert] 변환 실패")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7070)

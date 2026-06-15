@@ -663,3 +663,9 @@ CREATE TABLE IF NOT EXISTS bim_element_wbs
 CREATE INDEX IF NOT EXISTS idx_bim_element_wbs_element ON bim_element_wbs (element_id);
 CREATE INDEX IF NOT EXISTS idx_bim_element_wbs_wbs     ON bim_element_wbs (wbs_id);
 CREATE INDEX IF NOT EXISTS idx_bim_element_wbs_project ON bim_element_wbs (project_id);
+
+-- ================================================================
+-- bim_project GLB 파일 저장 컬럼 (서버 사이드 IFC → GLB 변환 결과)
+-- glb_storage_key : MinIO/S3 오브젝트 키 (예: projects/{id}/model.glb)
+-- ================================================================
+ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS glb_storage_key TEXT NULL;

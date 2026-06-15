@@ -612,6 +612,69 @@ function App() {
   }, [refreshProjectList, projectList]);
 
   // ---------------------------------------------------------------
+  // Import BIM project via server-side IFC → GLB conversion (B안)
+  // WASM 파싱 없이 IFC 파일을 서버에 업로드 → Python 변환 → GLB + DB 저장
+  // ---------------------------------------------------------------
+  const importIfcProjectServer = useCallback(async (type, name, ifcFile, callback) => {
+    try {
+      const existingNames = new Set((projectList || []).map(p => p.projectName));
+      let uniqueName = name;
+      let counter = 1;
+      while (existingNames.has(uniqueName)) {
+        uniqueName = `${name} (${counter++})`;
+      }
+
+      // 1. 빈 프로젝트 생성 → projectId 확보
+      const projectRes = await AxiosCustom.post('/api/bim/project', {
+        structureType: type,
+        projectName:   uniqueName,
+        spanCount:     0,
+      });
+      const project = projectRes.data;
+
+      // 2. IFC 업로드 → 서버(Python)에서 변환 + DB 저장
+      const formData = new FormData();
+      formData.append('file', ifcFile);
+      await AxiosCustom.post(
+        `/api/bim/project/${project.projectId}/convert-ifc`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 600000 },
+      );
+
+      // 3. 변환 후 DB에 저장된 elements 로드
+      const elemRes = await AxiosCustom.get(`/api/bim/project/${project.projectId}`);
+      const savedElements = elemRes.data ?? [];
+
+      // 4. 레이어·WBS 자동 생성
+      if (savedElements.length > 0) {
+        try {
+          const { generateWbsFromLayers } = await import('./utils/wbsGenerator');
+          const layers = generateLayersFromElements(savedElements, project.projectId);
+          if (layers.length > 0) await AxiosCustom.post('/api/bim/layers/batch', layers);
+
+          const storeyRes = await AxiosCustom.get(`/api/bim/storeys?projectId=${project.projectId}`);
+          const storeys = storeyRes.data ?? [];
+
+          const { wbsNodes, mappings } = generateWbsFromLayers(
+            layers, project.projectId, savedElements,
+            { storeys, geoOrigin: null, standard: 'KDS' },
+          );
+          if (wbsNodes.length > 0)  await AxiosCustom.post('/api/bim/wbs/batch', wbsNodes);
+          if (mappings.length > 0)  await AxiosCustom.post('/api/bim/element-wbs/batch', mappings);
+        } catch (e) {
+          console.warn('레이어/WBS 자동 생성 실패(무시):', e.message);
+        }
+      }
+
+      await refreshProjectList();
+      if (callback) callback(project);
+    } catch (error) {
+      console.error('IFC server import failed:', error);
+      if (callback) callback(null);
+    }
+  }, [refreshProjectList, projectList]);
+
+  // ---------------------------------------------------------------
   // Select BIM project → load BIM model data
   // ---------------------------------------------------------------
   function handleProjectSelect(projectData) {
@@ -870,9 +933,12 @@ function App() {
       );
     }
     if (viewComponent === 'bim') {
-      // IFC 세션 캐시에서 현재 프로젝트의 실제 지오메트리 조회
+      // 세션 캐시(구방식 WASM) 또는 서버 GLB URL 중 존재하는 것 사용
       const currentIfcMeshes = selectedProject
         ? (ifcMeshesRef.current.get(selectedProject.projectId) ?? null)
+        : null;
+      const glbUrl = selectedProject
+        ? `/api/bim/project/${selectedProject.projectId}/glb`
         : null;
       return (
         <BimDashboard
@@ -883,6 +949,7 @@ function App() {
           selectedProject={selectedProject}
           onConvertDrone={convertDroneProject}
           ifcMeshes={currentIfcMeshes}
+          glbUrl={glbUrl}
           canvasFullscreen={canvasFullscreen}
           onToggleCanvasFullscreen={toggleCanvasFullscreen}
           onPlacementModeChange={setBimPlacementMode}
@@ -897,7 +964,7 @@ function App() {
           onProjectSelect={handleProjectSelect}
           onCreateProject={addNewProject}
           onRenameProject={renameProject}
-          onImportIFC={importIfcProject}
+          onImportIFC={importIfcProjectServer}
           onConvertDrone={convertDroneProject}
           onDeleteProject={deleteProject}
         />
