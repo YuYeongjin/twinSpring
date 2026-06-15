@@ -208,15 +208,42 @@ function computeSimPhaseProgress(wbsTasks, bimProjectId) {
 }
 
 // ── WBS 태스크에서 BIM 공정율 맵 빌드 ────────────────────────────
-// 반환: { "bimProjectId:IfcColumn": 42, "bimProjectId:IfcSlab": 100, ... }
+// 반환: { "bimId:IfcColumn": 42, "bimId:floor:0:FRAME": 100, ... }
 function buildProgressMap(wbsTasks) {
   const map = {};
   wbsTasks.forEach(t => {
     if (!t.notes) return;
+    // 층별 포맷: BIM:{id}:FLOOR:{n}:FRAME|SLAB
+    const fm = t.notes.match(/^BIM:([^:]+):FLOOR:(\d+):(FRAME|SLAB)$/);
+    if (fm) {
+      map[`${fm[1]}:floor:${fm[2]}:${fm[3]}`] = Math.min(100, Math.max(0, t.progress || 0));
+      return;
+    }
+    // 기존 포맷: BIM:{id}:{type}
     const m = t.notes.match(/^BIM:([^:]+):([^:]+)/);
     if (m) map[`${m[1]}:${m[2]}`] = Math.min(100, Math.max(0, t.progress || 0));
   });
   return map;
+}
+
+const FLOOR_FRAME_TYPES = new Set(['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcPier', 'IfcMember']);
+const FLOOR_SLAB_TYPES  = new Set(['IfcSlab']);
+
+function hasFloorTasks(progressMap, bimId) {
+  if (!bimId) return false;
+  return Object.keys(progressMap).some(k => k.startsWith(`${bimId}:floor:`));
+}
+
+function getFloorElemProgress(progressMap, bimId, floorIdx, elementType, fallback) {
+  if (FLOOR_FRAME_TYPES.has(elementType)) {
+    const key = `${bimId}:floor:${floorIdx}:FRAME`;
+    if (key in progressMap) return progressMap[key];
+  }
+  if (FLOOR_SLAB_TYPES.has(elementType)) {
+    const key = `${bimId}:floor:${floorIdx}:SLAB`;
+    if (key in progressMap) return progressMap[key];
+  }
+  return fallback;
 }
 
 // ── 아래→위 공정율 채우기 렌더러 ──────────────────────────────────
@@ -571,14 +598,17 @@ function StructuresLayer() {
                   || { phaseProgress: {}, activePhaseIdx: SIM_PHASE_ORDER.length };
                 const elemPhaseKey    = ELEM_TYPE_TO_SIM_PHASE[el.elementType] ?? 'ABOVE';
                 const elemPhaseIdx    = SIM_PHASE_ORDER.indexOf(elemPhaseKey);
-                const baseProgress    = wbsElemData != null
-                  ? wbsElemData.progress ?? 0
-                  : elemPhaseIdx > simPhase.activePhaseIdx
-                    ? 0
-                    : (progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback);
                 const floors          = floorsPerStruct[s.id] || [];
                 const floorIdx        = getElementFloorIndex(el, floors);
-                const elemProgress    = floors.length >= 2
+                const useFloor        = hasFloorTasks(progressMap, s.bimProjectId);
+                const baseProgress    = wbsElemData != null
+                  ? wbsElemData.progress ?? 0
+                  : useFloor
+                    ? getFloorElemProgress(progressMap, s.bimProjectId, floorIdx, el.elementType, projectFallback)
+                    : elemPhaseIdx > simPhase.activePhaseIdx
+                      ? 0
+                      : (progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback);
+                const elemProgress    = (!useFloor && floors.length >= 2)
                   ? getFloorProgress(floorIdx, floors.length, baseProgress)
                   : baseProgress;
                 return (
@@ -614,13 +644,19 @@ function LinkedBimElements() {
     return wbsTasks.reduce((s, tk) => s + (tk.progress || 0), 0) / wbsTasks.length;
   }, [wbsTasks]);
 
+  const floors   = useMemo(() => detectFloors(bimElements || []), [bimElements]);
+  const useFloor = useMemo(() => hasFloorTasks(progressMap, bimProjectId), [progressMap, bimProjectId]);
+
   if (!bimElements?.length) return null;
   return (
     <>
       {bimElements.map(el => {
         const pY = Number(el.positionY) || 0;
         const sY = Number(el.sizeY) || 3;
-        const elemProgress = progressMap[`${bimProjectId}:${el.elementType}`] ?? overallWbsProgress;
+        const floorIdx   = useFloor ? getElementFloorIndex(el, floors) : -1;
+        const elemProgress = useFloor
+          ? getFloorElemProgress(progressMap, bimProjectId, floorIdx, el.elementType, overallWbsProgress)
+          : (progressMap[`${bimProjectId}:${el.elementType}`] ?? overallWbsProgress);
         return (
           <BimProgressFill
             key={el.elementId}

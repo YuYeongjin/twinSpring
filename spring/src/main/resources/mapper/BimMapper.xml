@@ -397,4 +397,22 @@
         SELECT wbs_id FROM bim_element_wbs WHERE element_id = #{elementId} LIMIT 1
     </select>
 
+    <!-- 단일 부재 로컬 DB 삭제 -->
+    <delete id="deleteElementById" parameterType="string">
+        DELETE FROM bim_element WHERE element_id = #{elementId}
+    </delete>
+
+    <!-- 단일 부재 ↔ WBS 매핑 삭제 -->
+    <delete id="deleteElementWbsMapping" parameterType="string">
+        DELETE FROM bim_element_wbs WHERE element_id = #{elementId}
+    </delete>
+
+    <!-- WBS 노드 element_count 1 감소 (0 미만 방지) -->
+    <update id="decrementWbsElementCount" parameterType="string">
+        UPDATE bim_wbs_node
+        SET element_count = GREATEST(0, element_count - 1),
+            updated_at    = CURRENT_TIMESTAMP
+        WHERE wbs_id = #{wbsId}
+    </update>
+
 </mapper>

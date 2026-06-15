@@ -15,7 +15,8 @@ import SafeDashboard from './view/safe/SafeDashboard';
 import SafeProjectList from './view/safe/SafeProjectList';
 import TestDashboard from './view/test/TestDashboard';
 import WbsDashboard from './view/wbs/WbsDashboard';
-import IntegrationDashboard from './view/integration/IntegrationDashboard';
+import { IntegrationServices, IntegrationUI } from './view/integration/IntegrationDashboard';
+import { IntegrationProvider } from './view/integration/IntegrationStore';
 import IntegrationProjectList from './view/integration/IntegrationProjectList';
 import AgentWbsPopup from './component/AgentWbsPopup';
 import WbsProjectSelectModal from './component/WbsProjectSelectModal';
@@ -925,12 +926,8 @@ function App() {
       );
     }
     if (viewComponent === 'integration') {
-      return (
-        <IntegrationDashboard
-          selectedProject={selectedIntegrationProject}
-          onBack={() => setViceComponent('integration-projects')}
-        />
-      );
+      // UI는 IntegrationProvider 블록에서 렌더됨 (항상 살아있는 백그라운드 서비스와 같은 Provider 공유)
+      return null;
     }
     if (viewComponent === 'bim') {
       // 세션 캐시(구방식 WASM) 또는 서버 GLB URL 중 존재하는 것 사용
@@ -1008,6 +1005,14 @@ function App() {
         {/* 캔버스 전체화면 모드에서는 헤더 숨김 */}
         {!canvasFullscreen && (
           <Header viewComponent={viewComponent} setViceComponent={setViceComponent} agentAvailable={agentAvailable} />
+        )}
+
+        {/* 통합관제 백그라운드 서비스: 프로젝트 선택 후 항상 유지 (탭 이탈해도 유지) */}
+        {selectedIntegrationProject && (
+          <IntegrationProvider projectId={selectedIntegrationProject.projectId}>
+            <IntegrationServices selectedProject={selectedIntegrationProject} />
+            {viewComponent === 'integration' && <IntegrationUI />}
+          </IntegrationProvider>
         )}
 
         <main className={
