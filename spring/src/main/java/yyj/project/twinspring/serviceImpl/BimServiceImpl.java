@@ -344,15 +344,25 @@ public class BimServiceImpl implements BimService {
     @Override
     public ResponseEntity<Mono<Void>> deleteElement(String elementId) {
         log.info("부재 삭제 요청: elementId={}", elementId);
-        return ResponseEntity.ok(
-                webClient.delete()
-                        .uri("/api/bim/element/{elementId}", elementId)
-                        .retrieve()
-                        .onStatus(status -> status.isError(), response -> {
-                            log.error("C# 부재 삭제 실패: elementId={}, status={}", elementId, response.statusCode());
-                            return Mono.error(new RuntimeException("C# element delete failed"));
-                        })
-                        .bodyToMono(Void.class));
+        // C# 삭제 전에 WBS 매핑 조회 (삭제 후엔 row가 사라지므로)
+        String wbsId = bimDAO.getWbsIdByElement(elementId);
+        Mono<Void> deleteMono = webClient.delete()
+                .uri("/api/bim/element/{elementId}", elementId)
+                .retrieve()
+                .onStatus(status -> status.isError(), response -> {
+                    log.error("C# 부재 삭제 실패: elementId={}, status={}", elementId, response.statusCode());
+                    return Mono.error(new RuntimeException("C# element delete failed"));
+                })
+                .bodyToMono(Void.class)
+                .doOnSuccess(v -> {
+                    bimDAO.deleteElementWbsMapping(elementId);
+                    bimDAO.deleteElementById(elementId);
+                    if (wbsId != null) {
+                        bimDAO.decrementWbsElementCount(wbsId);
+                        log.info("BIM WBS count 감소: wbsId={}, elementId={}", wbsId, elementId);
+                    }
+                });
+        return ResponseEntity.ok(deleteMono);
     }
 
     @Override

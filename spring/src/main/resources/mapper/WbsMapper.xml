@@ -175,7 +175,13 @@
     </update>
 
     <delete id="deleteTask" parameterType="string">
-        DELETE FROM wbs_task WHERE task_id = #{taskId}
+        WITH RECURSIVE subtree AS (
+            SELECT task_id FROM wbs_task WHERE task_id = #{taskId}
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            JOIN subtree s ON t.parent_task_id = s.task_id
+        )
+        DELETE FROM wbs_task WHERE task_id IN (SELECT task_id FROM subtree)
     </delete>
 
     <delete id="deleteTasksByProject" parameterType="string">

@@ -528,11 +528,22 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
 
   const handleDeleteTask = useCallback(async (taskId) => {
     await AxiosCustom.delete(`/api/wbs/task/${taskId}`);
-    setTasks(prev => prev.filter(t => t.taskId !== taskId));
-    setProjects(prev => prev.map(p =>
-      p.projectId === selectedProject?.projectId
-        ? { ...p, taskCount: Math.max(0, (p.taskCount || 0) - 1) } : p
-    ));
+    // 삭제된 태스크 + 모든 하위 자식을 state에서 제거
+    const collectDescendants = (id, snapshot) => {
+      const ids = [id];
+      snapshot.filter(t => t.parentTaskId === id).forEach(child => {
+        ids.push(...collectDescendants(child.taskId, snapshot));
+      });
+      return ids;
+    };
+    setTasks(prev => {
+      const toRemove = new Set(collectDescendants(taskId, prev));
+      setProjects(ps => ps.map(p =>
+        p.projectId === selectedProject?.projectId
+          ? { ...p, taskCount: Math.max(0, (p.taskCount || 0) - toRemove.size) } : p
+      ));
+      return prev.filter(t => !toRemove.has(t.taskId));
+    });
     await loadAllTasks();
   }, [selectedProject, loadAllTasks]);
 

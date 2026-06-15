@@ -99,4 +99,10 @@ public interface BimDAO {
     List<String> getElementIdsByWbs(@Param("wbsId") String wbsId);
 
     String getWbsIdByElement(@Param("elementId") String elementId);
+
+    void deleteElementById(@Param("elementId") String elementId);
+
+    void deleteElementWbsMapping(@Param("elementId") String elementId);
+
+    void decrementWbsElementCount(@Param("wbsId") String wbsId);
 }
