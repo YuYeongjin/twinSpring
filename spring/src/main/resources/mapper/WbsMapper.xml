@@ -178,6 +178,29 @@
         DELETE FROM wbs_task WHERE task_id = #{taskId}
     </delete>
 
+    <!-- 진도 분석 로그: 대상 태스크 + 모든 하위 항목의 로그를 먼저 삭제 (FK 없으므로 수동 정리) -->
+    <delete id="deleteProgressLogsByTaskTree" parameterType="string">
+        WITH RECURSIVE descendants AS (
+            SELECT task_id FROM wbs_task WHERE task_id = #{taskId}
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            INNER JOIN descendants d ON t.parent_task_id = d.task_id
+        )
+        DELETE FROM progress_analysis_log
+        WHERE wbs_task_id IN (SELECT task_id FROM descendants)
+    </delete>
+
+    <!-- 재귀 삭제: 대상 태스크 + 모든 하위 항목(1.1, 1.2, 1.2.1 ...) 일괄 삭제 -->
+    <delete id="deleteTaskWithDescendants" parameterType="string">
+        WITH RECURSIVE descendants AS (
+            SELECT task_id FROM wbs_task WHERE task_id = #{taskId}
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            INNER JOIN descendants d ON t.parent_task_id = d.task_id
+        )
+        DELETE FROM wbs_task WHERE task_id IN (SELECT task_id FROM descendants)
+    </delete>
+
     <delete id="deleteTasksByProject" parameterType="string">
         DELETE FROM wbs_task WHERE wbs_project_id = #{projectId}
     </delete>

@@ -36,6 +36,12 @@ public interface WbsDAO {
 
     void deleteTask(@Param("taskId") String taskId);
 
+    /** 진도 분석 로그에서 해당 태스크 + 모든 하위 항목 로그 삭제 (재귀 삭제 전 선행 호출) */
+    void deleteProgressLogsByTaskTree(@Param("taskId") String taskId);
+
+    /** 해당 태스크 + 모든 하위 항목(재귀) 일괄 삭제 */
+    void deleteTaskWithDescendants(@Param("taskId") String taskId);
+
     void deleteTasksByProject(@Param("projectId") String projectId);
 
     /** BIM 연결 해제 시 notes가 'BIM:{bimProjectId}:%' 인 태스크와 그 세부공정을 일괄 삭제 */
