@@ -264,7 +264,7 @@ export default function DailyReport({ onClose }) {
       ? Math.round(liveTasks.reduce((s, tk) => s + (tk.progress || 0), 0) / liveTasks.length)
       : 0;
     const locationStr = surveyOrigin
-      ? `${surveyOrigin.label||'기준점'} (X:${surveyOrigin.x.toFixed(1)}, Y:${surveyOrigin.y.toFixed(1)})`
+      ? `${surveyOrigin.label || t('drSurveyDefault')} (X:${surveyOrigin.x.toFixed(1)}, Y:${surveyOrigin.y.toFixed(1)})`
       : `${referencePoint.lat.toFixed(4)}°N, ${referencePoint.lng.toFixed(4)}°E`;
     return {
       siteName:        projectMeta?.projectName || '—',
@@ -426,7 +426,7 @@ export default function DailyReport({ onClose }) {
             {/* 템플릿 편집 토글 */}
             <button onClick={() => setMode(m => m === 'template' ? 'view' : 'template')}
               style={{ background: mode === 'template' ? '#2d1b6b' : 'none', border: `1px solid ${mode === 'template' ? '#a78bfa' : '#374151'}`, borderRadius: 6, color: mode === 'template' ? '#c4b5fd' : '#6b7280', fontSize: 11, fontWeight: mode === 'template' ? 700 : 400, padding: '6px 12px', cursor: 'pointer' }}>
-              🎨 {mode === 'template' ? '편집 중' : '템플릿'}
+              🎨 {mode === 'template' ? t('drTemplateEditing') : t('drTemplateBtn')}
             </button>
             <button onClick={onClose}
               style={{ background: '#1a0a0a', border: '1px solid #ef4444', borderRadius: 6, color: '#f87171', fontSize: 11, fontWeight: 700, padding: '6px 14px', cursor: 'pointer' }}>

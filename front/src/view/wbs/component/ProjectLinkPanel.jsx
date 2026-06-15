@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
 import AxiosCustom from "../../../axios/AxiosCustom";
+import { useT } from "../../../i18n/LanguageContext";
 
-// ══════════════════════════════════════════════════════════════════
-//  설정
-// ══════════════════════════════════════════════════════════════════
 const TYPE_META = {
-  BIM:        { label: "BIM",        icon: "🏗", color: "#60a5fa", bg: "#1e3a5f", border: "#2a5080" },
-  SAFE:       { label: "안전",       icon: "🛡", color: "#4ade80", bg: "#14532d", border: "#166534" },
-  SIMULATION: { label: "시뮬레이션", icon: "🚜", color: "#c084fc", bg: "#3b0764", border: "#6d28d9" },
+  BIM:        { labelKey: 'bim',        icon: "🏗", color: "#60a5fa", bg: "#1e3a5f", border: "#2a5080" },
+  SAFE:       { labelKey: 'safe',       icon: "🛡", color: "#4ade80", bg: "#14532d", border: "#166534" },
+  SIMULATION: { labelKey: 'simulation', icon: "🚜", color: "#c084fc", bg: "#3b0764", border: "#6d28d9" },
 };
 
-// ── 링크 카드 ────────────────────────────────────────────────────
 function LinkCard({ link, onDelete, onNavigate }) {
+  const t = useT('projectLink');
   const meta = TYPE_META[link.linkedType] || TYPE_META.BIM;
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all"
@@ -34,14 +32,14 @@ function LinkCard({ link, onDelete, onNavigate }) {
       </div>
       <span className="px-1.5 py-0.5 rounded-full text-xs font-medium shrink-0"
             style={{ backgroundColor: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
-        {meta.label}
+        {t(meta.labelKey)}
       </span>
       <div className="flex gap-1 shrink-0">
         {onNavigate && (
           <button onClick={() => onNavigate(link)}
                   className="px-2 py-1 rounded text-xs text-blue-400 hover:text-blue-200 transition"
                   style={{ border: "1px solid #1d4ed8" }}>
-            이동
+            {t('navigate')}
           </button>
         )}
         <button onClick={() => onDelete(link.linkId)}
@@ -54,8 +52,8 @@ function LinkCard({ link, onDelete, onNavigate }) {
   );
 }
 
-// ── 프로젝트 선택 드롭다운 ────────────────────────────────────────
 function AddLinkForm({ wbsProjectId, onAdded }) {
+  const t = useT('projectLink');
   const [type,        setType]        = useState("BIM");
   const [candidates,  setCandidates]  = useState([]);
   const [selectedId,  setSelectedId]  = useState("");
@@ -63,7 +61,6 @@ function AddLinkForm({ wbsProjectId, onAdded }) {
   const [saving,      setSaving]      = useState(false);
   const [loadingList, setLoadingList] = useState(false);
 
-  // 타입 변경 시 해당 프로젝트 목록 로드
   useEffect(() => {
     setSelectedId("");
     setLoadingList(true);
@@ -100,9 +97,8 @@ function AddLinkForm({ wbsProjectId, onAdded }) {
   return (
     <div className="flex flex-col gap-2 mt-3 p-3 rounded-xl"
          style={{ backgroundColor: "#0a1521", border: "1px solid #1e3a5f" }}>
-      <p className="text-xs font-semibold text-gray-400 mb-1">+ 프로젝트 연결 추가</p>
+      <p className="text-xs font-semibold text-gray-400 mb-1">{t('addFormTitle')}</p>
 
-      {/* 타입 선택 */}
       <div className="flex gap-2">
         {Object.entries(TYPE_META).map(([k, v]) => (
           <button key={k} onClick={() => setType(k)}
@@ -112,16 +108,15 @@ function AddLinkForm({ wbsProjectId, onAdded }) {
                     border: `1px solid ${type === k ? v.border : "#253347"}`,
                     color: type === k ? v.color : "#64748b",
                   }}>
-            {v.icon} {v.label}
+            {v.icon} {t(v.labelKey)}
           </button>
         ))}
       </div>
 
-      {/* 프로젝트 선택 */}
       <select value={selectedId} onChange={e => setSelectedId(e.target.value)}
               disabled={loadingList}
               className={`${inputCls} w-full`}>
-        <option value="">{loadingList ? "로드 중…" : "-- 프로젝트 선택 --"}</option>
+        <option value="">{loadingList ? t('loadingList') : t('selectProjectPh')}</option>
         {candidates.map(c => (
           <option key={c.projectId} value={c.projectId}>
             {c.projectName || c.projectId}
@@ -129,9 +124,8 @@ function AddLinkForm({ wbsProjectId, onAdded }) {
         ))}
       </select>
 
-      {/* 메모 */}
       <input type="text" value={note} onChange={e => setNote(e.target.value)}
-             placeholder="연결 메모 (선택)"
+             placeholder={t('linkMemoPh')}
              className={`${inputCls} w-full`} />
 
       <button onClick={handleAdd} disabled={!selectedId || saving}
@@ -140,24 +134,17 @@ function AddLinkForm({ wbsProjectId, onAdded }) {
                 background: selectedId ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "#1c2a3a",
                 border: `1px solid ${selectedId ? "#3b82f6" : "#253347"}`,
               }}>
-        {saving ? "추가 중…" : "🔗 연결 추가"}
+        {saving ? t('addingLink') : t('addLinkBtn')}
       </button>
     </div>
   );
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  메인 패널
-// ══════════════════════════════════════════════════════════════════
-/**
- * props:
- *   wbsProjectId : string
- *   onNavigate   : (link: ProjectLinkDTO) => void  — 연결 탭으로 이동
- */
 export default function ProjectLinkPanel({ wbsProjectId, onNavigate }) {
-  const [links,      setLinks]      = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [showAdd,    setShowAdd]    = useState(false);
+  const t = useT('projectLink');
+  const [links,   setLinks]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
 
   const loadLinks = useCallback(() => {
     if (!wbsProjectId) return;
@@ -171,12 +158,11 @@ export default function ProjectLinkPanel({ wbsProjectId, onNavigate }) {
   useEffect(() => { loadLinks(); }, [loadLinks]);
 
   async function handleDelete(linkId) {
-    if (!window.confirm("연결을 해제하시겠습니까?")) return;
+    if (!window.confirm(t('removeConfirm'))) return;
     await AxiosCustom.delete(`/api/project-link/${linkId}`);
     loadLinks();
   }
 
-  // 타입별 그룹화
   const grouped = links.reduce((acc, l) => {
     if (!acc[l.linkedType]) acc[l.linkedType] = [];
     acc[l.linkedType].push(l);
@@ -187,10 +173,9 @@ export default function ProjectLinkPanel({ wbsProjectId, onNavigate }) {
     <div className="rounded-xl p-4"
          style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
 
-      {/* 헤더 */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-          🔗 연결된 프로젝트
+          🔗 {t('panelTitle')}
           <span className="px-1.5 py-0.5 rounded-full text-xs"
                 style={{ backgroundColor: "#1e3a5f", color: "#60a5fa" }}>
             {links.length}
@@ -203,21 +188,20 @@ export default function ProjectLinkPanel({ wbsProjectId, onNavigate }) {
                   border: `1px solid ${showAdd ? "#3b82f6" : "#253347"}`,
                   color: showAdd ? "#60a5fa" : "#8896a4",
                 }}>
-          {showAdd ? "✕ 닫기" : "+ 연결 추가"}
+          {showAdd ? t('closeBtn') : t('openAddBtn')}
         </button>
       </div>
 
-      {/* 링크 목록 */}
       {loading ? (
-        <p className="text-xs text-gray-500 py-4 text-center">로드 중…</p>
+        <p className="text-xs text-gray-500 py-4 text-center">{t('loadingList')}</p>
       ) : links.length === 0 && !showAdd ? (
         <div className="text-center py-6">
-          <p className="text-sm text-gray-500 mb-1">연결된 프로젝트가 없습니다</p>
-          <p className="text-xs text-gray-600">BIM · 안전 · 시뮬레이션 프로젝트를 연결하세요</p>
+          <p className="text-sm text-gray-500 mb-1">{t('noLinksDesc')}</p>
+          <p className="text-xs text-gray-600">{t('noLinksHint')}</p>
           <button onClick={() => setShowAdd(true)}
                   className="mt-3 px-4 py-1.5 rounded-lg text-xs font-semibold text-blue-400"
                   style={{ border: "1px dashed #1d4ed8" }}>
-            + 프로젝트 연결
+            {t('addProjectBtn')}
           </button>
         </div>
       ) : (
@@ -226,7 +210,7 @@ export default function ProjectLinkPanel({ wbsProjectId, onNavigate }) {
             <div key={type}>
               <p className="text-xs font-semibold mb-1.5"
                  style={{ color: TYPE_META[type]?.color || "#94a3b8" }}>
-                {TYPE_META[type]?.icon} {TYPE_META[type]?.label} ({typeLinks.length})
+                {TYPE_META[type]?.icon} {t(TYPE_META[type]?.labelKey || 'bim')} ({typeLinks.length})
               </p>
               <div className="flex flex-col gap-1.5">
                 {typeLinks.map(link => (
@@ -240,7 +224,6 @@ export default function ProjectLinkPanel({ wbsProjectId, onNavigate }) {
         </div>
       )}
 
-      {/* 추가 폼 */}
       {showAdd && (
         <AddLinkForm
           wbsProjectId={wbsProjectId}
