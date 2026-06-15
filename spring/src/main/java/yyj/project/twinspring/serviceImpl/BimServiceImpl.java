@@ -36,14 +36,18 @@ public class BimServiceImpl implements BimService {
     private static final Logger log = LoggerFactory.getLogger(BimServiceImpl.class);
 
     private final WebClient webClient;
+    private final WebClient agentWebClient;
     private final BimDAO bimDAO;
     private final StorageService storageService;
 
     @Autowired
     private ObjectMapper objectMapper;
 
-    public BimServiceImpl(WebClient webClient, BimDAO bimDAO, StorageService storageService) {
+    public BimServiceImpl(WebClient webClient,
+                          @org.springframework.beans.factory.annotation.Qualifier("agentWebClient") WebClient agentWebClient,
+                          BimDAO bimDAO, StorageService storageService) {
         this.webClient = webClient;
+        this.agentWebClient = agentWebClient;
         this.bimDAO = bimDAO;
         this.storageService = storageService;
     }
@@ -873,6 +877,147 @@ public class BimServiceImpl implements BimService {
         Map<String, Object> project = bimDAO.getProjectById(projectId);
         if (project == null) return null;
         return (String) project.get("storageKey");
+    }
+
+    @Override
+    public Mono<Map<String, Object>> convertAndStoreIfc(String projectId, MultipartFile file) {
+        return Mono.fromCallable(() -> {
+            byte[] ifcBytes;
+            try {
+                ifcBytes = file.getBytes();
+            } catch (Exception e) {
+                throw new RuntimeException("IFC 파일 읽기 실패", e);
+            }
+
+            // 1. 원본 IFC Minio 저장
+            try {
+                String ifcKey = "projects/" + projectId + "/original.ifc";
+                storageService.upload(ifcKey, new java.io.ByteArrayInputStream(ifcBytes),
+                        ifcBytes.length, "application/octet-stream");
+                Map<String, Object> storageParams = new HashMap<>();
+                storageParams.put("projectId", projectId);
+                storageParams.put("storageKey", ifcKey);
+                storageParams.put("originalFilename", file.getOriginalFilename());
+                bimDAO.updateProjectStorage(storageParams);
+            } catch (Exception e) {
+                log.warn("[BIM] IFC 원본 저장 실패(계속 진행): {}", e.getMessage());
+            }
+
+            // 2. Python 변환 서비스 호출 (agentWebClient: baseUrl=localhost:7070, timeout=10min)
+            org.springframework.core.io.ByteArrayResource resource =
+                    new org.springframework.core.io.ByteArrayResource(ifcBytes) {
+                        @Override public String getFilename() { return file.getOriginalFilename() != null ? file.getOriginalFilename() : "model.ifc"; }
+                    };
+
+            org.springframework.util.MultiValueMap<String, Object> formData = new org.springframework.util.LinkedMultiValueMap<>();
+            formData.add("file", resource);
+
+            Map<String, Object> convertResult = agentWebClient.post()
+                    .uri("/api/ifc/convert")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(org.springframework.web.reactive.function.BodyInserters.fromMultipartData(formData))
+                    .retrieve()
+                    .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
+                    .block(java.time.Duration.ofMinutes(10));
+
+            if (convertResult == null || convertResult.containsKey("error")) {
+                throw new RuntimeException("Python 변환 실패: " +
+                        (convertResult != null ? convertResult.get("error") : "응답 없음"));
+            }
+
+            // 3. GLB Minio 저장
+            String glbBase64 = (String) convertResult.get("glbBase64");
+            byte[] glbBytes = java.util.Base64.getDecoder().decode(glbBase64);
+            uploadGlbFile(projectId, glbBytes);
+
+            // 4. elements DB 저장
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rawElements = (List<Map<String, Object>>) convertResult.get("elements");
+            if (rawElements != null && !rawElements.isEmpty()) {
+                List<BimElementDTO> dtos = rawElements.stream().map(e -> {
+                    BimElementDTO dto = new BimElementDTO();
+                    dto.setProjectId(projectId);
+                    dto.setElementId((String) e.get("elementId") + "-" + projectId);
+                    dto.setElementType((String) e.get("elementType"));
+                    dto.setPositionX(toDoubleOrNull(e.get("positionX")));
+                    dto.setPositionY(toDoubleOrNull(e.get("positionY")));
+                    dto.setPositionZ(toDoubleOrNull(e.get("positionZ")));
+                    dto.setSizeX(toDoubleOrNull(e.get("sizeX")));
+                    dto.setSizeY(toDoubleOrNull(e.get("sizeY")));
+                    dto.setSizeZ(toDoubleOrNull(e.get("sizeZ")));
+                    dto.setMaterial((String) e.get("material"));
+                    dto.setStorey((String) e.get("storey"));
+                    dto.setBuilding((String) e.get("building"));
+                    dto.setGlobalId((String) e.get("globalId"));
+                    return dto;
+                }).collect(Collectors.toList());
+                // 기존 batch 저장 로직 재사용 (C# 서버 경유)
+                createElements(dtos).block(java.time.Duration.ofMinutes(5));
+            }
+
+            // 5. storeys DB 저장
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rawStoreys = (List<Map<String, Object>>) convertResult.get("storeys");
+            if (rawStoreys != null && !rawStoreys.isEmpty()) {
+                List<BimStoreyDTO> storeyDtos = new ArrayList<>();
+                for (int i = 0; i < rawStoreys.size(); i++) {
+                    Map<String, Object> s = rawStoreys.get(i);
+                    BimStoreyDTO dto = new BimStoreyDTO();
+                    dto.setStoreyId(projectId + "-STOREY-" + i);
+                    dto.setProjectId(projectId);
+                    dto.setStoreyName((String) s.get("name"));
+                    dto.setElevation(toDoubleOrNull(s.get("elevation")));
+                    dto.setBuilding((String) s.get("building"));
+                    dto.setSortOrder(i);
+                    storeyDtos.add(dto);
+                }
+                saveStoreys(storeyDtos);
+            }
+
+            return Map.<String, Object>of(
+                    "projectId", projectId,
+                    "elementCount", rawElements != null ? rawElements.size() : 0,
+                    "storeyCount", rawStoreys != null ? rawStoreys.size() : 0,
+                    "glbSize", glbBytes.length
+            );
+        }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
+    }
+
+    private Double toDoubleOrNull(Object val) {
+        if (val == null) return null;
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        try { return Double.parseDouble(val.toString()); } catch (Exception e) { return null; }
+    }
+
+    @Override
+    public String uploadGlbFile(String projectId, byte[] glbBytes) {
+        try {
+            String key = "projects/" + projectId + "/model.glb";
+            java.io.InputStream is = new java.io.ByteArrayInputStream(glbBytes);
+            storageService.upload(key, is, glbBytes.length, "model/gltf-binary");
+            Map<String, Object> params = new HashMap<>();
+            params.put("projectId", projectId);
+            params.put("glbStorageKey", key);
+            bimDAO.updateProjectGlbStorage(params);
+            log.info("[BIM] GLB 파일 업로드 완료: projectId={}, key={}, size={}bytes", projectId, key, glbBytes.length);
+            return key;
+        } catch (Exception e) {
+            throw new StorageException("GLB 파일 업로드 실패: projectId=" + projectId, e);
+        }
+    }
+
+    @Override
+    public InputStream downloadGlbFile(String projectId) {
+        String key = getGlbStorageKey(projectId);
+        if (key == null) throw new StorageException("GLB 파일이 없습니다: projectId=" + projectId);
+        return storageService.download(key);
+    }
+
+    @Override
+    public String getGlbStorageKey(String projectId) {
+        Map<String, Object> project = bimDAO.getProjectById(projectId);
+        if (project == null) return null;
+        return (String) project.get("glbStorageKey");
     }
 
     // ── 부재 일괄 변환 (이동 / 회전 / 크기) ────────────────────────────────

@@ -199,7 +199,8 @@
                ifc_scale         AS "ifcScale",
                storage_key       AS "storageKey",
                original_filename AS "originalFilename",
-               uploaded_at       AS "uploadedAt"
+               uploaded_at       AS "uploadedAt",
+               glb_storage_key   AS "glbStorageKey"
         FROM bim_project
         WHERE project_id = #{projectId}
     </select>
@@ -210,6 +211,13 @@
         SET storage_key       = #{storageKey},
             original_filename = #{originalFilename},
             uploaded_at       = CURRENT_TIMESTAMP
+        WHERE project_id = #{projectId}
+    </update>
+
+    <!-- GLB 파일 업로드 완료 후 glb_storage_key 갱신 -->
+    <update id="updateProjectGlbStorage" parameterType="map">
+        UPDATE bim_project
+        SET glb_storage_key = #{glbStorageKey}
         WHERE project_id = #{projectId}
     </update>
 
