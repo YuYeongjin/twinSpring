@@ -127,4 +127,45 @@ public interface BimService {
      * @return storage key (없으면 null)
      */
     String getStorageKey(String projectId);
+
+    /**
+     * 프로젝트 전체 부재를 지정 오프셋만큼 일괄 이동합니다.
+     * C# 서버에 부재 수만큼 PUT 요청을 병렬로 전송합니다.
+     *
+     * @param projectId 대상 프로젝트 ID
+     * @param deltaX    X축 이동량 (미터, 음수 가능)
+     * @param deltaY    Y축 이동량 (미터, 음수 가능)
+     * @param deltaZ    Z축 이동량 (미터, 음수 가능)
+     * @return {success, updated, projectId, deltaX, deltaY, deltaZ}
+     */
+    Mono<Map<String, Object>> translateProjectElements(String projectId, double deltaX, double deltaY, double deltaZ);
+
+    /**
+     * 선택된 부재들만 지정 오프셋만큼 이동합니다.
+     *
+     * @param projectId  대상 프로젝트 ID
+     * @param elementIds 이동할 부재 ID 목록
+     * @param deltaX     X축 이동량 (미터)
+     * @param deltaY     Y축 이동량 (미터)
+     * @param deltaZ     Z축 이동량 (미터)
+     * @return {success, updated, skipped, projectId, deltaX, deltaY, deltaZ}
+     */
+    Mono<Map<String, Object>> translateSelectedElements(String projectId, List<String> elementIds,
+                                                        double deltaX, double deltaY, double deltaZ);
+
+    /**
+     * 부재 통합 변환 (이동·회전·크기 동시 적용).
+     * elementIds 가 null 이면 프로젝트 전체, 비어있지 않으면 해당 부재만 처리합니다.
+     *
+     * @param projectId  대상 프로젝트 ID
+     * @param elementIds 대상 부재 ID 목록 (null = 전체)
+     * @param dPosX/Y/Z  위치 오프셋 (미터)
+     * @param dRotX/Y/Z  회전 오프셋 (도, degrees)
+     * @param sclX/Y/Z   크기 배율 (1.0 = 변화 없음, 2.0 = 2배)
+     */
+    Mono<Map<String, Object>> transformElements(
+            String projectId, List<String> elementIds,
+            double dPosX, double dPosY, double dPosZ,
+            double dRotX, double dRotY, double dRotZ,
+            double sclX,  double sclY,  double sclZ);
 }

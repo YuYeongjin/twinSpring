@@ -87,7 +87,7 @@ def responder_node(state: AgentState) -> dict:
         "messages": [AIMessage(content=content)],
         "intent":   domain,
     }
-    for key in ("bim_data", "sensor_data", "report_data"):
+    for key in ("bim_data", "sensor_data", "report_data", "wbs_data", "safe_data"):
         val = tool_results.get(key)
         if val is not None:
             out[key] = val
