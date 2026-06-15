@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import ReactDOM from "react-dom";
 import { useT } from "../../../i18n/LanguageContext";
+import { getBimAutoTaskLabel } from "../bimTaskGenerator";
 
 const STATUS_OPTIONS = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED", "DELAYED"];
 const STATUS_LABEL = {
@@ -331,7 +332,8 @@ function CpmCell({ value, field, taskId, isOverridden, editCell, editVal, onStar
 //  메인 컴포넌트
 // ══════════════════════════════════════════════════════════════════
 export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, readOnly = false }) {
-  const t = useT('wbs');
+  const t   = useT('wbs');
+  const tWp = useT('workPlan');
 
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData]   = useState({});
@@ -562,11 +564,12 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
     }
     if (col.key === "taskName") {
       const isChild = !!task.parentTaskId;
+      const label = getBimAutoTaskLabel(task, tWp) || task.taskName || "";
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: isChild ? 12 : 0 }}>
           {isChild && <span style={{ color: '#253347', fontSize: 10, flexShrink: 0 }}>└</span>}
           <span className="text-xs break-all" style={{ color: isChild ? '#94a3b8' : '#e2e8f0' }}>
-            {task.taskName ?? ""}
+            {label}
           </span>
         </div>
       );

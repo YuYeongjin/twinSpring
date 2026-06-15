@@ -16,7 +16,54 @@ import AxiosCustom from '../../axios/AxiosCustom';
 import { computeWorkPlan } from '../bim/component/WorkPlanDashboard';
 import { detectFloors } from '../integration/floorUtils';
 
-// computeWorkPlan에 전달할 한국어 번역 스텁 (DB 저장용이므로 한국어 고정)
+// ── 런타임 번역 (BIM 자동생성 태스크 표시용) ─────────────────────
+// notes 패턴으로 phase/type을 감지해 현재 언어로 번역 반환
+const PHASE_TO_KEY = {
+  earthwork:  'taskEarthwork',
+  foundation: 'taskFoundation',
+  finishing:  'taskFinishing',
+  mep:        'taskMep',
+  completion: 'taskCompletion',
+  design:     'taskDesign',
+  temporary:  'taskTemporary',
+};
+
+/**
+ * BIM 자동생성 태스크의 이름을 현재 언어로 반환한다.
+ * t는 'workPlan' 네임스페이스의 번역 함수여야 한다.
+ * notes 패턴을 인식하지 못하면 task.taskName을 그대로 반환.
+ */
+export function getBimAutoTaskLabel(task, t) {
+  const notes = task.notes || '';
+
+  // FLOOR 포맷: BIM:{id}:FLOOR:{n}:FRAME|SLAB
+  const floorMatch = notes.match(/^BIM:[^:]+:FLOOR:(\d+):(FRAME|SLAB)$/);
+  if (floorMatch) {
+    const floor = `F${parseInt(floorMatch[1]) + 1}`;
+    return floorMatch[2] === 'FRAME'
+      ? t('taskFrame', { floor })
+      : t('taskSlab',  { floor });
+  }
+
+  // PLAN 포맷 (신규): BIM:{id}:PLAN:{i}:{phase}[:{floorIdx}]
+  const planMatch = notes.match(/^BIM:[^:]+:PLAN:\d+:([a-z]+)(?::(\d+))?$/);
+  if (planMatch) {
+    const phase    = planMatch[1];
+    const floorIdx = planMatch[2] !== undefined ? parseInt(planMatch[2]) : null;
+
+    if (floorIdx !== null && (phase === 'frame' || phase === 'slab' || phase === 'wall')) {
+      const floor = `F${floorIdx + 1}`;
+      if (phase === 'frame') return t('taskFrame', { floor });
+      if (phase === 'slab')  return t('taskSlab',  { floor });
+      if (phase === 'wall')  return t('taskWall',  { floor });
+    }
+    if (PHASE_TO_KEY[phase]) return t(PHASE_TO_KEY[phase]);
+  }
+
+  return task.taskName || '';
+}
+
+// computeWorkPlan에 전달할 한국어 번역 스텁 (DB taskName 저장용 — 표시는 getBimAutoTaskLabel이 담당)
 function koreanT(key, params = {}) {
   switch (key) {
     case 'taskFrame':    return `${params.floor} 골조공사`;
@@ -256,8 +303,18 @@ export async function generateBimWbsTasks({
   if (!rootTaskId) return 0;
 
   // ── 공사 단계별 태스크 생성 (루트 하위) ─────────────────────
+  // notes에 phase(및 층별 floorIdx)를 포함해 표시 시점에 다국어 번역이 가능하게 한다.
+  let planFloorIdx = -1;
   for (let i = 0; i < plan.tasks.length; i++) {
     const task = plan.tasks[i];
+
+    let noteSuffix = task.phase || '';
+    if (task.phase === 'frame' || task.phase === 'slab' || task.phase === 'wall') {
+      if (task.phase === 'frame') planFloorIdx++;
+      if (planFloorIdx < 0) planFloorIdx = 0;
+      noteSuffix = `${task.phase}:${planFloorIdx}`;
+    }
+
     await AxiosCustom.post(`/api/wbs/project/${wbsProjectId}/task`, {
       taskName:       task.name,
       startDate:      shiftDate(task.start),
@@ -265,8 +322,8 @@ export async function generateBimWbsTasks({
       duration:       task.days,
       progress:       0,
       status:         'NOT_STARTED',
-      responsible:    `${task.workers}명`,
-      notes:          `BIM:${bimId}:PLAN:${i}`,
+      responsible:    `${task.workers}`,
+      notes:          `BIM:${bimId}:PLAN:${i}:${noteSuffix}`,
       source:         'BIM_AUTO',
       wbsCode:        `${rootCode}.${i + 1}`,
       sortOrder:      globalSortOrder++,
