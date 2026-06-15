@@ -874,4 +874,211 @@ public class BimServiceImpl implements BimService {
         if (project == null) return null;
         return (String) project.get("storageKey");
     }
+
+    // ── 부재 일괄 변환 (이동 / 회전 / 크기) ────────────────────────────────
+
+    @Override
+    public Mono<Map<String, Object>> translateProjectElements(
+            String projectId, double deltaX, double deltaY, double deltaZ) {
+        log.info("[BIM] 전체 부재 이동 요청: projectId={}, ΔX={}, ΔY={}, ΔZ={}", projectId, deltaX, deltaY, deltaZ);
+        ParameterizedTypeReference<List<BimElementDTO>> typeRef = new ParameterizedTypeReference<>() {};
+        return webClient.get()
+                .uri("/api/bim/project/{projectId}", projectId)
+                .retrieve()
+                .bodyToMono(typeRef)
+                .flatMap(elements -> {
+                    if (elements == null || elements.isEmpty()) {
+                        Map<String, Object> empty = new LinkedHashMap<>();
+                        empty.put("success",   true);
+                        empty.put("updated",   0);
+                        empty.put("projectId", projectId);
+                        return Mono.just(empty);
+                    }
+                    // 각 부재 좌표 오프셋 적용 후 C# PUT 요청 병렬 전송
+                    List<Mono<Void>> updates = elements.stream().map(el -> {
+                        if (deltaX != 0) el.setPositionX((el.getPositionX() != null ? el.getPositionX() : 0.0) + deltaX);
+                        if (deltaY != 0) el.setPositionY((el.getPositionY() != null ? el.getPositionY() : 0.0) + deltaY);
+                        if (deltaZ != 0) el.setPositionZ((el.getPositionZ() != null ? el.getPositionZ() : 0.0) + deltaZ);
+                        return webClient.put()
+                                .uri("/api/bim/element")
+                                .bodyValue(el)
+                                .retrieve()
+                                .bodyToMono(Void.class)
+                                .onErrorResume(e -> {
+                                    log.warn("[BIM] 부재 이동 실패 (무시): elementId={}, err={}", el.getElementId(), e.getMessage());
+                                    return Mono.empty();
+                                });
+                    }).collect(Collectors.toList());
+
+                    int total = elements.size();
+                    return Flux.merge(updates).then(Mono.fromSupplier(() -> {
+                        Map<String, Object> result = new LinkedHashMap<>();
+                        result.put("success",   true);
+                        result.put("updated",   total);
+                        result.put("projectId", projectId);
+                        result.put("deltaX",    deltaX);
+                        result.put("deltaY",    deltaY);
+                        result.put("deltaZ",    deltaZ);
+                        return result;
+                    }));
+                })
+                .onErrorResume(e -> {
+                    log.error("[BIM] translateProjectElements 실패: {}", e.getMessage(), e);
+                    Map<String, Object> err = new LinkedHashMap<>();
+                    err.put("success", false);
+                    err.put("error",   e.getMessage());
+                    return Mono.just(err);
+                });
+    }
+
+    @Override
+    public Mono<Map<String, Object>> translateSelectedElements(
+            String projectId, List<String> elementIds,
+            double deltaX, double deltaY, double deltaZ) {
+        log.info("[BIM] 선택 부재 이동: projectId={}, ids={}, ΔX={}, ΔY={}, ΔZ={}",
+                projectId, elementIds, deltaX, deltaY, deltaZ);
+
+        if (elementIds == null || elementIds.isEmpty()) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("success", false);
+            empty.put("error",   "선택된 부재가 없습니다.");
+            return Mono.just(empty);
+        }
+
+        Set<String> idSet = new java.util.HashSet<>(elementIds);
+        ParameterizedTypeReference<List<BimElementDTO>> typeRef = new ParameterizedTypeReference<>() {};
+
+        return webClient.get()
+                .uri("/api/bim/project/{projectId}", projectId)
+                .retrieve()
+                .bodyToMono(typeRef)
+                .flatMap(elements -> {
+                    List<BimElementDTO> targets = (elements == null ? List.of() : elements)
+                            .stream()
+                            .filter(el -> el.getElementId() != null && idSet.contains(el.getElementId()))
+                            .collect(Collectors.toList());
+
+                    int skipped = (elements == null ? 0 : elements.size()) - targets.size();
+
+                    if (targets.isEmpty()) {
+                        Map<String, Object> none = new LinkedHashMap<>();
+                        none.put("success", false);
+                        none.put("error",   "일치하는 부재를 찾을 수 없습니다.");
+                        none.put("requested", elementIds.size());
+                        return Mono.just(none);
+                    }
+
+                    List<Mono<Void>> updates = targets.stream().map(el -> {
+                        if (deltaX != 0) el.setPositionX((el.getPositionX() != null ? el.getPositionX() : 0.0) + deltaX);
+                        if (deltaY != 0) el.setPositionY((el.getPositionY() != null ? el.getPositionY() : 0.0) + deltaY);
+                        if (deltaZ != 0) el.setPositionZ((el.getPositionZ() != null ? el.getPositionZ() : 0.0) + deltaZ);
+                        return webClient.put()
+                                .uri("/api/bim/element")
+                                .bodyValue(el)
+                                .retrieve()
+                                .bodyToMono(Void.class)
+                                .onErrorResume(e -> {
+                                    log.warn("[BIM] 선택 부재 이동 실패 (무시): elementId={}", el.getElementId());
+                                    return Mono.empty();
+                                });
+                    }).collect(Collectors.toList());
+
+                    int total   = targets.size();
+                    int skipped2 = skipped;
+                    return Flux.merge(updates).then(Mono.fromSupplier(() -> {
+                        Map<String, Object> result = new LinkedHashMap<>();
+                        result.put("success",   true);
+                        result.put("updated",   total);
+                        result.put("skipped",   skipped2);
+                        result.put("projectId", projectId);
+                        result.put("deltaX",    deltaX);
+                        result.put("deltaY",    deltaY);
+                        result.put("deltaZ",    deltaZ);
+                        return result;
+                    }));
+                })
+                .onErrorResume(e -> {
+                    log.error("[BIM] translateSelectedElements 실패: {}", e.getMessage(), e);
+                    Map<String, Object> err = new LinkedHashMap<>();
+                    err.put("success", false);
+                    err.put("error",   e.getMessage());
+                    return Mono.just(err);
+                });
+    }
+
+    @Override
+    public Mono<Map<String, Object>> transformElements(
+            String projectId, List<String> elementIds,
+            double dPosX, double dPosY, double dPosZ,
+            double dRotX, double dRotY, double dRotZ,
+            double sclX,  double sclY,  double sclZ) {
+
+        log.info("[BIM] transform: projectId={} ids={} pos=({},{},{}) rot=({},{},{}) scl=({},{},{})",
+                projectId, elementIds == null ? "ALL" : elementIds.size(),
+                dPosX, dPosY, dPosZ, dRotX, dRotY, dRotZ, sclX, sclY, sclZ);
+
+        Set<String> idFilter = (elementIds != null && !elementIds.isEmpty())
+                ? new java.util.HashSet<>(elementIds) : null;
+
+        ParameterizedTypeReference<List<BimElementDTO>> typeRef = new ParameterizedTypeReference<>() {};
+        return webClient.get()
+                .uri("/api/bim/project/{projectId}", projectId)
+                .retrieve()
+                .bodyToMono(typeRef)
+                .flatMap(all -> {
+                    List<BimElementDTO> targets = (all == null ? List.of() : all).stream()
+                            .filter(el -> idFilter == null || (el.getElementId() != null && idFilter.contains(el.getElementId())))
+                            .collect(Collectors.toList());
+
+                    if (targets.isEmpty()) {
+                        Map<String, Object> none = new LinkedHashMap<>();
+                        none.put("success", false);
+                        none.put("error",   idFilter != null ? "일치하는 부재를 찾을 수 없습니다." : "부재가 없습니다.");
+                        return Mono.just(none);
+                    }
+
+                    List<Mono<Void>> updates = targets.stream().map(el -> {
+                        // 위치 오프셋
+                        if (dPosX != 0) el.setPositionX((el.getPositionX() != null ? el.getPositionX() : 0.0) + dPosX);
+                        if (dPosY != 0) el.setPositionY((el.getPositionY() != null ? el.getPositionY() : 0.0) + dPosY);
+                        if (dPosZ != 0) el.setPositionZ((el.getPositionZ() != null ? el.getPositionZ() : 0.0) + dPosZ);
+                        // 회전 오프셋 (도 단위)
+                        if (dRotX != 0) el.setRotationX((el.getRotationX() != null ? el.getRotationX() : 0.0) + dRotX);
+                        if (dRotY != 0) el.setRotationY((el.getRotationY() != null ? el.getRotationY() : 0.0) + dRotY);
+                        if (dRotZ != 0) el.setRotationZ((el.getRotationZ() != null ? el.getRotationZ() : 0.0) + dRotZ);
+                        // 크기 배율 (1.0 = 변화 없음)
+                        if (sclX != 1.0 && sclX > 0) el.setSizeX((el.getSizeX() != null ? el.getSizeX() : 1.0) * sclX);
+                        if (sclY != 1.0 && sclY > 0) el.setSizeY((el.getSizeY() != null ? el.getSizeY() : 1.0) * sclY);
+                        if (sclZ != 1.0 && sclZ > 0) el.setSizeZ((el.getSizeZ() != null ? el.getSizeZ() : 1.0) * sclZ);
+                        return webClient.put()
+                                .uri("/api/bim/element")
+                                .bodyValue(el)
+                                .retrieve()
+                                .bodyToMono(Void.class)
+                                .onErrorResume(e -> {
+                                    log.warn("[BIM] transform 실패 (무시): elementId={}", el.getElementId());
+                                    return Mono.empty();
+                                });
+                    }).collect(Collectors.toList());
+
+                    int total = targets.size();
+                    return Flux.merge(updates).then(Mono.fromSupplier(() -> {
+                        Map<String, Object> result = new LinkedHashMap<>();
+                        result.put("success",   true);
+                        result.put("updated",   total);
+                        result.put("projectId", projectId);
+                        result.put("position",  Map.of("dx", dPosX, "dy", dPosY, "dz", dPosZ));
+                        result.put("rotation",  Map.of("dx", dRotX, "dy", dRotY, "dz", dRotZ));
+                        result.put("scale",     Map.of("x", sclX, "y", sclY, "z", sclZ));
+                        return result;
+                    }));
+                })
+                .onErrorResume(e -> {
+                    log.error("[BIM] transformElements 실패: {}", e.getMessage(), e);
+                    Map<String, Object> err = new LinkedHashMap<>();
+                    err.put("success", false);
+                    err.put("error",   e.getMessage());
+                    return Mono.just(err);
+                });
+    }
 }

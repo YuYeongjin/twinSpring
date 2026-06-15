@@ -57,7 +57,8 @@ class ChatContext(BaseModel):
     simulationProjectId: Optional[str] = None
     wbsProjectId: Optional[str] = None
     directAgent: Optional[str] = None
-    uiLang: Optional[str] = None          # UI에서 전달한 언어 설정 (ko|en|ja)
+    uiLang: Optional[str] = None               # UI에서 전달한 언어 설정 (ko|en|ja)
+    selectedElementIds: Optional[List[str]] = None  # BIM 뷰어에서 선택된 부재 ID 목록
 
 class ChatRequest(BaseModel):
     message: str
@@ -72,6 +73,8 @@ class ChatResponse(BaseModel):
     bimData: Optional[dict] = None
     sensorData: Optional[dict] = None
     reportData: Optional[dict] = None
+    wbsData: Optional[dict] = None
+    safeData: Optional[dict] = None
 
 class MultimodalRequest(BaseModel):
     message: str = "Please analyze this image."
@@ -80,22 +83,42 @@ class MultimodalRequest(BaseModel):
 
 
 def _build_initial_state(req: ChatRequest, messages: list) -> dict:
+    session_data = _session_store.get(req.session_id, {})
     return {
         "messages":              messages,
         "domain":                None,
         "need_rag":              False,
-        "lang":                  req.context.uiLang or None,  # UI 언어 설정 우선 사용
+        "lang":                  req.context.uiLang or None,
         "rag_context":           None,
         "tool_results":          None,
         "bim_project_id":        req.context.projectId,
         "simulation_project_id": req.context.simulationProjectId,
         "wbs_project_id":        req.context.wbsProjectId,
         "direct_agent":          req.context.directAgent,
+        "selected_element_ids":  req.context.selectedElementIds,
         "bim_data":              None,
         "sensor_data":           None,
         "report_data":           None,
+        "wbs_data":              None,
+        "safe_data":             None,
         "intent":                None,
+        # ── 세션 지속 BIM 상태 (취소·저장용) ───────────────────────────────
+        "bim_undo_stack":        session_data.get("bim_undo_stack", []),
+        "bim_snapshot":          session_data.get("bim_snapshot"),
     }
+
+
+def _save_bim_session(session_id: str, result: dict) -> None:
+    """graph 실행 결과에서 BIM 세션 데이터(undo stack, snapshot)를 추출해 저장합니다."""
+    undo  = result.get("bim_undo_stack")
+    snap  = result.get("bim_snapshot")
+    if undo is None and snap is None:
+        return
+    store = _session_store.setdefault(session_id, {})
+    if undo is not None:
+        store["bim_undo_stack"] = undo[-50:]   # 최대 50건
+    if snap is not None:
+        store["bim_snapshot"] = snap
 
 
 def _history_to_messages(history: List[HistoryMessage]) -> list:
@@ -127,6 +150,8 @@ def chat(req: ChatRequest):
             intent="chat",
         )
 
+    _save_bim_session(req.session_id, result)
+
     result_msgs = result.get("messages", [])
     last_content = result_msgs[-1].content if result_msgs else "No response received."
 
@@ -137,6 +162,8 @@ def chat(req: ChatRequest):
         bimData=result.get("bim_data"),
         sensorData=result.get("sensor_data"),
         reportData=result.get("report_data"),
+        wbsData=result.get("wbs_data"),
+        safeData=result.get("safe_data"),
     )
 
 
@@ -179,6 +206,7 @@ def chat_stream(req: ChatRequest):
                 yield f"data: {json.dumps({'step': agent_name}, ensure_ascii=False)}\n\n"
 
                 result      = graph.invoke(initial_state)
+                _save_bim_session(req.session_id, result)
                 result_msgs = result.get("messages", [])
                 last_content = result_msgs[-1].content if result_msgs else ""
 
@@ -194,6 +222,8 @@ def chat_stream(req: ChatRequest):
                     "bimData":    result.get("bim_data"),
                     "sensorData": result.get("sensor_data"),
                     "reportData": result.get("report_data"),
+                    "wbsData":    result.get("wbs_data"),
+                    "safeData":   result.get("safe_data"),
                 }
                 yield f"data: {json.dumps(done_event, ensure_ascii=False)}\n\n"
                 return

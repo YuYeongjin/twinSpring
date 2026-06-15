@@ -1,5 +1,8 @@
 """
 Sensor Domain Agent — LLM 없음, Tool 전용 디스패처
+
+변경: get_sensor_trend(TimescaleDB time_bucket) 추가로 차트용 집계 데이터 제공.
+     임계값 초과 시 alerts 자동 생성.
 """
 from __future__ import annotations
 
@@ -18,6 +21,30 @@ _HISTORY_PAT = re.compile(
 )
 _NUM_PAT = re.compile(r"\d+")
 
+# ── 알람 임계값 ────────────────────────────────────────────────────────────────
+_TEMP_HIGH  = 35.0
+_TEMP_LOW   =  5.0
+_HUM_HIGH   = 80.0
+_HUM_LOW    = 20.0
+
+
+def _check_alerts(latest: dict) -> list:
+    """최신 센서값에서 임계값 초과 항목을 알람 리스트로 반환."""
+    alerts = []
+    temp = latest.get("temperature")
+    hum  = latest.get("humidity")
+    if temp is not None:
+        if temp > _TEMP_HIGH:
+            alerts.append({"type": "HIGH_TEMP",     "value": temp, "threshold": _TEMP_HIGH, "level": "danger"})
+        elif temp < _TEMP_LOW:
+            alerts.append({"type": "LOW_TEMP",      "value": temp, "threshold": _TEMP_LOW,  "level": "warning"})
+    if hum is not None:
+        if hum > _HUM_HIGH:
+            alerts.append({"type": "HIGH_HUMIDITY", "value": hum,  "threshold": _HUM_HIGH,  "level": "warning"})
+        elif hum < _HUM_LOW:
+            alerts.append({"type": "LOW_HUMIDITY",  "value": hum,  "threshold": _HUM_LOW,   "level": "warning"})
+    return alerts
+
 
 def _invoke(tool_fn, args: dict) -> dict:
     logger.info("[sensor] tool 호출: %s args=%s", tool_fn.name, args)
@@ -31,7 +58,7 @@ def _invoke(tool_fn, args: dict) -> dict:
 
 def run_sensor_agent(state: AgentState) -> dict:
     logger.info("[NODE] ▶ sensor_agent 진입")
-    from tools.sensor_tools import get_latest_sensor, get_sensor_history
+    from tools.sensor_tools import get_latest_sensor, get_sensor_history, get_sensor_trend
 
     messages = state.get("messages", [])
     text     = messages[-1].content if messages and hasattr(messages[-1], "content") else ""
@@ -39,28 +66,39 @@ def run_sensor_agent(state: AgentState) -> dict:
 
     nums  = _NUM_PAT.findall(text)
     limit = int(nums[0]) if nums else 20
+    limit = max(1, min(limit, 100))
 
-    if _HISTORY_PAT.search(text):
-        result = _invoke(get_sensor_history, {"limit": limit})
-        latest = result.get("latest") or {}
-        records = result.get("records", [])
-    else:
-        # 최신 1건 조회 + 차트용 히스토리 병행
-        latest_raw = _invoke(get_latest_sensor, {})
-        hist       = _invoke(get_sensor_history, {"limit": 20})
-        latest     = latest_raw if not latest_raw.get("error") else hist.get("latest", {})
-        records    = hist.get("records", [])
-        result     = latest_raw
+    # ── 1) 최신값 + 원시 이력 + 24h 집계 트렌드 항상 병렬 조회 ─────────────────
+    latest_raw = _invoke(get_latest_sensor, {})
+    hist       = _invoke(get_sensor_history, {"limit": limit})
+    trend      = _invoke(get_sensor_trend,   {"hours": 24, "bucket": "1 hour"})
 
-    # 프론트엔드 SensorInlineChart 가 기대하는 구조로 정규화
-    # { sensor: [{time, temperature, humidity}...], latest: {...}, alerts: [] }
+    latest  = latest_raw if not latest_raw.get("error") else hist.get("latest", {})
+    records = hist.get("records", [])
+    alerts  = _check_alerts(latest)
+
+    # ── 2) chart 타입 결정 ──────────────────────────────────────────────────────
+    # 트렌드·추이·그래프 요청이면 집계 데이터를 primary로, 아니면 원시 records를 primary로
+    is_trend_req = bool(_HISTORY_PAT.search(text))
+
     sensor_data = {
-        "sensor":  records,
-        "latest":  latest,
-        "alerts":  [],
+        # 원시 이력 (테이블, 소형 라인차트)
+        "sensor":    records,
+        # TimescaleDB 집계 트렌드 (avg_temp, min_temp, max_temp, avg_humidity)
+        "trend":     trend.get("trend", []),
+        "latest":    latest,
+        "alerts":    alerts,
+        "summary":   trend.get("summary", {}),
+        "chartType": "line",
+        "primaryKey": "trend" if is_trend_req else "sensor",
     }
 
+    logger.info(
+        "[sensor] records=%d trend=%d alerts=%d",
+        len(records), len(trend.get("trend", [])), len(alerts),
+    )
+
     return {
-        "tool_results": {"data": result, "sensor_data": sensor_data},
+        "tool_results": {"data": latest_raw, "sensor_data": sensor_data},
         "sensor_data":  sensor_data,
     }
