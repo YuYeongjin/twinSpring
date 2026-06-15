@@ -34,4 +34,10 @@ public interface ProjectLinkDAO {
     int countLink(@Param("wbsProjectId") String wbsProjectId,
                   @Param("linkedType") String linkedType,
                   @Param("linkedProjectId") String linkedProjectId);
+
+    /** note(instanceKey)까지 포함한 중복 확인 (동일 BIM 여러 번 추가 시 개별 구분) */
+    int countLinkByNote(@Param("wbsProjectId") String wbsProjectId,
+                        @Param("linkedType") String linkedType,
+                        @Param("linkedProjectId") String linkedProjectId,
+                        @Param("note") String note);
 }

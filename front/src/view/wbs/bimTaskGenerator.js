@@ -198,11 +198,13 @@ export async function generateBimWbsTasks({
   existingTasks = [],
   startDate = null,
   layers = null,
+  instanceKey = null,   // 동일 BIM 여러 번 추가 시 구분용 고유 키
 }) {
   const bimId      = String(bimProjectId);
-  const rootMarker = `BIM:${bimId}:ROOT`;
+  // instanceKey 가 있으면 BIM:{id}:ROOT:{key}, 없으면 BIM:{id}:ROOT
+  const rootMarker = instanceKey ? `BIM:${bimId}:ROOT:${instanceKey}` : `BIM:${bimId}:ROOT`;
 
-  // 이미 생성된 경우 중복 방지
+  // 동일한 instanceKey 의 루트가 이미 있으면 중복 생성 방지
   if (existingTasks.find(t => t.notes === rootMarker)) return 0;
 
   // 작업계획 차트와 동일한 알고리즘으로 공사 단계별 계획 계산

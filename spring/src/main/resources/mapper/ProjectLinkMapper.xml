@@ -71,12 +71,21 @@
     </select>
 
     <select id="getLinkById" parameterType="string" resultType="map">
-        SELECT link_id           AS "linkId",
-               wbs_project_id   AS "wbsProjectId",
-               linked_type      AS "linkedType",
-               linked_project_id AS "linkedProjectId"
+        SELECT link_id            AS "linkId",
+               wbs_project_id    AS "wbsProjectId",
+               linked_type       AS "linkedType",
+               linked_project_id AS "linkedProjectId",
+               note              AS "note"
         FROM project_link
         WHERE link_id = #{linkId}
+    </select>
+
+    <select id="countLinkByNote" resultType="int">
+        SELECT COUNT(*) FROM project_link
+        WHERE wbs_project_id    = #{wbsProjectId}
+          AND linked_type       = #{linkedType}
+          AND linked_project_id = #{linkedProjectId}
+          AND note              = #{note}
     </select>
 
     <insert id="insertLink" parameterType="map">

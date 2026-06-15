@@ -163,15 +163,28 @@ function BimTaskBar({ task, structName }) {
   );
 }
 
-// ── 구분선 레이블 ─────────────────────────────────────────────
-function SectionLabel({ label }) {
+// ── 접을 수 있는 섹션 (기본 닫힘) ───────────────────────────────
+function CollapsibleSection({ label, count, children }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '8px 0 6px' }}>
-      <div style={{ flex: 1, height: 1, background: '#111e2d' }} />
-      <span style={{ fontSize: 8, color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0 }}>
-        {label}
-      </span>
-      <div style={{ flex: 1, height: 1, background: '#111e2d' }} />
+    <div>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, margin: '8px 0 6px' }}>
+          <div style={{ flex: 1, height: 1, background: '#111e2d' }} />
+          <span style={{ fontSize: 8, color: open ? '#60a5fa' : '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0, transition: 'color 0.2s' }}>
+            {label}
+          </span>
+          {count != null && (
+            <span style={{ fontSize: 8, color: '#253347', flexShrink: 0 }}>({count})</span>
+          )}
+          <span style={{ fontSize: 9, color: '#374151', flexShrink: 0 }}>{open ? '▾' : '▸'}</span>
+          <div style={{ flex: 1, height: 1, background: '#111e2d' }} />
+        </div>
+      </button>
+      {open && <div style={{ paddingBottom: 2 }}>{children}</div>}
     </div>
   );
 }
@@ -308,8 +321,7 @@ export default function WbsProgressPanel() {
 
           {/* WBS 태스크 */}
           {wbsTasks.length > 0 && (
-            <>
-              <SectionLabel label="WBS" />
+            <CollapsibleSection label="WBS" count={wbsTasks.length}>
               {wbsTasks.map((tk, i) => (
                 <WbsBar
                   key={tk.taskId}
@@ -319,17 +331,16 @@ export default function WbsProgressPanel() {
                   t={t}
                 />
               ))}
-            </>
+            </CollapsibleSection>
           )}
 
           {/* BIM 작업계획 태스크 */}
           {bimPlans.map(plan => (
-            <div key={plan.structureId}>
-              <SectionLabel label={`BIM · ${plan.structureName}`} />
+            <CollapsibleSection key={plan.structureId} label={`BIM · ${plan.structureName}`} count={plan.tasks.length}>
               {plan.tasks.map((task, i) => (
                 <BimTaskBar key={i} task={task} structName={plan.structureName} />
               ))}
-            </div>
+            </CollapsibleSection>
           ))}
         </>
       )}

@@ -414,6 +414,12 @@ function reducer(state, action) {
         structures: state.structures.map(s => s.id === action.id ? { ...s, offset: action.offset } : s),
       };
 
+    case 'UPDATE_STRUCTURE':
+      return {
+        ...state,
+        structures: state.structures.map(s => s.id === action.id ? { ...s, ...action.updates } : s),
+      };
+
     // BIM 구조물 elements를 API에서 로드한 후 채워넣기
     // 자동 작업 중이면 BIM 로드 완료 시점에 장비 경로 재계산
     case 'SET_STRUCTURE_ELEMENTS': {
