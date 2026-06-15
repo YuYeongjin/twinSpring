@@ -24,4 +24,8 @@ public interface IntegrationDAO {
     void updateSiteOrigin(Map<String, Object> params);
 
     void deleteIntegrationProject(@Param("projectId") String projectId);
+
+    /** project_link 삭제 전, 통합관제에 동일한 WBS+BIM 조합이 남아있는지 확인 */
+    int countIntegrationByWbsAndBim(@Param("wbsProjectId") String wbsProjectId,
+                                    @Param("bimProjectId")  String bimProjectId);
 }

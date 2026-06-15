@@ -1488,13 +1488,21 @@ export default function ControlSidebar() {
                     // BIM 구조물 제거 시 연결된 project_link도 삭제 (재로드 시 재추가 방지)
                     if (s.type === 'bim' && s.bimProjectId && projectMeta?.wbsProjectId) {
                       try {
-                        const res = await AxiosCustom.get(
-                          `/api/project-link/linked?type=BIM&id=${s.bimProjectId}`
-                        );
-                        const link = (res.data || []).find(
-                          l => String(l.wbsProjectId) === String(projectMeta.wbsProjectId)
-                        );
-                        if (link) await AxiosCustom.delete(`/api/project-link/${link.linkId}`);
+                        if (s.linkId) {
+                          // linkId가 구조물에 저장되어 있으면 직접 삭제
+                          await AxiosCustom.delete(`/api/project-link/${s.linkId}`);
+                        } else {
+                          // 폴백: rootMarker로 검색 후 삭제
+                          const res = await AxiosCustom.get(
+                            `/api/project-link/linked?type=BIM&id=${s.bimProjectId}`
+                          );
+                          const rootMarker = `BIM:${s.bimProjectId}:ROOT:${s.id}`;
+                          const links = (res.data || []).filter(
+                            l => String(l.wbsProjectId) === String(projectMeta.wbsProjectId)
+                          );
+                          const link = links.find(l => l.note === rootMarker) || links[0];
+                          if (link) await AxiosCustom.delete(`/api/project-link/${link.linkId}`);
+                        }
                       } catch { /* 링크 없거나 삭제 실패 — 무시 */ }
                     }
                     dispatch({ type: 'REMOVE_STRUCTURE', id: s.id });

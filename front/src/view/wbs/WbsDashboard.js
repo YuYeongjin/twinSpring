@@ -527,6 +527,20 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
   }, [loadAllTasks]);
 
   const handleDeleteTask = useCallback(async (taskId) => {
+    // BIM 루트 태스크 삭제 시 project_link도 같이 제거 (통합관제 재로드 시 재추가 방지)
+    const task = tasks.find(t => t.taskId === taskId);
+    if (task?.source === 'BIM_AUTO' && /^BIM:[^:]+:ROOT:.+$/.test(task.notes || '') && selectedProject?.projectId) {
+      try {
+        const linksRes = await AxiosCustom.get(`/api/project-link/wbs/${selectedProject.projectId}`);
+        const link = (linksRes.data || []).find(l => l.note === task.notes);
+        if (link) {
+          await AxiosCustom.delete(`/api/project-link/${link.linkId}`);
+          // 통합관제 씬에도 즉시 반영 (같은 세션에서 열려있는 경우)
+          window.dispatchEvent(new CustomEvent('bim-structure-removed', { detail: { note: task.notes } }));
+        }
+      } catch { /* 무시 */ }
+    }
+
     await AxiosCustom.delete(`/api/wbs/task/${taskId}`);
     // 삭제된 태스크 + 모든 하위 자식을 state에서 제거
     const collectDescendants = (id, snapshot) => {
@@ -545,7 +559,7 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
       return prev.filter(t => !toRemove.has(t.taskId));
     });
     await loadAllTasks();
-  }, [selectedProject, loadAllTasks]);
+  }, [tasks, selectedProject, loadAllTasks]);
 
   // ── 필터 ──────────────────────────────────────────────────────
   const filteredProjects = projects.filter(p => {
@@ -557,10 +571,13 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
     return true;
   });
 
-  // 간트에 표시할 작업: 프로젝트 선택 → 해당 작업, 없으면 전체(필터 반영)
+  // 간트에 표시할 작업: BIM 자식(ROOT 아닌 BIM_AUTO) 제외, 프로젝트 선택 → 해당 작업, 없으면 전체
+  const hideBimChildren = (arr) =>
+    arr.filter(t => t.source !== 'BIM_AUTO' || /^BIM:[^:]+:ROOT(:[^:]+)?$/.test(t.notes || ''));
+
   const ganttTasks = selectedProject
-    ? tasks
-    : (statusFilter
+    ? hideBimChildren(tasks)
+    : hideBimChildren(statusFilter
       ? allTasks.filter(t =>
         projects.find(p => p.projectId === t.wbsProjectId)?.status === statusFilter
       )
@@ -947,7 +964,7 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
                           </button>
                         </div>
                       ) : (
-                        <GanttChart tasks={tasks} groupByProject={false} onTaskClick={() => setDetailTab("table")} />
+                        <GanttChart tasks={ganttTasks} groupByProject={false} onTaskClick={() => setDetailTab("table")} />
                       )}
                     </>
                   )}

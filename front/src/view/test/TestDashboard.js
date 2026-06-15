@@ -99,18 +99,18 @@ function computeArmPoints(st, machine) {
 }
 
 function TransparentBimElement({ element, offsetX, offsetZ, isColliding }) {
-  // BIM 좌표 규칙: positionY=평면Y(→Three.js Z), positionZ=높이(→Three.js Y)
-  //               sizeY=깊이크기(→Three.js Z), sizeZ=높이크기(→Three.js Y)
+  // BIM 좌표 규칙: positionY=높이(→Three.js Y), positionZ=깊이(→Three.js Z)
+  //               sizeY=높이크기(→Three.js Y), sizeZ=깊이크기(→Three.js Z)
   const size = useMemo(() => [
     Math.max(0.1, Number(element.sizeX)),
-    Math.max(0.1, Number(element.sizeY)),  // Three.js height = BIM sizeZ
-    Math.max(0.1, Number(element.sizeZ)),  // Three.js depth  = BIM sizeY
+    Math.max(0.1, Number(element.sizeY)),  // Three.js height = BIM sizeY
+    Math.max(0.1, Number(element.sizeZ)),  // Three.js depth  = BIM sizeZ
   ], [element.sizeX, element.sizeY, element.sizeZ]);
 
   const position = useMemo(() => [
     Number(element.positionX) + offsetX,
-    Number(element.positionY) + offsetZ,  // Three.js Y = BIM positionZ + sizeZ/2
-    Number(element.positionZ) + size[1] / 2,        // Three.js Z = BIM positionY
+    Number(element.positionY) + offsetZ,       // Three.js Y = BIM positionY + bimOffset.z
+    Number(element.positionZ) + size[1] / 2,  // Three.js Z = BIM positionZ + sizeY/2
   ], [element.positionX, element.positionY, element.positionZ, size, offsetX, offsetZ]);
 
   const rotation = useMemo(() => [
@@ -285,13 +285,13 @@ function CollisionDetector({ stateRef, machine, elementsRef, offsetRef, onCollis
     const MARGIN = 0.35;
 
     for (const elem of elements) {
-      // BIM 좌표 규칙: positionZ=높이(Three.js Y), positionY=깊이(Three.js Z)
+      // BIM 좌표 규칙: positionY=높이(Three.js Y), positionZ=깊이(Three.js Z)
       const cx = Number(elem.positionX) + offset.x;
-      const cy = Number(elem.positionZ) + Number(elem.sizeZ) / 2;  // Three.js Y center
-      const cz = Number(elem.positionY) + offset.z;                 // Three.js Z
+      const cy = Number(elem.positionY) + offset.z;                 // Three.js Y center (BIM positionY + bimOffset.z)
+      const cz = Number(elem.positionZ) + Number(elem.sizeY) / 2;  // Three.js Z
       const hx = Number(elem.sizeX) / 2 + MARGIN;
-      const hy = Number(elem.sizeZ) / 2 + MARGIN;  // Three.js Y half = BIM sizeZ/2
-      const hz = Number(elem.sizeY) / 2 + MARGIN;  // Three.js Z half = BIM sizeY/2
+      const hy = Number(elem.sizeY) / 2 + MARGIN;  // Three.js Y half = BIM sizeY/2
+      const hz = Number(elem.sizeZ) / 2 + MARGIN;  // Three.js Z half = BIM sizeZ/2
 
       let hit = false;
       for (const pt of points) {

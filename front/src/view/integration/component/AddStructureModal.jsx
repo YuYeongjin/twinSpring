@@ -335,14 +335,19 @@ export default function AddStructureModal({ onClose }) {
       const wbsProjectId = projectMeta.wbsProjectId;
       const bimProjectId = resolvedStructure.bimProjectId;
 
-      // project_link 생성 (이미 있으면 무시)
+      // project_link 생성 — note에 rootMarker 저장해 개별 삭제 가능하게 함
+      const rootMarker = `BIM:${bimProjectId}:ROOT:${resolvedStructure.id}`;
       try {
-        await AxiosCustom.post('/api/project-link', {
+        const linkRes = await AxiosCustom.post('/api/project-link', {
           wbsProjectId,
           linkedType:      'BIM',
           linkedProjectId: String(bimProjectId),
-          note:            'auto',
+          note:            rootMarker,
         });
+        // linkId를 구조물에 저장해 삭제 시 직접 사용
+        if (linkRes?.data?.linkId) {
+          dispatch({ type: 'UPDATE_STRUCTURE', id: resolvedStructure.id, updates: { linkId: linkRes.data.linkId } });
+        }
       } catch { /* 이미 연결됐거나 서버 에러 — 무시 */ }
 
       // WBS BIM-tagged 태스크 자동 생성 (없는 공종만 생성, 기존 태스크는 보호)
@@ -355,6 +360,7 @@ export default function AddStructureModal({ onClose }) {
           bimProjectName: uniqueName || null,
           elements:      resolvedStructure.elements || [],
           existingTasks,
+          instanceKey:   resolvedStructure.id, // 동일 BIM 여러 번 추가해도 각각 별도 WBS 생성
         });
       } catch { /* 태스크 생성 실패 — 무시 (수동으로 WBS탭에서 생성 가능) */ }
     }

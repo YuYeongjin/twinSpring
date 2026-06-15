@@ -1,6 +1,7 @@
 package yyj.project.twinspring.serviceImpl;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import yyj.project.twinspring.dao.WbsDAO;
 import yyj.project.twinspring.dto.WbsProjectDTO;
 import yyj.project.twinspring.dto.WbsTaskDTO;
@@ -104,8 +105,12 @@ public class WbsServiceImpl implements WbsService {
     }
 
     @Override
+    @Transactional
     public void deleteTask(String taskId) {
-        wbsDAO.deleteTask(taskId);
+        // progress_analysis_log는 FK 없음 → 태스크 삭제 전에 수동 정리
+        wbsDAO.deleteProgressLogsByTaskTree(taskId);
+        // 대상 태스크 + 모든 하위 항목 재귀 삭제 (BIM 연결 notes도 함께 제거됨)
+        wbsDAO.deleteTaskWithDescendants(taskId);
     }
 
     @Override
