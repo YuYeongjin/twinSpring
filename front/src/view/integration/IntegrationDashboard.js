@@ -217,7 +217,7 @@ function DataLoader({ selectedProject }) {
 
           // ── PLAN:<i> 형식 태스크 처리 (generateBimWbsTasks 가 생성하는 공사 단계별 구조) ──
           const planTasks = tasks
-            .filter(t => /^BIM:[^:]+:PLAN:\d+$/.test(t.notes || '') && (t.notes || '').split(':')[1] === bimId)
+            .filter(t => /^BIM:[^:]+:PLAN:\d+/.test(t.notes || '') && (t.notes || '').split(':')[1] === bimId)
             .sort((a, b) => {
               const ia = parseInt((a.notes || '').split(':')[3] || '0');
               const ib = parseInt((b.notes || '').split(':')[3] || '0');

@@ -155,7 +155,7 @@ function computeSimPhaseProgress(wbsTasks, bimProjectId) {
   // ── PLAN 태스크 기반 (BIM:<id>:PLAN:<i>, generateBimWbsTasks 구조) ──
   if (!hasElemTasks) {
     const planTasks = wbsTasks
-      .filter(t => /^BIM:[^:]+:PLAN:\d+$/.test(t.notes || '') && (t.notes || '').split(':')[1] === bimProjectId)
+      .filter(t => /^BIM:[^:]+:PLAN:\d+/.test(t.notes || '') && (t.notes || '').split(':')[1] === bimProjectId)
       .sort((a, b) => parseInt((a.notes || '').split(':')[3] || '0') - parseInt((b.notes || '').split(':')[3] || '0'));
 
     if (planTasks.length > 0) {
