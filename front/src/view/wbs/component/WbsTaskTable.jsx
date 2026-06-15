@@ -345,6 +345,28 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
   const [cpmEditCell, setCpmEditCell]   = useState(null);   // { taskId, field }
   const [cpmEditVal, setCpmEditVal]     = useState("");
 
+  // BIM 태스크 접기/펼치기 (BIM 루트만 기본 표시)
+  const [expandedBimRoots, setExpandedBimRoots] = useState(new Set());
+
+  // BIM 루트 taskId Set — notes 가 BIM:*:ROOT 또는 BIM:*:ROOT:* 인 태스크
+  const bimRootTaskIds = useMemo(
+    () => new Set(
+      tasks.filter(t => t.source === 'BIM_AUTO' && /^BIM:[^:]+:ROOT(:[^:]+)?$/.test(t.notes || ''))
+           .map(t => t.taskId)
+    ),
+    [tasks]
+  );
+
+  // BIM 태스크 중 표시할 것만 필터링
+  // 루트는 항상 표시, 자식(parentTaskId 가 루트)은 해당 루트가 펼쳐진 경우만 표시
+  const visibleTasks = useMemo(() => {
+    return tasks.filter(task => {
+      if (task.source !== 'BIM_AUTO') return true;
+      if (bimRootTaskIds.has(task.taskId)) return true;
+      return expandedBimRoots.has(task.parentTaskId); // 직접 부모 루트가 펼쳐진 경우
+    });
+  }, [tasks, bimRootTaskIds, expandedBimRoots]);
+
   // 자동 CPM 계산
   const cpmResult = useMemo(() => computeCPM(tasks), [tasks]);
 
@@ -561,10 +583,31 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
       );
     }
     if (col.key === "taskName") {
-      const isChild = !!task.parentTaskId;
+      const isChild    = !!task.parentTaskId;
+      const isBimRoot  = bimRootTaskIds.has(task.taskId);
+      const hasChildren = isBimRoot && tasks.some(t => t.parentTaskId === task.taskId);
+      const isExpanded  = expandedBimRoots.has(task.taskId);
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: isChild ? 12 : 0 }}>
           {isChild && <span style={{ color: '#253347', fontSize: 10, flexShrink: 0 }}>└</span>}
+          {isBimRoot && hasChildren && (
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                setExpandedBimRoots(prev => {
+                  const next = new Set(prev);
+                  if (next.has(task.taskId)) next.delete(task.taskId); else next.add(task.taskId);
+                  return next;
+                });
+              }}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '0 2px', color: '#3b82f6', fontSize: 11, flexShrink: 0, lineHeight: 1,
+              }}
+            >
+              {isExpanded ? '▾' : '▸'}
+            </button>
+          )}
           <span className="text-xs break-all" style={{ color: isChild ? '#94a3b8' : '#e2e8f0' }}>
             {task.taskName ?? ""}
           </span>
@@ -686,7 +729,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
             </tr>
           </thead>
           <tbody>
-            {tasks.map((task, idx) => {
+            {visibleTasks.map((task, idx) => {
               const isEditing  = editingId === task.taskId;
               const isCritical = mergedCpm[task.taskId]?.isCritical;
               const isChild    = !!task.parentTaskId;

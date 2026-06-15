@@ -201,6 +201,20 @@
         DELETE FROM wbs_task WHERE task_id IN (SELECT task_id FROM descendants)
     </delete>
 
+    <!-- 특정 BIM 루트(rootMarker)와 그 하위 태스크만 삭제 (동일 BIM 여러 개일 때 개별 삭제용) -->
+    <delete id="deleteTasksByRootMarker">
+        WITH RECURSIVE descendants AS (
+            SELECT task_id FROM wbs_task
+            WHERE wbs_project_id = #{wbsProjectId}
+              AND notes          = #{rootMarker}
+              AND source         = 'BIM_AUTO'
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            INNER JOIN descendants d ON t.parent_task_id = d.task_id
+        )
+        DELETE FROM wbs_task WHERE task_id IN (SELECT task_id FROM descendants)
+    </delete>
+
     <delete id="deleteTasksByProject" parameterType="string">
         DELETE FROM wbs_task WHERE wbs_project_id = #{projectId}
     </delete>

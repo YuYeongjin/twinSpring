@@ -48,6 +48,10 @@ public interface WbsDAO {
     void deleteTasksByBimMarker(@Param("wbsProjectId") String wbsProjectId,
                                 @Param("bimProjectId") String bimProjectId);
 
+    /** 특정 BIM 루트(rootMarker)와 그 하위만 삭제 (동일 BIM 여러 개일 때 개별 삭제) */
+    void deleteTasksByRootMarker(@Param("wbsProjectId") String wbsProjectId,
+                                 @Param("rootMarker") String rootMarker);
+
     /** Agent가 CPM/균열 이벤트로 자동 추가할 때 사용 */
     void insertTaskBatch(List<Map<String, Object>> tasks);
 }

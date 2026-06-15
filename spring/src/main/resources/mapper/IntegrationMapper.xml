@@ -89,4 +89,12 @@
         WHERE project_id = #{projectId}
     </delete>
 
+    <!-- WBS + BIM 조합이 통합관제에 아직 몇 개 남아있는지 확인 (BIM WBS 태스크 삭제 전 체크용) -->
+    <select id="countIntegrationByWbsAndBim" resultType="int">
+        SELECT COUNT(*) FROM integration_project
+        WHERE wbs_project_id = #{wbsProjectId}
+          AND bim_project_id = #{bimProjectId}
+          AND status = 'ACTIVE'
+    </select>
+
 </mapper>
