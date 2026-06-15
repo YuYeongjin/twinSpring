@@ -1108,7 +1108,7 @@ public class BimServiceImpl implements BimService {
                 .retrieve()
                 .bodyToMono(typeRef)
                 .flatMap(elements -> {
-                    List<BimElementDTO> targets = (elements == null ? List.of() : elements)
+                    List<BimElementDTO> targets = (elements == null ? List.<BimElementDTO>of() : elements)
                             .stream()
                             .filter(el -> el.getElementId() != null && idSet.contains(el.getElementId()))
                             .collect(Collectors.toList());
@@ -1181,7 +1181,7 @@ public class BimServiceImpl implements BimService {
                 .retrieve()
                 .bodyToMono(typeRef)
                 .flatMap(all -> {
-                    List<BimElementDTO> targets = (all == null ? List.of() : all).stream()
+                    List<BimElementDTO> targets = (all == null ? List.<BimElementDTO>of() : all).stream()
                             .filter(el -> idFilter == null || (el.getElementId() != null && idFilter.contains(el.getElementId())))
                             .collect(Collectors.toList());
 
