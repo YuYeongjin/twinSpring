@@ -50,7 +50,7 @@ export default function BimWorkPlanPanel({ structure }) {
       borderRadius: 6, padding: '10px 12px', marginBottom: 8,
       fontSize: 9, color: '#374151', textAlign: 'center',
     }}>
-      BIM 요소 없음 — 요소를 추가하면 작업계획이 자동 생성됩니다
+      {tWp('bimPanelEmpty')}
     </div>
   );
 
@@ -74,8 +74,8 @@ export default function BimWorkPlanPanel({ structure }) {
 
       {/* 요약 */}
       <div style={{ fontSize: 8, color: '#4b5563', marginBottom: 8 }}>
-        {tasks.length}개 공정 · 총 {plan.totalDays}일 · 최대 {plan.peakWorkers}명
-        {plan.floorCount > 0 && ` · ${plan.floorCount}층`}
+        {tWp('planSummary', { tasks: tasks.length, days: plan.totalDays, peak: plan.peakWorkers })}
+        {plan.floorCount > 0 && ` · ${tWp('valFloors', { n: plan.floorCount })}`}
       </div>
 
       {/* 태스크 목록 */}
@@ -84,7 +84,7 @@ export default function BimWorkPlanPanel({ structure }) {
           const color = PHASE_COLOR[task.phase] || '#3b82f6';
           const isOpen = openIdx === i;
           const statusColor = task.progress >= 100 ? '#60a5fa' : task.progress > 0 ? '#22c55e' : '#374151';
-          const statusLabel = task.progress >= 100 ? '완료' : task.progress > 0 ? '진행' : '예정';
+          const statusLabel = task.progress >= 100 ? tWp('statusDone') : task.progress > 0 ? tWp('statusActive') : tWp('statusPending');
 
           return (
             <div key={i} style={{ marginBottom: 5 }}>
@@ -119,10 +119,10 @@ export default function BimWorkPlanPanel({ structure }) {
                   fontSize: 8, color: '#6b7280', lineHeight: 1.9,
                   background: '#04080f', borderRadius: '0 3px 3px 0',
                 }}>
-                  <div>📅 {fmtD(task.start)} ~ {fmtD(task.end)} · {task.days}일</div>
-                  <div>👷 {task.workers}명 · <span style={{ color: '#4b5563' }}>{task.roles}</span></div>
+                  <div>📅 {fmtD(task.start)} ~ {fmtD(task.end)} · {tWp('valDays', { n: task.days })}</div>
+                  <div>👷 {tWp('valPersons', { n: task.workers })} · <span style={{ color: '#4b5563' }}>{task.roles}</span></div>
                   <div>🔧 <span style={{ color: '#4b5563' }}>{task.equipment}</span></div>
-                  {task.volume != null && <div>📦 콘크리트 {task.volume} m³</div>}
+                  {task.volume != null && <div>📦 {tWp('concreteVol', { vol: task.volume })}</div>}
                 </div>
               )}
             </div>

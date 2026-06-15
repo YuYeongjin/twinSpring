@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useT } from "../../../i18n/LanguageContext";
+import { getBimAutoTaskLabel } from "../bimTaskGenerator";
 
 // ══════════════════════════════════════════════════════════════════
 //  설정 상수
@@ -144,7 +145,8 @@ function computeCPM(tasks) {
  *   onTaskClick    : (task) => void
  */
 export default function GanttChart({ tasks = [], groupByProject = false, onTaskClick }) {
-  const t = useT('wbs');
+  const t   = useT('wbs');
+  const tWp = useT('workPlan');
 
   const [tooltip, setTooltip] = useState(null); // { x, y, task, cpm }
   const svgRef = useRef(null);
@@ -506,7 +508,7 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
                       fontWeight={isCritical ? "700" : "400"}
                       style={{ cursor: "pointer" }}
                       onClick={() => onTaskClick && onTaskClick(task)}>
-                  {task.taskName?.length > 17 ? task.taskName.slice(0, 16) + "…" : task.taskName}
+                  {(() => { const n = getBimAutoTaskLabel(task, tWp) || task.taskName || ""; return n.length > 17 ? n.slice(0, 16) + "…" : n; })()}
                 </text>
                 {/* 여유공기 숫자 */}
                 <text x={LEFT_W - 55} y={y + ROW_H / 2 + 4} fontSize={9}
@@ -556,7 +558,7 @@ export default function GanttChart({ tasks = [], groupByProject = false, onTaskC
             {/* 제목 */}
             <div className="flex items-center gap-2 mb-2">
               <p className="font-bold text-white text-sm leading-tight flex-1">
-                {tooltip.task.taskName}
+                {getBimAutoTaskLabel(tooltip.task, tWp) || tooltip.task.taskName}
               </p>
               {tooltip.cpm?.isCritical && (
                 <span className="shrink-0 px-1.5 py-0.5 rounded text-xs font-bold"

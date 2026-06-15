@@ -175,7 +175,13 @@
     </update>
 
     <delete id="deleteTask" parameterType="string">
-        DELETE FROM wbs_task WHERE task_id = #{taskId}
+        WITH RECURSIVE subtree AS (
+            SELECT task_id FROM wbs_task WHERE task_id = #{taskId}
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            JOIN subtree s ON t.parent_task_id = s.task_id
+        )
+        DELETE FROM wbs_task WHERE task_id IN (SELECT task_id FROM subtree)
     </delete>
 
     <!-- 진도 분석 로그: 대상 태스크 + 모든 하위 항목의 로그를 먼저 삭제 (FK 없으므로 수동 정리) -->

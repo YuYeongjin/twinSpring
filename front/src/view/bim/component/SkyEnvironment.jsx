@@ -10,6 +10,7 @@ export const ENV_PRESETS = [
     {
         id: 'none',
         label: 'Background (None)',
+        labelKey: 'skyNone',
         icon: '⬛',
         env: null,
         useEnvBg: false,
@@ -22,6 +23,7 @@ export const ENV_PRESETS = [
     {
         id: 'city',
         label: '도시',
+        labelKey: 'skyCity',
         icon: '🏙',
         env: 'city',
         useEnvBg: true,
@@ -34,6 +36,7 @@ export const ENV_PRESETS = [
     {
         id: 'day_clear',
         label: '맑은 낮',
+        labelKey: 'skyDayClear',
         icon: '☀️',
         env: 'park',
         useEnvBg: false,
@@ -51,6 +54,7 @@ export const ENV_PRESETS = [
     {
         id: 'day_cloudy',
         label: '흐린 낮',
+        labelKey: 'skyDayCloudy',
         icon: '⛅',
         env: 'apartment',
         useEnvBg: false,
@@ -68,6 +72,7 @@ export const ENV_PRESETS = [
     {
         id: 'sunset',
         label: '저녁 노을',
+        labelKey: 'skySunset',
         icon: '🌅',
         env: 'sunset',
         useEnvBg: false,
@@ -85,6 +90,7 @@ export const ENV_PRESETS = [
     {
         id: 'dawn',
         label: '새벽 여명',
+        labelKey: 'skyDawn',
         icon: '🌄',
         env: 'dawn',
         useEnvBg: true,
@@ -97,6 +103,7 @@ export const ENV_PRESETS = [
     {
         id: 'night',
         label: '밤하늘',
+        labelKey: 'skyNight',
         icon: '🌙',
         env: 'night',
         useEnvBg: false,
@@ -109,6 +116,7 @@ export const ENV_PRESETS = [
     {
         id: 'ocean_day',
         label: '바다 (낮)',
+        labelKey: 'skyOceanDay',
         icon: '🌊',
         env: 'park',
         useEnvBg: false,
@@ -128,6 +136,7 @@ export const ENV_PRESETS = [
     {
         id: 'ocean_sunset',
         label: '바다 (노을)',
+        labelKey: 'skyOceanSunset',
         icon: '🌅',
         env: 'sunset',
         useEnvBg: false,
@@ -147,6 +156,7 @@ export const ENV_PRESETS = [
     {
         id: 'ocean_night',
         label: '바다 (밤)',
+        labelKey: 'skyOceanNight',
         icon: '🌙',
         env: 'night',
         useEnvBg: false,
@@ -161,6 +171,7 @@ export const ENV_PRESETS = [
     {
         id: 'forest',
         label: '숲',
+        labelKey: 'skyForest',
         icon: '🌲',
         env: 'forest',
         useEnvBg: true,
@@ -173,6 +184,7 @@ export const ENV_PRESETS = [
     {
         id: 'studio',
         label: '스튜디오',
+        labelKey: 'skyStudio',
         icon: '💡',
         env: 'studio',
         useEnvBg: true,
@@ -185,6 +197,7 @@ export const ENV_PRESETS = [
     {
         id: 'tunnel',
         label: '터널 공사',
+        labelKey: 'skyTunnel',
         icon: '🚇',
         env: null,
         useEnvBg: false,
@@ -198,6 +211,7 @@ export const ENV_PRESETS = [
     {
         id: 'rain',
         label: '비오는 현장',
+        labelKey: 'skyRain',
         icon: '🌧',
         env: 'apartment',
         useEnvBg: false,

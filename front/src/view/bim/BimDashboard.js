@@ -95,7 +95,7 @@ function EnvSelector({ currentId, onChange }) {
                 title={t('selectBgEnv')}
             >
                 <span>{current.icon}</span>
-                <span className="hidden lg:inline">{current.label}</span>
+                <span className="hidden lg:inline">{t(current.labelKey)}</span>
                 <span className="opacity-50">▾</span>
             </button>
 
@@ -130,7 +130,7 @@ function EnvSelector({ currentId, onChange }) {
                                 }}
                             >
                                 <span style={{ fontSize: 14 }}>{p.icon}</span>
-                                <span>{p.label}</span>
+                                <span>{t(p.labelKey)}</span>
                                 {p.id === currentId && <span style={{ marginLeft: 'auto', color: '#60a5fa' }}>✓</span>}
                             </button>
                         ))}
@@ -979,7 +979,7 @@ function PropertyPanel({ selectedElement, selectedElements, modelData, updateEle
 // 메인 BIM 대시보드
 // ================================================================
 
-export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange }) {
+export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange }) {
     const {
         saveUpdateElement,
         selectedElement, setSelectedElement,
@@ -1950,7 +1950,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             <button onClick={() => setSnapEnabled(v => !v)}
                                 className={`px-2 py-1 rounded-lg text-xs font-semibold border transition ${snapEnabled?'bg-yellow-600/20 text-yellow-300 border-yellow-500/40':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
                             >{t('snap')}</button>
-                            {ifcMeshes && ifcMeshes.length > 0 && (
+                            {(glbUrl || (ifcMeshes && ifcMeshes.length > 0)) && (
                                 <button onClick={() => setFitCameraTrigger(v => v + 1)}
                                     className="px-2 py-1 rounded-lg text-xs font-semibold border bg-sky-800/30 text-sky-300 border-sky-600/50 hover:bg-sky-700/40 transition"
                                 >{t('fit')}</button>
@@ -2033,7 +2033,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     <button onClick={() => setSnapEnabled(v => !v)}
                         className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${snapEnabled?'bg-yellow-600/20 text-yellow-300 border-yellow-500/40':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
                     >{t('snap')}</button>
-                    {ifcMeshes && ifcMeshes.length > 0 && (
+                    {(glbUrl || (ifcMeshes && ifcMeshes.length > 0)) && (
                         <button onClick={() => setFitCameraTrigger(v => v + 1)}
                             className="px-2 py-1 rounded-lg text-xs font-semibold border bg-sky-800/30 text-sky-300 border-sky-600/50 hover:bg-sky-700/40 transition shrink-0"
                         >{t('fit')}</button>
@@ -2464,6 +2464,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             placementLockedAxes={placeLocked}
                                             lineLockedAxes={lineLocked}
                                             ifcMeshes={ifcMeshes}
+                                            glbUrl={glbUrl}
                                             fitCameraTrigger={fitCameraTrigger}
                                             viewPreset={viewPreset}
                                             viewMode={viewMode}
