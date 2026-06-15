@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import AxiosCustom from '../../../axios/AxiosCustom';
+import { useT } from '../../../i18n/LanguageContext';
 import {
   ELEMENT_META, ELEMENT_ORDER, SUB_TASKS,
   calcTotalVolume, calcSubDays,
   generateBimWbsTasks,
+  generateFloorWbsTasks,
 } from '../bimTaskGenerator';
 
 // 일수 차이 계산 (두 날짜 문자열 'YYYY-MM-DD')
@@ -24,6 +26,7 @@ const daysBetween = (a, b) => {
 //    projectStartDate : string (YYYY-MM-DD) — 일정 계산 기준일
 // ════════════════════════════════════════════════════════════════
 export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectStartDate, projectEndDate }) {
+  const t = useT('wbs');
   const [links,       setLinks]       = useState([]);   // BIM 링크 목록
   const [bimData,     setBimData]     = useState({});   // { bimProjectId: { name, elements[] } }
   const [expandedBim, setExpandedBim] = useState({});   // { bimProjectId: bool }
@@ -158,6 +161,28 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
       onReload();
     } catch (err) {
       console.error('BIM 일정 자동 생성 실패:', err);
+    } finally {
+      setGenerating(null);
+    }
+  };
+
+  // ── 층별 공정 WBS 자동 생성 ─────────────────────────────────────
+  const handleFloorGenerate = async (bimProjectId) => {
+    const data = bimData[bimProjectId];
+    if (!data || generating) return;
+    setGenerating(`floor_${bimProjectId}`);
+    try {
+      await generateFloorWbsTasks({
+        wbsProjectId,
+        bimProjectId,
+        bimProjectName: data.name || null,
+        elements:      data.elements,
+        existingTasks: tasks,
+        startDate:     projectStartDate || null,
+      });
+      onReload();
+    } catch (err) {
+      console.error('층별 WBS 자동 생성 실패:', err);
     } finally {
       setGenerating(null);
     }
@@ -307,24 +332,44 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                 )}
 
                 {/* 생성 버튼 */}
-                <button
-                  onClick={() => handleAutoGenerate(link.linkedProjectId)}
-                  disabled={!!generating}
-                  style={{
-                    background:   generating === link.linkedProjectId ? '#111e2d' : '#1e3a5f',
-                    border:       '1px solid #3b82f6',
-                    borderRadius: 6,
-                    padding:      '4px 11px',
-                    color:        generating === link.linkedProjectId ? '#4b5563' : '#60a5fa',
-                    fontSize:     10,
-                    fontWeight:   700,
-                    cursor:       generating ? 'not-allowed' : 'pointer',
-                    whiteSpace:   'nowrap',
-                    transition:   'all 0.15s',
-                  }}
-                >
-                  {generating === link.linkedProjectId ? '⏳ 생성 중…' : '⚡ 일정 자동 생성'}
-                </button>
+                <div style={{ display: 'flex', gap: 5 }}>
+                  <button
+                    onClick={() => handleAutoGenerate(link.linkedProjectId)}
+                    disabled={!!generating}
+                    style={{
+                      background:   generating === link.linkedProjectId ? '#111e2d' : '#1e3a5f',
+                      border:       '1px solid #3b82f6',
+                      borderRadius: 6,
+                      padding:      '4px 10px',
+                      color:        generating === link.linkedProjectId ? '#4b5563' : '#60a5fa',
+                      fontSize:     10,
+                      fontWeight:   700,
+                      cursor:       generating ? 'not-allowed' : 'pointer',
+                      whiteSpace:   'nowrap',
+                      transition:   'all 0.15s',
+                    }}
+                  >
+                    {generating === link.linkedProjectId ? '⏳ 생성 중…' : '⚡ 공사단계별 WBS'}
+                  </button>
+                  <button
+                    onClick={() => handleFloorGenerate(link.linkedProjectId)}
+                    disabled={!!generating}
+                    style={{
+                      background:   generating === `floor_${link.linkedProjectId}` ? '#111e2d' : '#1a2e1a',
+                      border:       '1px solid #22c55e',
+                      borderRadius: 6,
+                      padding:      '4px 10px',
+                      color:        generating === `floor_${link.linkedProjectId}` ? '#4b5563' : '#4ade80',
+                      fontSize:     10,
+                      fontWeight:   700,
+                      cursor:       generating ? 'not-allowed' : 'pointer',
+                      whiteSpace:   'nowrap',
+                      transition:   'all 0.15s',
+                    }}
+                  >
+                    {generating === `floor_${link.linkedProjectId}` ? '⏳ 생성 중…' : '🏗 층별 공정 WBS'}
+                  </button>
+                </div>
               </div>
 
               <span style={{ fontSize: 10, color: '#374151', marginLeft: 2, flexShrink: 0 }}>
@@ -387,7 +432,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                                 {elementType} × {count}
                               </span>
                               <span style={{ fontSize: 9, color: '#374151' }}>
-                                ~{estDays}일
+                                {t('approxDays', { n: estDays })}
                               </span>
                               <span style={{ fontSize: 9, color: '#253347' }}>
                                 ({totalVol.toFixed(1)}m³)
@@ -409,7 +454,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                               gap: 4, padding: '2px 0 4px',
                               borderBottom: '1px solid #0d1b2a',
                             }}>
-                              {['#', '요소 ID', '재료', '크기 (m)'].map(h => (
+                              {['#', t('elColId'), t('elColMaterial'), t('elColSize')].map(h => (
                                 <span key={h} style={{ fontSize: 9, color: '#253347', fontWeight: 700 }}>{h}</span>
                               ))}
                             </div>

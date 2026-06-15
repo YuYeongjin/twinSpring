@@ -451,6 +451,78 @@ public class BimController {
     }
 
     /**
+     * 부재 통합 변환 API (이동·회전·크기 동시 적용)
+     * PUT /api/bim/project/{projectId}/transform
+     *
+     * 요청 바디:
+     * {
+     *   "elementIds": ["ELEM-1", "ELEM-2"],   // 생략 시 전체 부재
+     *   "position": { "deltaX": 0, "deltaY": 0, "deltaZ": -20 },
+     *   "rotation": { "deltaX": 0, "deltaY": 0, "deltaZ": 45  },
+     *   "scale":    { "factorX": 1, "factorY": 1, "factorZ": 2 }
+     * }
+     */
+    @PutMapping("/project/{projectId}/transform")
+    public Mono<ResponseEntity<Map<String, Object>>> transformElements(
+            @PathVariable String projectId,
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> elementIds = body.containsKey("elementIds")
+                ? (List<String>) body.get("elementIds") : null;
+
+        Map<?, ?> pos = body.containsKey("position") ? (Map<?, ?>) body.get("position") : Map.of();
+        Map<?, ?> rot = body.containsKey("rotation") ? (Map<?, ?>) body.get("rotation") : Map.of();
+        Map<?, ?> scl = body.containsKey("scale")    ? (Map<?, ?>) body.get("scale")    : Map.of();
+
+        double dPosX = toDouble(pos.get("deltaX")), dPosY = toDouble(pos.get("deltaY")), dPosZ = toDouble(pos.get("deltaZ"));
+        double dRotX = toDouble(rot.get("deltaX")), dRotY = toDouble(rot.get("deltaY")), dRotZ = toDouble(rot.get("deltaZ"));
+        double sclX  = scl.containsKey("factorX") ? toDouble(scl.get("factorX")) : 1.0;
+        double sclY  = scl.containsKey("factorY") ? toDouble(scl.get("factorY")) : 1.0;
+        double sclZ  = scl.containsKey("factorZ") ? toDouble(scl.get("factorZ")) : 1.0;
+
+        return bimService.transformElements(projectId, elementIds,
+                dPosX, dPosY, dPosZ, dRotX, dRotY, dRotZ, sclX, sclY, sclZ)
+                .map(result -> ResponseEntity.ok(result));
+    }
+
+    /**
+     * 선택된 부재만 이동 API
+     * PUT /api/bim/project/{projectId}/translate-selected
+     * 요청 바디: { "elementIds": ["ELEM-1", "ELEM-2"], "deltaX": 0, "deltaY": 0, "deltaZ": -20 }
+     */
+    @PutMapping("/project/{projectId}/translate-selected")
+    public Mono<ResponseEntity<Map<String, Object>>> translateSelectedElements(
+            @PathVariable String projectId,
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> elementIds = (List<String>) body.getOrDefault("elementIds", List.of());
+        double dx = toDouble(body.get("deltaX"));
+        double dy = toDouble(body.get("deltaY"));
+        double dz = toDouble(body.get("deltaZ"));
+        return bimService.translateSelectedElements(projectId, elementIds, dx, dy, dz)
+                .map(result -> ResponseEntity.ok(result));
+    }
+
+    /**
+     * 프로젝트 전체 부재 일괄 이동 API
+     * PUT /api/bim/project/{projectId}/translate
+     * 요청 바디: { "deltaX": 0, "deltaY": 0, "deltaZ": -20 }
+     *
+     * 프로젝트 내 모든 부재의 positionX/Y/Z에 오프셋을 더한 후
+     * C# 서버로 각 부재를 병렬 업데이트합니다.
+     */
+    @PutMapping("/project/{projectId}/translate")
+    public Mono<ResponseEntity<Map<String, Object>>> translateElements(
+            @PathVariable String projectId,
+            @RequestBody Map<String, Double> body) {
+        double dx = body.getOrDefault("deltaX", 0.0);
+        double dy = body.getOrDefault("deltaY", 0.0);
+        double dz = body.getOrDefault("deltaZ", 0.0);
+        return bimService.translateProjectElements(projectId, dx, dy, dz)
+                .map(result -> ResponseEntity.ok(result));
+    }
+
+    /**
      * IFC 원본 파일 보유 여부 확인
      * GET /api/bim/project/{projectId}/ifc/status
      *
@@ -463,5 +535,71 @@ public class BimController {
                 "hasIfcFile", storageKey != null,
                 "storageKey", storageKey != null ? storageKey : ""
         ));
+    }
+
+    // ================================================================
+    // 서버 사이드 IFC → GLB 변환 (B안: 렌더링 성능 개선)
+    // ================================================================
+
+    /**
+     * IFC 파일을 Python 변환 서비스로 보내 GLB로 변환하고 Minio에 저장.
+     * POST /api/bim/project/{projectId}/convert-ifc
+     *
+     * 1. IFC 원본 → Minio 저장
+     * 2. Python /api/ifc/convert 호출 → GLB 바이너리 + 메타데이터 수신
+     * 3. GLB → Minio 저장 (projects/{projectId}/model.glb)
+     * 4. elements / storeys 를 DB에 저장
+     * 5. 프로젝트 생성 및 완료 정보 반환
+     */
+    @PostMapping(value = "/project/{projectId}/convert-ifc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Mono<ResponseEntity<Map<String, Object>>> convertIfcFile(
+            @PathVariable String projectId,
+            @RequestParam("file") MultipartFile file) {
+
+        if (file == null || file.isEmpty()) {
+            return Mono.just(ResponseEntity.badRequest()
+                    .<Map<String, Object>>body(Map.of("error", "파일이 비어 있습니다.")));
+        }
+
+        return bimService.convertAndStoreIfc(projectId, file)
+                .map(result -> ResponseEntity.ok(result))
+                .onErrorResume(e -> {
+                    System.err.println("[BIM] IFC 변환 실패: " + e.getMessage());
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .<Map<String, Object>>body(Map.of("error", e.getMessage())));
+                });
+    }
+
+    /**
+     * 변환된 GLB 파일 서빙
+     * GET /api/bim/project/{projectId}/glb
+     *
+     * 프론트의 GLTFLoader가 직접 이 URL로 fetch해서 렌더링.
+     */
+    @GetMapping("/project/{projectId}/glb")
+    public ResponseEntity<InputStreamResource> downloadGlbFile(@PathVariable String projectId) {
+        try {
+            String key = bimService.getGlbStorageKey(projectId);
+            if (key == null) {
+                return ResponseEntity.notFound().build();
+            }
+            InputStreamResource resource = new InputStreamResource(bimService.downloadGlbFile(projectId));
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "inline; filename=\"model.glb\"")
+                    .contentType(MediaType.valueOf("model/gltf-binary"))
+                    .body(resource);
+        } catch (StorageException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
+     * GLB 보유 여부 확인
+     * GET /api/bim/project/{projectId}/glb/status
+     */
+    @GetMapping("/project/{projectId}/glb/status")
+    public ResponseEntity<Map<String, Object>> getGlbStatus(@PathVariable String projectId) {
+        String key = bimService.getGlbStorageKey(projectId);
+        return ResponseEntity.ok(Map.of("hasGlb", key != null));
     }
 }

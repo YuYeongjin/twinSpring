@@ -27,10 +27,17 @@ class AgentState(TypedDict):
     bim_project_id: Optional[str]
     simulation_project_id: Optional[str]
     wbs_project_id: Optional[str]
-    direct_agent: Optional[str]     # 탭 전용 강제 라우팅
+    direct_agent: Optional[str]          # 탭 전용 강제 라우팅
+    selected_element_ids: Optional[list] # 현재 선택된 BIM 부재 ID 목록
 
     # ── 구조화 응답 (프론트 차트/테이블용, 하위호환) ─────────────────────────
     bim_data: Optional[dict]
     sensor_data: Optional[dict]
     report_data: Optional[dict]
+    wbs_data: Optional[dict]
+    safe_data: Optional[dict]
     intent: Optional[str]
+
+    # ── BIM 작업 이력 / 스냅샷 (서버 세션에 지속, 취소·복원용) ─────────────
+    bim_undo_stack: Optional[list]   # 역연산 레코드 스택 (최대 50건)
+    bim_snapshot:   Optional[list]   # 저장된 전체 부재 데이터 (복원용)

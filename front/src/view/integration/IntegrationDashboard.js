@@ -181,9 +181,43 @@ function DataLoader({ selectedProject }) {
           });
 
         if (elemTasks.length === 0) {
-          // PLAN:<i> 형식 태스크 처리 (generateBimWbsTasks 가 생성하는 공사 단계별 구조)
+          // ── FLOOR:<n>:FRAME/SLAB 형식 처리 (generateFloorWbsTasks 가 생성하는 층별 구조) ──
+          const floorTasks = tasks
+            .filter(t => {
+              const m = (t.notes || '').match(/^BIM:([^:]+):FLOOR:(\d+):(FRAME|SLAB)$/);
+              return m && m[1] === bimId;
+            })
+            .sort((a, b) => {
+              const ma = (a.notes || '').match(/^BIM:[^:]+:FLOOR:(\d+):(FRAME|SLAB)$/);
+              const mb = (b.notes || '').match(/^BIM:[^:]+:FLOOR:(\d+):(FRAME|SLAB)$/);
+              const ia = ma ? parseInt(ma[1]) * 2 + (ma[2] === 'SLAB' ? 1 : 0) : 999;
+              const ib = mb ? parseInt(mb[1]) * 2 + (mb[2] === 'SLAB' ? 1 : 0) : 999;
+              return ia - ib;
+            });
+
+          if (floorTasks.length > 0) {
+            // 순차 진행: 이전 층 완료 후 다음 층 시작 (FRAME → SLAB → 다음층 FRAME → ...)
+            const activeFloor = floorTasks.find(t => (t.progress || 0) < 100);
+            if (!activeFloor) {
+              dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: 100 });
+              return;
+            }
+            const floorType = (activeFloor.notes || '').match(/:(FRAME|SLAB)$/)?.[1];
+            // FRAME은 crane, SLAB은 excavator+dump 필요 — 없으면 달력 기반 rate=1.0
+            const reprType = floorType === 'FRAME' ? 'IfcColumn' : 'IfcSlab';
+            const { rate, blocked } = calcProgressRate(reprType, ws, eq);
+            const effectiveRate = blocked ? 1.0 : rate; // 장비 없어도 달력 기반으로는 진행
+            const p = calcRealTimeProgress(activeFloor, effectiveRate);
+            if (p !== null) dispatch({ type: 'SET_TASK_PROGRESS', taskId: activeFloor.taskId, progress: p });
+
+            const rootProg = floorTasks.reduce((s, t) => s + (t.progress || 0), 0) / floorTasks.length;
+            dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: rootProg });
+            return;
+          }
+
+          // ── PLAN:<i> 형식 태스크 처리 (generateBimWbsTasks 가 생성하는 공사 단계별 구조) ──
           const planTasks = tasks
-            .filter(t => /^BIM:[^:]+:PLAN:\d+$/.test(t.notes || '') && (t.notes || '').split(':')[1] === bimId)
+            .filter(t => /^BIM:[^:]+:PLAN:\d+/.test(t.notes || '') && (t.notes || '').split(':')[1] === bimId)
             .sort((a, b) => {
               const ia = parseInt((a.notes || '').split(':')[3] || '0');
               const ib = parseInt((b.notes || '').split(':')[3] || '0');
@@ -472,8 +506,9 @@ const PANEL_BTN = {
 };
 
 // ── 메인 대시보드 레이아웃 ─────────────────────────────────
-function DashboardLayout({ selectedProject }) {
+function DashboardLayout() {
   const t = useT('integrationProject');
+  const { projectMeta } = useIntegration();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showPanel,   setShowPanel]   = useState(false); // 오른쪽 대시보드
   const [showSidebar, setShowSidebar] = useState(false); // 왼쪽 컨트롤
@@ -586,7 +621,7 @@ function DashboardLayout({ selectedProject }) {
               fontSize: 11, color: '#60a5fa', fontWeight: 700,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              🔗 {selectedProject?.projectName || t('pageTitle')}
+              🔗 {projectMeta?.projectName || t('pageTitle')}
             </div>
             {/* 작업일보 */}
             <button
@@ -623,7 +658,7 @@ function DashboardLayout({ selectedProject }) {
               padding: '4px 18px', fontSize: 11, color: '#60a5fa', fontWeight: 700,
               pointerEvents: 'none', whiteSpace: 'nowrap', backdropFilter: 'blur(4px)',
             }}>
-              🔗 {selectedProject?.projectName || t('pageTitle')} · BIM · WBS
+              🔗 {projectMeta?.projectName || t('pageTitle')} · BIM · WBS
             </div>
             <button
               onClick={() => setShowReport(true)}
@@ -711,8 +746,29 @@ function DashboardLayout({ selectedProject }) {
   );
 }
 
-// ── 외부 진입점 ────────────────────────────────────────────
-export default function IntegrationDashboard({ selectedProject, onBack }) {
+// ── 백그라운드 서비스 (IntegrationProvider 안에서 실행) ─────────
+// App.js에서 IntegrationProvider로 감싼 뒤 이 컴포넌트를 항상 렌더한다.
+// → 시뮬 타이머·DB 저장·WBS 폴링이 탭을 벗어나도 중단되지 않음.
+export function IntegrationServices({ selectedProject }) {
+  return (
+    <>
+      <DataLoader selectedProject={selectedProject} />
+      <StructureLoader />
+      <BimWbsProgressPoller />
+      <BimLinkSync selectedProject={selectedProject} />
+      <GpsLoader />
+    </>
+  );
+}
+
+// ── UI 진입점 (통합관제 탭 활성화 시만 렌더) ───────────────────
+// IntegrationProvider 없이 useIntegration 컨텍스트를 그대로 사용.
+export function IntegrationUI() {
+  return <DashboardLayout />;
+}
+
+// ── 레거시 default export (단독 실행 시 호환) ──────────────────
+export default function IntegrationDashboard({ selectedProject }) {
   return (
     <IntegrationProvider projectId={selectedProject?.projectId}>
       <DataLoader selectedProject={selectedProject} />
@@ -720,7 +776,7 @@ export default function IntegrationDashboard({ selectedProject, onBack }) {
       <BimWbsProgressPoller />
       <BimLinkSync selectedProject={selectedProject} />
       <GpsLoader />
-      <DashboardLayout selectedProject={selectedProject} />
+      <DashboardLayout />
     </IntegrationProvider>
   );
 }

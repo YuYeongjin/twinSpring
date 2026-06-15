@@ -184,38 +184,18 @@ function reducer(state, action) {
     case 'LOAD_SIM_CONFIG': {
       const loadedStructures = deserializeStructures(action.config.structures);
       const hasBim = loadedStructures.some(s => s.type === 'bim');
-      const bimIdsFromConfig = loadedStructures
-        .filter(s => s.type === 'bim' && s.bimProjectId)
-        .map(s => String(s.bimProjectId));
 
-      let wbsTasks = state.wbsTasks;
-      let pendingBimReset = state.pendingBimReset;
-
-      if (bimIdsFromConfig.length > 0) {
-        if (state.wbsTasks.length > 0) {
-          // SET_REAL_DATA가 먼저 도착한 경우 → 지금 바로 리셋
-          const bimIdSet = new Set(bimIdsFromConfig);
-          wbsTasks = state.wbsTasks.map(t => {
-            const m = (t.notes || '').match(/^BIM[^:]*:([^:]+):/);
-            return (m && bimIdSet.has(m[1])) ? { ...t, progress: 0 } : t;
-          });
-        } else {
-          // wbsTasks 아직 미로드 → SET_REAL_DATA 도착 시 리셋하도록 표시
-          pendingBimReset = [...new Set([...state.pendingBimReset, ...bimIdsFromConfig])];
-        }
-      }
-
+      // wbsTasks와 pendingBimReset은 건드리지 않음
+      // — LOAD_SIM_CONFIG는 저장된 씬 복원이므로 DB의 WBS 진도를 리셋해선 안 됨
       return {
         ...state,
-        workers:      action.config.workers     || state.workers,
-        equipment:    action.config.equipment   || state.equipment,
-        dangerZones:  action.config.dangerZones || state.dangerZones,
-        structures:   loadedStructures,
-        terrain:      action.config.terrain !== undefined ? action.config.terrain : state.terrain,
-        surveyOrigin: action.config.surveyOrigin !== undefined ? action.config.surveyOrigin : state.surveyOrigin,
+        workers:        action.config.workers     || state.workers,
+        equipment:      action.config.equipment   || state.equipment,
+        dangerZones:    action.config.dangerZones || state.dangerZones,
+        structures:     loadedStructures,
+        terrain:        action.config.terrain !== undefined ? action.config.terrain : state.terrain,
+        surveyOrigin:   action.config.surveyOrigin !== undefined ? action.config.surveyOrigin : state.surveyOrigin,
         bimSimProgress: hasBim ? {} : state.bimSimProgress,
-        wbsTasks,
-        pendingBimReset,
       };
     }
 

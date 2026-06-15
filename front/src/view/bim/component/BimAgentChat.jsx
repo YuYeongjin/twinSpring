@@ -6,8 +6,9 @@
  *   1. 구조 안정성 검토 → 구조해석 탭 자동 전환
  *   2. WBS 스케줄링    → 기존 WBS 업데이트 or 신규 공정표 생성
  */
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import AxiosCustom from "../../../axios/AxiosCustom";
+import { useT } from "../../../i18n/LanguageContext";
 
 const SESSION_ID = "bim-wbs-agent-" + Math.random().toString(36).slice(2, 8);
 
@@ -73,19 +74,13 @@ function Bubble({ msg }) {
   );
 }
 
-// ── 퀵 액션 버튼 ─────────────────────────────────────────────────────────────
-const QUICK_ACTIONS = [
-  { label: "구조 안정성 검토", icon: "🔬", message: "이 프로젝트의 구조 안정성을 검토해줘" },
-  { label: "WBS 스케줄링",    icon: "📋", message: "이 프로젝트의 WBS 스케줄링을 넣어줘" },
-  { label: "WBS 신규 생성",   icon: "➕", message: "이 프로젝트의 WBS를 신규로 만들어줘" },
-];
-
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function BimAgentChat({
   selectedProject,
   onShowStructural,   // () => void — 구조해석 탭 전환 콜백
   onWbsChanged,       // () => void — WBS 변경 후 콜백 (선택)
 }) {
+  const t = useT('bimDashboard');
   const [open, setOpen]         = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput]       = useState("");
@@ -94,14 +89,17 @@ export default function BimAgentChat({
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
 
-  const projectName = selectedProject?.projectName || "이 프로젝트";
+  const projectName = selectedProject?.projectName || t('agentThisProject');
+
+  const QUICK_ACTIONS = useMemo(() => [
+    { label: t('agentQuickStructural'), icon: "🔬", message: "이 프로젝트의 구조 안정성을 검토해줘" },
+    { label: t('agentQuickWbsSchedule'), icon: "📋", message: "이 프로젝트의 WBS 스케줄링을 넣어줘" },
+    { label: t('agentQuickWbsNew'),   icon: "➕", message: "이 프로젝트의 WBS를 신규로 만들어줘" },
+  ], [t]);
 
   const getWelcome = useCallback(() =>
-    `안녕하세요! BIM Agent입니다.\n`
-    + `**${projectName}** 프로젝트에 대해 다음 작업을 도와드릴 수 있습니다:\n\n`
-    + `• 구조 안정성 검토 → 구조해석 탭 자동 전환\n`
-    + `• WBS 스케줄링 → 기존 WBS 업데이트 또는 신규 공정표 생성`,
-  [projectName]);
+    t('agentWelcome', { name: projectName }),
+  [projectName, t]);
 
   // 패널 열릴 때 초기화
   useEffect(() => {
@@ -159,7 +157,7 @@ export default function BimAgentChat({
       });
 
       const data = res.data;
-      const reply = data.response || "응답을 받지 못했습니다.";
+      const reply = data.response || t('agentNoResponse');
 
       setMessages(prev => [...prev, { role: "assistant", content: reply }]);
 
@@ -172,24 +170,23 @@ export default function BimAgentChat({
         setMessages(prev => [...prev, {
           role:    "action",
           success: true,
-          content: `구조해석 탭으로 자동 전환했습니다.\n`
-                 + `• 부재 수: ${bimData.total ?? "?"}개\n`
-                 + `• 상태: ${bimData.status ?? ""}\n`
-                 + (bimData.warnings?.length
-                     ? `• 경고: ${bimData.warnings.join(" / ")}`
-                     : ""),
+          content: t('agentStructResult', { total: bimData.total ?? '?', status: bimData.status ?? '' })
+                 + (bimData.warnings?.length ? t('agentStructWarn', { warnings: bimData.warnings.join(' / ') }) : ''),
         }]);
       } else if (action === "wbs_created") {
-        const dur = bimData.durationDays ? ` (${bimData.durationDays}일)` : "";
+        const dur = bimData.durationDays ? t('agentWbsDur', { n: bimData.durationDays }) : '';
         setMessages(prev => [...prev, {
           role:    "action",
           success: true,
-          content: `WBS 공정표가 신규 생성되었습니다!\n`
-                 + `• 프로젝트명: ${bimData.projectName ?? ""}\n`
-                 + `• 감지 층수: ${bimData.floorCount ?? "?"}개 층\n`
-                 + `• 공정 수: ${bimData.taskCount ?? 0}개\n`
-                 + `• 기간: ${bimData.startDate ?? ""} ~ ${bimData.endDate ?? ""}${dur}\n`
-                 + (bimData.peakWorkers ? `• 최대 투입 인원: ${bimData.peakWorkers}명` : ""),
+          content: t('agentWbsCreated', {
+                     name: bimData.projectName ?? '',
+                     floors: bimData.floorCount ?? '?',
+                     tasks: bimData.taskCount ?? 0,
+                     start: bimData.startDate ?? '',
+                     end: bimData.endDate ?? '',
+                     dur,
+                   })
+                 + (bimData.peakWorkers ? t('agentWbsCreatedPeak', { peak: bimData.peakWorkers }) : ''),
         }]);
         onWbsChanged?.();
       } else if (action === "wbs_updated") {
@@ -198,32 +195,33 @@ export default function BimAgentChat({
         setMessages(prev => [...prev, {
           role:    "action",
           success: true,
-          content: `기존 WBS에 공정이 업데이트되었습니다.\n`
-                 + `• 프로젝트명: ${bimData.projectName ?? ""}\n`
-                 + `• 감지 층수: ${bimData.floorCount ?? "?"}개 층\n`
-                 + `• 추가된 공정: ${addedN}개\n`
-                 + `• 이미 존재(스킵): ${skippedN}개\n`
-                 + (bimData.peakWorkers ? `• 최대 투입 인원: ${bimData.peakWorkers}명` : ""),
+          content: t('agentWbsUpdated', {
+                     name: bimData.projectName ?? '',
+                     floors: bimData.floorCount ?? '?',
+                     added: addedN,
+                     skipped: skippedN,
+                   })
+                 + (bimData.peakWorkers ? t('agentWbsCreatedPeak', { peak: bimData.peakWorkers }) : ''),
         }]);
         onWbsChanged?.();
       } else if (action === "error") {
         setMessages(prev => [...prev, {
           role:    "action",
           success: false,
-          content: `처리 중 오류가 발생했습니다.\n${bimData.error ?? ""}`,
+          content: t('agentActionError', { error: bimData.error ?? '' }),
         }]);
       }
     } catch (err) {
-      console.error("[BimAgentChat] 오류:", err);
+      console.error("[BimAgentChat] error:", err);
       setMessages(prev => [
         ...prev,
-        { role: "assistant", content: "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요." },
+        { role: "assistant", content: t('agentServerError') },
       ]);
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [messages, loading, selectedProject, onShowStructural, onWbsChanged]);
+  }, [messages, loading, selectedProject, onShowStructural, onWbsChanged, t]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -342,7 +340,7 @@ export default function BimAgentChat({
                   fontSize: 12,
                 }}>
                   <span style={{ color: "#60a5fa", animation: "pulse 1s infinite" }}>
-                    분석 중…
+                    {t('agentAnalyzing')}
                   </span>
                 </div>
               </div>
@@ -396,7 +394,7 @@ export default function BimAgentChat({
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Agent에게 메시지 입력…"
+              placeholder={t('agentInputPh')}
               disabled={loading}
               rows={1}
               style={{

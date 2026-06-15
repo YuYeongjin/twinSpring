@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { parseIfcFile } from "../../utils/ifcImporter";
 import DroneAnalysisModal from "./component/DroneAnalysisModal";
 import { useT } from "../../i18n/LanguageContext";
 import WbsLinkWidget from "../wbs/component/WbsLinkWidget";
@@ -364,7 +363,9 @@ function CreateProjectForm({ onClose, onCreate }) {
 }
 
 // ================================================================
-// IFC 가져오기 모달 (모바일 h-screen 및 스크롤 개선 완료)
+// IFC 가져오기 모달 — 서버 사이드 변환 방식
+// 브라우저 WASM 파싱 없이 파일을 서버로 업로드하면
+// Python이 IFC → GLB 변환 후 DB/Minio 저장까지 완료
 // ================================================================
 function IfcImportModal({ onClose, onImport }) {
   const t = useT('bimProjectList');
@@ -372,21 +373,14 @@ function IfcImportModal({ onClose, onImport }) {
   const [projectName, setProjectName] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [dragging, setDragging]         = useState(false);
-  const [phase, setPhase]               = useState("idle"); // idle | parsing | importing | done | error
-  const [progress, setProgress]         = useState(0);
-  const [parsedData, setParsedData]     = useState(null);
+  const [phase, setPhase]               = useState("idle"); // idle | uploading | done | error
   const [errorMsg, setErrorMsg]         = useState("");
-  const [userScale, setUserScale]       = useState(1);
   const fileInputRef = useRef(null);
 
   const handleFile = useCallback((file) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".ifc")) {
       setErrorMsg(t('ifcOnly'));
-      return;
-    }
-    if (file.size > 100 * 1024 * 1024) {
-      setErrorMsg(t('fileTooLarge'));
       return;
     }
     setErrorMsg("");
@@ -400,53 +394,27 @@ function IfcImportModal({ onClose, onImport }) {
     handleFile(e.dataTransfer.files[0]);
   }, [handleFile]);
 
-  const handleParse = useCallback(async () => {
-    if (!selectedFile) return;
-    setPhase("parsing");
-    setProgress(0);
-    setErrorMsg("");
-    try {
-      const result = await parseIfcFile(selectedFile, setProgress, userScale);
-      setParsedData(result);
-      setPhase("done");
-    } catch (e) {
-      console.error("IFC parsing error:", e);
-      setErrorMsg(`IFC parsing failed: ${e?.message || String(e)}`);
-      setPhase("error");
-    }
-  }, [selectedFile, userScale]);
-
   const handleImport = useCallback(() => {
-    if (!parsedData || !projectName.trim()) return;
-    const { elements, ifcMeshes, geoOrigin, storeys } = parsedData;
-    setPhase("importing");
-    onImport(projectType, projectName.trim(), elements, ifcMeshes, geoOrigin, (project) => {
-      if (project) onClose();
-      else {
+    if (!selectedFile || !projectName.trim()) return;
+    setPhase("uploading");
+    setErrorMsg("");
+    onImport(projectType, projectName.trim(), selectedFile, (project) => {
+      if (project) {
+        setPhase("done");
+        onClose();
+      } else {
         setErrorMsg(t('projectCreationFailed'));
         setPhase("error");
       }
-    }, storeys, selectedFile);
-  }, [parsedData, projectName, projectType, onImport, onClose, t, selectedFile]);
-
-  const parsedElements = parsedData?.elements ?? null;
-  const typeStats = parsedElements
-      ? parsedElements.reduce((acc, el) => {
-        acc[el.elementType] = (acc[el.elementType] || 0) + 1;
-        return acc;
-      }, {})
-      : null;
+    });
+  }, [selectedFile, projectName, projectType, onImport, onClose, t]);
 
   return (
       <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
            style={{ backgroundColor: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
 
-        {/* ─── [모바일 최대화 가이드 변경] 모바일 일 때는 h-screen / rounded-none으로 스케일 확장 ─── */}
         <div className="relative w-full sm:max-w-lg h-screen sm:h-auto sm:max-h-[92vh] rounded-none sm:rounded-2xl shadow-2xl flex flex-col"
-             style={{
-               backgroundColor: "#0f1e2d",
-               border: "1px solid #253347",
-             }}>
+             style={{ backgroundColor: "#0f1e2d", border: "1px solid #253347" }}>
 
           {/* 헤더 */}
           <div className="flex items-center justify-between px-5 py-4 shrink-0 border-b border-[#1e3050]">
@@ -459,7 +427,6 @@ function IfcImportModal({ onClose, onImport }) {
             </button>
           </div>
 
-          {/* 본문 스크롤 컨테이너 (세로 터치 잠금 해제 스펙 적용) */}
           <div className="flex-1 overflow-y-auto modal-scroll px-5 py-4 space-y-4"
                style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
 
@@ -472,9 +439,7 @@ function IfcImportModal({ onClose, onImport }) {
                   position: "relative",
                   border: `2px dashed ${dragging ? "#0ea5e9" : selectedFile ? "#22c55e" : "#253347"}`,
                   backgroundColor: dragging ? "#0c2a3a" : "#0d1b2a",
-                  borderRadius: 12,
-                  minHeight: 100,
-                  overflow: "hidden",
+                  borderRadius: 12, minHeight: 100, overflow: "hidden",
                 }}
             >
               <input
@@ -483,10 +448,8 @@ function IfcImportModal({ onClose, onImport }) {
                   accept=".ifc"
                   onChange={e => handleFile(e.target.files[0])}
                   style={{
-                    position: "absolute", inset: 0,
-                    width: "100%", height: "100%",
-                    opacity: 0, cursor: "pointer", zIndex: 10,
-                    touchAction: "manipulation",
+                    position: "absolute", inset: 0, width: "100%", height: "100%",
+                    opacity: 0, cursor: "pointer", zIndex: 10, touchAction: "manipulation",
                   }}
               />
               <div className="flex flex-col items-center justify-center py-5 px-4 text-center"
@@ -505,7 +468,6 @@ function IfcImportModal({ onClose, onImport }) {
                       <p className="text-sm hidden sm:block" style={{ color: TB.text2 }}>
                         {t('dragOrClick')} <span className="text-blue-400 underline">{t('clickToSelect')}</span>
                       </p>
-                      <p className="text-xs mt-1 text-gray-600 sm:hidden">📂</p>
                       <p className="text-xs mt-1 text-gray-600">{t('ifcSupport')}</p>
                     </>
                 )}
@@ -543,89 +505,21 @@ function IfcImportModal({ onClose, onImport }) {
                     placeholder={t('enterProjectName')}
                     className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
                     style={{
-                      backgroundColor: "#152030",
-                      border: "1px solid #253347",
-                      color: TB.text1,
-                      fontSize: 16,
+                      backgroundColor: "#152030", border: "1px solid #253347",
+                      color: TB.text1, fontSize: 16,
                     }}
                 />
               </div>
             </div>
 
-            {/* 스케일 설정 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-medium" style={{ color: TB.text2 }}>Scale Factor</label>
-                {parsedData?.detectedScale != null && parsedData.detectedScale !== 1 && (
-                    <span className="text-xs px-2 py-0.5 rounded"
-                          style={{ backgroundColor: "#1c2a3a", color: "#f59e0b" }}>
-                  감지: {parsedData.detectedScale === 0.001 ? 'mm' : parsedData.detectedScale === 0.01 ? 'cm' : parsedData.detectedScale === 0.1 ? 'dm' : 'm'}
-                      → ×{Math.round(1 / parsedData.detectedScale)} 권장
-                </span>
-                )}
-              </div>
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0.001" max="10000" step="any"
-                      value={userScale}
-                      onChange={e => { setUserScale(parseFloat(e.target.value) || 1); if (phase === 'done') setPhase('idle'); }}
-                      className="w-28 px-3 py-2 rounded-lg text-sm outline-none text-right"
-                      style={{ backgroundColor: "#152030", border: "1px solid #253347", color: TB.text1, fontSize: 16 }}
-                  />
-                  <span className="text-xs" style={{ color: TB.text2 }}>× multiplier</span>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  {[1, 10, 100, 1000].map(v => (
-                      <button
-                          key={v}
-                          onClick={() => { setUserScale(v); if (phase === 'done') setPhase('idle'); }}
-                          className="flex-1 py-2 rounded-lg text-sm font-semibold transition"
-                          style={{
-                            backgroundColor: userScale === v ? "#0ea5e9" : "#152030",
-                            border: `1px solid ${userScale === v ? "#0ea5e9" : "#253347"}`,
-                            color: userScale === v ? "#fff" : TB.text2,
-                            minWidth: 56,
-                          }}
-                      >×{v}</button>
-                  ))}
-                </div>
-              </div>
-              <p className="text-xs mt-1.5" style={{ color: "#475569" }}>
-                mm 단위 IFC는 ×1000, cm 단위는 ×100 권장
-              </p>
-            </div>
-
-            {/* 파싱 진행바 */}
-            {(phase === "parsing" || phase === "importing") && (
-                <div>
-                  <div className="flex justify-between text-xs mb-1" style={{ color: TB.text2 }}>
-                    <span>{phase === "parsing" ? t('analyzing') : t('creating2')}</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-[#1c2a3a] overflow-hidden">
-                    <div className="h-full rounded-full transition-all"
-                         style={{ width: `${progress}%`, background: "linear-gradient(90deg,#0ea5e9,#8b5cf6)" }}/>
-                  </div>
-                </div>
-            )}
-
-            {/* 파싱 결과 요약 */}
-            {phase === "done" && typeStats && (
+            {/* 업로드 진행 안내 */}
+            {phase === "uploading" && (
                 <div className="rounded-xl p-3 text-xs"
-                     style={{ backgroundColor: "#0c2a1a", border: "1px solid #22c55e40" }}>
-                  <p className="text-green-400 font-semibold mb-2">
-                    {t('totalDetected', { count: parsedElements.length })}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(typeStats).map(([type, count]) => (
-                        <span key={type} className="px-2 py-0.5 rounded-full"
-                              style={{ backgroundColor: "#152030", color: TB.text2, border: "1px solid #253347" }}>
-                    {type} {count}
-                  </span>
-                    ))}
+                     style={{ backgroundColor: "#0c1f2d", border: "1px solid #0ea5e940" }}>
+                  <p className="text-blue-300 font-semibold mb-2">{t('serverConverting')}</p>
+                  <p style={{ color: TB.text2 }}>{t('serverConvertingDesc')}</p>
+                  <div className="mt-2 w-full h-1.5 rounded-full bg-[#1c2a3a] overflow-hidden">
+                    <div className="h-full rounded-full bg-blue-500 animate-pulse" style={{ width: "100%" }}/>
                   </div>
                 </div>
             )}
@@ -639,45 +533,30 @@ function IfcImportModal({ onClose, onImport }) {
             )}
           </div>
 
-          {/* 액션 버튼 바 — 세이프 에어리어 자동 정렬 */}
+          {/* 액션 버튼 바 */}
           <div className="flex gap-3 px-5 py-4 shrink-0 border-t border-[#1e3050] bg-[#0f1e2d]"
                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
             <button
                 onClick={onClose}
+                disabled={phase === "uploading"}
                 className="flex-1 py-3 rounded-xl text-sm font-medium transition"
                 style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
             >
               {t('cancel')}
             </button>
-
-            {phase !== "done" ? (
-                <button
-                    onClick={handleParse}
-                    disabled={!selectedFile || phase === "parsing"}
-                    className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
-                    style={{
-                      background: selectedFile && phase === "idle"
-                          ? "linear-gradient(135deg,#0ea5e9,#0284c7)" : "#1c2a3a",
-                      border: `1px solid ${selectedFile ? "#0ea5e9" : "#253347"}`,
-                      cursor: !selectedFile || phase === "parsing" ? "not-allowed" : "pointer",
-                    }}
-                >
-                  {phase === "parsing" ? t('analyzing') : t('fileAnalysis')}
-                </button>
-            ) : (
-                <button
-                    onClick={handleImport}
-                    disabled={!projectName.trim() || phase === "importing"}
-                    className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
-                    style={{
-                      background: projectName.trim() ? "linear-gradient(135deg,#7c3aed,#5b21b6)" : "#1c2a3a",
-                      border: `1px solid ${projectName.trim() ? "#8b5cf6" : "#253347"}`,
-                      cursor: !projectName.trim() ? "not-allowed" : "pointer",
-                    }}
-                >
-                  {phase === "importing" ? t('creating2') : t('importProject', { count: parsedElements?.length ?? 0 })}
-                </button>
-            )}
+            <button
+                onClick={handleImport}
+                disabled={!selectedFile || !projectName.trim() || phase === "uploading"}
+                className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
+                style={{
+                  background: selectedFile && projectName.trim() && phase === "idle"
+                      ? "linear-gradient(135deg,#7c3aed,#5b21b6)" : "#1c2a3a",
+                  border: `1px solid ${selectedFile && projectName.trim() ? "#8b5cf6" : "#253347"}`,
+                  cursor: !selectedFile || !projectName.trim() || phase === "uploading" ? "not-allowed" : "pointer",
+                }}
+            >
+              {phase === "uploading" ? t('converting') : t('uploadAndConvert')}
+            </button>
           </div>
         </div>
       </div>
