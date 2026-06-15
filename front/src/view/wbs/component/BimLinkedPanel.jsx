@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import AxiosCustom from '../../../axios/AxiosCustom';
+import { useT } from '../../../i18n/LanguageContext';
 import {
   ELEMENT_META, ELEMENT_ORDER, SUB_TASKS,
   calcTotalVolume, calcSubDays,
@@ -25,6 +26,7 @@ const daysBetween = (a, b) => {
 //    projectStartDate : string (YYYY-MM-DD) — 일정 계산 기준일
 // ════════════════════════════════════════════════════════════════
 export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectStartDate, projectEndDate }) {
+  const t = useT('wbs');
   const [links,       setLinks]       = useState([]);   // BIM 링크 목록
   const [bimData,     setBimData]     = useState({});   // { bimProjectId: { name, elements[] } }
   const [expandedBim, setExpandedBim] = useState({});   // { bimProjectId: bool }
@@ -430,7 +432,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                                 {elementType} × {count}
                               </span>
                               <span style={{ fontSize: 9, color: '#374151' }}>
-                                ~{estDays}일
+                                {t('approxDays', { n: estDays })}
                               </span>
                               <span style={{ fontSize: 9, color: '#253347' }}>
                                 ({totalVol.toFixed(1)}m³)
@@ -452,7 +454,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                               gap: 4, padding: '2px 0 4px',
                               borderBottom: '1px solid #0d1b2a',
                             }}>
-                              {['#', '요소 ID', '재료', '크기 (m)'].map(h => (
+                              {['#', t('elColId'), t('elColMaterial'), t('elColSize')].map(h => (
                                 <span key={h} style={{ fontSize: 9, color: '#253347', fontWeight: 700 }}>{h}</span>
                               ))}
                             </div>

@@ -516,11 +516,8 @@ function IfcImportModal({ onClose, onImport }) {
             {phase === "uploading" && (
                 <div className="rounded-xl p-3 text-xs"
                      style={{ backgroundColor: "#0c1f2d", border: "1px solid #0ea5e940" }}>
-                  <p className="text-blue-300 font-semibold mb-2">서버에서 IFC 변환 중...</p>
-                  <p style={{ color: TB.text2 }}>
-                    Python 서버가 IFC를 파싱하고 GLB로 변환하고 있습니다.
-                    파일 크기에 따라 수십 초가 소요될 수 있습니다.
-                  </p>
+                  <p className="text-blue-300 font-semibold mb-2">{t('serverConverting')}</p>
+                  <p style={{ color: TB.text2 }}>{t('serverConvertingDesc')}</p>
                   <div className="mt-2 w-full h-1.5 rounded-full bg-[#1c2a3a] overflow-hidden">
                     <div className="h-full rounded-full bg-blue-500 animate-pulse" style={{ width: "100%" }}/>
                   </div>
@@ -558,7 +555,7 @@ function IfcImportModal({ onClose, onImport }) {
                   cursor: !selectedFile || !projectName.trim() || phase === "uploading" ? "not-allowed" : "pointer",
                 }}
             >
-              {phase === "uploading" ? "변환 중..." : "업로드 및 변환"}
+              {phase === "uploading" ? t('converting') : t('uploadAndConvert')}
             </button>
           </div>
         </div>

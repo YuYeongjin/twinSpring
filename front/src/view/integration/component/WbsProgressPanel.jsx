@@ -113,6 +113,7 @@ function WbsBar({ task, color, tWbs, t }) {
 
 // ── BIM 작업계획 태스크 바 ────────────────────────────────────
 function BimTaskBar({ task, structName }) {
+  const tWp = useT('workPlan');
   const [open, setOpen] = useState(false);
   const color = PHASE_COLOR[task.phase] || '#3b82f6';
   const p = task.progress ?? 0;
@@ -153,10 +154,10 @@ function BimTaskBar({ task, structName }) {
           fontSize: 8, color: '#6b7280', lineHeight: 1.9,
         }}>
           <div style={{ color: '#4b5563', fontSize: 8, marginBottom: 2 }}>📁 {structName}</div>
-          <div>📅 {fmtD(task.start)} ~ {fmtD(task.end)} · {task.days}일</div>
-          <div>👷 {task.workers}명 · {task.roles}</div>
+          <div>📅 {fmtD(task.start)} ~ {fmtD(task.end)} · {tWp('valDays', { n: task.days })}</div>
+          <div>👷 {tWp('valPersons', { n: task.workers })} · {task.roles}</div>
           <div>🔧 {task.equipment}</div>
-          {task.volume != null && <div>📦 콘크리트 {task.volume} m³</div>}
+          {task.volume != null && <div>📦 {tWp('concreteVol', { vol: task.volume })}</div>}
         </div>
       )}
     </div>

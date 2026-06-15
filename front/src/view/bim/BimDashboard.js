@@ -95,7 +95,7 @@ function EnvSelector({ currentId, onChange }) {
                 title={t('selectBgEnv')}
             >
                 <span>{current.icon}</span>
-                <span className="hidden lg:inline">{current.label}</span>
+                <span className="hidden lg:inline">{t(current.labelKey)}</span>
                 <span className="opacity-50">▾</span>
             </button>
 
@@ -130,7 +130,7 @@ function EnvSelector({ currentId, onChange }) {
                                 }}
                             >
                                 <span style={{ fontSize: 14 }}>{p.icon}</span>
-                                <span>{p.label}</span>
+                                <span>{t(p.labelKey)}</span>
                                 {p.id === currentId && <span style={{ marginLeft: 'auto', color: '#60a5fa' }}>✓</span>}
                             </button>
                         ))}
