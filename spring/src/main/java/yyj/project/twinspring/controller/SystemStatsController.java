@@ -4,11 +4,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import yyj.project.twinspring.service.GeoLookupService;
+import yyj.project.twinspring.service.NginxLogService;
 import yyj.project.twinspring.service.RecentAccessService;
+import yyj.project.twinspring.service.SystemMetricsHistory;
 
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 호스트 시스템 리소스 모니터링 API
@@ -29,10 +33,19 @@ public class SystemStatsController {
     private static final String PROC_ROOT   = resolveProc();
     private static final String DISK_ROOT   = resolveDisk();
 
-    private final RecentAccessService recentAccessService;
+    private final RecentAccessService  recentAccessService;
+    private final GeoLookupService     geoLookupService;
+    private final SystemMetricsHistory metricsHistory;
+    private final NginxLogService      nginxLogService;
 
-    public SystemStatsController(RecentAccessService recentAccessService) {
+    public SystemStatsController(RecentAccessService recentAccessService,
+                                 GeoLookupService geoLookupService,
+                                 SystemMetricsHistory metricsHistory,
+                                 NginxLogService nginxLogService) {
         this.recentAccessService = recentAccessService;
+        this.geoLookupService    = geoLookupService;
+        this.metricsHistory      = metricsHistory;
+        this.nginxLogService     = nginxLogService;
     }
 
     // ── 경로 해석 ──────────────────────────────────────────────────────────────
@@ -72,6 +85,34 @@ public class SystemStatsController {
     @GetMapping("/log")
     public ResponseEntity<List<Map<String, Object>>> log() {
         return ResponseEntity.ok(recentAccessService.getRecentLog(50));
+    }
+
+    /** 시계열 메트릭 히스토리 (5분 간격, 최대 24h) */
+    @GetMapping("/history")
+    public ResponseEntity<List<Map<String, Object>>> history() {
+        return ResponseEntity.ok(metricsHistory.getHistory());
+    }
+
+    /**
+     * Ubuntu 호스트 nginx access.log 파싱 결과.
+     * available=false 이면 이유(reason)와 마운트 방법이 포함됨.
+     */
+    @GetMapping("/nginx-log")
+    public ResponseEntity<Map<String, Object>> nginxLog() {
+        return ResponseEntity.ok(nginxLogService.getStats(200_000));
+    }
+
+    /** IP 지오코딩 포함 접속자 목록 — ip-api.com 결과를 인메모리 캐시 */
+    @GetMapping("/geo-visitors")
+    public ResponseEntity<List<Map<String, Object>>> geoVisitors() {
+        List<Map<String, Object>> result = recentAccessService.getRecentVisitors().stream()
+                .map(v -> {
+                    Map<String, Object> merged = new LinkedHashMap<>(v);
+                    merged.putAll(geoLookupService.lookup((String) v.get("ip")));
+                    return merged;
+                })
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(result);
     }
 
     // ── 메모리 (/proc/meminfo) ─────────────────────────────────────────────────
