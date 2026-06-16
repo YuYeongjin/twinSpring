@@ -7,6 +7,8 @@ import { Client } from '@stomp/stompjs';
 import { useT } from '../../i18n/LanguageContext';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import { useCrackMonitor } from '../../context/CrackMonitorContext';
+import { createMockCameraStream } from '../../utils/mockCamera';
+import { getMockSafetyDetection } from '../../utils/mockDetection';
 import MonitoringGallery from './MonitoringGallery';
 import ProgressMonitoringPanel from './ProgressMonitoringPanel';
 import PhotoDiffPanel from './PhotoDiffPanel';
@@ -251,11 +253,18 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
 
+  const [isDemoMode,  setIsDemoMode]  = useState(() => loadCamState(projectId)?.mode === 'demo');
+  const isDemoRef  = useRef(false);
+  const demoStopRef = useRef(null);
+
   // saveStop=true: 사용자가 명시적으로 끈 경우 (wasStreaming: false 저장)
   // saveStop=false: 언마운트 클린업 (localStorage 그대로 유지 → 복귀 시 자동 재시작 가능)
   const stopCamera = useCallback((saveStop = true) => {
     liveDetectingRef.current = false;
     setLiveDetecting(false);
+    isDemoRef.current = false;
+    setIsDemoMode(false);
+    if (demoStopRef.current) { demoStopRef.current(); demoStopRef.current = null; }
     if (videoRef.current) {
       if (videoRef.current.srcObject) {
         videoRef.current.srcObject.getTracks().forEach(tr => tr.stop());
@@ -343,6 +352,26 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     videoRef.current.play().catch(() => {});
   }, []);
 
+  const startWithDemo = useCallback(() => {
+    setShowSourceModal(false);
+    setCamMode('demo');
+    setCamError('');
+    isDemoRef.current = true;
+    setIsDemoMode(true);
+    if (demoStopRef.current) { demoStopRef.current(); demoStopRef.current = null; }
+    const { stream, stop } = createMockCameraStream(640, 480);
+    demoStopRef.current = stop;
+    if (videoRef.current) {
+      if (videoRef.current.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(tr => tr.stop());
+      }
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+      setStreaming(true);
+      saveCamState({ mode: 'demo', wasStreaming: true }, projectId);
+    }
+  }, [projectId]);
+
   // 언마운트 시 정리 — localStorage 유지 (탭 복귀 시 자동 재시작 위해)
   useEffect(() => { return () => stopCamera(false); }, [stopCamera]);
   useEffect(() => { onStreamingChange?.(streaming); }, [streaming, onStreamingChange]);
@@ -359,13 +388,19 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
     } else if (s.mode === 'url' && s.url) {
       setUrlInput(s.url);
       startWithUrl(s.url);
+    } else if (s.mode === 'demo') {
+      startWithDemo();
     }
-  }, [projectId, startWithLocal, startWithUrl]);
+  }, [projectId, startWithLocal, startWithUrl, startWithDemo]);
   useEffect(() => {
     if (!streaming) { liveDetectingRef.current = false; setLiveDetecting(false); }
   }, [streaming]);
 
   const captureOnce = useCallback(async () => {
+    if (isDemoRef.current) {
+      const data = await getMockSafetyDetection();
+      return { ...data, _imgW: 640, _imgH: 480 };
+    }
     if (!videoRef.current || videoRef.current.videoWidth === 0) return null;
     const imgW = videoRef.current.videoWidth;
     const imgH = videoRef.current.videoHeight;
@@ -432,6 +467,12 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
           <span className="text-xs px-2 py-0.5 rounded-full"
             style={{ background: '#0d1b2a', border: '1px solid #60a5fa40', color: '#60a5fa' }}>
             🌐 URL
+          </span>
+        )}
+        {isDemoMode && (
+          <span className="text-xs px-2 py-0.5 rounded-full"
+            style={{ background: '#1a0d2a', border: '1px solid #a78bfa', color: '#c4b5fd' }}>
+            🎬 DEMO
           </span>
         )}
         {liveDetecting && (
@@ -537,7 +578,32 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
                   <div className="flex-1 h-px" style={{ background: '#253347' }} />
                 </div>
 
-                {/* 옵션 2: URL 스트림 */}
+                {/* 옵션 2: 데모 모드 */}
+                <button
+                  onClick={startWithDemo}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                  style={{ border: '1px solid #3b2060', background: '#1a0d2a' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#a78bfa'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = '#3b2060'}
+                >
+                  <span className="text-2xl shrink-0">🎬</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: '#c4b5fd' }}>데모 모드</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#6b5080' }}>
+                      카메라 없이 기능 테스트 — 균열·안전 감지 시뮬레이션
+                    </p>
+                  </div>
+                  <span className="text-sm shrink-0" style={{ color: '#a78bfa' }}>→</span>
+                </button>
+
+                {/* 구분선 */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px" style={{ background: '#253347' }} />
+                  <span className="text-xs" style={{ color: '#374a5f' }}>{t('or')}</span>
+                  <div className="flex-1 h-px" style={{ background: '#253347' }} />
+                </div>
+
+                {/* 옵션 3: URL 스트림 */}
                 <div className="rounded-xl p-3 space-y-2.5"
                   style={{ border: '1px solid #253347', background: '#162032' }}>
                   <div className="flex items-start gap-2">
@@ -1159,7 +1225,8 @@ function CrackMonitorPanel({ selectedProject }) {
     crackLog,
     streamRef,
     selectedProjectRef,
-    startCamera, stopCamera,
+    isDemoMode,
+    startCamera, stopCamera, startDemoCamera,
     captureFromCamera, detectFromBlob,
   } = useCrackMonitor();
 
@@ -1329,17 +1396,30 @@ function CrackMonitorPanel({ selectedProject }) {
             <span className="text-xs" style={{ color: streaming ? "#22c55e" : "#6b7280" }}>
               {streaming ? t('on') : t('off')}
             </span>
+            {isDemoMode && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full"
+                    style={{ background: '#1a0d2a', border: '1px solid #a78bfa', color: '#c4b5fd' }}>
+                🎬 DEMO
+              </span>
+            )}
             <div className="ml-auto flex gap-2">
-              {!streaming
-                ? <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg"
+              {!streaming ? (
+                <>
+                  <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg"
                           style={{ background: "#0d2a1a", border: "1px solid #22c55e", color: "#22c55e" }}>
                     {t('startCamera')}
                   </button>
-                : <button onClick={stopCamera} className="text-xs px-3 py-1 rounded-lg"
-                          style={{ background: "#2a1010", border: "1px solid #ef4444", color: "#ef4444" }}>
-                    {t('stopCamera')}
+                  <button onClick={startDemoCamera} className="text-xs px-3 py-1 rounded-lg"
+                          style={{ background: "#1a0d2a", border: "1px solid #7c3aed", color: "#c4b5fd" }}>
+                    🎬 데모
                   </button>
-              }
+                </>
+              ) : (
+                <button onClick={stopCamera} className="text-xs px-3 py-1 rounded-lg"
+                        style={{ background: "#2a1010", border: "1px solid #ef4444", color: "#ef4444" }}>
+                  {t('stopCamera')}
+                </button>
+              )}
             </div>
           </div>
           <div className="flex-1 relative bg-black flex items-center justify-center">
