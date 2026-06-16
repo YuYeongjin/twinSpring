@@ -50,20 +50,19 @@ const SUB_TASKS = [
  * elements 날것 데이터를 쓰던 레거시를 전면 폐기하고,
  * 무조건 이미 생성 완료된 layers 트리를 그대로 받아 우측 그리드와 1:1 싱크를 맞춥니다.
  */
-export function generateWbsFromElements(elements, projectId, options = {}) {
-  // 기존 elements 기반 분류기가 강제 호출될 때를 대비해,
-  // 상위 context의 layers 배열을 주입받아 generateWbsFromLayers로 다이렉트 패스시킵니다.
+export async function generateWbsFromElements(elements, projectId, options = {}) {
   if (options.layers && options.layers.length > 0) {
     return generateWbsFromLayers(options.layers, projectId, elements, options);
   }
-  // Fallback 처리
   return { wbsNodes: [], mappings: [] };
 }
 
 /**
  *  Layer 기반 한 층 한 층 WBS 자동 빌더
+ *  options.axiosPost 가 있으면 유니크 elementType 별 RAG 시방서를 병렬 프리페치하여
+ *  TASK 노드의 reason 필드를 실제 시방서 인용으로 보강합니다.
  */
-export function generateWbsFromLayers(layers, projectId, elements = [], options = {}) {
+export async function generateWbsFromLayers(layers, projectId, elements = [], options = {}) {
   if (!layers || layers.length === 0) return { wbsNodes: [], mappings: [] };
 
   const wbsNodes = [];
@@ -142,6 +141,33 @@ export function generateWbsFromLayers(layers, projectId, elements = [], options 
     });
   }
 
+  const standard = options.standard || 'KDS';
+
+  // RAG 프리페치: 유니크 elementType 별 시방서 인용을 병렬로 조회
+  // options.axiosPost 가 없거나 실패하면 빈 맵으로 폴백 (하드코딩 reason 유지)
+  const ragCitationMap = {}; // { "IfcColumn": [{source, series, content}] }
+  if (options.axiosPost) {
+    const uniqueTypes = [...new Set(
+      layers.filter(isTypeLayer).map(l => getIfcTypeFromLabel(l.layerName)).filter(Boolean)
+    )].filter(t => STRUCTURAL_TYPES.includes(t));
+
+    if (uniqueTypes.length > 0) {
+      const results = await Promise.allSettled(
+        uniqueTypes.map(type =>
+          options.axiosPost('/api/chat/wbs-task-spec', {
+            elementType: type,
+            taskName: WBS_TYPE_LABEL[type] || type,
+            standard,
+          })
+        )
+      );
+      uniqueTypes.forEach((type, i) => {
+        const r = results[i];
+        ragCitationMap[type] = (r.status === 'fulfilled' && r.value?.data?.citations) || [];
+      });
+    }
+  }
+
   // 루트 발급
   const totalAll = activeBuildings.reduce((s, b) => s + b.storeys.reduce((s2, st) => s2 + st.types.reduce((s3, t) => s3 + t.elementIds.length, 0), 0), 0);
   const rootId = `${projectId}-ROOT`;
@@ -177,7 +203,7 @@ export function generateWbsFromLayers(layers, projectId, elements = [], options 
         let sIdx = 0;
         for (const storey of building.storeys) {
           sIdx++;
-          const storeyLabel = storey.name; // 'Floor 0' 이나 '지붕'이 정직하게 대입됨
+          const storeyLabel = storey.name;
           const sId    = nid(projectId, 'ST', buildingName, ph.id, storeyLabel);
           const sCode  = `${phCode}.${p2(sIdx)}`;
           const sTotal = storey.types.reduce((s, t) => s + t.elementIds.length, 0);
@@ -189,14 +215,41 @@ export function generateWbsFromLayers(layers, projectId, elements = [], options 
             tIdx++;
             const elId   = nid(projectId, 'EL', buildingName, ph.id, storeyLabel, ifcType);
             const elCode = `${sCode}.${p2(tIdx)}`;
-
-            // 💡 간트차트 우측 리스트에 바인딩되는 최종 명칭 가공 부분 명확화
-            // ex) "Floor 0 슬래브 공사", "지붕 지붕공사" 형태로 완전 고정
             const label  = `${storeyLabel} ${WBS_TYPE_LABEL[ifcType] ?? ifcType}`;
-            push(elId, sId, elCode, label, WBS_NODE_TYPES.ELEMENT, buildingName, storeyLabel, ifcType, elementIds.length, phBase + sIdx * 1000 + tIdx * 10);
+            const elBase = phBase + sIdx * 1000 + tIdx * 10;
+
+            push(elId, sId, elCode, label, WBS_NODE_TYPES.ELEMENT, buildingName, storeyLabel, ifcType, elementIds.length, elBase);
 
             for (const elemId of elementIds) {
               mappings.push({ elementId: elemId, wbsId: elId, projectId });
+            }
+
+            // ── TASK 노드 생성 (철근/거푸집/콘크리트/양생) ──────────────
+            if (STRUCTURAL_TYPES.includes(ifcType)) {
+              const totalVolume = elementIds.reduce((sum, id) => {
+                const el = elemDataMap.get(id);
+                return el ? sum + elementVolume(el) : sum;
+              }, 0);
+
+              const ragCitations = ragCitationMap[ifcType] || [];
+              const qty = resolveQuantity(ifcType, totalVolume, standard, ragCitations);
+
+              let subIdx = 0;
+              for (const sub of SUB_TASKS) {
+                const qData = qty[sub.field];
+                if (!qData) continue;
+                subIdx++;
+                push(
+                  nid(projectId, 'TK', buildingName, ph.id, storeyLabel, ifcType, sub.id),
+                  elId,
+                  `${elCode}.${p2(subIdx)}`,
+                  sub.name,
+                  WBS_NODE_TYPES.TASK,
+                  buildingName, storeyLabel, ifcType, 0,
+                  elBase + subIdx,
+                  { quantity: qData.value, unit: qData.unit, formula: qData.formula, reason: qData.reason, standard },
+                );
+              }
             }
           }
         }

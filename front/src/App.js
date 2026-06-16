@@ -659,8 +659,8 @@ function App() {
           try {
             const { generateWbsFromLayers } = await import('./utils/wbsGenerator');
 
-            // Ollama 3B 모델로 층 이름 정규화
-            const rawNames = [...new Set(savedElements.map(e => e.storeyName).filter(Boolean))];
+            // Ollama 3B 모델로 층 이름 정규화 (BimElementDTO 필드명은 storey)
+            const rawNames = [...new Set(savedElements.map(e => e.storey).filter(Boolean))];
             let normalizedMap = {};
             if (rawNames.length > 0) {
               try {
@@ -668,13 +668,13 @@ function App() {
                 normalizedMap = normRes.data || {};
                 console.log('[WBS] Ollama 층 이름 정규화:', normalizedMap);
               } catch (e) {
-                console.warn('[WBS] Ollama 정규화 실패, 기존 normalizeStoreyName 사용:', e.message);
+                console.warn('[WBS] Ollama 정규화 실패, 내부 정규식 폴백으로 진행:', e.message);
               }
             }
             const patchedElements = Object.keys(normalizedMap).length > 0
               ? savedElements.map(e => ({
                   ...e,
-                  storeyName: normalizedMap[e.storeyName] ?? e.storeyName,
+                  storey: normalizedMap[e.storey] ?? e.storey,
                 }))
               : savedElements;
 
@@ -684,9 +684,12 @@ function App() {
             const storeyRes = await AxiosCustom.get(`/api/bim/storeys?projectId=${project.projectId}`);
             const storeys = storeyRes.data ?? [];
 
-            const { wbsNodes, mappings } = generateWbsFromLayers(
+            const { wbsNodes, mappings } = await generateWbsFromLayers(
               layers, project.projectId, patchedElements,
-              { storeys, geoOrigin: null, standard: 'KDS' },
+              {
+                storeys, geoOrigin: null, standard: 'KDS',
+                axiosPost: (url, data) => AxiosCustom.post(url, data),
+              },
             );
             if (wbsNodes.length > 0)  await AxiosCustom.post('/api/bim/wbs/batch', wbsNodes);
             if (mappings.length > 0)  await AxiosCustom.post('/api/bim/element-wbs/batch', mappings);

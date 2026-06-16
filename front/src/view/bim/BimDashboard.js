@@ -1147,6 +1147,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     const wbsPollingRef = useRef(null);
     const isWbsGenerating = wbsJobState?.status === 'pending' &&
                             wbsJobState?.projectId === selectedProject?.projectId;
+    const isWbsFailed = wbsJobState?.status === 'failed' &&
+                        wbsJobState?.projectId === selectedProject?.projectId;
 
     // WBS 트리 (buildWbsTree 결과)
     const wbsTree = React.useMemo(() => buildWbsTree(wbsNodes), [wbsNodes]);
@@ -1217,7 +1219,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`)
             .then(res => setElementWbsMappings(res.data || []))
             .catch(() => {});
-    }, [wbsJobState?.status, wbsJobState?.projectId]);
+    }, [wbsJobState?.status, wbsJobState?.projectId, selectedProject?.projectId]);
 
     // WBS 진척도 업데이트
     const handleWbsProgressChange = React.useCallback((wbsId, progress) => {
@@ -2231,6 +2233,18 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     }}>
                         <span style={{ fontSize: 16, animation: 'spin 1.2s linear infinite' }}>⚙</span>
                         <span>WBS를 생성하는 중입니다... 잠시 후 자동으로 표시됩니다.</span>
+                    </div>
+                )}
+                {/* WBS 생성 실패 배너 */}
+                {isWbsFailed && (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 16px', flexShrink: 0,
+                        background: '#1f0d0d', borderBottom: '1px solid #5c1a1a',
+                        color: '#f87171', fontSize: 12,
+                    }}>
+                        <span style={{ fontSize: 14 }}>✕</span>
+                        <span>WBS 자동 생성에 실패했습니다. IFC 파일을 다시 업로드하거나 서버 로그를 확인하세요.</span>
                     </div>
                 )}
                 <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
