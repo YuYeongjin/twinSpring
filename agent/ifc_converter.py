@@ -32,7 +32,7 @@ ELEMENT_TYPE_MAP = {
     "IfcWallStandardCase":   "IfcWall",
     "IfcSlab":               "IfcSlab",
     "IfcMember":             "IfcMember",
-    "IfcFooting":            "IfcSlab",
+    "IfcFooting":            "IfcFoundation",  # 기초 부재 — 슬래브와 분리
     "IfcPile":               "IfcPier",
     "IfcPlate":              "IfcMember",
     "IfcDoor":               "IfcDoor",
@@ -43,16 +43,17 @@ ELEMENT_TYPE_MAP = {
 }
 
 ELEMENT_COLORS = {
-    "IfcColumn":  [0.70, 0.70, 0.75, 1.0],
-    "IfcBeam":    [0.60, 0.60, 0.70, 1.0],
-    "IfcWall":    [0.80, 0.78, 0.72, 1.0],
-    "IfcSlab":    [0.75, 0.75, 0.75, 1.0],
-    "IfcMember":  [0.55, 0.65, 0.80, 1.0],
-    "IfcPier":    [0.70, 0.70, 0.75, 1.0],
-    "IfcDoor":    [0.65, 0.45, 0.30, 1.0],
-    "IfcWindow":  [0.50, 0.70, 0.90, 0.6],
-    "IfcStair":   [0.75, 0.72, 0.65, 1.0],
-    "IfcRoof":    [0.60, 0.55, 0.50, 1.0],
+    "IfcColumn":      [0.70, 0.70, 0.75, 1.0],
+    "IfcBeam":        [0.60, 0.60, 0.70, 1.0],
+    "IfcWall":        [0.80, 0.78, 0.72, 1.0],
+    "IfcSlab":        [0.75, 0.75, 0.80, 1.0],
+    "IfcFoundation":  [0.55, 0.42, 0.22, 1.0],  # 기초 — 흙/콘크리트 갈색
+    "IfcMember":      [0.55, 0.65, 0.80, 1.0],
+    "IfcPier":        [0.70, 0.70, 0.75, 1.0],
+    "IfcDoor":        [0.65, 0.45, 0.30, 1.0],
+    "IfcWindow":      [0.50, 0.70, 0.90, 0.6],
+    "IfcStair":       [0.75, 0.72, 0.65, 1.0],
+    "IfcRoof":        [0.60, 0.55, 0.50, 1.0],
 }
 
 def _dms_to_decimal(arr) -> Optional[float]:
@@ -64,19 +65,39 @@ def _dms_to_decimal(arr) -> Optional[float]:
 
 
 def _detect_unit_scale(ifc) -> float:
+    """IFC 길이 단위 → 미터 변환 계수.
+    IfcUnitAssignment를 우선 탐색하고, 없으면 IfcSIUnit 직접 탐색으로 폴백.
+    IfcConversionBasedUnit(인치·피트 등)도 처리한다.
+    """
+    _PREFIXES = {".MILLI.": 0.001, ".CENTI.": 0.01, ".DECI.": 0.1}
+    _LENGTH_TYPES = {".LENGTHUNIT.", "LENGTHUNIT"}
+
+    # 1순위: IfcUnitAssignment (프로젝트 단위 정의)
     try:
-        for unit in ifc.by_type("IfcSIUnit"):
-            if getattr(unit, "UnitType", None) == ".LENGTHUNIT.":
-                prefix = getattr(unit, "Prefix", None)
-                if prefix == ".MILLI.":
-                    return 0.001
-                if prefix == ".CENTI.":
-                    return 0.01
-                if prefix == ".DECI.":
-                    return 0.1
-                return 1.0
+        for ua in ifc.by_type("IfcUnitAssignment"):
+            units = getattr(ua, "Units", None) or []
+            for unit in units:
+                if getattr(unit, "UnitType", None) not in _LENGTH_TYPES:
+                    continue
+                if unit.is_a("IfcSIUnit"):
+                    return _PREFIXES.get(getattr(unit, "Prefix", None), 1.0)
+                if unit.is_a("IfcConversionBasedUnit"):
+                    factor = getattr(unit, "ConversionFactor", None)
+                    if factor:
+                        val = getattr(factor, "ValueComponent", None)
+                        if val is not None:
+                            return float(val)
     except Exception:
         pass
+
+    # 2순위: IfcSIUnit 직접 탐색 (폴백)
+    try:
+        for unit in ifc.by_type("IfcSIUnit"):
+            if getattr(unit, "UnitType", None) in _LENGTH_TYPES:
+                return _PREFIXES.get(getattr(unit, "Prefix", None), 1.0)
+    except Exception:
+        pass
+
     return 1.0
 
 
@@ -361,14 +382,16 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
     builder = GlbBuilder()
     elements: list[dict] = []
 
-    target_types = list(ELEMENT_TYPE_MAP.keys())
-
     all_positions: list[np.ndarray] = []  # 중앙 정렬용
-
-    raw_geoms: list[dict] = []  # 임시 저장
+    raw_geoms: list[dict] = []            # 임시 저장
+    processed_ids: set[int] = set()       # 서브타입 중복 처리 방지
 
     for ifc_type, our_type in ELEMENT_TYPE_MAP.items():
         for product in ifc.by_type(ifc_type):
+            express_id = product.id()
+            if express_id in processed_ids:
+                continue  # IfcWall/IfcWallStandardCase 등 서브타입 중복 스킵
+            processed_ids.add(express_id)
             # 이미 더 정밀한 타입으로 처리된 경우 스킵 (IfcWallStandardCase 등)
             try:
                 shape = ifcopenshell.geom.create_shape(settings, product)

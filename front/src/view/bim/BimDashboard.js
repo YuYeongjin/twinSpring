@@ -609,7 +609,7 @@ function CoordCommandBar({
 // ================================================================
 function QuickSelectPanel({ modelData, onSelect, onClose }) {
     const t = useT('bimDashboard');
-    const TYPES = ['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier','IfcRebar'];
+    const TYPES = ['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcFoundation','IfcPier','IfcRebar'];
     const [selTypes, setSelTypes] = React.useState([]);
     const [selMat,   setSelMat]   = React.useState('');
 
@@ -863,7 +863,7 @@ function PropertyPanel({ selectedElement, selectedElements, modelData, updateEle
     }
 
     const el = selectedElement.data;
-    const typeColor = { IfcColumn: 'brown', IfcBeam: 'gray', IfcWall: 'gray', IfcSlab: 'blue', IfcPier: 'orange', IfcRebar: 'red' }[el.elementType] ?? 'gray';
+    const typeColor = { IfcColumn: 'brown', IfcBeam: 'gray', IfcWall: 'gray', IfcSlab: 'blue', IfcFoundation: 'brown', IfcPier: 'orange', IfcRebar: 'red' }[el.elementType] ?? 'gray';
 
     const handleChange = (field, value) => {
         const isNum = field !== 'material';
@@ -1628,7 +1628,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         for (const el of modelData) {
             counts[el.elementType] = (counts[el.elementType] || 0) + 1;
         }
-        const TYPE_ORDER = ['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcDoor','IfcWindow','IfcStair','IfcRoof','IfcPier','IfcMember','IfcRebar'];
+        const TYPE_ORDER = ['IfcColumn','IfcBeam','IfcSlab','IfcFoundation','IfcWall','IfcDoor','IfcWindow','IfcStair','IfcRoof','IfcPier','IfcMember','IfcRebar'];
         return Object.entries(counts)
             .sort(([a,ca],[b,cb]) => {
                 const oa = TYPE_ORDER.indexOf(a), ob = TYPE_ORDER.indexOf(b);
