@@ -977,11 +977,11 @@ from fastapi.responses import JSONResponse
 import base64
 
 @app.post("/api/ifc/convert")
-async def convert_ifc(file: UploadFile = File(...)):
+async def convert_ifc(file: UploadFile = File(...), scale: float = 1.0, project_id: str = ""):
     """
     IFC 파일을 GLB 바이너리로 변환하고 부재/층/geoOrigin 메타데이터를 반환.
 
-    Request:  multipart/form-data  field=file (.ifc)
+    Request:  multipart/form-data  field=file (.ifc), scale (optional), project_id (optional)
     Response: {
         glbBase64: string,          — base64 인코딩된 GLB 바이너리
         elements:  BimElementDTO[], — DB 저장용 부재 목록
@@ -992,7 +992,7 @@ async def convert_ifc(file: UploadFile = File(...)):
     try:
         from ifc_converter import convert_ifc_to_glb
         ifc_bytes = await file.read()
-        result = convert_ifc_to_glb(ifc_bytes)
+        result = convert_ifc_to_glb(ifc_bytes, user_scale=scale, project_id=project_id)
         return JSONResponse({
             "glbBase64": base64.b64encode(result["glb_bytes"]).decode("utf-8"),
             "elements":  result["elements"],

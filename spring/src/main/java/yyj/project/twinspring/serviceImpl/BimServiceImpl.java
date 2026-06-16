@@ -108,18 +108,9 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public Mono<List<BimProjectDTO>> getProjectList() {
-        log.debug("C# 서버 프로젝트 목록 요청");
-        return webClient.get()
-                .uri("/api/bim/projects")
-                .retrieve()
-                .onStatus(status -> status.isError(), clientResponse ->
-                        Mono.error(new RuntimeException("C# Server Error: " + clientResponse.statusCode())))
-                .bodyToFlux(BimProjectDTO.class)
-                .collectList()
-                .onErrorResume(e -> {
-                    log.warn("C# BIM 서버 연결 실패 — 로컬 DB로 폴백: {}", e.getMessage());
-                    return Mono.fromCallable(this::getBimProjectsFromDb);
-                });
+        // 로컬 PostgreSQL에서 조회 (glbStorageKey 등 로컬 전용 필드 포함)
+        return Mono.fromCallable(this::getBimProjectsFromDb)
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
     @Override
@@ -617,6 +608,7 @@ public class BimServiceImpl implements BimService {
                     dto.setIfcOffsetY(row.get("ifcOffsetY") == null ? null : toDouble(row.get("ifcOffsetY")));
                     dto.setIfcOffsetZ(row.get("ifcOffsetZ") == null ? null : toDouble(row.get("ifcOffsetZ")));
                     dto.setIfcScale(row.get("ifcScale") == null ? null : toDouble(row.get("ifcScale")));
+                    dto.setGlbStorageKey((String) row.get("glbStorageKey"));
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -897,7 +889,7 @@ public class BimServiceImpl implements BimService {
     }
 
     @Override
-    public Mono<Map<String, Object>> convertAndStoreIfc(String projectId, MultipartFile file) {
+    public Mono<Map<String, Object>> convertAndStoreIfc(String projectId, MultipartFile file, double userScale) {
         return Mono.fromCallable(() -> {
             byte[] ifcBytes;
             try {
@@ -928,6 +920,10 @@ public class BimServiceImpl implements BimService {
 
             org.springframework.util.MultiValueMap<String, Object> formData = new org.springframework.util.LinkedMultiValueMap<>();
             formData.add("file", resource);
+            formData.add("project_id", projectId);
+            if (userScale != 1.0) {
+                formData.add("scale", String.valueOf(userScale));
+            }
 
             Map<String, Object> convertResult = agentWebClient.post()
                     .uri("/api/ifc/convert")
@@ -954,7 +950,7 @@ public class BimServiceImpl implements BimService {
                 List<BimElementDTO> dtos = rawElements.stream().map(e -> {
                     BimElementDTO dto = new BimElementDTO();
                     dto.setProjectId(projectId);
-                    dto.setElementId((String) e.get("elementId") + "-" + projectId);
+                    dto.setElementId((String) e.get("elementId")); // Python이 이미 project_id suffix 포함
                     dto.setElementType((String) e.get("elementType"));
                     dto.setPositionX(toDoubleOrNull(e.get("positionX")));
                     dto.setPositionY(toDoubleOrNull(e.get("positionY")));
@@ -968,8 +964,12 @@ public class BimServiceImpl implements BimService {
                     dto.setGlobalId((String) e.get("globalId"));
                     return dto;
                 }).collect(Collectors.toList());
-                // 기존 batch 저장 로직 재사용 (C# 서버 경유)
-                createElements(dtos).block(java.time.Duration.ofMinutes(5));
+                // C# 서버 경유 저장 — 실패해도 GLB는 이미 저장됐으므로 warn만 남기고 계속
+                try {
+                    createElements(dtos).block(java.time.Duration.ofMinutes(5));
+                } catch (Exception ex) {
+                    log.warn("[BIM] C# elements 저장 실패(무시 — GLB는 보존): {}", ex.getMessage());
+                }
             }
 
             // 5. storeys DB 저장
