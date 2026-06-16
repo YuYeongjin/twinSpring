@@ -27,6 +27,9 @@ public class BimProjectDTO {
     private String originalFilename;  // 사용자 업로드 원본 파일명
     private String uploadedAt;        // 업로드 완료 시각 (ISO-8601)
 
+    // ── Object Storage 연동 (GLB 변환 파일) ──────────────────────────
+    private String glbStorageKey;     // MinIO GLB 오브젝트 키
+
     public void setProjectId(String projectId) {
         this.projectId = projectId;
     }

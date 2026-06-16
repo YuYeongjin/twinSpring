@@ -375,6 +375,7 @@ function IfcImportModal({ onClose, onImport }) {
   const [dragging, setDragging]         = useState(false);
   const [phase, setPhase]               = useState("idle"); // idle | uploading | done | error
   const [errorMsg, setErrorMsg]         = useState("");
+  const [userScale, setUserScale]       = useState(1);
   const fileInputRef = useRef(null);
 
   const handleFile = useCallback((file) => {
@@ -406,8 +407,8 @@ function IfcImportModal({ onClose, onImport }) {
         setErrorMsg(t('projectCreationFailed'));
         setPhase("error");
       }
-    });
-  }, [selectedFile, projectName, projectType, onImport, onClose, t]);
+    }, userScale);
+  }, [selectedFile, projectName, projectType, onImport, onClose, t, userScale]);
 
   return (
       <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
@@ -511,6 +512,46 @@ function IfcImportModal({ onClose, onImport }) {
                 />
               </div>
             </div>
+
+            {/* Scale Factor */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium" style={{ color: TB.text2 }}>
+                  Scale Factor
+                </label>
+                <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "#1c2a3a", color: "#6b7280" }}>
+                  mm 단위 IFC → ×1000, cm → ×100
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0.001"
+                  max="100000"
+                  step="any"
+                  value={userScale}
+                  onChange={e => setUserScale(parseFloat(e.target.value) || 1)}
+                  className="w-24 px-2 py-1.5 rounded-lg text-sm outline-none text-right"
+                  style={{ backgroundColor: "#152030", border: "1px solid #253347", color: TB.text1 }}
+                />
+                <span className="text-xs" style={{ color: TB.text2 }}>× multiplier</span>
+                <div className="flex gap-1 ml-auto">
+                  {[1, 10, 100, 1000].map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setUserScale(v)}
+                      className="px-2 py-1 rounded text-xs font-medium transition"
+                      style={{
+                        backgroundColor: userScale === v ? "#0ea5e9" : "#152030",
+                        border: `1px solid ${userScale === v ? "#0ea5e9" : "#253347"}`,
+                        color: userScale === v ? "#fff" : TB.text2,
+                      }}
+                    >×{v}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
 
             {/* 업로드 진행 안내 */}
             {phase === "uploading" && (

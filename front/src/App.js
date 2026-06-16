@@ -618,7 +618,7 @@ function App() {
   // Import BIM project via server-side IFC → GLB conversion (B안 — 현재 사용)
   // WASM 파싱 없이 IFC 파일을 서버에 업로드 → Python 변환 → GLB + DB 저장
   // ---------------------------------------------------------------
-  const importIfcProjectServer = useCallback(async (type, name, ifcFile, callback) => {
+  const importIfcProjectServer = useCallback(async (type, name, ifcFile, callback, userScale = 1) => {
     try {
       const existingNames = new Set((projectList || []).map(p => p.projectName));
       let uniqueName = name;
@@ -638,6 +638,7 @@ function App() {
       // 2. IFC 업로드 → 서버(Python)에서 변환 + DB 저장
       const formData = new FormData();
       formData.append('file', ifcFile);
+      if (userScale && userScale !== 1) formData.append('scale', String(userScale));
       await AxiosCustom.post(
         `/api/bim/project/${project.projectId}/convert-ifc`,
         formData,
@@ -963,7 +964,7 @@ function App() {
     if (viewComponent === 'bim') {
       // GLB 서버 변환 방식만 사용 (WASM 세션 캐시 비활성화)
       const currentIfcMeshes = null;
-      const glbUrl = selectedProject
+      const glbUrl = selectedProject?.glbStorageKey
         ? `/api/bim/project/${selectedProject.projectId}/glb`
         : null;
       return (

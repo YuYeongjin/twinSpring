@@ -149,7 +149,7 @@
         VALUES (#{projectId}, #{projectName}, #{structureType},
                 #{geoLatitude,jdbcType=DOUBLE}, #{geoLongitude,jdbcType=DOUBLE}, #{geoElevation,jdbcType=DOUBLE},
                 #{ifcOffsetX,jdbcType=DOUBLE}, #{ifcOffsetY,jdbcType=DOUBLE}, #{ifcOffsetZ,jdbcType=DOUBLE},
-                #{ifcScale,jdbcType=DOUBLE})
+                COALESCE(#{ifcScale,jdbcType=DOUBLE}, 1))
         ON CONFLICT (project_id) DO UPDATE
             SET geo_latitude  = EXCLUDED.geo_latitude,
                 geo_longitude = EXCLUDED.geo_longitude,
@@ -157,7 +157,7 @@
                 ifc_offset_x  = EXCLUDED.ifc_offset_x,
                 ifc_offset_y  = EXCLUDED.ifc_offset_y,
                 ifc_offset_z  = EXCLUDED.ifc_offset_z,
-                ifc_scale     = EXCLUDED.ifc_scale
+                ifc_scale     = COALESCE(EXCLUDED.ifc_scale, bim_project.ifc_scale)
     </insert>
 
     <select id="getAllProjects" resultType="map">
@@ -174,7 +174,8 @@
                ifc_scale         AS "ifcScale",
                storage_key       AS "storageKey",
                original_filename AS "originalFilename",
-               uploaded_at       AS "uploadedAt"
+               uploaded_at       AS "uploadedAt",
+               glb_storage_key   AS "glbStorageKey"
         FROM bim_project
         ORDER BY project_name ASC
     </select>

@@ -124,46 +124,80 @@ def _extract_spatial_structure(ifc) -> tuple[dict, list]:
     elem_to_spatial: dict[int, dict] = {}
     storeys: list[dict] = []
 
+    # ── 1. 층(IfcBuildingStorey) 정보 수집 ───────────────────────────
+    storey_info: dict[int, dict] = {}
     try:
-        storey_info: dict[int, dict] = {}
         for s in ifc.by_type("IfcBuildingStorey"):
             name = getattr(s, "LongName", None) or getattr(s, "Name", None) or f"Level_{s.id()}"
             elev = getattr(s, "Elevation", None)
-            storey_info[s.id()] = {"name": name, "elevation": float(elev) if elev is not None else None}
+            storey_info[s.id()] = {
+                "name": str(name),
+                "elevation": float(elev) if elev is not None else None,
+            }
+    except Exception as e:
+        logger.warning("[IFC Spatial] 층 정보 파싱 실패: %s", e)
 
-        building_info: dict[int, str] = {}
+    # ── 2. 건물(IfcBuilding) 정보 수집 ───────────────────────────────
+    building_info: dict[int, str] = {}
+    try:
         for b in ifc.by_type("IfcBuilding"):
             name = getattr(b, "LongName", None) or getattr(b, "Name", None) or f"Building_{b.id()}"
-            building_info[b.id()] = name
+            building_info[b.id()] = str(name)
+    except Exception as e:
+        logger.warning("[IFC Spatial] 건물 정보 파싱 실패: %s", e)
 
-        storey_to_building: dict[int, int] = {}
+    # ── 3. 층 → 건물 매핑 (IfcRelAggregates) ─────────────────────────
+    storey_to_building: dict[int, int] = {}
+    try:
         for rel in ifc.by_type("IfcRelAggregates"):
             parent = getattr(rel, "RelatingObject", None)
             if parent and parent.id() in building_info:
-                children = getattr(rel, "RelatedObjects", []) or []
-                for child in children:
+                for child in (getattr(rel, "RelatedObjects", []) or []):
                     if child.id() in storey_info:
                         storey_to_building[child.id()] = parent.id()
+    except Exception as e:
+        logger.warning("[IFC Spatial] 건물-층 매핑 실패: %s", e)
 
-        storey_element_ids: dict[int, list] = {sid: [] for sid in storey_info}
+    storey_element_ids: dict[int, list] = {sid: [] for sid in storey_info}
 
+    # ── 4. 요소 → 층 매핑 (IfcRelContainedInSpatialStructure) ─────────
+    try:
         for rel in ifc.by_type("IfcRelContainedInSpatialStructure"):
             structure = getattr(rel, "RelatingStructure", None)
-            if structure is None or structure.id() not in storey_info:
+            if structure is None:
                 continue
             sid = structure.id()
-            info = storey_info[sid]
-            bld_id = storey_to_building.get(sid)
-            bld_name = building_info.get(bld_id) if bld_id else None
-            for elem in (getattr(rel, "RelatedElements", []) or []):
-                eid = elem.id()
-                elem_to_spatial[eid] = {
-                    "storey": info["name"],
-                    "storeyElevation": info["elevation"],
-                    "building": bld_name,
-                }
-                storey_element_ids[sid].append(f"IFC-{eid}")
 
+            if sid in storey_info:
+                # 층에 직접 포함된 요소
+                info = storey_info[sid]
+                bld_id = storey_to_building.get(sid)
+                bld_name = building_info.get(bld_id) if bld_id else None
+                for elem in (getattr(rel, "RelatedElements", []) or []):
+                    eid = elem.id()
+                    if eid not in elem_to_spatial:
+                        elem_to_spatial[eid] = {
+                            "storey": info["name"],
+                            "storeyElevation": info["elevation"],
+                            "building": bld_name,
+                        }
+                        storey_element_ids[sid].append(f"IFC-{eid}")
+            elif sid in building_info:
+                # 건물에 직접 포함된 요소 (층 없음) → 건물 정보만 기록
+                bld_name = building_info[sid]
+                for elem in (getattr(rel, "RelatedElements", []) or []):
+                    eid = elem.id()
+                    if eid not in elem_to_spatial:
+                        elem_to_spatial[eid] = {
+                            "storey": None,
+                            "storeyElevation": None,
+                            "building": bld_name,
+                        }
+    except Exception as e:
+        logger.warning("[IFC Spatial] 요소-층 매핑 실패: %s", e)
+
+    # ── 5. 층 목록 구성 ───────────────────────────────────────────────
+    try:
         for sid, info in storey_info.items():
             bld_id = storey_to_building.get(sid)
             storeys.append({
@@ -173,10 +207,10 @@ def _extract_spatial_structure(ifc) -> tuple[dict, list]:
                 "elementIds": storey_element_ids.get(sid, []),
             })
         storeys.sort(key=lambda s: (s["building"] or "", s["elevation"] or 0))
-
     except Exception as e:
-        logger.warning("[IFC Spatial] 공간 구조 파싱 실패: %s", e)
+        logger.warning("[IFC Spatial] 층 목록 정렬 실패: %s", e)
 
+    logger.info("[IFC Spatial] 층 %d개, 요소-층 매핑 %d개", len(storeys), len(elem_to_spatial))
     return elem_to_spatial, storeys
 
 
@@ -339,9 +373,12 @@ class GlbBuilder:
 
 # ── 메인 변환 함수 ────────────────────────────────────────────────────
 
-def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
+def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: str = "") -> dict:
     """
     IFC 바이너리 → GLB + 메타데이터 변환.
+
+    user_scale: 자동 감지 스케일에 추가로 곱하는 배율 (기본 1.0).
+                mm 단위 IFC면 1000 입력.
 
     반환 dict:
       glb_bytes  : bytes
@@ -370,14 +407,22 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
         except Exception:
             pass
 
-    scale = _detect_unit_scale(ifc)
+    scale = _detect_unit_scale(ifc) * user_scale
     geo_info = _extract_geo_origin(ifc)
     elem_to_spatial, storeys = _extract_spatial_structure(ifc)
 
     # ifcopenshell.geom 설정: 월드 좌표계, 삼각분할
     settings = ifcopenshell.geom.settings()
-    settings.set(settings.USE_WORLD_COORDS, True)
-    settings.set(settings.WELD_VERTICES, False)
+    try:
+        settings.set(settings.USE_WORLD_COORDS, True)
+        settings.set(settings.WELD_VERTICES, False)
+    except AttributeError:
+        # ifcopenshell 0.7+ 신규 API 폴백
+        try:
+            settings.set("use-world-coords", True)
+            settings.set("weld-vertices", False)
+        except Exception:
+            pass
 
     builder = GlbBuilder()
     elements: list[dict] = []
@@ -407,12 +452,12 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
 
             # IFC 좌표계(Z-up) → Three.js/glTF(Y-up) 변환 + 스케일
             arr = np.array(verts_flat, dtype=np.float32).reshape(-1, 3)
-            # IFC: X=동, Y=북, Z=위  →  glTF: X=동, Y=위, Z=남(=반전)
-            pos = np.column_stack([
-                arr[:, 0] * scale,   # X 그대로
-                arr[:, 2] * scale,   # IFC Z → glTF Y (높이)
-                -arr[:, 1] * scale,  # IFC Y → glTF -Z
-            ]).astype(np.float32)
+            # IFC(Z-up) → glTF(Y-up): X=동, Y=위(IFC Z), Z=남(IFC -Y)
+            px = arr[:, 0] * scale
+            py = arr[:, 2] * scale   # IFC Z → glTF Y (높이)
+            pz = -arr[:, 1] * scale  # IFC Y → glTF -Z
+
+            pos = np.column_stack([px, py, pz]).astype(np.float32)
 
             idx = np.array(faces_flat, dtype=np.uint32)
             if len(idx) == 0:
@@ -423,11 +468,10 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
                 nrm_flat = geom.normals
                 if nrm_flat and len(nrm_flat) == len(verts_flat):
                     nrm_arr = np.array(nrm_flat, dtype=np.float32).reshape(-1, 3)
-                    nrm = np.column_stack([
-                        nrm_arr[:, 0],
-                        nrm_arr[:, 2],
-                        -nrm_arr[:, 1],
-                    ]).astype(np.float32)
+                    nx = nrm_arr[:, 0]
+                    ny = nrm_arr[:, 2]   # IFC Z normal → glTF Y
+                    nz = -nrm_arr[:, 1]  # IFC Y normal → glTF -Z
+                    nrm = np.column_stack([nx, ny, nz]).astype(np.float32)
                 else:
                     raise ValueError("no normals")
             except Exception:
@@ -435,7 +479,7 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
                 nrm = _compute_normals(pos, idx)
 
             express_id = product.id()
-            element_id = f"IFC-{express_id}"
+            element_id = f"IFC-{express_id}-{project_id}" if project_id else f"IFC-{express_id}"
 
             # IfcSlab with PredefinedType=ROOF → IfcRoof 재분류
             if our_type == "IfcSlab":

@@ -554,14 +554,15 @@ public class BimController {
     @PostMapping(value = "/project/{projectId}/convert-ifc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ResponseEntity<Map<String, Object>>> convertIfcFile(
             @PathVariable String projectId,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "scale", defaultValue = "1.0") double scale) {
 
         if (file == null || file.isEmpty()) {
             return Mono.just(ResponseEntity.badRequest()
                     .<Map<String, Object>>body(Map.of("error", "파일이 비어 있습니다.")));
         }
 
-        return bimService.convertAndStoreIfc(projectId, file)
+        return bimService.convertAndStoreIfc(projectId, file, scale)
                 .map(result -> ResponseEntity.ok(result))
                 .onErrorResume(e -> {
                     System.err.println("[BIM] IFC 변환 실패: " + e.getMessage());
