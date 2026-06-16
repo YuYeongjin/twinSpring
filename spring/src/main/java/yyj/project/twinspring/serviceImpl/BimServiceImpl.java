@@ -1250,9 +1250,13 @@ public class BimServiceImpl implements BimService {
     public Map<String, String> normalizeStoreyNames(List<String> names) {
         if (names == null || names.isEmpty()) return Map.of();
 
-        String namesJson = names.stream()
-                .map(n -> "\"" + n.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
-                .collect(Collectors.joining(", ", "[", "]"));
+        String namesJson;
+        try {
+            namesJson = objectMapper.writeValueAsString(names);
+        } catch (Exception e) {
+            log.warn("[StoreyNormalize] 이름 직렬화 실패: {}", e.getMessage());
+            return Map.of();
+        }
 
         // few-shot 예시 포함 — 3B 모델은 예시 없이 패턴을 일관되게 따르지 못함
         // EG = Erdgeschoss(독일) = 지상 1층, UG = Untergeschoss = 지하, 1.OG = 지상 2층

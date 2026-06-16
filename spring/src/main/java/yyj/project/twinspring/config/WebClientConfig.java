@@ -62,7 +62,7 @@ public class WebClientConfig {
     public WebClient ollamaWebClient(WebClient.Builder builder) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)
-                .responseTimeout(Duration.ofMinutes(2));
+                .responseTimeout(Duration.ofSeconds(60));
         return builder
                 .baseUrl(ollamaUrl)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
