@@ -183,4 +183,8 @@ public interface BimService {
             double dPosX, double dPosY, double dPosZ,
             double dRotX, double dRotY, double dRotZ,
             double sclX,  double sclY,  double sclZ);
+
+    // ── Ollama 층 이름 정규화 ───────────────────────────────────────
+    /** IFC 층 이름 목록을 Ollama 3B 모델로 정규화한다. (예: "Story 1" → "1F") */
+    Map<String, String> normalizeStoreyNames(List<String> names);
 }
