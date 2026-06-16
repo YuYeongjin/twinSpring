@@ -979,7 +979,7 @@ function PropertyPanel({ selectedElement, selectedElements, modelData, updateEle
 // 메인 BIM 대시보드
 // ================================================================
 
-export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange }) {
+export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange, wbsJobState }) {
     const {
         saveUpdateElement,
         selectedElement, setSelectedElement,
@@ -1144,6 +1144,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ── WBS / 층 상태 ────────────────────────────────────────────────
     const [wbsNodes, setWbsNodes]           = useState([]);
     const [elementWbsMappings, setElementWbsMappings] = useState([]);
+    const wbsPollingRef = useRef(null);
+    const isWbsGenerating = wbsJobState?.status === 'pending' &&
+                            wbsJobState?.projectId === selectedProject?.projectId;
 
     // WBS 트리 (buildWbsTree 결과)
     const wbsTree = React.useMemo(() => buildWbsTree(wbsNodes), [wbsNodes]);
@@ -1179,6 +1182,43 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             .catch(() => setElementWbsMappings([]));
     }, [selectedProject]);
 
+    // WBS 생성 중일 때 3초 간격으로 폴링 → 데이터 도착하면 자동 중단
+    useEffect(() => {
+        if (!isWbsGenerating || !selectedProject?.projectId) return;
+        const pid = selectedProject.projectId;
+        wbsPollingRef.current = setInterval(async () => {
+            try {
+                const res = await AxiosCustom.get(`${API_BASE}/wbs?projectId=${pid}`);
+                const data = res.data || [];
+                if (data.length > 0) {
+                    setWbsNodes(data);
+                    clearInterval(wbsPollingRef.current);
+                    wbsPollingRef.current = null;
+                    const mRes = await AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`);
+                    setElementWbsMappings(mRes.data || []);
+                }
+            } catch (e) {
+                console.warn('[WBS polling]', e.message);
+            }
+        }, 3000);
+        return () => {
+            if (wbsPollingRef.current) clearInterval(wbsPollingRef.current);
+        };
+    }, [isWbsGenerating, selectedProject?.projectId]);
+
+    // WBS 생성 완료 신호(done) → DB에서 즉시 재로드 (폴링 타이밍 보완)
+    useEffect(() => {
+        if (wbsJobState?.status !== 'done') return;
+        if (wbsJobState?.projectId !== selectedProject?.projectId) return;
+        const pid = selectedProject.projectId;
+        AxiosCustom.get(`${API_BASE}/wbs?projectId=${pid}`)
+            .then(res => setWbsNodes(res.data || []))
+            .catch(() => {});
+        AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`)
+            .then(res => setElementWbsMappings(res.data || []))
+            .catch(() => {});
+    }, [wbsJobState?.status, wbsJobState?.projectId]);
+
     // WBS 진척도 업데이트
     const handleWbsProgressChange = React.useCallback((wbsId, progress) => {
         setWbsNodes(prev => prev.map(n => n.wbsId === wbsId ? { ...n, progress } : n));
@@ -1196,6 +1236,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             setSelectedElement(null);
         }
     }, [setSelectedElements, setSelectedElement, modelData]);
+
+    // WBS 항목 더블클릭 → 에디터 탭으로 전환 후 해당 부재 하이라이트
+    const handleWbsDoubleClickToEditor = React.useCallback((node, ids) => {
+        if (ids && ids.length > 0) handleWbsSelectElements(ids);
+        setBimSubView('editor');
+    }, [handleWbsSelectElements]);
 
     useEffect(() => {
         const pid = selectedProject?.projectId;
@@ -2174,7 +2220,20 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 <StructuralDashboard selectedProject={selectedProject} modelData={modelData} />
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'flex' : 'none', gap: 0 }}>
+            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'flex' : 'none', gap: 0, flexDirection: 'column' }}>
+                {/* WBS 생성 중 배너 */}
+                {isWbsGenerating && (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 16px', flexShrink: 0,
+                        background: '#0d1f30', borderBottom: '1px solid #1a3a5c',
+                        color: '#60a5fa', fontSize: 12,
+                    }}>
+                        <span style={{ fontSize: 16, animation: 'spin 1.2s linear infinite' }}>⚙</span>
+                        <span>WBS를 생성하는 중입니다... 잠시 후 자동으로 표시됩니다.</span>
+                    </div>
+                )}
+                <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
                 {/* 왼쪽: WBS 트리 + 진척도 */}
                 <div style={{
                     width: 280, minWidth: 220, flexShrink: 0,
@@ -2188,12 +2247,15 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         selectedElement={selectedElement}
                         onSelectElements={handleWbsSelectElements}
                         onProgressChange={handleWbsProgressChange}
+                        onDoubleClickNode={handleWbsDoubleClickToEditor}
+                        isGenerating={isWbsGenerating}
                     />
                 </div>
                 {/* 오른쪽: 기존 공정 대시보드 */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} layers={layers} />
                 </div>
+                </div>{/* flex row wrapper */}
             </div>
 
             <div

@@ -1,6 +1,7 @@
 package yyj.project.twinspring.serviceImpl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.beans.factory.annotation.Value;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,17 +38,23 @@ public class BimServiceImpl implements BimService {
 
     private final WebClient webClient;
     private final WebClient agentWebClient;
+    private final WebClient ollamaWebClient;
     private final BimDAO bimDAO;
     private final StorageService storageService;
 
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Value("${ollama.model:qwen2.5:3b}")
+    private String ollamaModel;
+
     public BimServiceImpl(WebClient webClient,
                           @org.springframework.beans.factory.annotation.Qualifier("agentWebClient") WebClient agentWebClient,
+                          @org.springframework.beans.factory.annotation.Qualifier("ollamaWebClient") WebClient ollamaWebClient,
                           BimDAO bimDAO, StorageService storageService) {
         this.webClient = webClient;
         this.agentWebClient = agentWebClient;
+        this.ollamaWebClient = ollamaWebClient;
         this.bimDAO = bimDAO;
         this.storageService = storageService;
     }
@@ -1235,5 +1242,90 @@ public class BimServiceImpl implements BimService {
                     err.put("error",   e.getMessage());
                     return Mono.just(err);
                 });
+    }
+
+    // ── Ollama 층 이름 정규화 ────────────────────────────────────────────
+
+    @Override
+    public Map<String, String> normalizeStoreyNames(List<String> names) {
+        if (names == null || names.isEmpty()) return Map.of();
+
+        String namesJson = names.stream()
+                .map(n -> "\"" + n.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+                .collect(Collectors.joining(", ", "[", "]"));
+
+        // few-shot 예시 포함 — 3B 모델은 예시 없이 패턴을 일관되게 따르지 못함
+        // EG = Erdgeschoss(독일) = 지상 1층, UG = Untergeschoss = 지하, 1.OG = 지상 2층
+        String prompt = "Normalize IFC storey names to standard WBS format.\n" +
+                "Rules:\n" +
+                "- B1, B2, B3: underground (지하N층, UG, Untergeschoss, basement N)\n" +
+                "- 1F, 2F, 3F: above ground (EG=1F, Story N=NF, N.OG=(N+1)F, N층=NF, Level N=NF)\n" +
+                "- RF: roof (Roof, Dachgeschoss, 옥상, 지붕, Penthouse)\n" +
+                "- MF: machine room (기계실, Maschinenraum)\n" +
+                "- Keep original if unknown.\n\n" +
+                "Example:\n" +
+                "Input: [\"Story 1\",\"Story 2\",\"EG\",\"1.OG\",\"2.OG\",\"UG\",\"기계실\",\"Dachgeschoss\",\"1층\",\"지하1층\"]\n" +
+                "Output: {\"Story 1\":\"1F\",\"Story 2\":\"2F\",\"EG\":\"1F\",\"1.OG\":\"2F\",\"2.OG\":\"3F\",\"UG\":\"B1\",\"기계실\":\"MF\",\"Dachgeschoss\":\"RF\",\"1층\":\"1F\",\"지하1층\":\"B1\"}\n\n" +
+                "Now normalize (return ONLY a flat JSON object, no explanation):\n" +
+                "Input: " + namesJson + "\n" +
+                "Output:";
+
+        try {
+            // GTX 1050 4GB 최적화
+            // - num_ctx 512: 입력이 짧으므로 KV 캐시 VRAM 절약
+            // - num_predict 256: 층 이름 목록 출력에 충분, 불필요한 토큰 생성 방지
+            // - temperature 0: 결정적 출력, JSON 포맷 일관성 확보
+            Map<String, Object> options = new LinkedHashMap<>();
+            options.put("temperature", 0);
+            options.put("num_predict", 256);
+            options.put("num_ctx", 512);
+
+            Map<String, Object> requestBody = new LinkedHashMap<>();
+            requestBody.put("model", ollamaModel);
+            requestBody.put("prompt", prompt);
+            requestBody.put("stream", false);
+            requestBody.put("format", "json");
+            requestBody.put("options", options);
+
+            String raw = ollamaWebClient.post()
+                    .uri("/api/generate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(requestBody)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(java.time.Duration.ofSeconds(60))  // 1050 기준 여유 있는 60초
+                    .block();
+
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(raw);
+            String responseText = root.path("response").asText("").trim();
+
+            // JSON 블록 추출
+            int start = responseText.indexOf('{');
+            int end   = responseText.lastIndexOf('}') + 1;
+            if (start < 0 || end <= start) {
+                log.warn("[StoreyNormalize] JSON 없음, 폴백: {}", responseText);
+                return Map.of();
+            }
+
+            // 값이 String인 항목만 수집 — 모델이 중첩 객체를 뱉는 경우 방어
+            com.fasterxml.jackson.databind.JsonNode parsed =
+                    objectMapper.readTree(responseText.substring(start, end));
+            Map<String, String> result = new LinkedHashMap<>();
+            parsed.fields().forEachRemaining(entry -> {
+                if (entry.getValue().isTextual()) {
+                    result.put(entry.getKey(), entry.getValue().asText());
+                }
+            });
+            if (result.isEmpty()) {
+                log.warn("[StoreyNormalize] 유효한 매핑 없음, 폴백");
+                return Map.of();
+            }
+            log.info("[StoreyNormalize] 정규화 완료: {}", result);
+            return result;
+
+        } catch (Exception e) {
+            log.warn("[StoreyNormalize] Ollama 호출 실패, 폴백 적용: {}", e.getMessage());
+            return Map.of();
+        }
     }
 }

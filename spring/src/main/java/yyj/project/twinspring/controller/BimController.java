@@ -602,4 +602,21 @@ public class BimController {
         String key = bimService.getGlbStorageKey(projectId);
         return ResponseEntity.ok(Map.of("hasGlb", key != null));
     }
+
+    // ================================================================
+    // Ollama 층 이름 정규화
+    // ================================================================
+
+    /**
+     * IFC 층 이름 목록을 로컬 Ollama 3B 모델로 정규화합니다.
+     * POST /api/bim/normalize-storeys
+     * 요청: { "names": ["Story 1", "EG", "Dachgeschoss", ...] }
+     * 응답: { "Story 1": "1F", "EG": "1F", "Dachgeschoss": "RF", ... }
+     */
+    @PostMapping("/normalize-storeys")
+    public ResponseEntity<Map<String, String>> normalizeStoreys(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> names = (List<String>) body.getOrDefault("names", List.of());
+        return ResponseEntity.ok(bimService.normalizeStoreyNames(names));
+    }
 }
