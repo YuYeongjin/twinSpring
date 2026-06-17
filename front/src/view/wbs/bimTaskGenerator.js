@@ -189,7 +189,9 @@ export function calcSubDays(sub, totalVol, workers = 1) {
 }
 
 function addDays(dateStr, n) {
-  const d = new Date((dateStr || new Date().toISOString().slice(0, 10)) + 'T00:00:00');
+  const base = dateStr || new Date().toISOString().slice(0, 10);
+  const d = new Date(String(base).slice(0, 10) + 'T00:00:00');
+  if (isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 }
@@ -259,23 +261,30 @@ export async function generateBimWbsTasks({
   const plan = computeWorkPlan(elements, koreanT, layers);
   if (!plan || !plan.tasks?.length) return 0;
 
-  // 시작일 결정: 기존 비-BIM 태스크 종료 다음날 or startDate or 오늘
-  const nonBimTasks = existingTasks.filter(t => !(t.notes || '').startsWith(`BIM:${bimId}:`));
-  const latestEnd   = nonBimTasks.reduce((acc, t) => (
-    !t.endDate ? acc : (!acc || t.endDate > acc ? t.endDate : acc)
-  ), null);
-  const baseStartStr = latestEnd
-    ? addDays(latestEnd, 1)
-    : (startDate || new Date().toISOString().slice(0, 10));
+  // startDate가 있을 때만 날짜 계산 — 없으면 duration만 저장
+  let rootStartStr = null;
+  let rootEndStr   = null;
+  let shiftDate    = () => null;
 
-  // computeWorkPlan은 오늘을 기준일로 사용하므로, 기준일로 날짜 이동
-  const planStart = plan.projectStart;                          // Date (= today)
-  const baseStart = new Date(baseStartStr + 'T00:00:00');
-  const offsetMs  = baseStart - planStart;
-  const shiftDate = (d) => new Date(d.getTime() + offsetMs).toISOString().slice(0, 10);
+  if (startDate) {
+    const nonBimTasks = existingTasks.filter(t => !(t.notes || '').startsWith(`BIM:${bimId}:`));
+    const latestEnd   = nonBimTasks.reduce((acc, t) => (
+      !t.endDate ? acc : (!acc || t.endDate > acc ? t.endDate : acc)
+    ), null);
+    const baseStartStr = latestEnd ? addDays(latestEnd, 1) : startDate;
 
-  const rootStartStr = baseStartStr;
-  const rootEndStr   = shiftDate(plan.projectEnd);
+    const planStart = plan.projectStart;
+    const baseStart = new Date(baseStartStr.slice(0, 10) + 'T00:00:00');
+    const offsetMs  = baseStart - planStart;
+    shiftDate = (d) => {
+      if (!d || isNaN(d.getTime()) || isNaN(offsetMs)) return baseStartStr;
+      const shifted = new Date(d.getTime() + offsetMs);
+      return isNaN(shifted.getTime()) ? baseStartStr : shifted.toISOString().slice(0, 10);
+    };
+
+    rootStartStr = baseStartStr;
+    rootEndStr   = shiftDate(plan.projectEnd);
+  }
 
   // sortOrder / wbsCode 베이스
   let globalSortOrder = Math.max(0, ...existingTasks.map(t => t.sortOrder || 0)) + 1;

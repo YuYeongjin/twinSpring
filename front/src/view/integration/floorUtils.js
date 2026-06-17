@@ -4,16 +4,17 @@
 export const FLOOR_GAP    = 2.0;   // 층 구분 최소 높이 간격 (m)
 const        OVERLAP_RATIO = 1.0;  // 1.0 = 하층 100% 완료 후 상층 착수 (엄격 순차)
 
-// positionY 범위로 단위 추정 — getStructureScale 과 동일 기준(500)
+// positionZ(Z-up 높이) 범위로 단위 추정 — getStructureScale 과 동일 기준(500)
 // range > 500 → mm 단위(→ ×0.001 하면 미터), 그 이하 → 이미 미터
 function inferYScale(elements) {
-  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
   elements.forEach(el => {
-    const y = Number(el.positionY) || 0;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
+    // Z-up DB: positionZ = 높이 방향
+    const z = Number(el.positionZ) || 0;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
   });
-  const range = maxY - minY;
+  const range = maxZ - minZ;
   if (range === 0) return 1;
   return range > 500 ? 0.001 : 1;
 }
@@ -21,14 +22,15 @@ function inferYScale(elements) {
 /**
  * 부재 배열을 높이(m) 기준으로 층 그룹화 (아래→위 순서 반환)
  * @returns {{ avgY, minY, maxY, scale, elements }[]}
- *   avgY/minY/maxY 는 미터 단위. scale 은 positionY * scale = meters.
+ *   avgY/minY/maxY 는 미터 단위. scale 은 positionZ * scale = meters.
  */
 export function detectFloors(elements) {
   if (!elements?.length) return [];
   const scale  = inferYScale(elements);
   const gapRaw = FLOOR_GAP / scale;   // raw 좌표 기준 층 간격 임계값
 
-  const heightOf = el => Number(el.positionY) || 0;
+  // Z-up DB: positionZ = 높이
+  const heightOf = el => Number(el.positionZ) || 0;
 
   const sorted = [...elements].sort((a, b) => heightOf(a) - heightOf(b));
   const groups = [[sorted[0]]];
@@ -77,7 +79,8 @@ export function getFloorLabel(floorIndex, floors, t) {
 export function getElementFloorIndex(el, floors) {
   if (!floors?.length) return 0;
   const scale   = floors[0]?.scale ?? 1;
-  const hMeters = (Number(el.positionY) || 0) * scale;
+  // Z-up DB: positionZ = 높이
+  const hMeters = (Number(el.positionZ) || 0) * scale;
 
   let best = 0, bestDist = Infinity;
   floors.forEach((f, i) => {

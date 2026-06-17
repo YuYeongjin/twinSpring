@@ -76,8 +76,8 @@ export const GltfBimViewer = forwardRef(function GltfBimViewer(
       const elementId = node.name;
       const element   = modelMap.get(elementId);
 
-      // 레이어 가시성 (modelData에 없으면 숨김)
-      node.visible = !!element;
+      // GLB 노드는 기본적으로 표시; element를 찾은 경우에만 레이어 가시성 적용
+      node.visible = true;
       if (!element) return;
 
       const isSelected      = elementId === selectedId;
@@ -193,16 +193,39 @@ export const GltfBimViewer = forwardRef(function GltfBimViewer(
     <primitive
       ref={groupRef}
       object={scene}
+      rotation={[-Math.PI / 2, 0, 0]}
       onClick={handleClick}
     />
   );
 });
 
+// ── 에러 바운더리 (GLB 404 / 로드 실패 시 조용히 null 렌더) ────────
+class GltfErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidUpdate(prevProps) {
+    if (prevProps.glbUrl !== this.props.glbUrl) {
+      this.setState({ hasError: false });
+    }
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
 // ── 로딩 / 에러 래퍼 ─────────────────────────────────────────────
 export function GltfBimViewerSuspense(props) {
   return (
-    <React.Suspense fallback={null}>
-      <GltfBimViewer {...props} />
-    </React.Suspense>
+    <GltfErrorBoundary glbUrl={props.glbUrl}>
+      <React.Suspense fallback={null}>
+        <GltfBimViewer {...props} />
+      </React.Suspense>
+    </GltfErrorBoundary>
   );
 }

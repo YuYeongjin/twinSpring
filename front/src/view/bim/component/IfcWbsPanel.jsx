@@ -63,7 +63,7 @@ function QuantityBadge({ quantity, unit, formula, reason }) {
 // ── WBS 노드 행 ──────────────────────────────────────────────────────
 function WbsRow({
   node, depth, isOpen, hasChildren, isSelected,
-  onClick, onToggle, onProgressChange, editingId, setEditingId, t,
+  onClick, onDoubleClick, onToggle, onProgressChange, editingId, setEditingId, t,
 }) {
   const indent  = depth * 14;
   const color   = progressColor(node.progress || 0);
@@ -85,6 +85,7 @@ function WbsRow({
     <div>
       <div
         onClick={onClick}
+        onDoubleClick={onDoubleClick}
         style={{
           display: 'flex', alignItems: 'center', gap: 4,
           paddingLeft: 6 + indent, paddingRight: 8,
@@ -191,7 +192,7 @@ function WbsRow({
 
 // ── 재귀 트리 렌더링 ──────────────────────────────────────────────────
 function WbsTreeNodes({
-  nodes, depth, openSet, onToggle, selectedWbsId, onNodeClick,
+  nodes, depth, openSet, onToggle, selectedWbsId, onNodeClick, onNodeDoubleClick,
   onProgressChange, editingId, setEditingId, t,
 }) {
   return (
@@ -206,6 +207,7 @@ function WbsTreeNodes({
               node={node} depth={depth} isOpen={isOpen}
               hasChildren={hasCh} isSelected={isSel}
               onClick={() => onNodeClick(node)}
+              onDoubleClick={() => onNodeDoubleClick?.(node)}
               onToggle={() => onToggle(node.wbsId)}
               onProgressChange={onProgressChange}
               editingId={editingId} setEditingId={setEditingId}
@@ -216,6 +218,7 @@ function WbsTreeNodes({
                 nodes={node.children} depth={depth + 1}
                 openSet={openSet} onToggle={onToggle}
                 selectedWbsId={selectedWbsId} onNodeClick={onNodeClick}
+                onNodeDoubleClick={onNodeDoubleClick}
                 onProgressChange={onProgressChange}
                 editingId={editingId} setEditingId={setEditingId}
                 t={t}
@@ -235,6 +238,8 @@ export default function IfcWbsPanel({
   selectedElement,
   onSelectElements,
   onProgressChange,
+  onDoubleClickNode,
+  isGenerating,
 }) {
   const t = useT('bimDashboard');
 
@@ -255,29 +260,40 @@ export default function IfcWbsPanel({
     return elementWbsMap.get(selectedElement.data.elementId) || null;
   }, [selectedElement, elementWbsMap]);
 
+  // ELEMENT/TASK 노드에서 매핑된 elementId 배열을 반환하는 공통 헬퍼
+  const resolveElementIds = useCallback(node => {
+    if (!elementWbsMap) return [];
+    const { ELEMENT, TASK } = WBS_NODE_TYPES;
+    if (node.nodeType !== ELEMENT && node.nodeType !== TASK) return [];
+    const lookupId = node.nodeType === TASK ? node.parentWbsId : node.wbsId;
+    if (!lookupId) return [];
+    const ids = [];
+    for (const [elId, wId] of elementWbsMap.entries()) {
+      if (wId === lookupId) ids.push(elId);
+    }
+    return ids;
+  }, [elementWbsMap]);
+
   const handleNodeClick = useCallback(node => {
     setSelected(node.wbsId);
     setEditingId(null);
-    if (!elementWbsMap) return;
+    const ids = resolveElementIds(node);
+    if (ids.length > 0) onSelectElements?.(ids);
+  }, [resolveElementIds, onSelectElements]);
 
-    // ELEMENT 노드: 직접 매핑 조회
-    // TASK 노드(공종 서브태스크): 부모 ELEMENT ID로 조회
-    const { ELEMENT, TASK } = WBS_NODE_TYPES;
-    if (node.nodeType === ELEMENT || node.nodeType === TASK) {
-      const lookupId = node.nodeType === TASK ? node.parentWbsId : node.wbsId;
-      if (!lookupId) return;
-      const ids = [];
-      for (const [elId, wId] of elementWbsMap.entries()) {
-        if (wId === lookupId) ids.push(elId);
-      }
-      onSelectElements?.(ids);
-    }
-  }, [elementWbsMap, onSelectElements]);
+  const handleNodeDoubleClick = useCallback(node => {
+    const ids = resolveElementIds(node);
+    onDoubleClickNode?.(node, ids);
+  }, [resolveElementIds, onDoubleClickNode]);
 
   if (!wbsTree || wbsTree.length === 0) {
     return (
-      <div style={{ padding: 20, textAlign: 'center', color: '#475569', fontSize: 12 }}>
-        {t('wbsEmpty')}
+      <div style={{ padding: 20, textAlign: 'center', fontSize: 12 }}>
+        {isGenerating ? (
+          <span style={{ color: '#60a5fa' }}>⚙ WBS 생성 중...</span>
+        ) : (
+          <span style={{ color: '#475569' }}>{t('wbsEmpty')}</span>
+        )}
       </div>
     );
   }
@@ -326,6 +342,7 @@ export default function IfcWbsPanel({
           openSet={openSet} onToggle={handleToggle}
           selectedWbsId={selectedWbsId || linkedWbsId}
           onNodeClick={handleNodeClick}
+          onNodeDoubleClick={handleNodeDoubleClick}
           onProgressChange={onProgressChange}
           editingId={editingId} setEditingId={setEditingId}
           t={t}
