@@ -32,7 +32,7 @@ ELEMENT_TYPE_MAP = {
     "IfcWallStandardCase":   "IfcWall",
     "IfcSlab":               "IfcSlab",
     "IfcMember":             "IfcMember",
-    "IfcFooting":            "IfcSlab",
+    "IfcFooting":            "IfcFoundation",  # 기초 부재 — 슬래브와 분리
     "IfcPile":               "IfcPier",
     "IfcPlate":              "IfcMember",
     "IfcDoor":               "IfcDoor",
@@ -43,16 +43,17 @@ ELEMENT_TYPE_MAP = {
 }
 
 ELEMENT_COLORS = {
-    "IfcColumn":  [0.70, 0.70, 0.75, 1.0],
-    "IfcBeam":    [0.60, 0.60, 0.70, 1.0],
-    "IfcWall":    [0.80, 0.78, 0.72, 1.0],
-    "IfcSlab":    [0.75, 0.75, 0.75, 1.0],
-    "IfcMember":  [0.55, 0.65, 0.80, 1.0],
-    "IfcPier":    [0.70, 0.70, 0.75, 1.0],
-    "IfcDoor":    [0.65, 0.45, 0.30, 1.0],
-    "IfcWindow":  [0.50, 0.70, 0.90, 0.6],
-    "IfcStair":   [0.75, 0.72, 0.65, 1.0],
-    "IfcRoof":    [0.60, 0.55, 0.50, 1.0],
+    "IfcColumn":      [0.70, 0.70, 0.75, 1.0],
+    "IfcBeam":        [0.60, 0.60, 0.70, 1.0],
+    "IfcWall":        [0.80, 0.78, 0.72, 1.0],
+    "IfcSlab":        [0.75, 0.75, 0.80, 1.0],
+    "IfcFoundation":  [0.55, 0.42, 0.22, 1.0],  # 기초 — 흙/콘크리트 갈색
+    "IfcMember":      [0.55, 0.65, 0.80, 1.0],
+    "IfcPier":        [0.70, 0.70, 0.75, 1.0],
+    "IfcDoor":        [0.65, 0.45, 0.30, 1.0],
+    "IfcWindow":      [0.50, 0.70, 0.90, 0.6],
+    "IfcStair":       [0.75, 0.72, 0.65, 1.0],
+    "IfcRoof":        [0.60, 0.55, 0.50, 1.0],
 }
 
 def _dms_to_decimal(arr) -> Optional[float]:
@@ -64,19 +65,43 @@ def _dms_to_decimal(arr) -> Optional[float]:
 
 
 def _detect_unit_scale(ifc) -> float:
+    """IFC 길이 단위 → 미터 변환 계수.
+    IfcUnitAssignment를 우선 탐색하고, 없으면 IfcSIUnit 직접 탐색으로 폴백.
+    IfcConversionBasedUnit(인치·피트 등)도 처리한다.
+    """
+    # IFC STEP 파일은 ".MILLI." 형식, ifcopenshell Python API는 "MILLI" 형식 반환 — 둘 다 처리
+    _PREFIXES = {
+        ".MILLI.": 0.001, ".CENTI.": 0.01, ".DECI.": 0.1,
+        "MILLI": 0.001, "CENTI": 0.01, "DECI": 0.1,
+    }
+    _LENGTH_TYPES = {".LENGTHUNIT.", "LENGTHUNIT"}
+
+    # 1순위: IfcUnitAssignment (프로젝트 단위 정의)
     try:
-        for unit in ifc.by_type("IfcSIUnit"):
-            if getattr(unit, "UnitType", None) == ".LENGTHUNIT.":
-                prefix = getattr(unit, "Prefix", None)
-                if prefix == ".MILLI.":
-                    return 0.001
-                if prefix == ".CENTI.":
-                    return 0.01
-                if prefix == ".DECI.":
-                    return 0.1
-                return 1.0
+        for ua in ifc.by_type("IfcUnitAssignment"):
+            units = getattr(ua, "Units", None) or []
+            for unit in units:
+                if getattr(unit, "UnitType", None) not in _LENGTH_TYPES:
+                    continue
+                if unit.is_a("IfcSIUnit"):
+                    return _PREFIXES.get(getattr(unit, "Prefix", None), 1.0)
+                if unit.is_a("IfcConversionBasedUnit"):
+                    factor = getattr(unit, "ConversionFactor", None)
+                    if factor:
+                        val = getattr(factor, "ValueComponent", None)
+                        if val is not None:
+                            return float(val)
     except Exception:
         pass
+
+    # 2순위: IfcSIUnit 직접 탐색 (폴백)
+    try:
+        for unit in ifc.by_type("IfcSIUnit"):
+            if getattr(unit, "UnitType", None) in _LENGTH_TYPES:
+                return _PREFIXES.get(getattr(unit, "Prefix", None), 1.0)
+    except Exception:
+        pass
+
     return 1.0
 
 
@@ -103,46 +128,109 @@ def _extract_spatial_structure(ifc) -> tuple[dict, list]:
     elem_to_spatial: dict[int, dict] = {}
     storeys: list[dict] = []
 
+    # ── 1. 층(IfcBuildingStorey) 정보 수집 ───────────────────────────
+    storey_info: dict[int, dict] = {}
     try:
-        storey_info: dict[int, dict] = {}
         for s in ifc.by_type("IfcBuildingStorey"):
             name = getattr(s, "LongName", None) or getattr(s, "Name", None) or f"Level_{s.id()}"
             elev = getattr(s, "Elevation", None)
-            storey_info[s.id()] = {"name": name, "elevation": float(elev) if elev is not None else None}
+            storey_info[s.id()] = {
+                "name": str(name),
+                "elevation": float(elev) if elev is not None else None,
+            }
+    except Exception as e:
+        logger.warning("[IFC Spatial] 층 정보 파싱 실패: %s", e)
 
-        building_info: dict[int, str] = {}
+    # ── 2. 건물(IfcBuilding) 정보 수집 ───────────────────────────────
+    building_info: dict[int, str] = {}
+    try:
         for b in ifc.by_type("IfcBuilding"):
             name = getattr(b, "LongName", None) or getattr(b, "Name", None) or f"Building_{b.id()}"
-            building_info[b.id()] = name
+            building_info[b.id()] = str(name)
+    except Exception as e:
+        logger.warning("[IFC Spatial] 건물 정보 파싱 실패: %s", e)
 
-        storey_to_building: dict[int, int] = {}
+    # ── 3. 층 → 건물 매핑 (IfcRelAggregates) ─────────────────────────
+    storey_to_building: dict[int, int] = {}
+    try:
         for rel in ifc.by_type("IfcRelAggregates"):
             parent = getattr(rel, "RelatingObject", None)
             if parent and parent.id() in building_info:
-                children = getattr(rel, "RelatedObjects", []) or []
-                for child in children:
+                for child in (getattr(rel, "RelatedObjects", []) or []):
                     if child.id() in storey_info:
                         storey_to_building[child.id()] = parent.id()
+    except Exception as e:
+        logger.warning("[IFC Spatial] 건물-층 매핑 실패: %s", e)
 
-        storey_element_ids: dict[int, list] = {sid: [] for sid in storey_info}
+    storey_element_ids: dict[int, list] = {sid: [] for sid in storey_info}
 
+    # ── 4. 요소 → 층 매핑 (IfcRelContainedInSpatialStructure) ─────────
+    try:
         for rel in ifc.by_type("IfcRelContainedInSpatialStructure"):
             structure = getattr(rel, "RelatingStructure", None)
-            if structure is None or structure.id() not in storey_info:
+            if structure is None:
                 continue
             sid = structure.id()
-            info = storey_info[sid]
-            bld_id = storey_to_building.get(sid)
-            bld_name = building_info.get(bld_id) if bld_id else None
-            for elem in (getattr(rel, "RelatedElements", []) or []):
-                eid = elem.id()
-                elem_to_spatial[eid] = {
-                    "storey": info["name"],
-                    "storeyElevation": info["elevation"],
-                    "building": bld_name,
-                }
-                storey_element_ids[sid].append(f"IFC-{eid}")
 
+            if sid in storey_info:
+                info = storey_info[sid]
+                bld_id = storey_to_building.get(sid)
+                bld_name = building_info.get(bld_id) if bld_id else None
+                for elem in (getattr(rel, "RelatedElements", []) or []):
+                    eid = elem.id()
+                    if eid not in elem_to_spatial:
+                        elem_to_spatial[eid] = {
+                            "storey": info["name"],
+                            "storeyElevation": info["elevation"],
+                            "building": bld_name,
+                        }
+                        storey_element_ids[sid].append(f"IFC-{eid}")
+            elif sid in building_info:
+                bld_name = building_info[sid]
+                for elem in (getattr(rel, "RelatedElements", []) or []):
+                    eid = elem.id()
+                    if eid not in elem_to_spatial:
+                        elem_to_spatial[eid] = {
+                            "storey": None,
+                            "storeyElevation": None,
+                            "building": bld_name,
+                        }
+    except Exception as e:
+        logger.warning("[IFC Spatial] 요소-층 매핑 실패: %s", e)
+
+    # ── 4b. 폴백: IfcRelAggregates로 층에 직접 집계된 요소 매핑 ──────
+    # 일부 IFC 소프트웨어는 IfcRelContainedInSpatialStructure 대신
+    # IfcRelAggregates로 요소를 층에 연결하므로 누락 방지를 위해 추가 탐색
+    try:
+        for rel in ifc.by_type("IfcRelAggregates"):
+            parent = getattr(rel, "RelatingObject", None)
+            if parent is None:
+                continue
+            pid = parent.id()
+            if pid not in storey_info:
+                continue
+            info = storey_info[pid]
+            bld_id = storey_to_building.get(pid)
+            bld_name = building_info.get(bld_id) if bld_id else None
+            for child in (getattr(rel, "RelatedObjects", []) or []):
+                try:
+                    if not child.is_a("IfcElement"):
+                        continue
+                except Exception:
+                    continue
+                cid = child.id()
+                if cid not in elem_to_spatial:
+                    elem_to_spatial[cid] = {
+                        "storey": info["name"],
+                        "storeyElevation": info["elevation"],
+                        "building": bld_name,
+                    }
+                    storey_element_ids[pid].append(f"IFC-{cid}")
+    except Exception as e:
+        logger.warning("[IFC Spatial] IfcRelAggregates 폴백 매핑 실패: %s", e)
+
+    # ── 5. 층 목록 구성 ───────────────────────────────────────────────
+    try:
         for sid, info in storey_info.items():
             bld_id = storey_to_building.get(sid)
             storeys.append({
@@ -152,10 +240,10 @@ def _extract_spatial_structure(ifc) -> tuple[dict, list]:
                 "elementIds": storey_element_ids.get(sid, []),
             })
         storeys.sort(key=lambda s: (s["building"] or "", s["elevation"] or 0))
-
     except Exception as e:
-        logger.warning("[IFC Spatial] 공간 구조 파싱 실패: %s", e)
+        logger.warning("[IFC Spatial] 층 목록 정렬 실패: %s", e)
 
+    logger.info("[IFC Spatial] 층 %d개, 요소-층 매핑 %d개", len(storeys), len(elem_to_spatial))
     return elem_to_spatial, storeys
 
 
@@ -318,9 +406,12 @@ class GlbBuilder:
 
 # ── 메인 변환 함수 ────────────────────────────────────────────────────
 
-def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
+def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: str = "") -> dict:
     """
     IFC 바이너리 → GLB + 메타데이터 변환.
+
+    user_scale: 자동 감지 스케일에 추가로 곱하는 배율 (기본 1.0).
+                mm 단위 IFC면 1000 입력.
 
     반환 dict:
       glb_bytes  : bytes
@@ -349,26 +440,48 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
         except Exception:
             pass
 
-    scale = _detect_unit_scale(ifc)
+    # ifcopenshell.geom.create_shape은 USE_WORLD_COORDS=True 시 자동으로 SI 단위(미터)를 반환.
+    # → geometry 좌표에는 user_scale만 곱하면 됨 (unit_scale 이중 적용 시 1000배 축소 오류 발생).
+    # unit_scale은 elevation 등 raw IFC 속성값을 미터로 변환하는 데만 사용.
+    unit_scale = _detect_unit_scale(ifc)
+    geom_scale = user_scale  # geometry용: ifcopenshell.geom이 이미 미터 반환
+    scale = geom_scale       # geo_origin.scale 저장값 (하위 호환)
+
     geo_info = _extract_geo_origin(ifc)
     elem_to_spatial, storeys = _extract_spatial_structure(ifc)
 
+    # storey elevation을 미터 단위로 보정 (raw IFC 속성은 IFC 단위)
+    for s in storeys:
+        if s.get("elevation") is not None:
+            s["elevation"] = round(s["elevation"] * unit_scale, 4)
+
     # ifcopenshell.geom 설정: 월드 좌표계, 삼각분할
     settings = ifcopenshell.geom.settings()
-    settings.set(settings.USE_WORLD_COORDS, True)
-    settings.set(settings.WELD_VERTICES, False)
+    try:
+        settings.set(settings.USE_WORLD_COORDS, True)
+        settings.set(settings.WELD_VERTICES, False)
+    except AttributeError:
+        # ifcopenshell 0.7+ 신규 API 폴백
+        try:
+            settings.set("use-world-coords", True)
+            settings.set("weld-vertices", False)
+        except Exception:
+            pass
 
-    builder = GlbBuilder()
+    builder      = GlbBuilder()
+    lite_builder = GlbBuilder()
     elements: list[dict] = []
 
-    target_types = list(ELEMENT_TYPE_MAP.keys())
-
     all_positions: list[np.ndarray] = []  # 중앙 정렬용
-
-    raw_geoms: list[dict] = []  # 임시 저장
+    raw_geoms: list[dict] = []            # 임시 저장
+    processed_ids: set[int] = set()       # 서브타입 중복 처리 방지
 
     for ifc_type, our_type in ELEMENT_TYPE_MAP.items():
         for product in ifc.by_type(ifc_type):
+            express_id = product.id()
+            if express_id in processed_ids:
+                continue  # IfcWall/IfcWallStandardCase 등 서브타입 중복 스킵
+            processed_ids.add(express_id)
             # 이미 더 정밀한 타입으로 처리된 경우 스킵 (IfcWallStandardCase 등)
             try:
                 shape = ifcopenshell.geom.create_shape(settings, product)
@@ -382,14 +495,13 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
             if not verts_flat or not faces_flat:
                 continue
 
-            # IFC 좌표계(Z-up) → Three.js/glTF(Y-up) 변환 + 스케일
+            # IFC Z-up 좌표계 그대로 유지 (축 변환 없음) + 스케일만 적용
             arr = np.array(verts_flat, dtype=np.float32).reshape(-1, 3)
-            # IFC: X=동, Y=북, Z=위  →  glTF: X=동, Y=위, Z=남(=반전)
-            pos = np.column_stack([
-                arr[:, 0] * scale,   # X 그대로
-                arr[:, 2] * scale,   # IFC Z → glTF Y (높이)
-                -arr[:, 1] * scale,  # IFC Y → glTF -Z
-            ]).astype(np.float32)
+            px = arr[:, 0] * scale  # IFC X → X
+            py = arr[:, 1] * scale  # IFC Y → Y
+            pz = arr[:, 2] * scale  # IFC Z → Z (높이, Z-up 유지)
+
+            pos = np.column_stack([px, py, pz]).astype(np.float32)
 
             idx = np.array(faces_flat, dtype=np.uint32)
             if len(idx) == 0:
@@ -400,11 +512,10 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
                 nrm_flat = geom.normals
                 if nrm_flat and len(nrm_flat) == len(verts_flat):
                     nrm_arr = np.array(nrm_flat, dtype=np.float32).reshape(-1, 3)
-                    nrm = np.column_stack([
-                        nrm_arr[:, 0],
-                        nrm_arr[:, 2],
-                        -nrm_arr[:, 1],
-                    ]).astype(np.float32)
+                    nx = nrm_arr[:, 0]
+                    ny = nrm_arr[:, 1]
+                    nz = nrm_arr[:, 2]
+                    nrm = np.column_stack([nx, ny, nz]).astype(np.float32)
                 else:
                     raise ValueError("no normals")
             except Exception:
@@ -412,12 +523,13 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
                 nrm = _compute_normals(pos, idx)
 
             express_id = product.id()
-            element_id = f"IFC-{express_id}"
+            element_id = f"IFC-{express_id}-{project_id}" if project_id else f"IFC-{express_id}"
 
             # IfcSlab with PredefinedType=ROOF → IfcRoof 재분류
+            # ifcopenshell은 IFC4 기준 "ROOF", IFC2x3 기준 ".ROOF." 반환
             if our_type == "IfcSlab":
                 pre = getattr(product, "PredefinedType", None)
-                if pre == ".ROOF.":
+                if pre is not None and str(pre).strip(".").upper() == "ROOF":
                     our_type = "IfcRoof"
 
             spatial = elem_to_spatial.get(express_id, {})
@@ -446,37 +558,38 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
     if not raw_geoms:
         logger.warning("[IFC Convert] 변환 가능한 부재가 없습니다.")
         return {
-            "glb_bytes": builder.build(),
-            "elements": [],
-            "storeys": storeys,
-            "geo_origin": {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale},
+            "glb_bytes":      builder.build(),
+            "glb_lite_bytes": lite_builder.build(),
+            "elements":       [],
+            "storeys":        storeys,
+            "geo_origin":     {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale},
         }
 
-    # ── 중앙 정렬 계산 ────────────────────────────────────────────────
+    # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z 바닥 기준) ─────────────
     all_pts = np.vstack(all_positions)
-    cx = float((all_pts[:, 0].min() + all_pts[:, 0].max()) / 2.0)
-    min_y = float(all_pts[:, 1].min())  # Y = 높이, 바닥 기준
-    cz = float((all_pts[:, 2].min() + all_pts[:, 2].max()) / 2.0)
+    cx     = float((all_pts[:, 0].min() + all_pts[:, 0].max()) / 2.0)  # X 중앙
+    cy     = float((all_pts[:, 1].min() + all_pts[:, 1].max()) / 2.0)  # Y 중앙
+    min_z  = float(all_pts[:, 2].min())  # Z 최솟값 = 바닥 기준 (Z = 높이)
 
     geo_origin = {
         **geo_info,
         "ifcOffsetX": cx,
-        "ifcOffsetY": min_y,
-        "ifcOffsetZ": cz,
+        "ifcOffsetY": cy,
+        "ifcOffsetZ": min_z,
         "scale": scale,
     }
 
     for g in raw_geoms:
         pos = g["pos"].copy()
         pos[:, 0] -= cx
-        pos[:, 1] -= min_y
-        pos[:, 2] -= cz
+        pos[:, 1] -= cy
+        pos[:, 2] -= min_z  # Z 바닥을 0으로
 
         color = ELEMENT_COLORS.get(g["our_type"], [0.7, 0.7, 0.7, 1.0])
         center = g["center"].copy()
         center[0] -= cx
-        center[1] -= min_y
-        center[2] -= cz
+        center[1] -= cy
+        center[2] -= min_z
 
         extras = {
             "elementType": g["our_type"],
@@ -497,16 +610,28 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
             extras=extras,
         )
 
+        lite_pos, lite_idx = _simplify_to_convex_hull(pos)
+        lite_nrm = _compute_normals(lite_pos, lite_idx)
+        lite_builder.add_element(
+            element_id=g["element_id"],
+            positions=lite_pos,
+            normals=lite_nrm,
+            indices=lite_idx,
+            color=color,
+            element_type=g["our_type"],
+            extras=extras,
+        )
+
         size = g["size"]
         elements.append({
             "elementId":   g["element_id"],
             "elementType": g["our_type"],
-            "positionX":   round(float(center[0]), 4),
-            "positionY":   round(float(center[2]), 4),   # Three.js Y=Z
-            "positionZ":   round(float(center[1]), 4),   # Three.js Z=Y(높이)
+            "positionX":   round(float(center[0]), 4),  # IFC X
+            "positionY":   round(float(center[1]), 4),  # IFC Y
+            "positionZ":   round(float(center[2]), 4),  # IFC Z (높이)
             "sizeX":       round(float(size[0]), 4),
-            "sizeY":       round(float(size[2]), 4),
-            "sizeZ":       round(float(size[1]), 4),
+            "sizeY":       round(float(size[1]), 4),
+            "sizeZ":       round(float(size[2]), 4),    # Z = 높이 방향 크기
             "rotationX": 0, "rotationY": 0, "rotationZ": 0,
             "material":  "Steel S355" if g["our_type"] == "IfcMember" else "Concrete C30",
             "globalId":    g["global_id"],
@@ -517,10 +642,11 @@ def convert_ifc_to_glb(ifc_bytes: bytes) -> dict:
 
     logger.info("[IFC Convert] 부재 %d개, 층 %d개 변환 완료", len(elements), len(storeys))
     return {
-        "glb_bytes": builder.build(),
-        "elements":  elements,
-        "storeys":   storeys,
-        "geo_origin": geo_origin,
+        "glb_bytes":      builder.build(),
+        "glb_lite_bytes": lite_builder.build(),
+        "elements":       elements,
+        "storeys":        storeys,
+        "geo_origin":     geo_origin,
     }
 
 
@@ -542,3 +668,61 @@ def _compute_normals(positions: np.ndarray, indices: np.ndarray) -> np.ndarray:
     norms2 = np.linalg.norm(normals, axis=1, keepdims=True)
     norms2[norms2 == 0] = 1
     return (normals / norms2).astype(np.float32)
+
+
+def _make_aabb_mesh(positions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """점군의 AABB(8 verts, 36 indices)를 생성한다. convex hull 폴백용."""
+    mn = positions.min(axis=0)
+    mx = positions.max(axis=0)
+    # 크기가 0인 축은 최소 0.01m 확보
+    for i in range(3):
+        if mx[i] - mn[i] < 1e-4:
+            mid = (mn[i] + mx[i]) / 2
+            mn[i] = mid - 0.005
+            mx[i] = mid + 0.005
+    x0, y0, z0 = mn
+    x1, y1, z1 = mx
+    verts = np.array([
+        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
+    ], dtype=np.float32)
+    # 6면 × 2삼각형 = 36 indices
+    idx = np.array([
+        0,1,2, 0,2,3,  # -Z face
+        4,6,5, 4,7,6,  # +Z face
+        0,4,5, 0,5,1,  # -Y face
+        2,6,7, 2,7,3,  # +Y face
+        0,3,7, 0,7,4,  # -X face
+        1,5,6, 1,6,2,  # +X face
+    ], dtype=np.uint32)
+    return verts, idx
+
+
+def _simplify_to_convex_hull(positions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    부재 점군을 convex hull로 단순화한다.
+    scipy 없거나 점 수 부족(<4)이면 AABB로 폴백.
+    반환: (hull_positions, hull_indices) — face normals 기준 삼각형
+    """
+    if len(positions) < 4:
+        return _make_aabb_mesh(positions)
+    try:
+        from scipy.spatial import ConvexHull
+        hull = ConvexHull(positions)
+        # hull.vertices: 실제 사용된 정점 인덱스, hull.simplices: 삼각형 면
+        used_idx = hull.vertices
+        remap = {old: new for new, old in enumerate(used_idx)}
+        verts = positions[used_idx].astype(np.float32)
+        faces = []
+        for simplex in hull.simplices:
+            a, b, c = [remap[i] for i in simplex]
+            # 법선이 밖을 향하도록 방향 보정
+            n = np.cross(verts[b] - verts[a], verts[c] - verts[a])
+            centroid = verts.mean(axis=0)
+            if np.dot(n, verts[a] - centroid) < 0:
+                a, b = b, a
+            faces.extend([a, b, c])
+        idx = np.array(faces, dtype=np.uint32)
+        return verts, idx
+    except Exception:
+        return _make_aabb_mesh(positions)

@@ -349,9 +349,14 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
     };
 
     // 날짜 유틸
-    const toStr = (d) => d.toISOString().slice(0, 10);
+    const toStr = (d) => {
+      if (!d || isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+      return d.toISOString().slice(0, 10);
+    };
     const addDays = (dateStr, n) => {
-      const d = new Date(dateStr || new Date());
+      const raw = dateStr ? String(dateStr).slice(0, 10) : null;
+      const d = new Date(raw ? raw + 'T00:00:00' : new Date());
+      if (isNaN(d.getTime())) return toStr(new Date());
       d.setDate(d.getDate() + n);
       return toStr(d);
     };

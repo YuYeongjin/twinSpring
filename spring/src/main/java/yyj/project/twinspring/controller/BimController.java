@@ -554,14 +554,15 @@ public class BimController {
     @PostMapping(value = "/project/{projectId}/convert-ifc", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Mono<ResponseEntity<Map<String, Object>>> convertIfcFile(
             @PathVariable String projectId,
-            @RequestParam("file") MultipartFile file) {
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "scale", defaultValue = "1.0") double scale) {
 
         if (file == null || file.isEmpty()) {
             return Mono.just(ResponseEntity.badRequest()
                     .<Map<String, Object>>body(Map.of("error", "파일이 비어 있습니다.")));
         }
 
-        return bimService.convertAndStoreIfc(projectId, file)
+        return bimService.convertAndStoreIfc(projectId, file, scale)
                 .map(result -> ResponseEntity.ok(result))
                 .onErrorResume(e -> {
                     System.err.println("[BIM] IFC 변환 실패: " + e.getMessage());
@@ -594,6 +595,23 @@ public class BimController {
     }
 
     /**
+     * 변환된 Lite GLB 파일 서빙 (convex hull 단순화 버전)
+     * GET /api/bim/project/{projectId}/glb/lite
+     */
+    @GetMapping("/project/{projectId}/glb/lite")
+    public ResponseEntity<InputStreamResource> downloadGlbLiteFile(@PathVariable String projectId) {
+        try {
+            java.io.InputStream is = bimService.downloadGlbLiteFile(projectId);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "inline; filename=\"model_lite.glb\"")
+                    .contentType(MediaType.valueOf("model/gltf-binary"))
+                    .body(new InputStreamResource(is));
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
      * GLB 보유 여부 확인
      * GET /api/bim/project/{projectId}/glb/status
      */
@@ -601,5 +619,22 @@ public class BimController {
     public ResponseEntity<Map<String, Object>> getGlbStatus(@PathVariable String projectId) {
         String key = bimService.getGlbStorageKey(projectId);
         return ResponseEntity.ok(Map.of("hasGlb", key != null));
+    }
+
+    // ================================================================
+    // Ollama 층 이름 정규화
+    // ================================================================
+
+    /**
+     * IFC 층 이름 목록을 로컬 Ollama 3B 모델로 정규화합니다.
+     * POST /api/bim/normalize-storeys
+     * 요청: { "names": ["Story 1", "EG", "Dachgeschoss", ...] }
+     * 응답: { "Story 1": "1F", "EG": "1F", "Dachgeschoss": "RF", ... }
+     */
+    @PostMapping("/normalize-storeys")
+    public ResponseEntity<Map<String, String>> normalizeStoreys(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> names = (List<String>) body.getOrDefault("names", List.of());
+        return ResponseEntity.ok(bimService.normalizeStoreyNames(names));
     }
 }

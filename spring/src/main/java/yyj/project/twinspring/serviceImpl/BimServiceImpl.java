@@ -1,6 +1,7 @@
 package yyj.project.twinspring.serviceImpl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import org.springframework.beans.factory.annotation.Value;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,17 +38,23 @@ public class BimServiceImpl implements BimService {
 
     private final WebClient webClient;
     private final WebClient agentWebClient;
+    private final WebClient ollamaWebClient;
     private final BimDAO bimDAO;
     private final StorageService storageService;
 
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Value("${ollama.model:qwen2.5:3b}")
+    private String ollamaModel;
+
     public BimServiceImpl(WebClient webClient,
                           @org.springframework.beans.factory.annotation.Qualifier("agentWebClient") WebClient agentWebClient,
+                          @org.springframework.beans.factory.annotation.Qualifier("ollamaWebClient") WebClient ollamaWebClient,
                           BimDAO bimDAO, StorageService storageService) {
         this.webClient = webClient;
         this.agentWebClient = agentWebClient;
+        this.ollamaWebClient = ollamaWebClient;
         this.bimDAO = bimDAO;
         this.storageService = storageService;
     }
@@ -101,18 +108,9 @@ public class BimServiceImpl implements BimService {
 
     @Override
     public Mono<List<BimProjectDTO>> getProjectList() {
-        log.debug("C# 서버 프로젝트 목록 요청");
-        return webClient.get()
-                .uri("/api/bim/projects")
-                .retrieve()
-                .onStatus(status -> status.isError(), clientResponse ->
-                        Mono.error(new RuntimeException("C# Server Error: " + clientResponse.statusCode())))
-                .bodyToFlux(BimProjectDTO.class)
-                .collectList()
-                .onErrorResume(e -> {
-                    log.warn("C# BIM 서버 연결 실패 — 로컬 DB로 폴백: {}", e.getMessage());
-                    return Mono.fromCallable(this::getBimProjectsFromDb);
-                });
+        // 로컬 PostgreSQL에서 조회 (glbStorageKey 등 로컬 전용 필드 포함)
+        return Mono.fromCallable(this::getBimProjectsFromDb)
+                .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
     @Override
@@ -262,6 +260,8 @@ public class BimServiceImpl implements BimService {
                     dto.setIfcWorldX(row.get("ifcWorldX") == null ? null : toDouble(row.get("ifcWorldX")));
                     dto.setIfcWorldY(row.get("ifcWorldY") == null ? null : toDouble(row.get("ifcWorldY")));
                     dto.setIfcWorldZ(row.get("ifcWorldZ") == null ? null : toDouble(row.get("ifcWorldZ")));
+                    dto.setStorey(row.get("storey") == null ? null : row.get("storey").toString());
+                    dto.setBuilding(row.get("building") == null ? null : row.get("building").toString());
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -610,6 +610,7 @@ public class BimServiceImpl implements BimService {
                     dto.setIfcOffsetY(row.get("ifcOffsetY") == null ? null : toDouble(row.get("ifcOffsetY")));
                     dto.setIfcOffsetZ(row.get("ifcOffsetZ") == null ? null : toDouble(row.get("ifcOffsetZ")));
                     dto.setIfcScale(row.get("ifcScale") == null ? null : toDouble(row.get("ifcScale")));
+                    dto.setGlbStorageKey((String) row.get("glbStorageKey"));
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -890,7 +891,7 @@ public class BimServiceImpl implements BimService {
     }
 
     @Override
-    public Mono<Map<String, Object>> convertAndStoreIfc(String projectId, MultipartFile file) {
+    public Mono<Map<String, Object>> convertAndStoreIfc(String projectId, MultipartFile file, double userScale) {
         return Mono.fromCallable(() -> {
             byte[] ifcBytes;
             try {
@@ -921,6 +922,10 @@ public class BimServiceImpl implements BimService {
 
             org.springframework.util.MultiValueMap<String, Object> formData = new org.springframework.util.LinkedMultiValueMap<>();
             formData.add("file", resource);
+            formData.add("project_id", projectId);
+            if (userScale != 1.0) {
+                formData.add("scale", String.valueOf(userScale));
+            }
 
             Map<String, Object> convertResult = agentWebClient.post()
                     .uri("/api/ifc/convert")
@@ -940,6 +945,16 @@ public class BimServiceImpl implements BimService {
             byte[] glbBytes = java.util.Base64.getDecoder().decode(glbBase64);
             uploadGlbFile(projectId, glbBytes);
 
+            // 3b. Lite GLB Minio 저장 (convex hull 단순화 버전)
+            String glbLiteBase64 = (String) convertResult.get("glbLiteBase64");
+            if (glbLiteBase64 != null) {
+                byte[] liteBytes = java.util.Base64.getDecoder().decode(glbLiteBase64);
+                String liteKey = "projects/" + projectId + "/model_lite.glb";
+                storageService.upload(liteKey, new java.io.ByteArrayInputStream(liteBytes),
+                        liteBytes.length, "model/gltf-binary");
+                log.info("[BIM] Lite GLB 저장 완료: key={}, size={}bytes", liteKey, liteBytes.length);
+            }
+
             // 4. elements DB 저장
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> rawElements = (List<Map<String, Object>>) convertResult.get("elements");
@@ -947,7 +962,7 @@ public class BimServiceImpl implements BimService {
                 List<BimElementDTO> dtos = rawElements.stream().map(e -> {
                     BimElementDTO dto = new BimElementDTO();
                     dto.setProjectId(projectId);
-                    dto.setElementId((String) e.get("elementId") + "-" + projectId);
+                    dto.setElementId((String) e.get("elementId")); // Python이 이미 project_id suffix 포함
                     dto.setElementType((String) e.get("elementType"));
                     dto.setPositionX(toDoubleOrNull(e.get("positionX")));
                     dto.setPositionY(toDoubleOrNull(e.get("positionY")));
@@ -961,8 +976,21 @@ public class BimServiceImpl implements BimService {
                     dto.setGlobalId((String) e.get("globalId"));
                     return dto;
                 }).collect(Collectors.toList());
-                // 기존 batch 저장 로직 재사용 (C# 서버 경유)
-                createElements(dtos).block(java.time.Duration.ofMinutes(5));
+                // C# 서버 경유 저장; 실패 시 로컬 DB에 폴백 저장
+                boolean savedToCs = false;
+                try {
+                    createElements(dtos).block(java.time.Duration.ofMinutes(5));
+                    savedToCs = true;
+                } catch (Exception ex) {
+                    log.warn("[BIM] C# elements 저장 실패 — 로컬 DB로 폴백: {}", ex.getMessage());
+                }
+                if (!savedToCs) {
+                    try {
+                        bimDAO.insertElementsBatch(dtos);
+                    } catch (Exception ex) {
+                        log.warn("[BIM] 로컬 DB elements 저장 실패: {}", ex.getMessage());
+                    }
+                }
             }
 
             // 5. storeys DB 저장
@@ -1020,6 +1048,12 @@ public class BimServiceImpl implements BimService {
     public InputStream downloadGlbFile(String projectId) {
         String key = getGlbStorageKey(projectId);
         if (key == null) throw new StorageException("GLB 파일이 없습니다: projectId=" + projectId);
+        return storageService.download(key);
+    }
+
+    @Override
+    public InputStream downloadGlbLiteFile(String projectId) {
+        String key = "projects/" + projectId + "/model_lite.glb";
         return storageService.download(key);
     }
 
@@ -1235,5 +1269,94 @@ public class BimServiceImpl implements BimService {
                     err.put("error",   e.getMessage());
                     return Mono.just(err);
                 });
+    }
+
+    // ── Ollama 층 이름 정규화 ────────────────────────────────────────────
+
+    @Override
+    public Map<String, String> normalizeStoreyNames(List<String> names) {
+        if (names == null || names.isEmpty()) return Map.of();
+
+        String namesJson;
+        try {
+            namesJson = objectMapper.writeValueAsString(names);
+        } catch (Exception e) {
+            log.warn("[StoreyNormalize] 이름 직렬화 실패: {}", e.getMessage());
+            return Map.of();
+        }
+
+        // few-shot 예시 포함 — 3B 모델은 예시 없이 패턴을 일관되게 따르지 못함
+        // EG = Erdgeschoss(독일) = 지상 1층, UG = Untergeschoss = 지하, 1.OG = 지상 2층
+        String prompt = "Normalize IFC storey names to standard WBS format.\n" +
+                "Rules:\n" +
+                "- B1, B2, B3: underground (지하N층, UG, Untergeschoss, basement N)\n" +
+                "- 1F, 2F, 3F: above ground (EG=1F, Story N=NF, N.OG=(N+1)F, N층=NF, Level N=NF)\n" +
+                "- RF: roof (Roof, Dachgeschoss, 옥상, 지붕, Penthouse)\n" +
+                "- MF: machine room (기계실, Maschinenraum)\n" +
+                "- Keep original if unknown.\n\n" +
+                "Example:\n" +
+                "Input: [\"Story 1\",\"Story 2\",\"EG\",\"1.OG\",\"2.OG\",\"UG\",\"기계실\",\"Dachgeschoss\",\"1층\",\"지하1층\"]\n" +
+                "Output: {\"Story 1\":\"1F\",\"Story 2\":\"2F\",\"EG\":\"1F\",\"1.OG\":\"2F\",\"2.OG\":\"3F\",\"UG\":\"B1\",\"기계실\":\"MF\",\"Dachgeschoss\":\"RF\",\"1층\":\"1F\",\"지하1층\":\"B1\"}\n\n" +
+                "Now normalize (return ONLY a flat JSON object, no explanation):\n" +
+                "Input: " + namesJson + "\n" +
+                "Output:";
+
+        try {
+            // GTX 1050 4GB 최적화
+            // - num_ctx 512: 입력이 짧으므로 KV 캐시 VRAM 절약
+            // - num_predict 256: 층 이름 목록 출력에 충분, 불필요한 토큰 생성 방지
+            // - temperature 0: 결정적 출력, JSON 포맷 일관성 확보
+            Map<String, Object> options = new LinkedHashMap<>();
+            options.put("temperature", 0);
+            options.put("num_predict", 256);
+            options.put("num_ctx", 512);
+
+            Map<String, Object> requestBody = new LinkedHashMap<>();
+            requestBody.put("model", ollamaModel);
+            requestBody.put("prompt", prompt);
+            requestBody.put("stream", false);
+            requestBody.put("format", "json");
+            requestBody.put("options", options);
+
+            String raw = ollamaWebClient.post()
+                    .uri("/api/generate")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(requestBody)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(java.time.Duration.ofSeconds(60))  // 1050 기준 여유 있는 60초
+                    .block();
+
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(raw);
+            String responseText = root.path("response").asText("").trim();
+
+            // JSON 블록 추출
+            int start = responseText.indexOf('{');
+            int end   = responseText.lastIndexOf('}') + 1;
+            if (start < 0 || end <= start) {
+                log.warn("[StoreyNormalize] JSON 없음, 폴백: {}", responseText);
+                return Map.of();
+            }
+
+            // 값이 String인 항목만 수집 — 모델이 중첩 객체를 뱉는 경우 방어
+            com.fasterxml.jackson.databind.JsonNode parsed =
+                    objectMapper.readTree(responseText.substring(start, end));
+            Map<String, String> result = new LinkedHashMap<>();
+            parsed.fields().forEachRemaining(entry -> {
+                if (entry.getValue().isTextual()) {
+                    result.put(entry.getKey(), entry.getValue().asText());
+                }
+            });
+            if (result.isEmpty()) {
+                log.warn("[StoreyNormalize] 유효한 매핑 없음, 폴백");
+                return Map.of();
+            }
+            log.info("[StoreyNormalize] 정규화 완료: {}", result);
+            return result;
+
+        } catch (Exception e) {
+            log.warn("[StoreyNormalize] Ollama 호출 실패, 폴백 적용: {}", e.getMessage());
+            return Map.of();
+        }
     }
 }

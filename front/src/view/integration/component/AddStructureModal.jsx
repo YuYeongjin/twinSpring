@@ -33,6 +33,7 @@ function BimTab({ onAdd, onClose }) {
   const [fetching, setFetching]   = useState(false);
   const [name, setName]           = useState('');
   const [offset, setOffset]       = useState([0, 0, 0]);
+  const [wbsStartDate, setWbsStartDate] = useState(new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     AxiosCustom.get('/api/bim/projects')
@@ -59,6 +60,7 @@ function BimTab({ onAdd, onClose }) {
         elements:     res.data || [],
         offset,
         visible:      true,
+        wbsStartDate: wbsStartDate || null,
       });
       onClose();
     } catch {
@@ -123,6 +125,15 @@ function BimTab({ onAdd, onClose }) {
                 </div>
               ))}
             </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#8896a4', marginBottom: 4 }}>WBS 시작일</div>
+            <input
+              type="date"
+              style={inputStyle}
+              value={wbsStartDate}
+              onChange={e => setWbsStartDate(e.target.value)}
+            />
           </div>
         </>
       )}
@@ -360,7 +371,8 @@ export default function AddStructureModal({ onClose }) {
           bimProjectName: uniqueName || null,
           elements:      resolvedStructure.elements || [],
           existingTasks,
-          instanceKey:   resolvedStructure.id, // 동일 BIM 여러 번 추가해도 각각 별도 WBS 생성
+          startDate:     resolvedStructure.wbsStartDate || null,
+          instanceKey:   resolvedStructure.id,
         });
       } catch { /* 태스크 생성 실패 — 무시 (수동으로 WBS탭에서 생성 가능) */ }
     }

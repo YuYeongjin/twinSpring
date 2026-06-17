@@ -22,8 +22,9 @@ export const getBaseColor = (elementType) => {
     case 'IfcBeam':
     case 'IfcMember': return '#A9A9A9';
     case 'IfcWall':   return '#E0E0E0';
-    case 'IfcSlab':   return '#B0C4DE';
-    case 'IfcPier':   return '#D2691E';
+    case 'IfcSlab':        return '#B0C4DE';
+    case 'IfcFoundation':  return '#8B6400';  // 기초 — 흙/콘크리트 갈색
+    case 'IfcPier':        return '#D2691E';
     case 'IfcRebar':  return '#CC2200';
     default:          return '#ff4444';
   }

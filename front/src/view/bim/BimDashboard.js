@@ -609,7 +609,7 @@ function CoordCommandBar({
 // ================================================================
 function QuickSelectPanel({ modelData, onSelect, onClose }) {
     const t = useT('bimDashboard');
-    const TYPES = ['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier','IfcRebar'];
+    const TYPES = ['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcFoundation','IfcPier','IfcRebar'];
     const [selTypes, setSelTypes] = React.useState([]);
     const [selMat,   setSelMat]   = React.useState('');
 
@@ -863,7 +863,7 @@ function PropertyPanel({ selectedElement, selectedElements, modelData, updateEle
     }
 
     const el = selectedElement.data;
-    const typeColor = { IfcColumn: 'brown', IfcBeam: 'gray', IfcWall: 'gray', IfcSlab: 'blue', IfcPier: 'orange', IfcRebar: 'red' }[el.elementType] ?? 'gray';
+    const typeColor = { IfcColumn: 'brown', IfcBeam: 'gray', IfcWall: 'gray', IfcSlab: 'blue', IfcFoundation: 'brown', IfcPier: 'orange', IfcRebar: 'red' }[el.elementType] ?? 'gray';
 
     const handleChange = (field, value) => {
         const isNum = field !== 'material';
@@ -979,7 +979,7 @@ function PropertyPanel({ selectedElement, selectedElements, modelData, updateEle
 // 메인 BIM 대시보드
 // ================================================================
 
-export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange }) {
+export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, glbLiteUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange, wbsJobState }) {
     const {
         saveUpdateElement,
         selectedElement, setSelectedElement,
@@ -996,7 +996,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         deleteSelectedElements,
         cameraRef,
         placeSampleStructure,
-        layers, addLayer, deleteLayer, updateLayer, assignToLayer, removeFromLayer,
+        layers, addLayer, deleteLayer, updateLayer, assignToLayer, removeFromLayer, reloadLayers,
         elementColors, setElementColor, clearElementColor,
         elementOpacities, setElementOpacity, clearElementOpacity,
         createGroupLayer,
@@ -1006,6 +1006,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
     const t = useT('bimDashboard');
+    const [useLiteGlb, setUseLiteGlb] = React.useState(false);
+    const activeGlbUrl = (useLiteGlb && glbLiteUrl) ? glbLiteUrl : glbUrl;
     const mainViewRef   = useRef(null);
     const hoverPosRef   = useRef({ x: 0, y: 0, z: 0 });
     const rootContainerRef = useRef(null);
@@ -1144,6 +1146,11 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     // ── WBS / 층 상태 ────────────────────────────────────────────────
     const [wbsNodes, setWbsNodes]           = useState([]);
     const [elementWbsMappings, setElementWbsMappings] = useState([]);
+    const wbsPollingRef = useRef(null);
+    const isWbsGenerating = wbsJobState?.status === 'pending' &&
+                            wbsJobState?.projectId === selectedProject?.projectId;
+    const isWbsFailed = wbsJobState?.status === 'failed' &&
+                        wbsJobState?.projectId === selectedProject?.projectId;
 
     // WBS 트리 (buildWbsTree 결과)
     const wbsTree = React.useMemo(() => buildWbsTree(wbsNodes), [wbsNodes]);
@@ -1179,6 +1186,44 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             .catch(() => setElementWbsMappings([]));
     }, [selectedProject]);
 
+    // WBS 생성 중일 때 3초 간격으로 폴링 → 데이터 도착하면 자동 중단
+    useEffect(() => {
+        if (!isWbsGenerating || !selectedProject?.projectId) return;
+        const pid = selectedProject.projectId;
+        wbsPollingRef.current = setInterval(async () => {
+            try {
+                const res = await AxiosCustom.get(`${API_BASE}/wbs?projectId=${pid}`);
+                const data = res.data || [];
+                if (data.length > 0) {
+                    setWbsNodes(data);
+                    clearInterval(wbsPollingRef.current);
+                    wbsPollingRef.current = null;
+                    const mRes = await AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`);
+                    setElementWbsMappings(mRes.data || []);
+                }
+            } catch (e) {
+                console.warn('[WBS polling]', e.message);
+            }
+        }, 3000);
+        return () => {
+            if (wbsPollingRef.current) clearInterval(wbsPollingRef.current);
+        };
+    }, [isWbsGenerating, selectedProject?.projectId]);
+
+    // WBS 생성 완료 신호(done) → DB에서 즉시 재로드 (폴링 타이밍 보완)
+    useEffect(() => {
+        if (wbsJobState?.status !== 'done') return;
+        if (wbsJobState?.projectId !== selectedProject?.projectId) return;
+        const pid = selectedProject.projectId;
+        AxiosCustom.get(`${API_BASE}/wbs?projectId=${pid}`)
+            .then(res => setWbsNodes(res.data || []))
+            .catch(() => {});
+        AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`)
+            .then(res => setElementWbsMappings(res.data || []))
+            .catch(() => {});
+        reloadLayers();
+    }, [wbsJobState?.status, wbsJobState?.projectId, selectedProject?.projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // WBS 진척도 업데이트
     const handleWbsProgressChange = React.useCallback((wbsId, progress) => {
         setWbsNodes(prev => prev.map(n => n.wbsId === wbsId ? { ...n, progress } : n));
@@ -1196,6 +1241,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             setSelectedElement(null);
         }
     }, [setSelectedElements, setSelectedElement, modelData]);
+
+    // WBS 항목 더블클릭 → 에디터 탭으로 전환 후 해당 부재 하이라이트
+    const handleWbsDoubleClickToEditor = React.useCallback((node, ids) => {
+        if (ids && ids.length > 0) handleWbsSelectElements(ids);
+        setBimSubView('editor');
+    }, [handleWbsSelectElements]);
 
     useEffect(() => {
         const pid = selectedProject?.projectId;
@@ -1628,7 +1679,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         for (const el of modelData) {
             counts[el.elementType] = (counts[el.elementType] || 0) + 1;
         }
-        const TYPE_ORDER = ['IfcColumn','IfcBeam','IfcSlab','IfcWall','IfcDoor','IfcWindow','IfcStair','IfcRoof','IfcPier','IfcMember','IfcRebar'];
+        const TYPE_ORDER = ['IfcColumn','IfcBeam','IfcSlab','IfcFoundation','IfcWall','IfcDoor','IfcWindow','IfcStair','IfcRoof','IfcPier','IfcMember','IfcRebar'];
         return Object.entries(counts)
             .sort(([a,ca],[b,cb]) => {
                 const oa = TYPE_ORDER.indexOf(a), ob = TYPE_ORDER.indexOf(b);
@@ -2038,6 +2089,13 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             className="px-2 py-1 rounded-lg text-xs font-semibold border bg-sky-800/30 text-sky-300 border-sky-600/50 hover:bg-sky-700/40 transition shrink-0"
                         >{t('fit')}</button>
                     )}
+                    {glbLiteUrl && (
+                        <button
+                            onClick={() => setUseLiteGlb(v => !v)}
+                            className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${useLiteGlb ? 'bg-green-700/30 text-green-300 border-green-600/50' : 'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                            title={useLiteGlb ? '현재: Lite 모드 (빠름) — Full 모드로 전환' : '현재: Full 모드 — Lite 모드로 전환 (빠름)'}
+                        >{useLiteGlb ? 'Lite' : 'Full'}</button>
+                    )}
                     <button onClick={() => showLayerPanel ? closeLayerPanel() : setShowLayerPanel(true)}
                         className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${showLayerPanel?'bg-teal-700/30 text-teal-300 border-teal-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
                     >{t('layer')}{layers.length > 0 && ` (${layers.length})`}</button>
@@ -2174,7 +2232,32 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 <StructuralDashboard selectedProject={selectedProject} modelData={modelData} />
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'flex' : 'none', gap: 0 }}>
+            <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'flex' : 'none', gap: 0, flexDirection: 'column' }}>
+                {/* WBS 생성 중 배너 */}
+                {isWbsGenerating && (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 16px', flexShrink: 0,
+                        background: '#0d1f30', borderBottom: '1px solid #1a3a5c',
+                        color: '#60a5fa', fontSize: 12,
+                    }}>
+                        <span style={{ fontSize: 16, animation: 'spin 1.2s linear infinite' }}>⚙</span>
+                        <span>WBS를 생성하는 중입니다... 잠시 후 자동으로 표시됩니다.</span>
+                    </div>
+                )}
+                {/* WBS 생성 실패 배너 */}
+                {isWbsFailed && (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 16px', flexShrink: 0,
+                        background: '#1f0d0d', borderBottom: '1px solid #5c1a1a',
+                        color: '#f87171', fontSize: 12,
+                    }}>
+                        <span style={{ fontSize: 14 }}>✕</span>
+                        <span>WBS 자동 생성에 실패했습니다. IFC 파일을 다시 업로드하거나 서버 로그를 확인하세요.</span>
+                    </div>
+                )}
+                <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
                 {/* 왼쪽: WBS 트리 + 진척도 */}
                 <div style={{
                     width: 280, minWidth: 220, flexShrink: 0,
@@ -2188,12 +2271,15 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         selectedElement={selectedElement}
                         onSelectElements={handleWbsSelectElements}
                         onProgressChange={handleWbsProgressChange}
+                        onDoubleClickNode={handleWbsDoubleClickToEditor}
+                        isGenerating={isWbsGenerating}
                     />
                 </div>
                 {/* 오른쪽: 기존 공정 대시보드 */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} layers={layers} />
                 </div>
+                </div>{/* flex row wrapper */}
             </div>
 
             <div
@@ -2464,7 +2550,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             placementLockedAxes={placeLocked}
                                             lineLockedAxes={lineLocked}
                                             ifcMeshes={ifcMeshes}
-                                            glbUrl={glbUrl}
+                                            glbUrl={activeGlbUrl}
                                             fitCameraTrigger={fitCameraTrigger}
                                             viewPreset={viewPreset}
                                             viewMode={viewMode}

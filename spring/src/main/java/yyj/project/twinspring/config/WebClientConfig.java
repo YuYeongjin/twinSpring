@@ -55,6 +55,20 @@ public class WebClientConfig {
                 .build();
     }
 
+    @Value("${ollama.url:http://localhost:11434}")
+    private String ollamaUrl;
+
+    @Bean("ollamaWebClient")
+    public WebClient ollamaWebClient(WebClient.Builder builder) {
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)
+                .responseTimeout(Duration.ofSeconds(60));
+        return builder
+                .baseUrl(ollamaUrl)
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build();
+    }
+
     @Value("${agent.server.url:http://localhost:7070}")
     private String agentBaseUrl;
 
