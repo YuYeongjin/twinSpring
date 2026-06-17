@@ -60,6 +60,14 @@ namespace BimProcessorApi.Models
         [JsonPropertyName("rotationZ")]
         public double? RotationZ { get; set; }
 
+        [Column("storey")]
+        [JsonPropertyName("storey")]
+        public string? Storey { get; set; }
+
+        [Column("building")]
+        [JsonPropertyName("building")]
+        public string? Building { get; set; }
+
         [ForeignKey("ProjectId")]
         [JsonIgnore]
         public Project? Project { get; set; }

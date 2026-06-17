@@ -61,23 +61,25 @@ function OrientationLockOverlay() {
 
 // ── IFC 임포트 시 레이어 자동 생성 ─────────────────────────────
 const IFC_LAYER_LABEL = {
-  IfcColumn: '기둥공사', IfcBeam: '보공사',   IfcWall:   '벽체공사',
-  IfcSlab:   '슬래브 공사', IfcPier: '교각공사', IfcMember: '부재공사',
-  IfcWindow: '창호공사', IfcDoor: '문공사',  IfcStair:  '계단공사', IfcRoof: '지붕공사',
+  IfcColumn:     '기둥공사',    IfcBeam:   '보공사',      IfcWall:      '벽체공사',
+  IfcSlab:       '슬래브 공사', IfcPier:   '교각공사',    IfcMember:    '부재공사',
+  IfcWindow:     '창호공사',    IfcDoor:   '문공사',      IfcStair:     '계단공사',
+  IfcRoof:       '지붕공사',    IfcFoundation: '기초공사',
 };
 const IFC_LAYER_COLOR = {
-  IfcColumn: '#3b82f6', IfcBeam:   '#22c55e', IfcWall:   '#64748b',
-  IfcSlab:   '#f59e0b', IfcPier:   '#ec4899', IfcMember: '#84cc16',
-  IfcWindow: '#06b6d4', IfcDoor:   '#8b5cf6', IfcStair:  '#f97316', IfcRoof: '#6366f1',
+  IfcColumn: '#3b82f6', IfcBeam:       '#22c55e', IfcWall:   '#64748b',
+  IfcSlab:   '#f59e0b', IfcPier:       '#ec4899', IfcMember: '#84cc16',
+  IfcWindow: '#06b6d4', IfcDoor:       '#8b5cf6', IfcStair:  '#f97316',
+  IfcRoof:   '#6366f1', IfcFoundation: '#92400e',
 };
-const IFC_TYPE_ORDER = ['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier','IfcMember','IfcWindow','IfcDoor','IfcStair','IfcRoof'];
+const IFC_TYPE_ORDER = ['IfcColumn','IfcBeam','IfcFoundation','IfcSlab','IfcWall','IfcPier','IfcMember','IfcWindow','IfcDoor','IfcStair','IfcRoof'];
 
 function storeyRank(name) {
   if (!name || name === '(층 미지정)') return 9999;
   const lc = name.toLowerCase();
   const b = lc.match(/^b(\d+)/); if (b) return -parseInt(b[1], 10);
   const f = name.match(/^(\d+)/); if (f) return parseInt(f[1], 10);
-  if (lc.includes('roof') || lc.includes('옥상')) return 1000;
+  if (lc === 'rf' || lc.includes('roof') || lc.includes('옥상') || lc.includes('지붕')) return 1000;
   return 500;
 }
 
@@ -94,7 +96,7 @@ function isRealBuilding(name) {
 
 /**
  * 다양한 IFC 층 이름 표현을 표준 형식으로 정규화합니다.
- * 예: "2F", "2층", "Floor 2", "Level 2" → "2F"
+ * 예: "2F", "2층", "Floor 2", "Level 2", "Story 2" → "2F"
  *     "B1", "지하1층" → "B1"
  *     "지붕", "Roof" → "RF"
  */
@@ -103,15 +105,15 @@ function normalizeStoreyName(name) {
   const lc = name.toLowerCase().trim();
 
   // 지하 (B, Basement)
-  const basementMatch = lc.match(/(b|지하)\s*(\d+)/);
+  const basementMatch = lc.match(/(b|지하|basement)\s*(\d+)/);
   if (basementMatch) {
     return `B${basementMatch[2]}`;
   }
 
-  // 지상 (F, Floor, 층) — "2층", "2F", "Floor 2", "Level 2" 등
-  const floorMatch = lc.match(/(\d+)\s*(f|층|floor|level)/);
+  // 지상 (F, Floor, 층, Story, Storey, Level) — "2층", "2F", "Floor 2", "Level 2", "Story 2" 등
+  const floorMatch = lc.match(/(\d+)\s*(f|층|floor|level|story|storey)/);
   if (floorMatch) return `${floorMatch[1]}F`;
-  const levelMatch = lc.match(/(floor|level)\s*(\d+)/);
+  const levelMatch = lc.match(/(floor|level|story|storey)\s*(\d+)/);
   if (levelMatch) return `${levelMatch[2]}F`;
 
   // 그냥 숫자만 있는 경우 (예: "1", "2")
@@ -120,8 +122,8 @@ function normalizeStoreyName(name) {
     return `${numMatch[1]}F`;
   }
 
-  // "지붕", "옥상", "Roof"
-  if (lc.includes('roof') || lc.includes('지붕') || lc.includes('옥상')) {
+  // "지붕", "옥상", "Roof", "RF"
+  if (lc.includes('roof') || lc.includes('지붕') || lc.includes('옥상') || lc === 'rf') {
     return 'RF';
   }
 
@@ -268,6 +270,7 @@ function App() {
   const [modelData, setModelData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [projectList, setProjectList] = useState([]);
+  const [wbsJobState, setWbsJobState] = useState({ projectId: null, status: 'idle' });
 
   // ── IFC 실제 지오메트리 캐시 (세션 동안 유지, 재렌더링 없음) ───────
   // Map: projectId → IfcMeshData[]
@@ -502,10 +505,11 @@ function App() {
   }, [refreshProjectList, projectList]);
 
   // ---------------------------------------------------------------
-  // Import BIM project from IFC elements
-  // ifcMeshes: 실제 Three.js 지오메트리 (클라이언트 캐시, DB 미저장)
+  // [WASM A안 — 비활성화] Import BIM project from IFC elements
+  // GLB 서버 변환(importIfcProjectServer)으로 전환 완료.
+  // ifcMeshes 세션 캐시 경로는 더 이상 사용하지 않음.
   // ---------------------------------------------------------------
-  const importIfcProject = useCallback(async (type, name, elements, ifcMeshes, geoOrigin, callback, storeys, ifcFile) => {
+  /* const importIfcProject = useCallback(async (type, name, elements, ifcMeshes, geoOrigin, callback, storeys, ifcFile) => {
     try {
       // 이름 중복 시 자동 증가
       const existingNames = new Set((projectList || []).map(p => p.projectName));
@@ -610,13 +614,13 @@ function App() {
       console.error('IFC import failed:', error);
       if (callback) callback(null);
     }
-  }, [refreshProjectList, projectList]);
+  }, [refreshProjectList, projectList]); */
 
   // ---------------------------------------------------------------
-  // Import BIM project via server-side IFC → GLB conversion (B안)
+  // Import BIM project via server-side IFC → GLB conversion (B안 — 현재 사용)
   // WASM 파싱 없이 IFC 파일을 서버에 업로드 → Python 변환 → GLB + DB 저장
   // ---------------------------------------------------------------
-  const importIfcProjectServer = useCallback(async (type, name, ifcFile, callback) => {
+  const importIfcProjectServer = useCallback(async (type, name, ifcFile, callback, userScale = 1) => {
     try {
       const existingNames = new Set((projectList || []).map(p => p.projectName));
       let uniqueName = name;
@@ -636,6 +640,7 @@ function App() {
       // 2. IFC 업로드 → 서버(Python)에서 변환 + DB 저장
       const formData = new FormData();
       formData.append('file', ifcFile);
+      if (userScale && userScale !== 1) formData.append('scale', String(userScale));
       await AxiosCustom.post(
         `/api/bim/project/${project.projectId}/convert-ifc`,
         formData,
@@ -646,29 +651,59 @@ function App() {
       const elemRes = await AxiosCustom.get(`/api/bim/project/${project.projectId}`);
       const savedElements = elemRes.data ?? [];
 
-      // 4. 레이어·WBS 자동 생성
+      // 4. LLM 층 정규화 + 레이어 생성 → DB 저장 (BIM 진입 전 완료)
+      let generatedLayers = [];
+      let patchedElements = savedElements;
       if (savedElements.length > 0) {
-        try {
-          const { generateWbsFromLayers } = await import('./utils/wbsGenerator');
-          const layers = generateLayersFromElements(savedElements, project.projectId);
-          if (layers.length > 0) await AxiosCustom.post('/api/bim/layers/batch', layers);
-
-          const storeyRes = await AxiosCustom.get(`/api/bim/storeys?projectId=${project.projectId}`);
-          const storeys = storeyRes.data ?? [];
-
-          const { wbsNodes, mappings } = generateWbsFromLayers(
-            layers, project.projectId, savedElements,
-            { storeys, geoOrigin: null, standard: 'KDS' },
-          );
-          if (wbsNodes.length > 0)  await AxiosCustom.post('/api/bim/wbs/batch', wbsNodes);
-          if (mappings.length > 0)  await AxiosCustom.post('/api/bim/element-wbs/batch', mappings);
-        } catch (e) {
-          console.warn('레이어/WBS 자동 생성 실패(무시):', e.message);
+        const rawNames = [...new Set(savedElements.map(e => e.storey).filter(Boolean))];
+        let normalizedMap = {};
+        if (rawNames.length > 0) {
+          try {
+            const normRes = await AxiosCustom.post('/api/bim/normalize-storeys', { names: rawNames });
+            normalizedMap = normRes.data || {};
+            console.log('[WBS] Ollama 층 이름 정규화:', normalizedMap);
+          } catch (e) {
+            console.warn('[WBS] Ollama 정규화 실패, 내부 정규식 폴백으로 진행:', e.message);
+          }
         }
+        if (Object.keys(normalizedMap).length > 0) {
+          patchedElements = savedElements.map(e => ({
+            ...e,
+            storey: normalizedMap[e.storey] ?? e.storey,
+          }));
+        }
+        generatedLayers = generateLayersFromElements(patchedElements, project.projectId);
+        if (generatedLayers.length > 0) await AxiosCustom.post('/api/bim/layers/batch', generatedLayers);
       }
 
+      // 5. 레이어까지 완료된 후 BIM 에디터 열기
       await refreshProjectList();
       if (callback) callback(project);
+
+      // 6. WBS 생성은 무거우므로 비동기 처리 (작업계획 탭은 폴링으로 감지)
+      if (savedElements.length > 0) {
+        setWbsJobState({ projectId: project.projectId, status: 'pending' });
+        (async () => {
+          try {
+            const { generateWbsFromLayers } = await import('./utils/wbsGenerator');
+            const storeyRes = await AxiosCustom.get(`/api/bim/storeys?projectId=${project.projectId}`);
+            const storeys = storeyRes.data ?? [];
+            const { wbsNodes, mappings } = await generateWbsFromLayers(
+              generatedLayers, project.projectId, patchedElements,
+              {
+                storeys, geoOrigin: null, standard: 'KDS',
+                axiosPost: (url, data) => AxiosCustom.post(url, data),
+              },
+            );
+            if (wbsNodes.length > 0)  await AxiosCustom.post('/api/bim/wbs/batch', wbsNodes);
+            if (mappings.length > 0)  await AxiosCustom.post('/api/bim/element-wbs/batch', mappings);
+            setWbsJobState({ projectId: project.projectId, status: 'done' });
+          } catch (e) {
+            console.warn('WBS 자동 생성 실패(무시):', e.message);
+            setWbsJobState({ projectId: project.projectId, status: 'failed' });
+          }
+        })();
+      }
     } catch (error) {
       console.error('IFC server import failed:', error);
       if (callback) callback(null);
@@ -930,12 +965,13 @@ function App() {
       return null;
     }
     if (viewComponent === 'bim') {
-      // 세션 캐시(구방식 WASM) 또는 서버 GLB URL 중 존재하는 것 사용
-      const currentIfcMeshes = selectedProject
-        ? (ifcMeshesRef.current.get(selectedProject.projectId) ?? null)
-        : null;
-      const glbUrl = selectedProject
+      // GLB 서버 변환 방식만 사용 (WASM 세션 캐시 비활성화)
+      const currentIfcMeshes = null;
+      const glbUrl     = selectedProject?.glbStorageKey
         ? `/api/bim/project/${selectedProject.projectId}/glb`
+        : null;
+      const glbLiteUrl = selectedProject?.glbStorageKey
+        ? `/api/bim/project/${selectedProject.projectId}/glb/lite`
         : null;
       return (
         <BimDashboard
@@ -947,9 +983,11 @@ function App() {
           onConvertDrone={convertDroneProject}
           ifcMeshes={currentIfcMeshes}
           glbUrl={glbUrl}
+          glbLiteUrl={glbLiteUrl}
           canvasFullscreen={canvasFullscreen}
           onToggleCanvasFullscreen={toggleCanvasFullscreen}
           onPlacementModeChange={setBimPlacementMode}
+          wbsJobState={wbsJobState}
         />
       );
     }

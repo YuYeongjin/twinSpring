@@ -103,22 +103,12 @@ function TerrainLayer() {
   );
 }
 
-// BIM Y-up → Three.js Y-up 좌표 변환
-// BimElement 내부: Three.js Y(up) = positionZ + sizeZ/2, Three.js Z = positionY
-// 이 BIM 데이터:  positionY = 높이, positionZ = 깊이
-// → positionY/Z 와 sizeY/Z 를 교환해서 BimElement 에 전달
+// BIM Z-up DB → Three.js Y-up 좌표 변환
+// DB: positionX=East, positionY=North, positionZ=Height(Z-up)
+// 렌더: localPosition=[posX, posZ+sizeZ/2, posY] — posZ를 Y(up)로, posY를 Z(depth)로 사용
+// Z-up DB는 이미 positionZ=Height이므로 교환 불필요 — 그대로 반환
 function toIntegrationCoords(el) {
-  const pY = Number(el.positionY) || 0;
-  const pZ = Number(el.positionZ) || 0;
-  const sY = Number(el.sizeY)     || 0.1;
-  const sZ = Number(el.sizeZ)     || 0.1;
-  return {
-    ...el,
-    positionZ: pY,   // BIM 높이 → Three.js Y(up)
-    positionY: pZ,   // BIM 깊이 → Three.js Z(depth)
-    sizeZ:     sY,
-    sizeY:     sZ,
-  };
+  return el;
 }
 
 // ── CPM 공종 → 건설 phase 매핑 ───────────────────────────────────
@@ -651,8 +641,9 @@ function LinkedBimElements() {
   return (
     <>
       {bimElements.map(el => {
-        const pY = Number(el.positionY) || 0;
-        const sY = Number(el.sizeY) || 3;
+        // DB Z-up: positionZ=Height, positionY=North, sizeZ=HeightSize, sizeY=NorthDepth
+        const pZ = Number(el.positionZ) || 0;
+        const sZ = Number(el.sizeZ) || 3;
         const floorIdx   = useFloor ? getElementFloorIndex(el, floors) : -1;
         const elemProgress = useFloor
           ? getFloorElemProgress(progressMap, bimProjectId, floorIdx, el.elementType, overallWbsProgress)
@@ -660,8 +651,8 @@ function LinkedBimElements() {
         return (
           <BimProgressFill
             key={el.elementId}
-            localPosition={[el.positionX || 0, pY + sY / 2, el.positionZ || 0]}
-            size={[el.sizeX || 1, sY, el.sizeZ || 1]}
+            localPosition={[el.positionX || 0, pZ + sZ / 2, el.positionY || 0]}
+            size={[el.sizeX || 1, sZ, el.sizeY || 1]}
             elementType={el.elementType}
             progress={elemProgress}
             offsetY={0}
@@ -1125,13 +1116,14 @@ const EquipItem = memo(function EquipItem({ equip, isSelected, modeLabel, equipS
 function getStructureScale(struct) {
   const els = struct.elements || [];
   if (!els.length) return 1;
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   els.forEach(el => {
-    const px = Number(el.positionX) || 0, pz = Number(el.positionZ) || 0;
+    // Z-up DB: positionX=East, positionY=North — 수평 범위로 mm/m 판별
+    const px = Number(el.positionX) || 0, py = Number(el.positionY) || 0;
     if (px < minX) minX = px; if (px > maxX) maxX = px;
-    if (pz < minZ) minZ = pz; if (pz > maxZ) maxZ = pz;
+    if (py < minY) minY = py; if (py > maxY) maxY = py;
   });
-  return (maxX - minX > 500 || maxZ - minZ > 500) ? 0.001 : 1;
+  return (maxX - minX > 500 || maxY - minY > 500) ? 0.001 : 1;
 }
 
 // elementType에 해당하는 부재들의 무게중심 → 씬 XZ 위치
@@ -1141,8 +1133,9 @@ function findElementCentroid(struct, elementType) {
   const offset = struct.offset || [0, 0, 0];
   const scale  = getStructureScale(struct);
   const cx = els.reduce((s, el) => s + (Number(el.positionX) || 0), 0) / els.length;
-  const cz = els.reduce((s, el) => s + (Number(el.positionZ) || 0), 0) / els.length;
-  return [offset[0] + cx * scale, 0, offset[2] + cz * scale];
+  // Z-up DB: positionY=North(수평) → Three.js Z(depth)
+  const cy = els.reduce((s, el) => s + (Number(el.positionY) || 0), 0) / els.length;
+  return [offset[0] + cx * scale, 0, offset[2] + cy * scale];
 }
 
 // ── 덤프트럭 작업 사이클 헬퍼 ────────────────────────────────────────

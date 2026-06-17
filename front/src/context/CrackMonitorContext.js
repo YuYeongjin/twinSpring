@@ -20,6 +20,8 @@ import React, {
   useEffect, useRef, useState,
 } from 'react';
 import { pushAlert, pushWbsSuggest } from '../utils/alertStore';
+import { createMockCameraStream } from '../utils/mockCamera';
+import { getMockCrackDetection } from '../utils/mockDetection';
 
 const DETECT_SERVER_URL = process.env.REACT_APP_API_URL
   || (process.env.NODE_ENV === 'development'
@@ -44,6 +46,11 @@ export function CrackMonitorProvider({ children }) {
   // ── 연결된 BIM 프로젝트 (알림 전송 시 사용) ─────────────────
   // SafeDashboard가 unmount 되어도 ref를 통해 항상 최신값 참조
   const selectedProjectRef = useRef(null);
+
+  // ── 데모 모드 ──────────────────────────────────────────────
+  const [isDemoMode,   setIsDemoMode]   = useState(false);
+  const isDemoModeRef  = useRef(false);  // 콜백 closure에서 최신값 참조
+  const demoStopRef    = useRef(null);   // canvas 애니메이션 정리 함수
 
   // ── DOM refs ───────────────────────────────────────────────
   const streamRef      = useRef(null);   // MediaStream (탭 이탈 후에도 유지)
@@ -71,10 +78,33 @@ export function CrackMonitorProvider({ children }) {
     }
   }, []);
 
+  // ── 데모 카메라 시작 ─────────────────────────────────────────
+  const startDemoCamera = useCallback(async () => {
+    setCamError('');
+    // 기존 스트림 정리
+    if (demoStopRef.current) { demoStopRef.current(); demoStopRef.current = null; }
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+
+    const { stream, stop } = createMockCameraStream(640, 480);
+    demoStopRef.current = stop;
+    streamRef.current = stream;
+    isDemoModeRef.current = true;
+    setIsDemoMode(true);
+
+    if (hiddenVideoRef.current) {
+      hiddenVideoRef.current.srcObject = stream;
+      await hiddenVideoRef.current.play().catch(() => {});
+    }
+    setStreaming(true);
+  }, []);
+
   // ── 카메라 중지 ─────────────────────────────────────────────
   const stopCamera = useCallback(() => {
     if (autoTimerRef.current) clearInterval(autoTimerRef.current);
     setAutoRunning(false);
+    if (demoStopRef.current) { demoStopRef.current(); demoStopRef.current = null; }
+    isDemoModeRef.current = false;
+    setIsDemoMode(false);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
@@ -101,11 +131,16 @@ export function CrackMonitorProvider({ children }) {
     const form = new FormData();
     form.append('file', blob, 'capture.jpg');
     try {
-      const res = await fetch(`${DETECT_SERVER_URL}/api/detection/crack`, {
-        method: 'POST', body: form,
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      let data;
+      if (isDemoModeRef.current) {
+        data = await getMockCrackDetection();
+      } else {
+        const res = await fetch(`${DETECT_SERVER_URL}/api/detection/crack`, {
+          method: 'POST', body: form,
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = await res.json();
+      }
 
       const entry = {
         time:       new Date(),
@@ -191,7 +226,8 @@ export function CrackMonitorProvider({ children }) {
     crackLog, setCrackLog,
     streamRef,          // 표시용 <video>가 동일 스트림을 참조할 때 사용
     selectedProjectRef, // CrackMonitorPanel이 최신 프로젝트를 주입
-    startCamera, stopCamera,
+    isDemoMode,
+    startCamera, stopCamera, startDemoCamera,
     captureFromCamera, detectFromBlob,
   };
 
