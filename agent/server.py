@@ -972,12 +972,12 @@ def health_detail():
 # POST /api/ifc/convert  — IFC 파일 업로드 → GLB + 메타데이터 반환
 # ══════════════════════════════════════════════════════════════════════════════
 
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form
 from fastapi.responses import JSONResponse
 import base64
 
 @app.post("/api/ifc/convert")
-async def convert_ifc(file: UploadFile = File(...), scale: float = 1.0, project_id: str = ""):
+async def convert_ifc(file: UploadFile = File(...), scale: float = Form(default=1.0), project_id: str = Form(default="")):
     """
     IFC 파일을 GLB 바이너리로 변환하고 부재/층/geoOrigin 메타데이터를 반환.
 

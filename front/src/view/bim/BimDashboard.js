@@ -996,7 +996,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         deleteSelectedElements,
         cameraRef,
         placeSampleStructure,
-        layers, addLayer, deleteLayer, updateLayer, assignToLayer, removeFromLayer,
+        layers, addLayer, deleteLayer, updateLayer, assignToLayer, removeFromLayer, reloadLayers,
         elementColors, setElementColor, clearElementColor,
         elementOpacities, setElementOpacity, clearElementOpacity,
         createGroupLayer,
@@ -1221,7 +1221,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`)
             .then(res => setElementWbsMappings(res.data || []))
             .catch(() => {});
-    }, [wbsJobState?.status, wbsJobState?.projectId, selectedProject?.projectId]);
+        reloadLayers();
+    }, [wbsJobState?.status, wbsJobState?.projectId, selectedProject?.projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // WBS 진척도 업데이트
     const handleWbsProgressChange = React.useCallback((wbsId, progress) => {

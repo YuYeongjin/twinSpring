@@ -651,44 +651,45 @@ function App() {
       const elemRes = await AxiosCustom.get(`/api/bim/project/${project.projectId}`);
       const savedElements = elemRes.data ?? [];
 
-      // 4. 에디터를 먼저 연다 (BIM 즉시 표시)
+      // 4. LLM 층 정규화 + 레이어 생성 → DB 저장 (BIM 진입 전 완료)
+      let generatedLayers = [];
+      let patchedElements = savedElements;
+      if (savedElements.length > 0) {
+        const rawNames = [...new Set(savedElements.map(e => e.storey).filter(Boolean))];
+        let normalizedMap = {};
+        if (rawNames.length > 0) {
+          try {
+            const normRes = await AxiosCustom.post('/api/bim/normalize-storeys', { names: rawNames });
+            normalizedMap = normRes.data || {};
+            console.log('[WBS] Ollama 층 이름 정규화:', normalizedMap);
+          } catch (e) {
+            console.warn('[WBS] Ollama 정규화 실패, 내부 정규식 폴백으로 진행:', e.message);
+          }
+        }
+        if (Object.keys(normalizedMap).length > 0) {
+          patchedElements = savedElements.map(e => ({
+            ...e,
+            storey: normalizedMap[e.storey] ?? e.storey,
+          }));
+        }
+        generatedLayers = generateLayersFromElements(patchedElements, project.projectId);
+        if (generatedLayers.length > 0) await AxiosCustom.post('/api/bim/layers/batch', generatedLayers);
+      }
+
+      // 5. 레이어까지 완료된 후 BIM 에디터 열기
       await refreshProjectList();
       if (callback) callback(project);
 
-      // 5. WBS 생성을 비동기로 처리 (작업계획 탭은 폴링으로 감지)
+      // 6. WBS 생성은 무거우므로 비동기 처리 (작업계획 탭은 폴링으로 감지)
       if (savedElements.length > 0) {
         setWbsJobState({ projectId: project.projectId, status: 'pending' });
         (async () => {
           try {
             const { generateWbsFromLayers } = await import('./utils/wbsGenerator');
-
-            // Ollama 3B 모델로 층 이름 정규화 (BimElementDTO 필드명은 storey)
-            const rawNames = [...new Set(savedElements.map(e => e.storey).filter(Boolean))];
-            let normalizedMap = {};
-            if (rawNames.length > 0) {
-              try {
-                const normRes = await AxiosCustom.post('/api/bim/normalize-storeys', { names: rawNames });
-                normalizedMap = normRes.data || {};
-                console.log('[WBS] Ollama 층 이름 정규화:', normalizedMap);
-              } catch (e) {
-                console.warn('[WBS] Ollama 정규화 실패, 내부 정규식 폴백으로 진행:', e.message);
-              }
-            }
-            const patchedElements = Object.keys(normalizedMap).length > 0
-              ? savedElements.map(e => ({
-                  ...e,
-                  storey: normalizedMap[e.storey] ?? e.storey,
-                }))
-              : savedElements;
-
-            const layers = generateLayersFromElements(patchedElements, project.projectId);
-            if (layers.length > 0) await AxiosCustom.post('/api/bim/layers/batch', layers);
-
             const storeyRes = await AxiosCustom.get(`/api/bim/storeys?projectId=${project.projectId}`);
             const storeys = storeyRes.data ?? [];
-
             const { wbsNodes, mappings } = await generateWbsFromLayers(
-              layers, project.projectId, patchedElements,
+              generatedLayers, project.projectId, patchedElements,
               {
                 storeys, geoOrigin: null, standard: 'KDS',
                 axiosPost: (url, data) => AxiosCustom.post(url, data),
@@ -698,7 +699,7 @@ function App() {
             if (mappings.length > 0)  await AxiosCustom.post('/api/bim/element-wbs/batch', mappings);
             setWbsJobState({ projectId: project.projectId, status: 'done' });
           } catch (e) {
-            console.warn('레이어/WBS 자동 생성 실패(무시):', e.message);
+            console.warn('WBS 자동 생성 실패(무시):', e.message);
             setWbsJobState({ projectId: project.projectId, status: 'failed' });
           }
         })();
