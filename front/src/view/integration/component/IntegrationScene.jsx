@@ -97,7 +97,7 @@ function TerrainLayer() {
   const h = terrain.height || 80;
 
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.015, 0]} receiveShadow>
+    <mesh position={[0, 0, -0.015]} receiveShadow>
       <planeGeometry args={[w, h, 1, 1]} />
       <meshStandardMaterial map={texture} roughness={0.9} metalness={0} side={2} />
     </mesh>
