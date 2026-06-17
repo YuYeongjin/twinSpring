@@ -23,10 +23,13 @@ pipeline {
         }
 
         stage('Build Frontend') {
+            environment {
+                    // 모든 npm/npx 실행 시 legacy-peer-deps를 강제로 적용 추후 없에자
+                    NPM_CONFIG_LEGACY_PEER_DEPS = 'true'
+                }
             steps {
                 dir('front') {
-                    sh 'npm ci --legacy-peer-deps'
-//                     sh 'npm ci'
+                    sh 'npm ci'
                     sh 'npx update-browserslist-db@latest'
                     withEnv(['CI=false']) {
                         sh 'npm run build'
