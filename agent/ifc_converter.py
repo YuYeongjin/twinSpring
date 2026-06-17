@@ -468,7 +468,8 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
         except Exception:
             pass
 
-    builder = GlbBuilder()
+    builder      = GlbBuilder()
+    lite_builder = GlbBuilder()
     elements: list[dict] = []
 
     all_positions: list[np.ndarray] = []  # 중앙 정렬용
@@ -557,10 +558,11 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
     if not raw_geoms:
         logger.warning("[IFC Convert] 변환 가능한 부재가 없습니다.")
         return {
-            "glb_bytes": builder.build(),
-            "elements": [],
-            "storeys": storeys,
-            "geo_origin": {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale},
+            "glb_bytes":      builder.build(),
+            "glb_lite_bytes": lite_builder.build(),
+            "elements":       [],
+            "storeys":        storeys,
+            "geo_origin":     {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale},
         }
 
     # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z 바닥 기준) ─────────────
@@ -608,6 +610,18 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
             extras=extras,
         )
 
+        lite_pos, lite_idx = _simplify_to_convex_hull(pos)
+        lite_nrm = _compute_normals(lite_pos, lite_idx)
+        lite_builder.add_element(
+            element_id=g["element_id"],
+            positions=lite_pos,
+            normals=lite_nrm,
+            indices=lite_idx,
+            color=color,
+            element_type=g["our_type"],
+            extras=extras,
+        )
+
         size = g["size"]
         elements.append({
             "elementId":   g["element_id"],
@@ -628,10 +642,11 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
 
     logger.info("[IFC Convert] 부재 %d개, 층 %d개 변환 완료", len(elements), len(storeys))
     return {
-        "glb_bytes": builder.build(),
-        "elements":  elements,
-        "storeys":   storeys,
-        "geo_origin": geo_origin,
+        "glb_bytes":      builder.build(),
+        "glb_lite_bytes": lite_builder.build(),
+        "elements":       elements,
+        "storeys":        storeys,
+        "geo_origin":     geo_origin,
     }
 
 
@@ -653,3 +668,61 @@ def _compute_normals(positions: np.ndarray, indices: np.ndarray) -> np.ndarray:
     norms2 = np.linalg.norm(normals, axis=1, keepdims=True)
     norms2[norms2 == 0] = 1
     return (normals / norms2).astype(np.float32)
+
+
+def _make_aabb_mesh(positions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """점군의 AABB(8 verts, 36 indices)를 생성한다. convex hull 폴백용."""
+    mn = positions.min(axis=0)
+    mx = positions.max(axis=0)
+    # 크기가 0인 축은 최소 0.01m 확보
+    for i in range(3):
+        if mx[i] - mn[i] < 1e-4:
+            mid = (mn[i] + mx[i]) / 2
+            mn[i] = mid - 0.005
+            mx[i] = mid + 0.005
+    x0, y0, z0 = mn
+    x1, y1, z1 = mx
+    verts = np.array([
+        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
+    ], dtype=np.float32)
+    # 6면 × 2삼각형 = 36 indices
+    idx = np.array([
+        0,1,2, 0,2,3,  # -Z face
+        4,6,5, 4,7,6,  # +Z face
+        0,4,5, 0,5,1,  # -Y face
+        2,6,7, 2,7,3,  # +Y face
+        0,3,7, 0,7,4,  # -X face
+        1,5,6, 1,6,2,  # +X face
+    ], dtype=np.uint32)
+    return verts, idx
+
+
+def _simplify_to_convex_hull(positions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    부재 점군을 convex hull로 단순화한다.
+    scipy 없거나 점 수 부족(<4)이면 AABB로 폴백.
+    반환: (hull_positions, hull_indices) — face normals 기준 삼각형
+    """
+    if len(positions) < 4:
+        return _make_aabb_mesh(positions)
+    try:
+        from scipy.spatial import ConvexHull
+        hull = ConvexHull(positions)
+        # hull.vertices: 실제 사용된 정점 인덱스, hull.simplices: 삼각형 면
+        used_idx = hull.vertices
+        remap = {old: new for new, old in enumerate(used_idx)}
+        verts = positions[used_idx].astype(np.float32)
+        faces = []
+        for simplex in hull.simplices:
+            a, b, c = [remap[i] for i in simplex]
+            # 법선이 밖을 향하도록 방향 보정
+            n = np.cross(verts[b] - verts[a], verts[c] - verts[a])
+            centroid = verts.mean(axis=0)
+            if np.dot(n, verts[a] - centroid) < 0:
+                a, b = b, a
+            faces.extend([a, b, c])
+        idx = np.array(faces, dtype=np.uint32)
+        return verts, idx
+    except Exception:
+        return _make_aabb_mesh(positions)

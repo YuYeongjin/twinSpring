@@ -966,8 +966,11 @@ function App() {
     if (viewComponent === 'bim') {
       // GLB 서버 변환 방식만 사용 (WASM 세션 캐시 비활성화)
       const currentIfcMeshes = null;
-      const glbUrl = selectedProject?.glbStorageKey
+      const glbUrl     = selectedProject?.glbStorageKey
         ? `/api/bim/project/${selectedProject.projectId}/glb`
+        : null;
+      const glbLiteUrl = selectedProject?.glbStorageKey
+        ? `/api/bim/project/${selectedProject.projectId}/glb/lite`
         : null;
       return (
         <BimDashboard
@@ -979,6 +982,7 @@ function App() {
           onConvertDrone={convertDroneProject}
           ifcMeshes={currentIfcMeshes}
           glbUrl={glbUrl}
+          glbLiteUrl={glbLiteUrl}
           canvasFullscreen={canvasFullscreen}
           onToggleCanvasFullscreen={toggleCanvasFullscreen}
           onPlacementModeChange={setBimPlacementMode}

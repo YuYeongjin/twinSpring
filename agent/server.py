@@ -994,10 +994,11 @@ async def convert_ifc(file: UploadFile = File(...), scale: float = 1.0, project_
         ifc_bytes = await file.read()
         result = convert_ifc_to_glb(ifc_bytes, user_scale=scale, project_id=project_id)
         return JSONResponse({
-            "glbBase64": base64.b64encode(result["glb_bytes"]).decode("utf-8"),
-            "elements":  result["elements"],
-            "storeys":   result["storeys"],
-            "geoOrigin": result["geo_origin"],
+            "glbBase64":     base64.b64encode(result["glb_bytes"]).decode("utf-8"),
+            "glbLiteBase64": base64.b64encode(result["glb_lite_bytes"]).decode("utf-8"),
+            "elements":      result["elements"],
+            "storeys":       result["storeys"],
+            "geoOrigin":     result["geo_origin"],
         })
     except Exception as e:
         logger.exception("[IFC Convert] 변환 실패")
