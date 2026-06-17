@@ -25,7 +25,8 @@ pipeline {
         stage('Build Frontend') {
             steps {
                 dir('front') {
-                    sh 'npm ci'
+                    sh 'npm ci --legacy-peer-deps'
+//                     sh 'npm ci'
                     sh 'npx update-browserslist-db@latest'
                     withEnv(['CI=false']) {
                         sh 'npm run build'
