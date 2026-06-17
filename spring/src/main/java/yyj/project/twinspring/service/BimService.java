@@ -140,6 +140,9 @@ public interface BimService {
     /** Minio에서 GLB 파일 스트림을 반환한다. */
     InputStream downloadGlbFile(String projectId);
 
+    /** Minio에서 Lite GLB (convex hull) 파일 스트림을 반환한다. */
+    InputStream downloadGlbLiteFile(String projectId);
+
     /** GLB storage key 조회 (없으면 null). */
     String getGlbStorageKey(String projectId);
 

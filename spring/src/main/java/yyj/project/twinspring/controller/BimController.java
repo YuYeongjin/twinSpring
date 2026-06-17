@@ -595,6 +595,24 @@ public class BimController {
     }
 
     /**
+     * 변환된 Lite GLB 파일 서빙 (convex hull 단순화 버전)
+     * GET /api/bim/project/{projectId}/glb/lite
+     */
+    @GetMapping("/project/{projectId}/glb/lite")
+    public ResponseEntity<InputStreamResource> downloadGlbLiteFile(@PathVariable String projectId) {
+        try {
+            String liteKey = "projects/" + projectId + "/model_lite.glb";
+            java.io.InputStream is = bimService.downloadGlbLiteFile(projectId);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "inline; filename=\"model_lite.glb\"")
+                    .contentType(MediaType.valueOf("model/gltf-binary"))
+                    .body(new InputStreamResource(is));
+        } catch (Exception e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    /**
      * GLB 보유 여부 확인
      * GET /api/bim/project/{projectId}/glb/status
      */

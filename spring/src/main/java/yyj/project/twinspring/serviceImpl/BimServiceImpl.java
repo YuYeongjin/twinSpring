@@ -943,6 +943,16 @@ public class BimServiceImpl implements BimService {
             byte[] glbBytes = java.util.Base64.getDecoder().decode(glbBase64);
             uploadGlbFile(projectId, glbBytes);
 
+            // 3b. Lite GLB Minio 저장 (convex hull 단순화 버전)
+            String glbLiteBase64 = (String) convertResult.get("glbLiteBase64");
+            if (glbLiteBase64 != null) {
+                byte[] liteBytes = java.util.Base64.getDecoder().decode(glbLiteBase64);
+                String liteKey = "projects/" + projectId + "/model_lite.glb";
+                storageService.upload(liteKey, new java.io.ByteArrayInputStream(liteBytes),
+                        liteBytes.length, "model/gltf-binary");
+                log.info("[BIM] Lite GLB 저장 완료: key={}, size={}bytes", liteKey, liteBytes.length);
+            }
+
             // 4. elements DB 저장
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> rawElements = (List<Map<String, Object>>) convertResult.get("elements");
@@ -1027,6 +1037,12 @@ public class BimServiceImpl implements BimService {
     public InputStream downloadGlbFile(String projectId) {
         String key = getGlbStorageKey(projectId);
         if (key == null) throw new StorageException("GLB 파일이 없습니다: projectId=" + projectId);
+        return storageService.download(key);
+    }
+
+    @Override
+    public InputStream downloadGlbLiteFile(String projectId) {
+        String key = "projects/" + projectId + "/model_lite.glb";
         return storageService.download(key);
     }
 

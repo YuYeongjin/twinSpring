@@ -979,7 +979,7 @@ function PropertyPanel({ selectedElement, selectedElements, modelData, updateEle
 // 메인 BIM 대시보드
 // ================================================================
 
-export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange, wbsJobState }) {
+export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, glbLiteUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange, wbsJobState }) {
     const {
         saveUpdateElement,
         selectedElement, setSelectedElement,
@@ -1006,6 +1006,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     } = BimDashboardAPI({ setViceComponent, modelData, setModelData, selectedProject });
 
     const t = useT('bimDashboard');
+    const [useLiteGlb, setUseLiteGlb] = React.useState(false);
+    const activeGlbUrl = (useLiteGlb && glbLiteUrl) ? glbLiteUrl : glbUrl;
     const mainViewRef   = useRef(null);
     const hoverPosRef   = useRef({ x: 0, y: 0, z: 0 });
     const rootContainerRef = useRef(null);
@@ -2086,6 +2088,13 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                             className="px-2 py-1 rounded-lg text-xs font-semibold border bg-sky-800/30 text-sky-300 border-sky-600/50 hover:bg-sky-700/40 transition shrink-0"
                         >{t('fit')}</button>
                     )}
+                    {glbLiteUrl && (
+                        <button
+                            onClick={() => setUseLiteGlb(v => !v)}
+                            className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${useLiteGlb ? 'bg-green-700/30 text-green-300 border-green-600/50' : 'bg-space-800/40 text-gray-400 border-space-700/60'}`}
+                            title={useLiteGlb ? '현재: Lite 모드 (빠름) — Full 모드로 전환' : '현재: Full 모드 — Lite 모드로 전환 (빠름)'}
+                        >{useLiteGlb ? 'Lite' : 'Full'}</button>
+                    )}
                     <button onClick={() => showLayerPanel ? closeLayerPanel() : setShowLayerPanel(true)}
                         className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${showLayerPanel?'bg-teal-700/30 text-teal-300 border-teal-600/50':'bg-space-800/40 text-gray-400 border-space-700/60'}`}
                     >{t('layer')}{layers.length > 0 && ` (${layers.length})`}</button>
@@ -2540,7 +2549,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             placementLockedAxes={placeLocked}
                                             lineLockedAxes={lineLocked}
                                             ifcMeshes={ifcMeshes}
-                                            glbUrl={glbUrl}
+                                            glbUrl={activeGlbUrl}
                                             fitCameraTrigger={fitCameraTrigger}
                                             viewPreset={viewPreset}
                                             viewMode={viewMode}
