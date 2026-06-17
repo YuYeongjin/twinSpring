@@ -260,6 +260,8 @@ public class BimServiceImpl implements BimService {
                     dto.setIfcWorldX(row.get("ifcWorldX") == null ? null : toDouble(row.get("ifcWorldX")));
                     dto.setIfcWorldY(row.get("ifcWorldY") == null ? null : toDouble(row.get("ifcWorldY")));
                     dto.setIfcWorldZ(row.get("ifcWorldZ") == null ? null : toDouble(row.get("ifcWorldZ")));
+                    dto.setStorey(row.get("storey") == null ? null : row.get("storey").toString());
+                    dto.setBuilding(row.get("building") == null ? null : row.get("building").toString());
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -974,11 +976,20 @@ public class BimServiceImpl implements BimService {
                     dto.setGlobalId((String) e.get("globalId"));
                     return dto;
                 }).collect(Collectors.toList());
-                // C# 서버 경유 저장 — 실패해도 GLB는 이미 저장됐으므로 warn만 남기고 계속
+                // C# 서버 경유 저장; 실패 시 로컬 DB에 폴백 저장
+                boolean savedToCs = false;
                 try {
                     createElements(dtos).block(java.time.Duration.ofMinutes(5));
+                    savedToCs = true;
                 } catch (Exception ex) {
-                    log.warn("[BIM] C# elements 저장 실패(무시 — GLB는 보존): {}", ex.getMessage());
+                    log.warn("[BIM] C# elements 저장 실패 — 로컬 DB로 폴백: {}", ex.getMessage());
+                }
+                if (!savedToCs) {
+                    try {
+                        bimDAO.insertElementsBatch(dtos);
+                    } catch (Exception ex) {
+                        log.warn("[BIM] 로컬 DB elements 저장 실패: {}", ex.getMessage());
+                    }
                 }
             }
 

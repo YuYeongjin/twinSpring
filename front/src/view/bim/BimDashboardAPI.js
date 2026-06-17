@@ -118,6 +118,14 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
             .catch(() => setElementColors({}));
     }, [selectedProject?.projectId]);
 
+    const reloadLayers = useCallback(() => {
+        const pid = selectedProject?.projectId;
+        if (!pid) return;
+        AxiosCustom.get(`${API_BASE}/layers?projectId=${pid}`)
+            .then(res => setLayers(res.data || []))
+            .catch(() => {});
+    }, [selectedProject?.projectId]);
+
     // ── 로딩 상태 ──────────────────────────────────────────────────
     const isLoading = !selectedProject && (!modelData || modelData.length === 0);
 
@@ -401,9 +409,12 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
             elementIds: [],
             sortOrder:  layers.length,
         };
+        setLayers(prev => [...prev, newLayer]);
         AxiosCustom.post(`${API_BASE}/layer`, newLayer)
-            .then(() => setLayers(prev => [...prev, newLayer]))
-            .catch(err => console.error('레이어 생성 실패:', err));
+            .catch(err => {
+                console.error('레이어 생성 실패:', err);
+                setLayers(prev => prev.filter(l => l.layerId !== newLayer.layerId));
+            });
     }
 
     function deleteLayer(layerId) {
@@ -630,6 +641,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         updateLayer,
         assignToLayer,
         removeFromLayer,
+        reloadLayers,
 
         // 부재 커스텀 색상
         elementColors,

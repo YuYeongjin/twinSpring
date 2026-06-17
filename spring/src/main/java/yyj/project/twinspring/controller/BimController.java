@@ -601,7 +601,6 @@ public class BimController {
     @GetMapping("/project/{projectId}/glb/lite")
     public ResponseEntity<InputStreamResource> downloadGlbLiteFile(@PathVariable String projectId) {
         try {
-            String liteKey = "projects/" + projectId + "/model_lite.glb";
             java.io.InputStream is = bimService.downloadGlbLiteFile(projectId);
             return ResponseEntity.ok()
                     .header("Content-Disposition", "inline; filename=\"model_lite.glb\"")
