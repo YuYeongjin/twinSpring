@@ -30,7 +30,7 @@ const ELEMENT_TYPE_MAP = [
   { ifcType: IFCWALLSTANDARDCASE, ourType: 'IfcWall'   },
   { ifcType: IFCSLAB,             ourType: 'IfcSlab'   },
   { ifcType: IFCMEMBER,           ourType: 'IfcMember' },
-  { ifcType: IFCFOOTING,          ourType: 'IfcSlab'   },
+  { ifcType: IFCFOOTING,          ourType: 'IfcFoundation' },  // 기초 — 슬래브와 분리
   { ifcType: IFCPILE,             ourType: 'IfcPier'   },
   { ifcType: IFCPLATE,            ourType: 'IfcMember' },
   { ifcType: IFCDOOR,             ourType: 'IfcDoor'   },

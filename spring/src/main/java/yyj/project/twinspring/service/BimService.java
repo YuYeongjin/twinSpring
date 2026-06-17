@@ -132,13 +132,16 @@ public interface BimService {
      * IFC 파일을 Python 변환 서비스로 전송해 GLB로 변환하고
      * GLB는 Minio에, 부재/층 정보는 DB에 저장한다.
      */
-    Mono<Map<String, Object>> convertAndStoreIfc(String projectId, MultipartFile file);
+    Mono<Map<String, Object>> convertAndStoreIfc(String projectId, MultipartFile file, double userScale);
 
     /** GLB 파일을 Minio에 업로드하고 glb_storage_key를 DB에 저장한다. */
     String uploadGlbFile(String projectId, byte[] glbBytes);
 
     /** Minio에서 GLB 파일 스트림을 반환한다. */
     InputStream downloadGlbFile(String projectId);
+
+    /** Minio에서 Lite GLB (convex hull) 파일 스트림을 반환한다. */
+    InputStream downloadGlbLiteFile(String projectId);
 
     /** GLB storage key 조회 (없으면 null). */
     String getGlbStorageKey(String projectId);
@@ -183,4 +186,8 @@ public interface BimService {
             double dPosX, double dPosY, double dPosZ,
             double dRotX, double dRotY, double dRotZ,
             double sclX,  double sclY,  double sclZ);
+
+    // ── Ollama 층 이름 정규화 ───────────────────────────────────────
+    /** IFC 층 이름 목록을 Ollama 3B 모델로 정규화한다. (예: "Story 1" → "1F") */
+    Map<String, String> normalizeStoreyNames(List<String> names);
 }

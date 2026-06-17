@@ -467,11 +467,6 @@ export default function ControlPanel({
                             >
                                 <span className="text-base leading-none">{icon}</span>
                                 <span>{label}</span>
-                                {isActive ? (
-                                    <span className="ml-auto text-xs animate-pulse">📍 {t('placing')}</span>
-                                ) : (
-                                    <span className="ml-auto text-xs opacity-40">{data.elementType.replace('Ifc', '')}</span>
-                                )}
                             </button>
                         );
                     })}

@@ -1,6 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import AxiosCustom from '../../axios/AxiosCustom';
 import { useT } from '../../i18n/LanguageContext';
+import WorldAccessMap from './WorldAccessMap';
+import {
+  ResponsiveContainer, LineChart, Line, AreaChart, Area,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts';
 
 const RETENTION_KEYS = ['1', '7', '30', '90', '0'];
 
@@ -70,65 +75,236 @@ function useTimeAgo() {
   };
 }
 
+// ── 차트 공통 ───────────────────────────────────────────────────────────────
+const CHART_THEME = {
+  bg:     '#060e1a',
+  grid:   '#1a2a3a',
+  tick:   '#374151',
+  tip:    { bg: '#0a1525', border: '#1e3a5f', text: '#e2e8f0' },
+};
+
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function fmtMB(bytes) { return +(bytes / 1024 / 1024).toFixed(2); }
+
+function ChartCard({ title, badge, children }) {
+  return (
+    <div style={{
+      background: CHART_THEME.bg, border: '1px solid #1e3a5f',
+      borderRadius: 10, padding: '14px 8px 8px', marginBottom: 14,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 12, marginBottom: 10 }}>
+        <span style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700 }}>{title}</span>
+        {badge && <span style={{ fontSize: 10, color: '#4b5563' }}>{badge}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function EmptyChart() {
+  return (
+    <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ fontSize: 11, color: '#374151' }}>서버 시작 후 5분마다 수집 · 데이터 누적 중…</span>
+    </div>
+  );
+}
+
+const CustomTooltipStyle = {
+  background: '#0a1525', border: '1px solid #1e3a5f', borderRadius: 6,
+  padding: '6px 10px', fontSize: 11, color: '#e2e8f0',
+};
+
+function fmtHourLabel(ts) {
+  const d = new Date(ts);
+  return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:00`;
+}
+
+// nginx access.log 파싱 결과를 시각화하는 섹션
+function NginxAccessSection({ nginxLog }) {
+  if (!nginxLog) return null;
+
+  // 로그 파일 없음: 설치 안내
+  if (!nginxLog.available) {
+    return (
+      <div style={{
+        background: '#060e1a', border: '1px solid #1e3a5f',
+        borderRadius: 10, padding: '14px 16px', marginBottom: 14,
+      }}>
+        <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+          🖥 서버 접속 기록 (nginx)
+        </div>
+        <div style={{ fontSize: 11, color: '#4b5563', lineHeight: 1.8 }}>
+          <div style={{ color: '#f59e0b', marginBottom: 6 }}>⚠ {nginxLog.reason}</div>
+          <div style={{ color: '#374151', fontFamily: 'monospace', fontSize: 10, background: '#0a1525',
+            padding: '10px 12px', borderRadius: 6, border: '1px solid #1a2a3a' }}>
+            {'# K8s Deployment에 아래 볼륨 추가 후 재배포:'}
+            {'\n'}
+            {'volumes:'}
+            {'\n'}
+            {'  - name: nginx-logs'}
+            {'\n'}
+            {'    hostPath: { path: /var/log/nginx }'}
+            {'\n'}
+            {'volumeMounts:'}
+            {'\n'}
+            {'  - name: nginx-logs'}
+            {'\n'}
+            {'    mountPath: /host/nginx-logs'}
+            {'\n'}
+            {'    readOnly: true'}
+          </div>
+          <div style={{ marginTop: 6, color: '#374151', fontSize: 10 }}>
+            또는 환경변수 <code style={{ color: '#60a5fa' }}>NGINX_ACCESS_LOG=/var/log/nginx/access.log</code>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 시간별 데이터
+  const hourlyData = (nginxLog.hourly || []).map(h => ({
+    ts:        h.timestamp,
+    hour:      h.hour,
+    requests:  h.requests,
+    uniqueIps: h.uniqueIps,
+  }));
+
+  // 최근 48개만 표시 (48h)
+  const chartData = hourlyData.slice(-48);
+  const totalReq  = hourlyData.reduce((s, h) => s + h.requests, 0);
+  const topIps    = (nginxLog.topIps || []).slice(0, 10);
+
+  return (
+    <div style={{
+      background: '#060e1a', border: '1px solid #1e3a5f',
+      borderRadius: 10, padding: '14px 16px', marginBottom: 14,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700 }}>🖥 서버 접속 기록 (nginx)</span>
+        <span style={{ fontSize: 10, color: '#4b5563' }}>
+          {nginxLog.logPath} · {(nginxLog.parsedLines || 0).toLocaleString()}줄 파싱 · 총 {totalReq.toLocaleString()} 요청
+        </span>
+      </div>
+
+      {/* 시간별 요청 수 (BarChart) */}
+      {chartData.length === 0
+        ? <div style={{ height: 100, display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize: 11, color: '#374151' }}>로그가 비어있습니다</div>
+        : (
+          <ResponsiveContainer width="100%" height={150}>
+            <BarChart data={chartData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.grid} />
+              <XAxis dataKey="ts" tickFormatter={fmtHourLabel}
+                tick={{ fill: CHART_THEME.tick, fontSize: 9 }} interval="preserveStartEnd" />
+              <YAxis tick={{ fill: CHART_THEME.tick, fontSize: 10 }} allowDecimals={false} />
+              <Tooltip
+                labelFormatter={fmtHourLabel}
+                contentStyle={CustomTooltipStyle}
+                formatter={(v, name) => [
+                  v,
+                  name === 'requests' ? '요청 수' : '유니크 IP',
+                ]}
+              />
+              <Legend formatter={(v) => v === 'requests' ? '요청 수' : '유니크 IP'}
+                wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+              <Bar dataKey="requests"  fill="#38bdf8" maxBarSize={20} />
+              <Bar dataKey="uniqueIps" fill="#818cf8" maxBarSize={20} />
+            </BarChart>
+          </ResponsiveContainer>
+        )
+      }
+
+      {/* 상위 IP 목록 */}
+      {topIps.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>상위 접속 IP (nginx 로그 기준)</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {topIps.map((ip, i) => (
+              <span key={i} style={{
+                fontSize: 10, background: '#0a1525', border: '1px solid #1a2a3a',
+                borderRadius: 5, padding: '2px 8px',
+              }}>
+                <span style={{ color: '#38bdf8', fontFamily: 'monospace' }}>{ip.ip}</span>
+                <span style={{ color: '#374151', marginLeft: 4 }}>×{ip.count.toLocaleString()}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 서버 모니터링 섹션 ──────────────────────────────────────────────────────
 function ServerMonitor() {
-  const ts = useT('settings');
-  const timeAgo = useTimeAgo();
-  const [stats, setStats]       = useState(null);
-  const [visitors, setVisitors] = useState([]);
-  const [netPrev, setNetPrev]   = useState(null);
-  const [netRate, setNetRate]   = useState([]);
-  const [lastTs, setLastTs]     = useState(null);
-  const [error, setError]       = useState(null);
-  const [tab, setTab]           = useState('resource'); // 'resource' | 'traffic' | 'visitors'
+  const ts       = useT('settings');
+  const timeAgo  = useTimeAgo();
 
-  const fetchAll = useCallback(async () => {
+  const [stats,    setStats]    = useState(null);
+  const [visitors, setVisitors] = useState([]);
+  const [history,  setHistory]  = useState([]);
+  const [nginxLog, setNginxLog] = useState(null);
+  const [error,    setError]    = useState(null);
+
+  // 현재 상태 (5초 폴링)
+  const fetchCurrent = useCallback(async () => {
     try {
-      const [statsRes, visitorsRes] = await Promise.all([
+      const [sRes, vRes] = await Promise.all([
         AxiosCustom.get('/api/system/stats'),
         AxiosCustom.get('/api/system/visitors'),
       ]);
-      const now = Date.now();
-      const newStats = statsRes.data;
-
-      // 네트워크 속도 계산 (전회 데이터 대비 diff)
-      if (netPrev && lastTs) {
-        const elapsed = (now - lastTs) / 1000;
-        const rates = (newStats.net || []).map(iface => {
-          const prev = netPrev.find(p => p.interface === iface.interface);
-          return {
-            interface: iface.interface,
-            rxBps: prev ? Math.max(0, (iface.rxBytes - prev.rxBytes) / elapsed) : 0,
-            txBps: prev ? Math.max(0, (iface.txBytes - prev.txBytes) / elapsed) : 0,
-            rxBytes: iface.rxBytes,
-            txBytes: iface.txBytes,
-          };
-        });
-        setNetRate(rates);
-      }
-
-      setNetPrev(newStats.net || []);
-      setLastTs(now);
-      setStats(newStats);
-      setVisitors(visitorsRes.data || []);
+      setStats(sRes.data);
+      setVisitors(vRes.data || []);
       setError(null);
-    } catch (e) {
-      setError(ts('connFailed'));
-    }
-  }, [netPrev, lastTs]);
+    } catch { setError(ts('connFailed')); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    fetchAll();
-    const id = setInterval(fetchAll, 5000);
+    fetchCurrent();
+    const id = setInterval(fetchCurrent, 5000);
     return () => clearInterval(id);
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const tabBtnStyle = (active) => ({
-    padding: '5px 14px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-    background: active ? '#1e3a5f' : 'transparent',
-    color:      active ? '#60a5fa' : '#6b7280',
-    border:     '1px solid ' + (active ? '#2a5080' : '#253347'),
-  });
+  // 히스토리 (30초 폴링)
+  const fetchHistory = useCallback(async () => {
+    try {
+      const res = await AxiosCustom.get('/api/system/history');
+      setHistory(res.data || []);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+    const id = setInterval(fetchHistory, 30000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // nginx 로그 (60초 폴링 — 로그는 1초 단위로 바뀌지 않음)
+  const fetchNginxLog = useCallback(async () => {
+    try {
+      const res = await AxiosCustom.get('/api/system/nginx-log');
+      setNginxLog(res.data);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => {
+    fetchNginxLog();
+    const id = setInterval(fetchNginxLog, 60000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 차트 데이터 변환
+  const chartData = history.map(h => ({
+    time:     h.timestamp,
+    visitors: h.requests,
+    rx:       fmtMB(h.rxBytes),
+    tx:       fmtMB(h.txBytes),
+    disk:     h.diskUsedPct,
+    diskUsed: fmtMB(h.diskUsed),
+  }));
 
   const mem  = stats?.memory ?? {};
   const disk = stats?.disk   ?? {};
@@ -136,70 +312,113 @@ function ServerMonitor() {
 
   return (
     <div>
-      {/* 탭 */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {[
-          { key: 'resource', labelKey: 'tabResource' },
-          { key: 'traffic',  labelKey: 'tabTraffic' },
-          { key: 'visitors', labelKey: 'tabVisitors' },
-        ].map(({ key, labelKey }) => (
-          <button key={key} style={tabBtnStyle(tab === key)} onClick={() => setTab(key)}>{ts(labelKey)}</button>
-        ))}
-        <button onClick={fetchAll}
-          style={{ marginLeft: 'auto', padding: '5px 10px', borderRadius: 6, fontSize: 11,
+      {/* 헤더 */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        {up.totalSeconds != null && (
+          <span style={{ fontSize: 11, color: '#374151' }}>
+            {ts('uptimeLabel', { d: up.days, h: up.hours, m: up.minutes })}
+          </span>
+        )}
+        <button onClick={() => { fetchCurrent(); fetchHistory(); fetchNginxLog(); }}
+          style={{ marginLeft: 'auto', padding: '4px 10px', borderRadius: 6, fontSize: 11,
             background: 'transparent', color: '#4b5563', border: '1px solid #1a2a3a', cursor: 'pointer' }}>
           {ts('refresh')}
         </button>
       </div>
 
-      {error && (
-        <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 12 }}>⚠ {error}</div>
-      )}
+      {error && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 12 }}>⚠ {error}</div>}
 
-      {/* ── 리소스 탭 ── */}
-      {tab === 'resource' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* 업타임 */}
-          {up.totalSeconds != null && (
-            <div style={{ fontSize: 11, color: '#4b5563' }}>
-              {ts('uptimeLabel', { d: up.days, h: up.hours, m: up.minutes })}
-            </div>
-          )}
+      {/* ── 1. 접속자 수 ── */}
+      <ChartCard title="👥 접속자 수" badge="요청/5분">
+        {chartData.length === 0 ? <EmptyChart /> : (
+          <ResponsiveContainer width="100%" height={140}>
+            <LineChart data={chartData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.grid} />
+              <XAxis dataKey="time" tickFormatter={fmtTime} tick={{ fill: CHART_THEME.tick, fontSize: 10 }}
+                interval="preserveStartEnd" />
+              <YAxis tick={{ fill: CHART_THEME.tick, fontSize: 10 }} allowDecimals={false} />
+              <Tooltip
+                labelFormatter={fmtTime}
+                contentStyle={CustomTooltipStyle}
+                formatter={(v) => [`${v} 건`, '요청']}
+              />
+              <Line type="monotone" dataKey="visitors" stroke="#60a5fa" strokeWidth={2}
+                dot={false} activeDot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+        {/* 현재 접속자 요약 */}
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', paddingLeft: 12, marginTop: 8 }}>
+          {[...visitors].sort((a, b) => b.count - a.count).slice(0, 5).map((v, i) => (
+            <span key={i} style={{
+              fontSize: 10, color: '#6b7280', background: '#0d1b2a',
+              borderRadius: 5, padding: '2px 7px', border: '1px solid #1a2a3a',
+            }}>
+              <span style={{ color: '#60a5fa', fontFamily: 'monospace' }}>{v.ip}</span>
+              <span style={{ color: '#374151', marginLeft: 4 }}>×{v.count}</span>
+            </span>
+          ))}
+        </div>
+      </ChartCard>
 
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
-              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ts('memoryLabel')}</span>
-              {mem.totalBytes > 0
-                ? <span style={{ color: '#93c5fd' }}>
-                    {fmtBytes(mem.usedBytes)} / {fmtBytes(mem.totalBytes)}
-                    <span style={{ color: mem.usedPercent >= 80 ? '#ef4444' : '#4ade80', marginLeft: 8 }}>
-                      {mem.usedPercent}%
-                    </span>
-                  </span>
-                : <span style={{ color: '#4b5563' }}>{ts('collecting')}</span>
-              }
-            </div>
-            <GaugeBar percent={mem.usedPercent} />
-            {mem.availableBytes > 0 && (
-              <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-                {ts('freeLabel', { v: fmtBytes(mem.availableBytes) })}
-              </div>
-            )}
-          </div>
+      {/* ── 2. 네트워크 트래픽 ── */}
+      <ChartCard title="📡 네트워크 트래픽" badge="MB / 5분">
+        {chartData.length === 0 ? <EmptyChart /> : (
+          <ResponsiveContainer width="100%" height={140}>
+            <LineChart data={chartData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.grid} />
+              <XAxis dataKey="time" tickFormatter={fmtTime} tick={{ fill: CHART_THEME.tick, fontSize: 10 }}
+                interval="preserveStartEnd" />
+              <YAxis tick={{ fill: CHART_THEME.tick, fontSize: 10 }} unit=" MB" />
+              <Tooltip
+                labelFormatter={fmtTime}
+                contentStyle={CustomTooltipStyle}
+                formatter={(v, name) => [`${v} MB`, name === 'rx' ? '수신 ↓' : '송신 ↑']}
+              />
+              <Legend formatter={(v) => v === 'rx' ? '수신 ↓' : '송신 ↑'}
+                wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+              <Line type="monotone" dataKey="rx" stroke="#4ade80" strokeWidth={2}
+                dot={false} activeDot={{ r: 4 }} />
+              <Line type="monotone" dataKey="tx" stroke="#f59e0b" strokeWidth={2}
+                dot={false} activeDot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </ChartCard>
 
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
-              <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{ts('diskLabel')}</span>
-              {disk.totalBytes > 0
-                ? <span style={{ color: '#93c5fd' }}>
-                    {fmtBytes(disk.usedBytes)} / {fmtBytes(disk.totalBytes)}
-                    <span style={{ color: disk.usedPercent >= 80 ? '#ef4444' : '#4ade80', marginLeft: 8 }}>
-                      {disk.usedPercent}%
-                    </span>
-                  </span>
-                : <span style={{ color: '#4b5563' }}>{ts('collecting')}</span>
-              }
-            </div>
+      {/* ── 3. 디스크 사용률 ── */}
+      <ChartCard
+        title="💾 디스크 사용률"
+        badge={disk.totalBytes > 0
+          ? `현재 ${fmtBytes(disk.usedBytes)} / ${fmtBytes(disk.totalBytes)}  (${disk.usedPercent}%)`
+          : undefined}
+      >
+        {chartData.length === 0 ? <EmptyChart /> : (
+          <ResponsiveContainer width="100%" height={140}>
+            <AreaChart data={chartData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="diskGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor="#8b5cf6" stopOpacity={0.4} />
+                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_THEME.grid} />
+              <XAxis dataKey="time" tickFormatter={fmtTime} tick={{ fill: CHART_THEME.tick, fontSize: 10 }}
+                interval="preserveStartEnd" />
+              <YAxis tick={{ fill: CHART_THEME.tick, fontSize: 10 }} domain={[0, 100]} unit="%" />
+              <Tooltip
+                labelFormatter={fmtTime}
+                contentStyle={CustomTooltipStyle}
+                formatter={(v) => [`${v}%`, '디스크']}
+              />
+              <Area type="monotone" dataKey="disk" stroke="#8b5cf6" strokeWidth={2}
+                fill="url(#diskGrad)" dot={false} activeDot={{ r: 4 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+        {/* 현재 디스크 게이지 */}
+        {disk.totalBytes > 0 && (
+          <div style={{ paddingLeft: 12, paddingRight: 16, marginTop: 8 }}>
             <GaugeBar percent={disk.usedPercent} color="#8b5cf6" />
             {disk.freeBytes > 0 && (
               <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
@@ -207,95 +426,90 @@ function ServerMonitor() {
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </ChartCard>
 
-      {/* ── 트래픽 탭 ── */}
-      {tab === 'traffic' && (
-        <div>
-          {(netRate.length > 0 ? netRate : (stats?.net ?? [])).map(iface => (
-            <div key={iface.interface} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12, color: '#93c5fd', fontWeight: 600, marginBottom: 8 }}>
-                {iface.interface}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div style={{ background: '#0d1b2a', borderRadius: 8, padding: '10px 14px' }}>
-                  <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>{ts('rxLabel')}</div>
-                  <div style={{ fontSize: 14, color: '#4ade80', fontWeight: 700 }}>
-                    {iface.rxBps != null ? fmtBps(iface.rxBps) : '—'}
-                  </div>
-                  <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-                    {ts('cumulative', { v: fmtBytes(iface.rxBytes) })}
-                  </div>
-                </div>
-                <div style={{ background: '#0d1b2a', borderRadius: 8, padding: '10px 14px' }}>
-                  <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 4 }}>{ts('txLabel')}</div>
-                  <div style={{ fontSize: 14, color: '#f59e0b', fontWeight: 700 }}>
-                    {iface.txBps != null ? fmtBps(iface.txBps) : '—'}
-                  </div>
-                  <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
-                    {ts('cumulative', { v: fmtBytes(iface.txBytes) })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-          {(stats?.net ?? []).length === 0 && !error && (
-            <div style={{ fontSize: 12, color: '#4b5563' }}>{ts('noNetIface')}</div>
-          )}
-          <div style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
-            {ts('trafficNote')}
+      {/* ── 메모리 현황 (소형) ── */}
+      {mem.totalBytes > 0 && (
+        <div style={{
+          background: '#060e1a', border: '1px solid #1e3a5f',
+          borderRadius: 10, padding: '12px 16px', marginBottom: 14,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
+            <span style={{ color: '#93c5fd', fontWeight: 700 }}>{ts('memoryLabel')}</span>
+            <span style={{ color: '#93c5fd' }}>
+              {fmtBytes(mem.usedBytes)} / {fmtBytes(mem.totalBytes)}
+              <span style={{ color: mem.usedPercent >= 80 ? '#ef4444' : '#4ade80', marginLeft: 8 }}>
+                {mem.usedPercent}%
+              </span>
+            </span>
           </div>
+          <GaugeBar percent={mem.usedPercent} />
+          {mem.availableBytes > 0 && (
+            <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4 }}>
+              {ts('freeLabel', { v: fmtBytes(mem.availableBytes) })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── 접속자 탭 ── */}
-      {tab === 'visitors' && (
-        <div>
-          {visitors.length === 0
-            ? <div style={{ fontSize: 12, color: '#4b5563' }}>{ts('noVisitors')}</div>
-            : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ color: '#4b5563', borderBottom: '1px solid #1a2a3a' }}>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>{ts('colIp')}</th>
-                      <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>{ts('colRequests')}</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600 }}>{ts('colLastUri')}</th>
-                      <th style={{ textAlign: 'right', padding: '6px 8px', fontWeight: 600 }}>{ts('colLastAccess')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...visitors]
-                      .sort((a, b) => b.lastTime - a.lastTime)
-                      .map((v, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #111827' }}>
-                          <td style={{ padding: '6px 8px', color: '#60a5fa', fontFamily: 'monospace' }}>
-                            {v.ip}
-                          </td>
-                          <td style={{ padding: '6px 8px', color: '#93c5fd', textAlign: 'right' }}>
-                            {v.count}
-                          </td>
-                          <td style={{ padding: '6px 8px', color: '#6b7280',
-                            maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <span style={{
-                              color: v.lastStatus >= 400 ? '#ef4444' : '#6b7280',
-                              marginRight: 4, fontSize: 10
-                            }}>{v.lastStatus}</span>
-                            {v.lastUri}
-                          </td>
-                          <td style={{ padding: '6px 8px', color: '#4b5563', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {timeAgo(v.lastTime)}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            )
-          }
+      {/* ── 접속자 테이블 ── */}
+      <div style={{
+        background: '#060e1a', border: '1px solid #1e3a5f',
+        borderRadius: 10, padding: '14px 16px', marginBottom: 14,
+      }}>
+        <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+          👥 {ts('tabVisitors')}
         </div>
-      )}
+        {visitors.length === 0
+          ? <div style={{ fontSize: 12, color: '#4b5563' }}>{ts('noVisitors')}</div>
+          : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: '#4b5563', borderBottom: '1px solid #1a2a3a' }}>
+                    <th style={{ textAlign: 'left',  padding: '5px 8px', fontWeight: 600 }}>{ts('colIp')}</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', fontWeight: 600 }}>{ts('colRequests')}</th>
+                    <th style={{ textAlign: 'left',  padding: '5px 8px', fontWeight: 600 }}>{ts('colLastUri')}</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', fontWeight: 600 }}>{ts('colLastAccess')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...visitors].sort((a, b) => b.lastTime - a.lastTime).map((v, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #111827' }}>
+                      <td style={{ padding: '5px 8px', color: '#60a5fa', fontFamily: 'monospace' }}>{v.ip}</td>
+                      <td style={{ padding: '5px 8px', color: '#93c5fd', textAlign: 'right' }}>{v.count}</td>
+                      <td style={{ padding: '5px 8px', color: '#6b7280',
+                        maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ color: v.lastStatus >= 400 ? '#ef4444' : '#6b7280',
+                          marginRight: 4, fontSize: 10 }}>{v.lastStatus}</span>
+                        {v.lastUri}
+                      </td>
+                      <td style={{ padding: '5px 8px', color: '#4b5563', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {timeAgo(v.lastTime)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      </div>
+
+      {/* ── nginx 서버 접속 기록 ── */}
+      <NginxAccessSection nginxLog={nginxLog} />
+
+      {/* ── 세계지도 ── */}
+      <div style={{
+        background: '#060e1a', border: '1px solid #1e3a5f',
+        borderRadius: 10, padding: '14px 16px',
+      }}>
+        <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
+          🌍 {ts('tabWorldMap')}
+        </div>
+        <WorldAccessMap />
+      </div>
     </div>
   );
 }

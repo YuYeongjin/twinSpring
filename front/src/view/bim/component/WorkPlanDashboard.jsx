@@ -96,9 +96,9 @@ function elDims(el) {
 
 function elVol(el) { const [x,y,z]=elDims(el); return x*y*z; }
 function elZ(el)   { return parseFloat(el.positionZ)||0; }
-function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function addDays(d,n){ const r=new Date(d); if(isNaN(r.getTime())) return new Date(); r.setDate(r.getDate()+n); return r; }
 function dateDiff(a,b){ return Math.round((b-a)/86400000); }
-function fmtDate(d){ return d instanceof Date ? d.toISOString().slice(0,10) : d; }
+function fmtDate(d){ return (d instanceof Date && !isNaN(d.getTime())) ? d.toISOString().slice(0,10) : (d ?? ''); }
 
 function fwArea(el) {
   const [sx,sy,sz] = elDims(el);

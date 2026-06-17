@@ -47,6 +47,11 @@ public class RecentAccessService {
         return new ArrayList<>(byIp.values());
     }
 
+    /** 특정 시각 이후 요청 건수 (시계열 샘플링용) */
+    public long countRequestsSince(long sinceEpochMs) {
+        return buffer.stream().filter(e -> e.timestamp() >= sinceEpochMs).count();
+    }
+
     /** 원시 로그 최근 N건 */
     public List<Map<String, Object>> getRecentLog(int limit) {
         List<Map<String, Object>> result = new ArrayList<>();
