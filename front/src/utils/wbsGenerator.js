@@ -26,9 +26,9 @@ export const WBS_NODE_TYPES = {
 };
 
 export const WBS_TYPE_LABEL = {
-  IfcWall:   '벽체공사', IfcColumn: '기둥공사',  IfcBeam:  '보공사',   IfcSlab:  '슬래브 공사',
-  IfcWindow: '창호공사', IfcDoor:   '문공사',    IfcStair: '계단공사', IfcRoof:  '지붕공사',
-  IfcMember: '부재공사', IfcPier:   '교각공사',
+  IfcWall:       '벽체공사',  IfcColumn:     '기둥공사',  IfcBeam:  '보공사',   IfcSlab:  '슬래브 공사',
+  IfcWindow:     '창호공사',  IfcDoor:       '문공사',    IfcStair: '계단공사', IfcRoof:  '지붕공사',
+  IfcMember:     '부재공사',  IfcPier:       '교각공사',  IfcFoundation: '기초공사',
 };
 
 const PHASES = [
