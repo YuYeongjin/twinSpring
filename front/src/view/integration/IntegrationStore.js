@@ -60,26 +60,25 @@ function makeInitial() {
 }
 
 // ── BIM 구조물 실제 바운딩 박스 계산 ─────────────────────────────
-// 절대 로컬 좌표가 크면(mm 단위 등) 전부 클램프 경계에 몰리는 문제 방지:
-// "로컬 크기(extent)"만 추출해 offset 중심으로 배치 + 단위 자동 스케일
-// 반환: { minX, maxX, minZ, maxZ } — scene world 좌표
+// Z-up 기준: positionX=East(Three.js X), positionY=North(Three.js Y), positionZ=Height(Three.js Z)
+// 수평 범위(XY)만 계산 — 반환: { minX, maxX, minZ, maxZ } (Z는 내부적으로 North=Three.js Y)
 export function computeStructureBounds(s) {
-  const [ox, , oz] = s.offset || [0, 0, 0];
+  const [ox, oy] = s.offset || [0, 0, 0];   // Z-up: offset[0]=east, offset[1]=north
   const els = s.elements || [];
-  if (!els.length) return { minX: ox - 10, maxX: ox + 10, minZ: oz - 10, maxZ: oz + 10 };
+  if (!els.length) return { minX: ox - 10, maxX: ox + 10, minZ: oy - 10, maxZ: oy + 10 };
 
   let minLX = Infinity, maxLX = -Infinity, minLZ = Infinity, maxLZ = -Infinity;
   els.forEach(el => {
     const px = Number(el.positionX) || 0;
-    const pz = Number(el.positionZ) || 0;   // floor plan depth → Three.js Z
+    const py = Number(el.positionY) || 0;   // Z-up: north → Three.js Y (horizontal depth)
     const sx = Math.abs(Number(el.sizeX))  || 0;
-    const sz = Math.abs(Number(el.sizeZ))  || 0;
+    const sy = Math.abs(Number(el.sizeY))  || 0;
     minLX = Math.min(minLX, px - sx / 2);
     maxLX = Math.max(maxLX, px + sx / 2);
-    minLZ = Math.min(minLZ, pz - sz / 2);
-    maxLZ = Math.max(maxLZ, pz + sz / 2);
+    minLZ = Math.min(minLZ, py - sy / 2);
+    maxLZ = Math.max(maxLZ, py + sy / 2);
   });
-  if (!isFinite(minLX)) return { minX: ox - 10, maxX: ox + 10, minZ: oz - 10, maxZ: oz + 10 };
+  if (!isFinite(minLX)) return { minX: ox - 10, maxX: ox + 10, minZ: oy - 10, maxZ: oy + 10 };
 
   const rawExtX = maxLX - minLX;
   const rawExtZ = maxLZ - minLZ;
@@ -88,18 +87,16 @@ export function computeStructureBounds(s) {
   const scale = (rawExtX > 500 || rawExtZ > 500) ? 0.001 : 1;
 
   // 실제 월드 좌표 = offset + 로컬좌표 × scale
-  // ox ± halfExt 방식은 건물이 로컬 0~N에 있으면 절반을 놓치므로 사용 금지
   const wMinX = ox + minLX * scale;
   const wMaxX = ox + maxLX * scale;
-  const wMinZ = oz + minLZ * scale;
-  const wMaxZ = oz + maxLZ * scale;
+  const wMinZ = oy + minLZ * scale;
+  const wMaxZ = oy + maxLZ * scale;
 
   if (process.env.NODE_ENV !== 'production') {
-    const first = els[0];
     console.log('[BIM bounds]', s.name,
       '| rawExt:', rawExtX.toFixed(1), rawExtZ.toFixed(1), '| scale:', scale,
       '| world X:', wMinX.toFixed(1), '~', wMaxX.toFixed(1),
-      '/ Z:', wMinZ.toFixed(1), '~', wMaxZ.toFixed(1));
+      '/ Y(north):', wMinZ.toFixed(1), '~', wMaxZ.toFixed(1));
   }
 
   return { minX: wMinX, maxX: wMaxX, minZ: wMinZ, maxZ: wMaxZ };

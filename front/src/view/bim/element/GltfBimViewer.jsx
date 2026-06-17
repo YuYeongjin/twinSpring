@@ -25,7 +25,7 @@ const HIGHLIGHT_COLOR    = new THREE.Color('#00d4ff');
 const MULTI_SELECT_COLOR = new THREE.Color('#a78bfa');
 
 export const GltfBimViewer = forwardRef(function GltfBimViewer(
-  { glbUrl, modelData, selectedElement, selectedElements, onElementSelect, onMeshMount },
+  { glbUrl, modelData, selectedElement, selectedElements, onElementSelect, onMeshMount, onLoad },
   ref,
 ) {
   const gltf     = useLoader(GLTFLoader, glbUrl);
@@ -40,34 +40,37 @@ export const GltfBimViewer = forwardRef(function GltfBimViewer(
   }, [modelData]);
 
   // ── GLB scene 복제 후 mesh 등록 ──────────────────────────────────
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf.scene]);
+  const scene = useMemo(() => {
+    const clone = gltf.scene.clone(true);
+    console.log('[GltfBimViewer] GLB scene 복제 완료, glbUrl=', glbUrl);
+    return clone;
+  }, [gltf.scene]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    let count = 0;
     scene.traverse(node => {
       if (!node.isMesh) return;
+      count++;
       node.castShadow    = true;
       node.receiveShadow = true;
       meshRefs.current.set(node.name, { current: node });
       onMeshMount?.(node.name, { current: node });
     });
+    console.log('[GltfBimViewer] mesh setup: 등록된 mesh 수=', count);
+    onLoad?.(); // GLB 로드 완료 알림
 
     return () => {
       scene.traverse(node => {
         if (!node.isMesh) return;
         meshRefs.current.delete(node.name);
         onMeshMount?.(node.name, null);
-        node.geometry?.dispose();
-        if (Array.isArray(node.material)) {
-          node.material.forEach(m => m.dispose());
-        } else {
-          node.material?.dispose();
-        }
       });
     };
-  }, [scene, onMeshMount]);
+  }, [scene, onMeshMount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 색상 / 선택 / 가시성 동기화 ─────────────────────────────────
   useEffect(() => {
+    console.log('[GltfBimViewer] 색상 effect 실행, modelMap size=', modelMap.size);
     const selectedId = selectedElement?.data?.elementId;
 
     scene.traverse(node => {
@@ -189,11 +192,11 @@ export const GltfBimViewer = forwardRef(function GltfBimViewer(
     },
   }), []);
 
+  console.log('[GltfBimViewer] render — glbUrl=', glbUrl, 'meshes=', scene.children.length);
   return (
     <primitive
       ref={groupRef}
       object={scene}
-      rotation={[-Math.PI / 2, 0, 0]}
       onClick={handleClick}
     />
   );
@@ -207,6 +210,9 @@ class GltfErrorBoundary extends React.Component {
   }
   static getDerivedStateFromError() {
     return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error('[GltfErrorBoundary] GLB 렌더링 에러:', error, info);
   }
   componentDidUpdate(prevProps) {
     if (prevProps.glbUrl !== this.props.glbUrl) {
@@ -229,3 +235,5 @@ export function GltfBimViewerSuspense(props) {
     </GltfErrorBoundary>
   );
 }
+
+GltfBimViewerSuspense.displayName = 'GltfBimViewerSuspense';

@@ -321,10 +321,10 @@ function StressBox({ element, result, isSelected, onSelect }) {
   const rY = Number(element.rotationY) || 0;
   const rZ = Number(element.rotationZ) || 0;
 
-  // BimDashboard.jsx(Scene.jsx)와 100% 동일한 매핑
+  // Z-up 직접 매핑: posX→X, posY→Y, posZ→Z(높이)
   const renderX = pX;
-  const renderY = pZ + sZ / 2; // Three.js Y = Data Z (높이)
-  const renderZ = pY;          // Three.js Z = Data Y (깊이)
+  const renderY = pY;
+  const renderZ = pZ + sZ / 2;
 
   const color = result ? STATUS_CFG[result.status].color : '#374151';
   const emissI = isSelected ? 0.4 : 0;
@@ -335,7 +335,7 @@ function StressBox({ element, result, isSelected, onSelect }) {
           rotation={[rX, rY, rZ]}
           onClick={e => { e.stopPropagation(); onSelect(element.elementId); }}
       >
-        <boxGeometry args={[sX, sZ, sY]} />
+        <boxGeometry args={[sX, sY, sZ]} />
         <meshStandardMaterial
             color={color}
             transparent
@@ -350,7 +350,7 @@ function StressBox({ element, result, isSelected, onSelect }) {
 function StressViewer3D({ modelData, resultMap, selectedId, onSelect }) {
   return (
       <Canvas
-          camera={{ position: [15, 12, 15], up: [0, 0, 1], fov: 55 }}
+          camera={{ position: [15, -15, 12], up: [0, 0, 1], fov: 55 }}
           style={{ background: '#0b0f1a', height: 'clamp(300px, 70vh, 1000px)' }}
       >
         <ambientLight intensity={0.55} />
@@ -358,7 +358,7 @@ function StressViewer3D({ modelData, resultMap, selectedId, onSelect }) {
         <directionalLight position={[-5, 8, -5]} intensity={0.25} />
 
         <gridHelper args={[100, 100, '#1a3a5c', '#1a3a5c']}
-                    position={[0,-0.01,0]}
+                    position={[0, 0, -0.01]}
                     rotation={[Math.PI / 2, 0, 0]}
         />
 

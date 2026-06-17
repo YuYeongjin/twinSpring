@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, TransformControls, OrthographicCamera, Html } from '@react-three/drei';
+import { OrbitControls, TransformControls, OrthographicCamera, Html, useProgress } from '@react-three/drei';
 import * as THREE from 'three';
 import { BimElement, getBaseColor } from '../element/BimElement';
 import { BimLine } from '../element/BimLine';
@@ -31,22 +31,23 @@ function getSnapPlane(viewMode, snapVertices) {
             ? snapVertices.reduce((s, v) => s + v[0], 0) / snapVertices.length : 0;
         return new THREE.Plane(new THREE.Vector3(1, 0, 0), -avgX);
     }
-    return new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // xy / 3d
+    return new THREE.Plane(new THREE.Vector3(0, 0, 1), 0); // Z-up 바닥 평면 (법선=Z)
 }
 
 /**
- * viewMode별 2D 거리로 가장 가까운 스냅 꼭짓점 반환
- * - xy/3d : XZ 거리 (바닥 평면)
- * - xz    : XY 거리 (정면 — X=동서, Y=높이)
- * - yz    : ZY 거리 (측면 — Z=남북, Y=높이)
+ * viewMode별 2D 거리로 가장 가까운 스냅 꼭짓점 반환 (Z-up 기준)
+ * verts = [X, Y, Z(높이)]
+ * - 3d/xy : X·Y 거리 (바닥 평면 XY)
+ * - xz    : X·Z 거리 (정면 — X=동서, Z=높이)
+ * - yz    : Y·Z 거리 (측면 — Y=남북, Z=높이)
  */
 function findSnapVertex(wa, wb, verts, viewMode) {
     let best = null, min = SNAP_THRESHOLD;
     for (const v of verts) {
         let d;
-        if (viewMode === 'xz')     d = Math.hypot(wa - v[0], wb - v[1]); // X·Y
-        else if (viewMode === 'yz') d = Math.hypot(wa - v[2], wb - v[1]); // Z·Y
-        else                        d = Math.hypot(wa - v[0], wb - v[2]); // X·Z
+        if (viewMode === 'xz')     d = Math.hypot(wa - v[0], wb - v[2]); // X·Z(높이)
+        else if (viewMode === 'yz') d = Math.hypot(wa - v[1], wb - v[2]); // Y·Z(높이)
+        else                        d = Math.hypot(wa - v[0], wb - v[1]); // X·Y (3d/xy)
         if (d < min) { min = d; best = v; }
     }
     return best;
@@ -63,9 +64,9 @@ function findSmartSnap(mA, mB, sA, sB, verts, viewMode) {
     for (const [oa, ob] of checks) {
         for (const v of verts) {
             let d, va, vb;
-            if (viewMode === 'xz')     { va = v[0]; vb = v[1]; }
-            else if (viewMode === 'yz') { va = v[2]; vb = v[1]; }
-            else                        { va = v[0]; vb = v[2]; }
+            if (viewMode === 'xz')     { va = v[0]; vb = v[2]; } // X·Z(높이)
+            else if (viewMode === 'yz') { va = v[1]; vb = v[2]; } // Y·Z(높이)
+            else                        { va = v[0]; vb = v[1]; } // X·Y (3d/xy)
             d = Math.hypot((mA + oa) - va, (mB + ob) - vb);
             if (d < min) { min = d; bestA = va - oa; bestB = vb - ob; }
         }
@@ -132,26 +133,25 @@ function CameraAutoFit({ ifcMeshes, glbUrl, modelData, orbitRef, fitTrigger }) {
         }
         const currentKey = glbUrl || ifcMeshes;
         if (prevRef.current.key === currentKey && prevRef.current.trigger === fitTrigger) return;
-        prevRef.current = { key: currentKey, trigger: fitTrigger };
 
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
         if (modelData && modelData.length > 0) {
-            // 좌표 규칙: positionX/Y=평면, positionZ=높이 / Three.js: X=posX, Y=posZ, Z=posY
+            // Z-up 직접 매핑: posX→X, posY→Y, posZ→Z(높이)
             for (const el of modelData) {
                 const px = Number(el.positionX) || 0;
-                const py = Number(el.positionY) || 0;  // floor Y → Three.js Z
-                const pz = Number(el.positionZ) || 0;  // height  → Three.js Y
+                const py = Number(el.positionY) || 0;
+                const pz = Number(el.positionZ) || 0;  // 높이
                 const hx = (Number(el.sizeX) || 0.1) / 2;
-                const hy = (Number(el.sizeY) || 0.1) / 2;  // floor Y half
-                const sz = Number(el.sizeZ) || 0.1;         // height size
+                const hy = (Number(el.sizeY) || 0.1) / 2;
+                const sz = Number(el.sizeZ) || 0.1;
                 if (px - hx < minX) minX = px - hx;
                 if (px + hx > maxX) maxX = px + hx;
-                if (pz       < minY) minY = pz;          // Three.js Y = data Z
-                if (pz + sz  > maxY) maxY = pz + sz;
-                if (py - hy < minZ) minZ = py - hy;      // Three.js Z = data Y
-                if (py + hy > maxZ) maxZ = py + hy;
+                if (py - hy < minY) minY = py - hy;
+                if (py + hy > maxY) maxY = py + hy;
+                if (pz       < minZ) minZ = pz;
+                if (pz + sz  > maxZ) maxZ = pz + sz;
             }
         } else if (ifcMeshes && ifcMeshes.length > 0) {
             // ifcMeshes 모드 fallback: 첫 번째 메시 정점 직접 순회
@@ -164,7 +164,13 @@ function CameraAutoFit({ ifcMeshes, glbUrl, modelData, orbitRef, fitTrigger }) {
             }
         }
 
-        if (!isFinite(minX)) return;
+        // modelData 미로드 등으로 bounds 계산 불가 시 prevRef를 갱신하지 않고 재시도를 허용
+        if (!isFinite(minX)) {
+            console.log('[CameraAutoFit] bounds 없음 — modelData.length=', modelData?.length);
+            return;
+        }
+
+        prevRef.current = { key: currentKey, trigger: fitTrigger };
 
         const cx = (minX + maxX) / 2;
         const cy = (minY + maxY) / 2;
@@ -175,11 +181,12 @@ function CameraAutoFit({ ifcMeshes, glbUrl, modelData, orbitRef, fitTrigger }) {
         const fovRad = (camera.fov * Math.PI) / 180;
         const dist   = (span / 2) / Math.tan(fovRad / 2) * 1.8; // 1.8배 여유
 
-        // 북동 45° 사선에서 바라보도록 카메라 배치
+        // Z-up: 동남쪽 + 위에서 바라보도록 배치 (X+, Y-, Z+)
+        console.log(`[CameraAutoFit] 카메라 맞춤 — center=(${cx.toFixed(1)},${cy.toFixed(1)},${cz.toFixed(1)}) dist=${dist.toFixed(1)}`);
         camera.position.set(
             cx + dist * 0.65,
-            cy + dist * 0.55,
-            cz + dist * 0.65,
+            cy - dist * 0.65,
+            cz + dist * 0.55,
         );
         camera.lookAt(cx, cy, cz);
 
@@ -202,13 +209,13 @@ function ElementResizeHandles({
 }) {
     const { camera, gl } = useThree();
 
-    // 좌표 규칙: positionX/Y=평면, positionZ=높이 / Three.js: X=posX, Y=posZ, Z=posY
+    // Z-up 직접 매핑: posX→X, posY→Y, posZ→Z(높이)
     const pX = Number(element.positionX) || 0;
-    const pY = Number(element.positionY) || 0;   // floor Y → Three.js Z
-    const pZ = Number(element.positionZ) || 0;   // height  → Three.js Y
+    const pY = Number(element.positionY) || 0;
+    const pZ = Number(element.positionZ) || 0;   // 높이 (Z-up)
     const sX = Math.max(0.1, Number(element.sizeX) || 1);
-    const sY = Math.max(0.1, Number(element.sizeY) || 1);   // floor Y size → Three.js Z size
-    const sZ = Math.max(0.1, Number(element.sizeZ) || 1);   // height size  → Three.js Y size
+    const sY = Math.max(0.1, Number(element.sizeY) || 1);
+    const sZ = Math.max(0.1, Number(element.sizeZ) || 1);
     const hx = sX / 2, hy = sY / 2;
 
     /** 클라이언트 좌표 → NDC */
@@ -235,16 +242,16 @@ function ElementResizeHandles({
         // ── 드래그 평면 결정 ──────────────────────────────────────────
         let plane;
         if (type === 'top') {
-            // 카메라 방향 수직 평면 (높이 조절용)
+            // Z-up: 카메라 수평 방향 수직 평면 (높이 조절용)
             const dir = new THREE.Vector3();
             camera.getWorldDirection(dir);
-            dir.y = 0; dir.normalize();
+            dir.z = 0; dir.normalize();
             plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-                dir, new THREE.Vector3(pX, pZ + sZ, pY)  // Three.js 상단 중심
+                dir, new THREE.Vector3(pX, pY, pZ + sZ)  // Z-up 상단 중심
             );
         } else {
-            // 바닥 수평 평면 — Three.js Y = data Z (height base)
-            plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -pZ);
+            // Z-up: 바닥 수평 평면 — normal=[0,0,1], Z=pZ
+            plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -pZ);
         }
 
         const rc  = new THREE.Raycaster();
@@ -256,28 +263,28 @@ function ElementResizeHandles({
 
             // ── 높이 핸들 ─────────────────────────────────────────────
             if (type === 'top') {
-                const newSZ = Math.max(0.1, parseFloat((hit.y - pZ).toFixed(3)));
+                // Z-up: Z방향이 높이
+                const newSZ = Math.max(0.1, parseFloat((hit.z - pZ).toFixed(3)));
                 updateElementData(element.elementId, { sizeZ: newSZ });
                 return;
             }
 
-            // ── XY floor 핸들 (스냅 적용) ─────────────────────────────
-            // hit.x = Three.jsX = dataX, hit.z = Three.jsZ = dataY
-            let hx2 = hit.x, hy2 = hit.z;
+            // ── XY floor 핸들 (스냅 적용) — Z-up: hit.x=X, hit.y=Y
+            let hx2 = hit.x, hy2 = hit.y;
             if (snapEnabled && snapVertices.length > 0) {
-                const sv = findSnapVertex(hit.x, hit.z, snapVertices);
-                if (sv) { hx2 = sv[0]; hy2 = sv[2]; }
+                const sv = findSnapVertex(hit.x, hit.y, snapVertices);
+                if (sv) { hx2 = sv[0]; hy2 = sv[1]; }
             }
 
-            const [ax, , az] = anchor;  // anchor: [threeX, threeY, threeZ=dataY]
+            const [ax, ay] = anchor;  // anchor: [threeX, threeY] Z-up
             const updates = {};
             if (type === 'corner' || type === 'edge-x') {
                 updates.sizeX     = Math.max(0.1, parseFloat(Math.abs(hx2 - ax).toFixed(3)));
                 updates.positionX = parseFloat(((hx2 + ax) / 2).toFixed(3));
             }
             if (type === 'corner' || type === 'edge-z') {
-                updates.sizeY     = Math.max(0.1, parseFloat(Math.abs(hy2 - az).toFixed(3)));  // data sizeY
-                updates.positionY = parseFloat(((hy2 + az) / 2).toFixed(3));                   // data posY
+                updates.sizeY     = Math.max(0.1, parseFloat(Math.abs(hy2 - ay).toFixed(3)));
+                updates.positionY = parseFloat(((hy2 + ay) / 2).toFixed(3));
             }
             updateElementData(element.elementId, updates);
         };
@@ -297,30 +304,26 @@ function ElementResizeHandles({
         updateElementData, pushUndo, onDragStateChange,
     ]);
 
-    // ── 핸들 정의 — Three.js 좌표: X=dataX, Y=dataZ(height), Z=dataY(floorY)
+    // ── 핸들 정의 — Z-up: X=dataX, Y=dataY, Z=dataZ(높이)
     const handles = useMemo(() => [
-        // 바닥 코너 (파란색) — X + Y(floorY) 동시 조절
-        { id:'c0', pos:[pX+hx, pZ, pY+hy], type:'corner', anchor:[pX-hx, pZ, pY-hy], color:'#3b82f6', cursor:'nw-resize' },
-        { id:'c1', pos:[pX+hx, pZ, pY-hy], type:'corner', anchor:[pX-hx, pZ, pY+hy], color:'#3b82f6', cursor:'ne-resize' },
-        { id:'c2', pos:[pX-hx, pZ, pY+hy], type:'corner', anchor:[pX+hx, pZ, pY-hy], color:'#3b82f6', cursor:'ne-resize' },
-        { id:'c3', pos:[pX-hx, pZ, pY-hy], type:'corner', anchor:[pX+hx, pZ, pY+hy], color:'#3b82f6', cursor:'nw-resize' },
-        // X축 엣지 중점 (보라색) — X만 조절
-        { id:'ex0', pos:[pX+hx, pZ, pY], type:'edge-x', anchor:[pX-hx, pZ, pY], color:'#8b5cf6', cursor:'ew-resize' },
-        { id:'ex1', pos:[pX-hx, pZ, pY], type:'edge-x', anchor:[pX+hx, pZ, pY], color:'#8b5cf6', cursor:'ew-resize' },
-        // Y(floorY)축 엣지 중점 (보라색) — Y만 조절 (type='edge-z' 유지, hit.z 기준)
-        { id:'ey0', pos:[pX, pZ, pY+hy], type:'edge-z', anchor:[pX, pZ, pY-hy], color:'#8b5cf6', cursor:'ns-resize' },
-        { id:'ey1', pos:[pX, pZ, pY-hy], type:'edge-z', anchor:[pX, pZ, pY+hy], color:'#8b5cf6', cursor:'ns-resize' },
-        // 상단 중심 (초록색) — 높이 조절
-        { id:'top', pos:[pX, pZ+sZ, pY], type:'top', anchor:null, color:'#10b981', cursor:'n-resize' },
+        { id:'c0', pos:[pX+hx, pY+hy, pZ], type:'corner', anchor:[pX-hx, pY-hy], color:'#3b82f6', cursor:'nw-resize' },
+        { id:'c1', pos:[pX+hx, pY-hy, pZ], type:'corner', anchor:[pX-hx, pY+hy], color:'#3b82f6', cursor:'ne-resize' },
+        { id:'c2', pos:[pX-hx, pY+hy, pZ], type:'corner', anchor:[pX+hx, pY-hy], color:'#3b82f6', cursor:'ne-resize' },
+        { id:'c3', pos:[pX-hx, pY-hy, pZ], type:'corner', anchor:[pX+hx, pY+hy], color:'#3b82f6', cursor:'nw-resize' },
+        { id:'ex0', pos:[pX+hx, pY, pZ], type:'edge-x', anchor:[pX-hx, pY], color:'#8b5cf6', cursor:'ew-resize' },
+        { id:'ex1', pos:[pX-hx, pY, pZ], type:'edge-x', anchor:[pX+hx, pY], color:'#8b5cf6', cursor:'ew-resize' },
+        { id:'ey0', pos:[pX, pY+hy, pZ], type:'edge-z', anchor:[pX, pY-hy], color:'#8b5cf6', cursor:'ns-resize' },
+        { id:'ey1', pos:[pX, pY-hy, pZ], type:'edge-z', anchor:[pX, pY+hy], color:'#8b5cf6', cursor:'ns-resize' },
+        { id:'top', pos:[pX, pY, pZ+sZ], type:'top', anchor:null, color:'#10b981', cursor:'n-resize' },
     ], [pX, pY, pZ, hx, hy, sZ]);
 
     const hs = HANDLE_HALF * 2; // 핸들 한 변 길이
 
     return (
         <group>
-            {/* CAD 바운딩 박스 와이어프레임 — Three.js [X, Y=center_height, Z=floorY] */}
-            <mesh position={[pX, pZ + sZ / 2, pY]}>
-                <boxGeometry args={[sX + 0.02, sZ + 0.02, sY + 0.02]} />
+            {/* CAD 바운딩 박스 와이어프레임 — Z-up: [X, Y, Z=높이중심] */}
+            <mesh position={[pX, pY, pZ + sZ / 2]}>
+                <boxGeometry args={[sX + 0.02, sY + 0.02, sZ + 0.02]} />
                 <meshBasicMaterial color="#00e5ff" wireframe transparent opacity={0.35} />
             </mesh>
 
@@ -344,7 +347,7 @@ function ElementResizeHandles({
                 <bufferGeometry>
                     <bufferAttribute
                         attach="attributes-position"
-                        array={new Float32Array([pX, pZ, pY,  pX, pZ + sZ, pY])}
+                        array={new Float32Array([pX, pY, pZ,  pX, pY, pZ + sZ])}
                         count={2}
                         itemSize={3}
                     />
@@ -374,10 +377,10 @@ function VertexSnapIndicator({ snapVertices, snapEnabled, viewMode = '3d' }) {
         const hit = new THREE.Vector3();
         if (!raycaster.ray.intersectPlane(plane, hit)) return;
 
-        // viewMode별 스냅 검색 좌표 선택
-        const [wa, wb] = viewMode === 'xz' ? [hit.x, hit.y]
-                       : viewMode === 'yz' ? [hit.z, hit.y]
-                       : [hit.x, hit.z];
+        // viewMode별 스냅 검색 좌표 선택 (Z-up: X=동서, Y=남북, Z=높이)
+        const [wa, wb] = viewMode === 'xz' ? [hit.x, hit.z]   // 정면: X·Z(높이)
+                       : viewMode === 'yz' ? [hit.y, hit.z]   // 측면: Y·Z(높이)
+                       : [hit.x, hit.y];                       // 3d/xy: X·Y(바닥)
         const nearest = findSnapVertex(wa, wb, snapVertices, viewMode);
         groupRef.current.visible = !!nearest;
         if (nearest) {
@@ -773,8 +776,8 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
         // 드래그 시작 시점의 꼭짓점 좌표를 기준점으로 고정
         // 데이터: [dataX, dataY(floor), dataZ(height)]
         const basePoints = getLinePoints(line).map(p => [p[0], p[1] ?? 0, p[2] ?? 0]);
-        const planeZ = basePoints[vertexIndex]?.[2] ?? 0;  // data Z (height) = Three.js Y
-        const plane  = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeZ);
+        const planeZ = basePoints[vertexIndex]?.[2] ?? 0;  // data Z (높이) = Three.js Z
+        const plane  = new THREE.Plane(new THREE.Vector3(0, 0, 1), -planeZ); // Z-up 수평면
         const rc     = new THREE.Raycaster();
         const hit    = new THREE.Vector3();
         let latestPoints = basePoints;
@@ -782,10 +785,10 @@ function LineVertexHandles({ line, onVertexUpdate, onVertexSave, onDragStateChan
         const onMove = (ev) => {
             rc.setFromCamera(getNDC(ev.clientX, ev.clientY), camera);
             if (!rc.ray.intersectPlane(plane, hit)) return;
-            // hit.x=Three.jsX=dataX, hit.z=Three.jsZ=dataY
+            // Z-up: hit.x=X, hit.y=Y(남북), hit.z=planeZ(고정 높이)
             latestPoints = basePoints.map((p, i) =>
                 i === vertexIndex
-                    ? [parseFloat(hit.x.toFixed(3)), parseFloat(hit.z.toFixed(3)), planeZ]
+                    ? [parseFloat(hit.x.toFixed(3)), parseFloat(hit.y.toFixed(3)), planeZ]
                     : p
             );
             onVertexUpdate?.(line.lineId, {
@@ -891,17 +894,18 @@ function MeasureHelper({ pointA, pointB, active, snapVertices, snapEnabled, view
         if (!active || pointB) return;
         raycaster.setFromCamera(mouse, camera);
         if (!raycaster.ray.intersectPlane(snapPlane, hitRef)) return;
+        // Z-up: hitRef.x=X, hitRef.y=Y(남북), hitRef.z=Z(높이/0 on floor plane)
         let ex = hitRef.x, ey = hitRef.y, ez = hitRef.z;
         if (snapEnabled && snapVertices.length > 0 && viewMode !== 'xz' && viewMode !== 'yz') {
-            const sv = findSnapVertex(hitRef.x, hitRef.z, snapVertices);
+            const sv = findSnapVertex(hitRef.x, hitRef.y, snapVertices);
             if (sv) { ex = sv[0]; ey = sv[1] ?? 0; ez = sv[2]; }
         }
-        // BIM data coords: x=BIM_X, y=BIM_Y(floor), z=BIM_Z(height)
-        hoverRef.current = { x: ex, y: ez, z: ey };
+        // BIM data coords (Z-up): x=BIM_X, y=BIM_Y(남북), z=BIM_Z(높이)
+        hoverRef.current = { x: ex, y: ey, z: ez };
         // 두 번째 점 대기 중일 때만 프리뷰 선 업데이트
         if (!pointA) return;
         const pos = previewGeom.attributes.position;
-        pos.setXYZ(0, pointA.x, pointA.z, pointA.y);
+        pos.setXYZ(0, pointA.x, pointA.y, pointA.z); // Z-up 직접 매핑
         pos.setXYZ(1, ex, ey, ez);
         pos.needsUpdate = true;
         previewGeom.computeBoundingSphere();
@@ -1136,51 +1140,48 @@ function WalkController({ active, orbitRef, onExit }) {
 // ================================================================
 function Ortho2DCamera({ viewMode, modelData, orbitRef }) {
     const bounds = useMemo(() => {
-        if (!modelData.length) return { cx: 0, cy: 0, cz: 0, spanXZ: 20, spanXY: 10, spanZY: 20 };
-        let minX = Infinity, maxX = -Infinity;
-        let minY = Infinity, maxY = -Infinity; // Three.js Y = BIM Z (높이)
-        let minZ = Infinity, maxZ = -Infinity; // Three.js Z = BIM Y (남북)
+        if (!modelData.length) return { cx: 0, cy: 0, cz: 0, spanXY: 20, spanXZ: 10, spanYZ: 20 };
+        let minX = Infinity, maxX = -Infinity; // Three.js X = BIM X
+        let minY = Infinity, maxY = -Infinity; // Three.js Y = BIM Y (남북)
+        let minZ = Infinity, maxZ = -Infinity; // Three.js Z = BIM Z (높이)
         for (const el of modelData) {
             const px = Number(el.positionX) || 0;
-            const py = Number(el.positionY) || 0;  // BIM Y → Three.js Z
-            const pz = Number(el.positionZ) || 0;  // BIM Z (높이) → Three.js Y
+            const py = Number(el.positionY) || 0;
+            const pz = Number(el.positionZ) || 0;  // 높이
             const hx = (Number(el.sizeX) || 0.1) / 2;
             const hy = (Number(el.sizeY) || 0.1) / 2;
             const sz = Number(el.sizeZ) || 0.1;
             if (px - hx < minX) minX = px - hx; if (px + hx > maxX) maxX = px + hx;
-            if (pz       < minY) minY = pz;      if (pz + sz  > maxY) maxY = pz + sz;
-            if (py - hy < minZ) minZ = py - hy;  if (py + hy > maxZ) maxZ = py + hy;
+            if (py - hy < minY) minY = py - hy; if (py + hy > maxY) maxY = py + hy;
+            if (pz       < minZ) minZ = pz;      if (pz + sz  > maxZ) maxZ = pz + sz;
         }
         return {
             cx: (minX + maxX) / 2,
-            cy: (minY + maxY) / 2, // Three.js Y center (높이 중심)
-            cz: (minZ + maxZ) / 2, // Three.js Z center (남북 중심)
-            spanXZ: Math.max(maxX - minX, maxZ - minZ, 5), // XY 평면도용 (BIM XY)
-            spanXY: Math.max(maxX - minX, maxY - minY, 5), // XZ 정면도용 (BIM X × 높이)
-            spanZY: Math.max(maxZ - minZ, maxY - minY, 5), // YZ 측면도용 (BIM Y × 높이)
+            cy: (minY + maxY) / 2,
+            cz: (minZ + maxZ) / 2,
+            spanXY: Math.max(maxX - minX, maxY - minY, 5), // 평면도 (동서 × 남북)
+            spanXZ: Math.max(maxX - minX, maxZ - minZ, 5), // 정면도 (동서 × 높이)
+            spanYZ: Math.max(maxY - minY, maxZ - minZ, 5), // 측면도 (남북 × 높이)
         };
     }, [modelData]);
 
     const { cx, cy, cz } = bounds;
 
-    // 카메라 위치 · 방향 결정
+    // Z-up 카메라 위치 · 방향 결정
     const { pos, up, span } = useMemo(() => {
         const pad = 2.5;
         if (viewMode === 'xy') {
-            // 평면도: 위에서 아래로 — Three.js Y+ 방향에서 바라봄
-            // 화면: X=BIM X(동서), Z=BIM Y(남북)
-            const d = bounds.spanXZ * pad;
-            return { pos: [cx, cy + d, cz], up: [0, 0, -1], span: bounds.spanXZ };
-        } else if (viewMode === 'xz') {
-            // 정면도: Three.js Z+ 방향에서 바라봄
-            // 화면: X=BIM X(동서), Y=BIM Z(높이)
+            // 평면도: Z+ 위에서 아래(-Z)로 바라봄 / 화면: X=동서, Y=남북
             const d = bounds.spanXY * pad;
             return { pos: [cx, cy, cz + d], up: [0, 1, 0], span: bounds.spanXY };
+        } else if (viewMode === 'xz') {
+            // 정면도: Y- 남쪽에서 북(+Y)으로 바라봄 / 화면: X=동서, Z=높이
+            const d = bounds.spanXZ * pad;
+            return { pos: [cx, cy - d, cz], up: [0, 0, 1], span: bounds.spanXZ };
         } else {
-            // 측면도(yz): Three.js X+ 방향에서 바라봄
-            // 화면: Z=BIM Y(남북), Y=BIM Z(높이)
-            const d = bounds.spanZY * pad;
-            return { pos: [cx + d, cy, cz], up: [0, 1, 0], span: bounds.spanZY };
+            // 측면도: X- 서쪽에서 동(+X)으로 바라봄 / 화면: Y=남북, Z=높이
+            const d = bounds.spanYZ * pad;
+            return { pos: [cx - d, cy, cz], up: [0, 0, 1], span: bounds.spanYZ };
         }
     }, [viewMode, bounds, cx, cy, cz]);
 
@@ -1250,10 +1251,10 @@ function GroupMoveGhost({ groupMovePending, onGroupMoveConfirm }) {
                     const sx = Math.max(0.1, Number(el.sizeX) || 1);
                     const sy = Math.max(0.1, Number(el.sizeY) || 1);
                     const sz = Math.max(0.1, Number(el.sizeZ) || 1);
-                    // Three.js: X=dataX, Y=dataZ(height base)+sz/2, Z=dataY(floorY)
+                    // Z-up: X=dataX, Y=dataY, Z=dataZ(높이 base)+sz/2
                     return (
-                        <mesh key={el.elementId} position={[px, pz + sz / 2, py]}>
-                            <boxGeometry args={[sx + 0.05, sz + 0.05, sy + 0.05]} />
+                        <mesh key={el.elementId} position={[px, py, pz + sz / 2]}>
+                            <boxGeometry args={[sx + 0.05, sy + 0.05, sz + 0.05]} />
                             <meshBasicMaterial color="#60a5fa" wireframe transparent opacity={0.8} />
                         </mesh>
                     );
@@ -1337,6 +1338,11 @@ export default function Scene({
     const shiftRef         = useRef(false);
     const ifcMeshGroupRef  = useRef();
 
+    // GLB 로딩 완료 추적 — false이면 BIM 박스를 GLB 로딩 중 대체 표시
+    const [glbLoaded, setGlbLoaded] = useState(false);
+    useEffect(() => { if (glbUrl) setGlbLoaded(false); }, [glbUrl]);
+    const handleGlbLoad = useCallback(() => setGlbLoaded(true), []);
+
     // IFC 다중 선택 트랜스폼용 피벗 객체 (가시성 없는 Object3D, TransformControls의 attach 대상)
     const pivotObj = useMemo(() => new THREE.Object3D(), []);
     const pivotInitialState = useRef(null); // { pos, rot, scale, elements: {id → elementData} }
@@ -1368,10 +1374,10 @@ export default function Scene({
         let sumX = 0, sumY = 0, sumZ = 0, count = 0;
         for (const el of modelData) {
             if (!allSelectedIds.has(el.elementId)) continue;
-            // Three.js: X=posX, Y=posZ+sizeZ/2(높이 중심), Z=posY
+            // Z-up: X=posX, Y=posY, Z=posZ(높이 중심)
             sumX += Number(el.positionX) || 0;
-            sumY += (Number(el.positionZ) || 0) + (Number(el.sizeZ) || 0) / 2;
-            sumZ += Number(el.positionY) || 0;
+            sumY += Number(el.positionY) || 0;
+            sumZ += (Number(el.positionZ) || 0) + (Number(el.sizeZ) || 0) / 2;
             count++;
         }
         if (count > 0) {
@@ -1397,7 +1403,8 @@ export default function Scene({
         const verts = [];
         // 선 꼭짓점: BIM 저장 포맷 [BIM_X, BIM_Y(floor), BIM_Z(height)]
         //            → Three.js 포맷 [X, Z(height), Y(floor)] 로 변환 필요
-        const lineToThree = (p) => p ? [p[0], p[2] ?? 0, p[1] ?? 0] : null;
+        // Z-up: BIM 저장 [X, Y(floor), Z(height)] → Three.js [X, Y, Z] 그대로 사용
+        const lineToThree = (p) => p ? [p[0], p[1] ?? 0, p[2] ?? 0] : null;
         for (const line of lines) {
             const sv = lineToThree(line.start); if (sv) verts.push(sv);
             const ev = lineToThree(line.end);   if (ev) verts.push(ev);
@@ -1415,15 +1422,16 @@ export default function Scene({
             if (!inActiveMode && el.elementId !== selectedId) continue;
             const ex = Number(el.positionX)||0, ey = Number(el.positionY)||0, ez = Number(el.positionZ)||0;
             const esx = (Number(el.sizeX)||1)/2, esy = (Number(el.sizeY)||1)/2, esz = Number(el.sizeZ)||1;
+            // Z-up: [X, Y, Z(높이)]
             for (const dx of [-1,0,1]) for (const dy of [-1,0,1]) {
                 if (dx === 0 && dy === 0) continue;
-                verts.push([ex+dx*esx, ez,      ey+dy*esy]);
-                verts.push([ex+dx*esx, ez+esz,  ey+dy*esy]);
-                verts.push([ex+dx*esx, ez+esz/2, ey+dy*esy]); // 중간 높이 모서리
+                verts.push([ex+dx*esx, ey+dy*esy, ez]);
+                verts.push([ex+dx*esx, ey+dy*esy, ez+esz]);
+                verts.push([ex+dx*esx, ey+dy*esy, ez+esz/2]);
             }
-            verts.push([ex, ez,      ey]);
-            verts.push([ex, ez+esz,  ey]);
-            verts.push([ex, ez+esz/2, ey]);
+            verts.push([ex, ey, ez]);
+            verts.push([ex, ey, ez+esz]);
+            verts.push([ex, ey, ez+esz/2]);
         }
         return verts;
     }, [snapEnabled, pendingElement, lineDrawMode, measureMode, selectedElement, lines, modelData]);
@@ -1436,7 +1444,7 @@ export default function Scene({
         if (prevPresetRef.current === viewPreset.ts) return;
         prevPresetRef.current = viewPreset.ts;
 
-        // 모델 AABB → 중심 + 스팬 계산
+        // 모델 AABB → Z-up 직접 매핑: posX→X, posY→Y, posZ→Z(높이)
         let cx = 0, cy = 0, cz = 0, span = 20;
         if (modelData.length > 0) {
             let minX = Infinity, maxX = -Infinity;
@@ -1446,8 +1454,8 @@ export default function Scene({
                 const px = Number(el.positionX)||0, py = Number(el.positionY)||0, pz = Number(el.positionZ)||0;
                 const hx = (Number(el.sizeX)||0.1)/2, hy = (Number(el.sizeY)||0.1)/2, sz = Number(el.sizeZ)||0.1;
                 if (px-hx < minX) minX = px-hx; if (px+hx > maxX) maxX = px+hx;
-                if (pz    < minY) minY = pz;      if (pz+sz  > maxY) maxY = pz+sz;  // Three.js Y = data Z
-                if (py-hy < minZ) minZ = py-hy; if (py+hy > maxZ) maxZ = py+hy;     // Three.js Z = data Y
+                if (py-hy < minY) minY = py-hy; if (py+hy > maxY) maxY = py+hy;
+                if (pz    < minZ) minZ = pz;    if (pz+sz  > maxZ) maxZ = pz+sz;
             }
             cx = (minX+maxX)/2; cy = (minY+maxY)/2; cz = (minZ+maxZ)/2;
             span = Math.max(maxX-minX, maxY-minY, maxZ-minZ, 1);
@@ -1455,16 +1463,15 @@ export default function Scene({
         const d = span * 1.6;
         const center = new THREE.Vector3(cx, cy, cz);
 
-        // Three.js 좌표계: Y=위(높이), X=동, Z=남(IFC Y)
-        // BIM 표준 뷰 (IFC Z-up 기준으로 레이블)
+        // Z-up 표준 뷰: X=동서, Y=남북, Z=높이
         const positions = {
-            iso:   new THREE.Vector3(cx+d*0.65, cy+d*0.55, cz+d*0.65), // 등각
-            top:   new THREE.Vector3(cx, cy+d,  cz),                     // 평면도 (위에서 아래)
-            bottom:new THREE.Vector3(cx, cy-d,  cz),                     // 하면도
-            front: new THREE.Vector3(cx, cy,    cz+d),                   // 정면도
-            back:  new THREE.Vector3(cx, cy,    cz-d),                   // 배면도
-            right: new THREE.Vector3(cx+d, cy,  cz),                     // 우측면도
-            left:  new THREE.Vector3(cx-d, cy,  cz),                     // 좌측면도
+            iso:   new THREE.Vector3(cx+d*0.65, cy-d*0.65, cz+d*0.55), // 남동 위 등각
+            top:   new THREE.Vector3(cx,        cy,         cz+d),       // 평면도 (Z위 → 아래)
+            bottom:new THREE.Vector3(cx,        cy,         cz-d),       // 하면도
+            front: new THREE.Vector3(cx,        cy-d,       cz),         // 정면도 (남쪽 → 북)
+            back:  new THREE.Vector3(cx,        cy+d,       cz),         // 배면도
+            right: new THREE.Vector3(cx+d,      cy,         cz),         // 우측면도
+            left:  new THREE.Vector3(cx-d,      cy,         cz),         // 좌측면도
         };
 
         // Named view (커스텀 저장 뷰)
@@ -1827,17 +1834,34 @@ export default function Scene({
             })()}
 
             {/* BIM 부재 렌더링
-                우선순위: GLB(서버변환) > WASM ifcMeshes(구방식) > BimElement 박스 */}
+                우선순위: GLB(서버변환) > WASM ifcMeshes(구방식) > BimElement 박스
+                GLB 로딩 중(glbLoaded=false)에는 BIM 박스를 대체 표시하여 공백 방지 */}
             {glbUrl ? (
-                <GltfBimViewerSuspense
-                    ref={ifcMeshGroupRef}
-                    glbUrl={glbUrl}
-                    modelData={modelData}
-                    onElementSelect={(measureMode || lineDrawMode === 'click') ? null : onElementSelect}
-                    selectedElement={selectedElement}
-                    selectedElements={selectedElements}
-                    onMeshMount={null}
-                />
+                <>
+                    <GltfBimViewerSuspense
+                        ref={ifcMeshGroupRef}
+                        glbUrl={glbUrl}
+                        modelData={modelData}
+                        onElementSelect={(measureMode || lineDrawMode === 'click') ? null : onElementSelect}
+                        selectedElement={selectedElement}
+                        selectedElements={selectedElements}
+                        onMeshMount={null}
+                        onLoad={handleGlbLoad}
+                    />
+                    {!glbLoaded && modelData.map(element => (
+                        <BimElement
+                            key={element.elementId}
+                            element={{
+                                ...element,
+                                selected:      selectedElement?.data?.elementId === element.elementId,
+                                multiSelected: selectedElements?.has(element.elementId) &&
+                                               selectedElement?.data?.elementId !== element.elementId,
+                            }}
+                            onElementSelect={onElementSelect}
+                            isPlacementMode={!!pendingElement || measureMode || lineDrawMode === 'click'}
+                        />
+                    ))}
+                </>
             ) : ifcMeshes && ifcMeshes.length > 0 ? (
                 <IFCMeshGroup
                     ref={ifcMeshGroupRef}
@@ -2002,7 +2026,7 @@ export default function Scene({
                         envPreset?.id==='night' ? '#1a2040' : '#334155',
                         envPreset?.id==='night' ? '#0d1020' : '#1e293b',
                     ]}
-                    position={[0,-0.01,0]}
+                    position={[0, 0, -0.01]}
                     rotation={[Math.PI / 2, 0, 0]}
                 />
             )}

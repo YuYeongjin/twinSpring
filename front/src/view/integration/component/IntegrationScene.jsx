@@ -33,7 +33,7 @@ function LiveCoordLabel({ groupRef, surveyOriginRef, labelY }) {
   });
 
   return (
-    <Html center distanceFactor={30} position={[0, labelY, 0]}>
+    <Html center distanceFactor={30} position={[0, 0, labelY]}>
       <div ref={divRef} style={{
         background: '#12100add',
         color: '#facc15',
@@ -64,9 +64,10 @@ const ZONE_COLOR  = { excavation: '#ef4444', restricted: '#f97316', dump_site: '
 // ── 헬퍼 ─────────────────────────────────────────────────────────
 function inZone(pos, zone) {
   if (!zone.active) return false;
-  const [cx,,cz] = zone.center;
-  const [hx,,hz] = zone.halfSize;
-  return Math.abs(pos[0] - cx) < hx && Math.abs(pos[2] - cz) < hz;
+  const [cx, cy] = zone.center;    // Z-up: cx=east, cy=north
+  const [hx, hy] = zone.halfSize;  // Z-up: hx=east half, hy=north half
+  // pos는 Y-up 포맷 [east, 0, north] — pos[0]=east, pos[2]=north
+  return Math.abs(pos[0] - cx) < hx && Math.abs(pos[2] - cy) < hy;
 }
 
 function throttledCall(map, key, ms, fn) {
@@ -103,10 +104,7 @@ function TerrainLayer() {
   );
 }
 
-// BIM Z-up DB → Three.js Y-up 좌표 변환
-// DB: positionX=East, positionY=North, positionZ=Height(Z-up)
-// 렌더: localPosition=[posX, posZ+sizeZ/2, posY] — posZ를 Y(up)로, posY를 Z(depth)로 사용
-// Z-up DB는 이미 positionZ=Height이므로 교환 불필요 — 그대로 반환
+// Z-up 직접 매핑: posX→X, posY→Y, posZ→Z(높이) — 변환 없음
 function toIntegrationCoords(el) {
   return el;
 }
@@ -237,28 +235,28 @@ function getFloorElemProgress(progressMap, bimId, floorIdx, elementType, fallbac
 }
 
 // ── 아래→위 공정율 채우기 렌더러 ──────────────────────────────────
-// localPosition: Three.js 로컬 좌표 [x, y, z] (그룹 내 위치, y = 중심)
-// size:          Three.js [width, height, depth]
+// localPosition: Three.js Z-up 로컬 좌표 [x, y, z] (그룹 내 위치, z = 높이 중심)
+// size:          Three.js Z-up [width, depth, height]
 // progress:      0-100 (WBS 공정율)
-// offsetY:       소속 <group>의 world Y 오프셋 (clip plane은 world 좌표계)
+// offsetZ:       소속 <group>의 world Z 오프셋 (clip plane은 world 좌표계)
 const NEON_COLOR = '#aaff44';
 
-function BimProgressFill({ localPosition, size, elementType, progress, offsetY = 0, isSelected = false }) {
-  const worldYBottom = localPosition[1] - size[1] / 2 + offsetY;
-  const worldHeight  = size[1];
+function BimProgressFill({ localPosition, size, elementType, progress, offsetZ = 0, isSelected = false }) {
+  const worldZBottom = localPosition[2] - size[2] / 2 + offsetZ;
+  const worldHeight  = size[2];
 
   const planeRef    = useRef(null);
   const currentPRef = useRef(progress);
   const targetPRef  = useRef(progress);
-  const wYBRef      = useRef(worldYBottom);
+  const wYBRef      = useRef(worldZBottom);
 
   if (!planeRef.current) {
-    const initLevel = worldYBottom + (progress / 100) * worldHeight;
-    planeRef.current = new THREE.Plane(new THREE.Vector3(0, -1, 0), initLevel);
+    const initLevel = worldZBottom + (progress / 100) * worldHeight;
+    planeRef.current = new THREE.Plane(new THREE.Vector3(0, 0, -1), initLevel);
   }
 
   useEffect(() => { targetPRef.current  = progress;     }, [progress]);
-  useEffect(() => { wYBRef.current      = worldYBottom; }, [worldYBottom]);
+  useEffect(() => { wYBRef.current      = worldZBottom; }, [worldZBottom]);
 
   useFrame((_, delta) => {
     const diff = targetPRef.current - currentPRef.current;
@@ -328,8 +326,8 @@ function StructureSelectionBox({ elements }) {
       const px=Number(cv.positionX)||0, py=Number(cv.positionY)||0, pz=Number(cv.positionZ)||0;
       const sx=Math.abs(Number(cv.sizeX))||0.1, sy=Math.abs(Number(cv.sizeY))||0.1, sz=Math.abs(Number(cv.sizeZ))||0.1;
       mnX=Math.min(mnX,px-sx/2); mxX=Math.max(mxX,px+sx/2);
-      mnY=Math.min(mnY,pz);       mxY=Math.max(mxY,pz+sz);
-      mnZ=Math.min(mnZ,py-sy/2); mxZ=Math.max(mxZ,py+sy/2);
+      mnY=Math.min(mnY,py-sy/2); mxY=Math.max(mxY,py+sy/2);  // Z-up: Y=north 범위
+      mnZ=Math.min(mnZ,pz);       mxZ=Math.max(mxZ,pz+sz);   // Z-up: Z=height 범위
     });
     if (!isFinite(mnX)) return null;
     return {
@@ -431,7 +429,7 @@ function StructuresLayer() {
         const elems = s.elements;
         if (!elems || elems.length === 0) return null;
         const offset  = s.offset || [0, 0, 0];
-        const offsetY = offset[1];
+        const offsetZ = offset[2];  // Z-up: offset[2]=height 오프셋 → clip plane 기준
         const isBim   = s.type === 'bim';
         const isStructSelected = selectedStructId === s.id;
 
@@ -459,7 +457,7 @@ function StructuresLayer() {
         return (
           <group key={s.id} position={offset}>
             {/* 구조물 클릭 레이블 */}
-            <Html center position={[0, 0.4, 0]} distanceFactor={40}>
+            <Html center position={[0, 0, 0.4]} distanceFactor={40}>
               <div
                 onClick={() => setSelectedStructId(isStructSelected ? null : s.id)}
                 style={{
@@ -554,7 +552,7 @@ function StructuresLayer() {
                   <Html
                     key={`fl_${fi}`}
                     center
-                    position={[-1.5, worldZ + 0.5, 0]}
+                    position={[-1.5, 0, worldZ + 0.5]}
                     distanceFactor={35}
                   >
                     <div style={{
@@ -604,11 +602,11 @@ function StructuresLayer() {
                 return (
                   <BimProgressFill
                     key={el.elementId}
-                    localPosition={[pX, pZ + sZ / 2, pY]}
-                    size={[sX, sZ, sY]}
+                    localPosition={[pX, pY, pZ + sZ / 2]}
+                    size={[sX, sY, sZ]}
                     elementType={el.elementType}
                     progress={elemProgress}
-                    offsetY={offsetY}
+                    offsetZ={offsetZ}
                     isSelected={isStructSelected}
                   />
                 );
@@ -651,11 +649,11 @@ function LinkedBimElements() {
         return (
           <BimProgressFill
             key={el.elementId}
-            localPosition={[el.positionX || 0, pZ + sZ / 2, el.positionY || 0]}
-            size={[el.sizeX || 1, sZ, el.sizeY || 1]}
+            localPosition={[el.positionX || 0, el.positionY || 0, pZ + sZ / 2]}
+            size={[el.sizeX || 1, el.sizeY || 1, sZ]}
             elementType={el.elementType}
             progress={elemProgress}
-            offsetY={0}
+            offsetZ={0}
           />
         );
       })}
@@ -694,7 +692,7 @@ function DangerZoneMarker({ zone, isSelected, onSelect, surveyOrigin }) {
         <edgesGeometry args={[boxGeo]} />
         <lineBasicMaterial color={isSelected ? '#ffffff' : color} transparent opacity={isSelected ? 1 : 0.8} />
       </lineSegments>
-      <Html center position={[0, hy + 0.6, 0]} distanceFactor={35}>
+      <Html center position={[0, 0, hz + 0.6]} distanceFactor={35}>
         <div style={{
           background: '#1a0000cc', color: isSelected ? '#ffffff' : color,
           padding: '2px 8px', borderRadius: 4, fontSize: 10,
@@ -706,7 +704,7 @@ function DangerZoneMarker({ zone, isSelected, onSelect, surveyOrigin }) {
         </div>
       </Html>
       {isSelected && (
-        <Html center position={[0, hy + 1.5, 0]} distanceFactor={35}>
+        <Html center position={[0, 0, hz + 1.5]} distanceFactor={35}>
           <div style={{
             background: '#12100add', color: '#facc15',
             padding: '2px 8px', borderRadius: 3, fontSize: 8, fontWeight: 700,
@@ -731,8 +729,11 @@ const WorkerItem = memo(function WorkerItem({ worker, statusKey, statusLabel, wo
 
   useLayoutEffect(() => {
     workerMeshes.current[worker.id] = groupRef.current;
-    if (groupRef.current)
-      groupRef.current.position.set(...(worker.initialPos || [0, 0, 0]));
+    if (groupRef.current) {
+      const ip = worker.initialPos || [0, 0, 0];
+      // Z-up: Y-up 포맷 [east, 0, north] → Three.js [east, north, 0]
+      groupRef.current.position.set(ip[0], ip[2], 0);
+    }
     return () => { workerMeshes.current[worker.id] = null; };
   }, []); // eslint-disable-line
 
@@ -743,54 +744,57 @@ const WorkerItem = memo(function WorkerItem({ worker, statusKey, statusLabel, wo
 
   return (
     <group ref={groupRef}>
-      {/* 투명 히트박스 (전체 클릭 수신) */}
-      <mesh
-        position={[0, 1.1, 0]}
-        onClick={e => { e.stopPropagation(); onSelect(worker.id); }}
-        onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-        onPointerOut={() => { document.body.style.cursor = 'auto'; }}
-      >
-        <cylinderGeometry args={[0.45, 0.45, 2.4, 8]} />
-        <meshStandardMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-
-      {/* 다리 + 하체 (캡슐) */}
-      <mesh position={[0, 0.62, 0]} castShadow>
-        <capsuleGeometry args={[0.27, 0.7, 4, 8]} />
-        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={emissiveI} />
-      </mesh>
-
-      {/* 상체 (박스 — 어깨 표현) */}
-      <mesh position={[0, 1.2, 0]} castShadow>
-        <boxGeometry args={[0.56, 0.46, 0.32]} />
-        <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={emissiveI} />
-      </mesh>
-
-      {/* 머리 (구) */}
-      <mesh position={[0, 1.6, 0]} castShadow>
-        <sphereGeometry args={[0.2, 10, 10]} />
-        <meshStandardMaterial color="#f5c89a" />
-      </mesh>
-
-      {/* 헬멧 (챙 + 돔) */}
-      <mesh position={[0, 1.77, 0]} castShadow>
-        <cylinderGeometry args={[0.1, 0.24, 0.14, 10]} />
-        <meshStandardMaterial color={hatColor} emissive={hatColor} emissiveIntensity={0.15} />
-      </mesh>
-      <mesh position={[0, 1.72, 0]} castShadow>
-        <cylinderGeometry args={[0.24, 0.26, 0.06, 10]} />
-        <meshStandardMaterial color={hatColor} emissive={hatColor} emissiveIntensity={0.1} />
-      </mesh>
-
-      {/* 선택 와이어프레임 */}
-      {isSelected && (
-        <mesh position={[0, 1.0, 0]}>
-          <cylinderGeometry args={[0.52, 0.52, 2.2, 10]} />
-          <meshStandardMaterial color={color} transparent opacity={0.15} wireframe />
+      {/* Y-up 로컬 좌표 → Z-up 씬 변환 래퍼 */}
+      <group rotation={[Math.PI / 2, 0, 0]}>
+        {/* 투명 히트박스 (전체 클릭 수신) */}
+        <mesh
+          position={[0, 1.1, 0]}
+          onClick={e => { e.stopPropagation(); onSelect(worker.id); }}
+          onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+          onPointerOut={() => { document.body.style.cursor = 'auto'; }}
+        >
+          <cylinderGeometry args={[0.45, 0.45, 2.4, 8]} />
+          <meshStandardMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
-      )}
 
-      <Html center distanceFactor={30} position={[0, 2.15, 0]}>
+        {/* 다리 + 하체 (캡슐) */}
+        <mesh position={[0, 0.62, 0]} castShadow>
+          <capsuleGeometry args={[0.27, 0.7, 4, 8]} />
+          <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={emissiveI} />
+        </mesh>
+
+        {/* 상체 (박스 — 어깨 표현) */}
+        <mesh position={[0, 1.2, 0]} castShadow>
+          <boxGeometry args={[0.56, 0.46, 0.32]} />
+          <meshStandardMaterial color={color} emissive={emissive} emissiveIntensity={emissiveI} />
+        </mesh>
+
+        {/* 머리 (구) */}
+        <mesh position={[0, 1.6, 0]} castShadow>
+          <sphereGeometry args={[0.2, 10, 10]} />
+          <meshStandardMaterial color="#f5c89a" />
+        </mesh>
+
+        {/* 헬멧 (챙 + 돔) */}
+        <mesh position={[0, 1.77, 0]} castShadow>
+          <cylinderGeometry args={[0.1, 0.24, 0.14, 10]} />
+          <meshStandardMaterial color={hatColor} emissive={hatColor} emissiveIntensity={0.15} />
+        </mesh>
+        <mesh position={[0, 1.72, 0]} castShadow>
+          <cylinderGeometry args={[0.24, 0.26, 0.06, 10]} />
+          <meshStandardMaterial color={hatColor} emissive={hatColor} emissiveIntensity={0.1} />
+        </mesh>
+
+        {/* 선택 와이어프레임 */}
+        {isSelected && (
+          <mesh position={[0, 1.0, 0]}>
+            <cylinderGeometry args={[0.52, 0.52, 2.2, 10]} />
+            <meshStandardMaterial color={color} transparent opacity={0.15} wireframe />
+          </mesh>
+        )}
+      </group>
+
+      <Html center distanceFactor={30} position={[0, 0, 2.15]}>
         <div style={{
           background: '#0d1b2acc', color,
           padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 700,
@@ -1046,7 +1050,8 @@ const EquipItem = memo(function EquipItem({ equip, isSelected, modeLabel, equipS
     equipMeshes.current[equip.id] = groupRef.current;
     if (groupRef.current) {
       const pos = equipStateRef.current[equip.id]?.pos || equip.initialPos || [0, 0, 0];
-      groupRef.current.position.set(...pos);
+      // Z-up: Y-up 포맷 [east, 0, north] → Three.js [east, north, 0]
+      groupRef.current.position.set(pos[0], pos[2], 0);
     }
     return () => { equipMeshes.current[equip.id] = null; };
   }, []); // eslint-disable-line
@@ -1055,42 +1060,44 @@ const EquipItem = memo(function EquipItem({ equip, isSelected, modeLabel, equipS
   const color  = EQUIP_COLOR[equip.type] || '#888888';
   const em     = isSelected ? '#ffffff' : '#000000';
   const emI    = isSelected ? 0.18 : 0;
-  // 레이블 높이: 크레인은 타워 꼭대기 + 여유
   const labelY = equip.type === 'crane' ? bh + 1.4 : bh + 1.1;
 
   const shapeProps = { bw, bh, bd, color, em, emI };
 
   return (
     <group ref={groupRef}>
-      {/* 투명 히트박스 */}
-      <mesh
-        position={[0, bh / 2, 0]}
-        onClick={e => { e.stopPropagation(); onSelect(equip.id); }}
-        onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
-        onPointerOut={() => { document.body.style.cursor = 'auto'; }}
-      >
-        <boxGeometry args={[Math.max(bw, 1.4) + 0.5, bh + 0.6, Math.max(bd, 1.4) + 0.5]} />
-        <meshStandardMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-
-      {/* 타입별 형상 */}
-      {equip.type === 'excavator' && <ExcavatorShape {...shapeProps} />}
-      {equip.type === 'dump'      && <DumpTruckShape {...shapeProps} />}
-      {equip.type === 'crane'     && <CraneShape     {...shapeProps} />}
-      {equip.type === 'vehicle'   && <VehicleShape   {...shapeProps} />}
-      {equip.type !== 'excavator' && equip.type !== 'dump' &&
-       equip.type !== 'crane'     && equip.type !== 'vehicle' &&
-        <GenericEquipShape {...shapeProps} />}
-
-      {/* 선택 바운딩 박스 */}
-      {isSelected && (
-        <mesh position={[0, bh / 2, 0]}>
-          <boxGeometry args={[bw + 0.5, bh + 0.8, bd + 0.5]} />
-          <meshStandardMaterial color="#60a5fa" transparent opacity={0.16} wireframe />
+      {/* Y-up 로컬 좌표 → Z-up 씬 변환 래퍼 */}
+      <group rotation={[Math.PI / 2, 0, 0]}>
+        {/* 투명 히트박스 */}
+        <mesh
+          position={[0, bh / 2, 0]}
+          onClick={e => { e.stopPropagation(); onSelect(equip.id); }}
+          onPointerOver={e => { e.stopPropagation(); document.body.style.cursor = 'pointer'; }}
+          onPointerOut={() => { document.body.style.cursor = 'auto'; }}
+        >
+          <boxGeometry args={[Math.max(bw, 1.4) + 0.5, bh + 0.6, Math.max(bd, 1.4) + 0.5]} />
+          <meshStandardMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
-      )}
 
-      <Html center distanceFactor={30} position={[0, labelY, 0]}>
+        {/* 타입별 형상 */}
+        {equip.type === 'excavator' && <ExcavatorShape {...shapeProps} />}
+        {equip.type === 'dump'      && <DumpTruckShape {...shapeProps} />}
+        {equip.type === 'crane'     && <CraneShape     {...shapeProps} />}
+        {equip.type === 'vehicle'   && <VehicleShape   {...shapeProps} />}
+        {equip.type !== 'excavator' && equip.type !== 'dump' &&
+         equip.type !== 'crane'     && equip.type !== 'vehicle' &&
+          <GenericEquipShape {...shapeProps} />}
+
+        {/* 선택 바운딩 박스 */}
+        {isSelected && (
+          <mesh position={[0, bh / 2, 0]}>
+            <boxGeometry args={[bw + 0.5, bh + 0.8, bd + 0.5]} />
+            <meshStandardMaterial color="#60a5fa" transparent opacity={0.16} wireframe />
+          </mesh>
+        )}
+      </group>
+
+      <Html center distanceFactor={30} position={[0, 0, labelY]}>
         <div style={{
           background: '#0d1b2acc', color,
           padding: '1px 6px', borderRadius: 3, fontSize: 9, fontWeight: 700,
@@ -1133,9 +1140,9 @@ function findElementCentroid(struct, elementType) {
   const offset = struct.offset || [0, 0, 0];
   const scale  = getStructureScale(struct);
   const cx = els.reduce((s, el) => s + (Number(el.positionX) || 0), 0) / els.length;
-  // Z-up DB: positionY=North(수평) → Three.js Z(depth)
+  // Z-up DB: positionY=North(Three.js Y=수평 depth) → Y-up 포맷 [east, 0, north]의 [2]에 저장
   const cy = els.reduce((s, el) => s + (Number(el.positionY) || 0), 0) / els.length;
-  return [offset[0] + cx * scale, 0, offset[2] + cy * scale];
+  return [offset[0] + cx * scale, 0, offset[1] + cy * scale];
 }
 
 // ── 덤프트럭 작업 사이클 헬퍼 ────────────────────────────────────────
@@ -1245,7 +1252,7 @@ function SimulationManager({ running }) {
           st.routeIdx = 0;
           st.t        = 0;
           if (equipMeshes.current[e.id])
-            equipMeshes.current[e.id].position.set(...startPos);
+            equipMeshes.current[e.id].position.set(startPos[0], startPos[2], 0);
           // 덤프 사이클 상태 클리어 (외부에서 경로 변경됨 → 사이클 재초기화)
           if (e.type === 'dump') { delete dumpWorkRef.current[e.id]; delete dumpPhysRef.current[e.id]; }
         }
@@ -1270,7 +1277,7 @@ function SimulationManager({ running }) {
         if (!lp || lp[0] !== newPos[0] || lp[1] !== newPos[1] || lp[2] !== newPos[2]) {
           st.pos = [...newPos];
           st._lastInitialPos = newPos;
-          workerMeshes.current[w.id]?.position.set(...newPos);
+          workerMeshes.current[w.id]?.position.set(newPos[0], newPos[2], 0);
         }
       }
     });
@@ -1388,7 +1395,7 @@ function SimulationManager({ running }) {
       const nz  = b.minZ + cD * row + (0.2 + Math.random() * 0.6) * cD;
       ws.pos = [nx, 0, nz];
       ws.dir = null;
-      workerMeshes.current[w.id]?.position.set(nx, 0, nz);
+      workerMeshes.current[w.id]?.position.set(nx, nz, 0);
     });
   }, [isAutoRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1426,7 +1433,7 @@ function SimulationManager({ running }) {
 
       if (e.mode === 'gps' && e.gpsPos) {
         st.pos = [e.gpsPos[0], e.gpsPos[1] || 0, e.gpsPos[2]];
-        equipMeshes.current[e.id]?.position.set(...st.pos);
+        equipMeshes.current[e.id]?.position.set(st.pos[0], st.pos[2], 0);
         return;
       }
       if (e.mode !== 'auto') return;
@@ -1474,7 +1481,7 @@ function SimulationManager({ running }) {
         f2[1] || 0,
         f2[2] + (t2[2] - f2[2]) * st.t,
       ];
-      equipMeshes.current[e.id]?.position.set(...st.pos);
+      equipMeshes.current[e.id]?.position.set(st.pos[0], st.pos[2], 0);
     });
 
     // ── 장비 충돌 차단: 겹치면 이동 취소 (밀어내기 X, 진입 금지) ────
@@ -1502,7 +1509,7 @@ function SimulationManager({ running }) {
           sa.pos      = sa.prevPos;
           sa.t        = sa.prevT;
           sa.routeIdx = sa.prevRouteIdx;
-          equipMeshes.current[ea.id]?.position.set(...sa.pos);
+          equipMeshes.current[ea.id]?.position.set(sa.pos[0], sa.pos[2], 0);
           break;
         }
       }
@@ -1618,7 +1625,7 @@ function SimulationManager({ running }) {
       // GPS 위치가 있으면 즉시 반영하고 랜덤워크 스킵
       if (w.gpsPos) {
         ws.pos = [w.gpsPos[0], w.gpsPos[1] || 0, w.gpsPos[2]];
-        workerMeshes.current[w.id]?.position.set(...ws.pos);
+        workerMeshes.current[w.id]?.position.set(ws.pos[0], ws.pos[2], 0);
         return;
       }
 
@@ -1631,7 +1638,7 @@ function SimulationManager({ running }) {
           // 목적지까지 이동
           const spd = 1.8 * delta;
           ws.pos = [ws.pos[0] + (dx/dist)*spd, 0, ws.pos[2] + (dz/dist)*spd];
-          workerMeshes.current[w.id]?.position.set(...ws.pos);
+          workerMeshes.current[w.id]?.position.set(ws.pos[0], ws.pos[2], 0);
           return;
         }
         // 목적지 도달 → 주변 반경 2m 내 랜덤워크
@@ -1645,7 +1652,7 @@ function SimulationManager({ running }) {
           ws.dir = [ldx/ll, ldz/ll]; ws.dirTimer = 0;
         }
         ws.pos = [ws.pos[0] + ws.dir[0]*0.9*delta, 0, ws.pos[2] + ws.dir[1]*0.9*delta];
-        workerMeshes.current[w.id]?.position.set(...ws.pos);
+        workerMeshes.current[w.id]?.position.set(ws.pos[0], ws.pos[2], 0);
         return;
       }
 
@@ -1678,7 +1685,7 @@ function SimulationManager({ running }) {
         0,
         Math.max(pa.minZ, Math.min(pa.maxZ, ws.pos[2] + ws.dir[1] * 1.2 * delta)),
       ];
-      workerMeshes.current[w.id]?.position.set(...ws.pos);
+      workerMeshes.current[w.id]?.position.set(ws.pos[0], ws.pos[2], 0);
     });
 
     // 충돌·구역 감지 — workerStatusesRef 로 비교 (stale closure 없음)
@@ -1829,21 +1836,21 @@ function SurveyOriginMarker({ origin }) {
   return (
     <group position={[0, 0, 0]}>
       {/* 기준점 구 */}
-      <mesh position={[0, 0.18, 0]}>
+      <mesh position={[0, 0, 0.18]}>
         <sphereGeometry args={[0.18, 10, 10]} />
         <meshStandardMaterial color="#facc15" emissive="#facc15" emissiveIntensity={0.7} />
       </mesh>
-      {/* X축 막대 (빨강) */}
-      <mesh position={[1.2, 0.05, 0]}>
+      {/* X축 막대 (빨강) — Z-up: X=동서 */}
+      <mesh position={[1.2, 0, 0.05]}>
         <boxGeometry args={[2.4, 0.05, 0.05]} />
         <meshStandardMaterial color="#ef4444" />
       </mesh>
-      {/* Z축 막대 (파랑) */}
-      <mesh position={[0, 0.05, 1.2]}>
-        <boxGeometry args={[0.05, 0.05, 2.4]} />
+      {/* Y축 막대 (파랑) — Z-up: Y=남북 */}
+      <mesh position={[0, 1.2, 0.05]}>
+        <boxGeometry args={[0.05, 2.4, 0.05]} />
         <meshStandardMaterial color="#3b82f6" />
       </mesh>
-      <Html center distanceFactor={32} position={[0, 0.9, 0]}>
+      <Html center distanceFactor={32} position={[0, 0, 0.9]}>
         <div style={{
           background: '#1a1500dd', color: '#facc15',
           padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 700,
@@ -1869,48 +1876,48 @@ function CameraMarkers() {
     <>
       {cameras.filter(c => c.active).map(cam => {
         const x = Number(cam.worldX) || 0;
-        const y = Number(cam.worldY) || 6;
-        const z = Number(cam.worldZ) || 0;
+        const y = Number(cam.worldY) || 6;  // Z-up: worldY=height
+        const z = Number(cam.worldZ) || 0;  // Z-up: worldZ=north(Three.js Y)
         const yawRad = ((Number(cam.yaw) || 0) * Math.PI) / 180;
         const fovH   = Number(cam.fovH) || 90;
-        const range  = 15; // FOV 가이드 선 길이 (m)
+        const range  = 15;
         const halfFov = (fovH / 2) * Math.PI / 180;
 
-        // FOV 양쪽 가이드 선
+        // FOV 양쪽 가이드 선 — Z-up: 수평은 XY 평면
         const lx = x + Math.sin(yawRad - halfFov) * range;
-        const lz = z + Math.cos(yawRad - halfFov) * range;
+        const ly = z + Math.cos(yawRad - halfFov) * range;
         const rx = x + Math.sin(yawRad + halfFov) * range;
-        const rz = z + Math.cos(yawRad + halfFov) * range;
+        const ry = z + Math.cos(yawRad + halfFov) * range;
 
-        const lineGeo = (x1, z1, x2, z2) => {
-          const pts = [new THREE.Vector3(x1, y, z1), new THREE.Vector3(x2, y, z2)];
+        const lineGeo = (x1, y1, x2, y2) => {
+          const pts = [new THREE.Vector3(x1, y1, y), new THREE.Vector3(x2, y2, y)];
           return new THREE.BufferGeometry().setFromPoints(pts);
         };
 
         return (
           <group key={cam.cameraId}>
-            {/* 카메라 본체 (작은 박스) */}
-            <mesh position={[x, y, z]}>
+            {/* 카메라 본체 — Z-up: [east, north, height] */}
+            <mesh position={[x, z, y]}>
               <boxGeometry args={[0.4, 0.25, 0.25]} />
               <meshStandardMaterial color="#60a5fa" emissive="#1e40af" emissiveIntensity={0.5} />
             </mesh>
-            {/* 마운트 기둥 */}
-            <mesh position={[x, y / 2, z]}>
+            {/* 마운트 기둥 — Z-up: height=Y, 기둥은 Z축 방향 */}
+            <mesh position={[x, z, y / 2]} rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.05, 0.05, y, 6]} />
               <meshStandardMaterial color="#374151" />
             </mesh>
             {/* FOV 가이드 선 */}
-            <line geometry={lineGeo(x, z, lx, lz)}>
+            <line geometry={lineGeo(x, z, lx, ly)}>
               <lineBasicMaterial color="#3b82f6" transparent opacity={0.35} />
             </line>
-            <line geometry={lineGeo(x, z, rx, rz)}>
+            <line geometry={lineGeo(x, z, rx, ry)}>
               <lineBasicMaterial color="#3b82f6" transparent opacity={0.35} />
             </line>
-            <line geometry={lineGeo(lx, lz, rx, rz)}>
+            <line geometry={lineGeo(lx, ly, rx, ry)}>
               <lineBasicMaterial color="#3b82f6" transparent opacity={0.20} />
             </line>
             {/* 레이블 */}
-            <Html center distanceFactor={30} position={[x, y + 0.6, z]}>
+            <Html center distanceFactor={30} position={[x, z, y + 0.6]}>
               <div style={{
                 background: '#060f1add', color: '#60a5fa', fontSize: 8,
                 padding: '1px 5px', borderRadius: 3, border: '1px solid #1e3a5f',
@@ -2018,7 +2025,7 @@ export default function IntegrationScene() {
   return (
     <Canvas
       shadows
-      camera={{ position: [30, 25, 30], fov: 50 }}
+      camera={{ position: [30, -30, 25], up: [0, 0, 1], fov: 50 }}
       style={{ background: '#060f18', width: '100%', height: '100%' }}
       onCreated={({ gl }) => { gl.localClippingEnabled = true; }}
     >
