@@ -2498,7 +2498,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     <Canvas
                                         eventSource={mainViewRef}
                                         className="!absolute inset-0 rounded-xl pointer-events-none z-0"
-                                        camera={{ position: [15, 12, 15], up: [0, 0, 1], fov: 55 }}
+                                        camera={{ position: [15, -15, 12], up: [0, 0, 1], fov: 55 }}
                                         shadows
                                         onPointerMissed={() => {
                                             if (!isSelectMode) {
