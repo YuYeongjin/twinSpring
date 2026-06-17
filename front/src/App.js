@@ -61,16 +61,18 @@ function OrientationLockOverlay() {
 
 // ── IFC 임포트 시 레이어 자동 생성 ─────────────────────────────
 const IFC_LAYER_LABEL = {
-  IfcColumn: '기둥공사', IfcBeam: '보공사',   IfcWall:   '벽체공사',
-  IfcSlab:   '슬래브 공사', IfcPier: '교각공사', IfcMember: '부재공사',
-  IfcWindow: '창호공사', IfcDoor: '문공사',  IfcStair:  '계단공사', IfcRoof: '지붕공사',
+  IfcColumn:     '기둥공사',    IfcBeam:   '보공사',      IfcWall:      '벽체공사',
+  IfcSlab:       '슬래브 공사', IfcPier:   '교각공사',    IfcMember:    '부재공사',
+  IfcWindow:     '창호공사',    IfcDoor:   '문공사',      IfcStair:     '계단공사',
+  IfcRoof:       '지붕공사',    IfcFoundation: '기초공사',
 };
 const IFC_LAYER_COLOR = {
-  IfcColumn: '#3b82f6', IfcBeam:   '#22c55e', IfcWall:   '#64748b',
-  IfcSlab:   '#f59e0b', IfcPier:   '#ec4899', IfcMember: '#84cc16',
-  IfcWindow: '#06b6d4', IfcDoor:   '#8b5cf6', IfcStair:  '#f97316', IfcRoof: '#6366f1',
+  IfcColumn: '#3b82f6', IfcBeam:       '#22c55e', IfcWall:   '#64748b',
+  IfcSlab:   '#f59e0b', IfcPier:       '#ec4899', IfcMember: '#84cc16',
+  IfcWindow: '#06b6d4', IfcDoor:       '#8b5cf6', IfcStair:  '#f97316',
+  IfcRoof:   '#6366f1', IfcFoundation: '#92400e',
 };
-const IFC_TYPE_ORDER = ['IfcColumn','IfcBeam','IfcWall','IfcSlab','IfcPier','IfcMember','IfcWindow','IfcDoor','IfcStair','IfcRoof'];
+const IFC_TYPE_ORDER = ['IfcColumn','IfcBeam','IfcFoundation','IfcSlab','IfcWall','IfcPier','IfcMember','IfcWindow','IfcDoor','IfcStair','IfcRoof'];
 
 function storeyRank(name) {
   if (!name || name === '(층 미지정)') return 9999;

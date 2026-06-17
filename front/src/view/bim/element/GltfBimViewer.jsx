@@ -193,6 +193,7 @@ export const GltfBimViewer = forwardRef(function GltfBimViewer(
     <primitive
       ref={groupRef}
       object={scene}
+      rotation={[-Math.PI / 2, 0, 0]}
       onClick={handleClick}
     />
   );
