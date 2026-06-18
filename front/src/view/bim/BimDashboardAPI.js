@@ -192,41 +192,42 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         if (!selectedElement) return;
         pushUndo();
 
-        // 대표 부재 + 다중 선택된 모든 부재의 ID를 수집
         const allIds = new Set([...selectedElements, selectedElement.data.elementId]);
+        const projectId = selectedProject?.projectId;
 
-        for (const id of allIds) {
+        const payloads = [...allIds].flatMap(id => {
             const latestData = modelData.find(e => e.elementId === id);
-            if (!latestData) continue;
-            const payload = {
-                ...latestData,
-                projectId: selectedProject?.projectId || latestData.projectId,
-            };
-
-            if (payload.positionData) {
+            if (!latestData) return [];
+            const p = { ...latestData, projectId: projectId || latestData.projectId };
+            if (p.positionData) {
                 try {
-                    const arr = typeof payload.positionData === 'string'
-                        ? JSON.parse(payload.positionData)
-                        : payload.positionData;
+                    const arr = typeof p.positionData === 'string' ? JSON.parse(p.positionData) : p.positionData;
                     if (Array.isArray(arr) && arr.length >= 3) {
-                        payload.positionX = arr[0]; payload.positionY = arr[1]; payload.positionZ = arr[2];
+                        p.positionX = arr[0]; p.positionY = arr[1]; p.positionZ = arr[2];
                     }
-                } catch (e) { console.error("Position 파싱 오류", e); }
+                } catch (e) { console.error('Position 파싱 오류', e); }
             }
-            if (payload.sizeData) {
+            if (p.sizeData) {
                 try {
-                    const arr = typeof payload.sizeData === 'string'
-                        ? JSON.parse(payload.sizeData)
-                        : payload.sizeData;
+                    const arr = typeof p.sizeData === 'string' ? JSON.parse(p.sizeData) : p.sizeData;
                     if (Array.isArray(arr) && arr.length >= 3) {
-                        payload.sizeX = arr[0]; payload.sizeY = arr[1]; payload.sizeZ = arr[2];
+                        p.sizeX = arr[0]; p.sizeY = arr[1]; p.sizeZ = arr[2];
                     }
-                } catch (e) { console.error("Size 파싱 오류", e); }
+                } catch (e) { console.error('Size 파싱 오류', e); }
             }
+            return [p];
+        });
 
-            AxiosCustom.put(`${API_BASE}/model/element`, payload)
-                .then(() => console.log("저장 완료:", id))
-                .catch(err => console.error("저장 실패:", err));
+        if (payloads.length === 0) return;
+
+        if (payloads.length === 1) {
+            // 단건: 기존 단일 PUT
+            AxiosCustom.put(`${API_BASE}/model/element`, payloads[0])
+                .catch(err => console.error('저장 실패:', err));
+        } else {
+            // 다건: 단일 API로 일괄 업데이트
+            AxiosCustom.put(`${API_BASE}/project/${projectId}/batch-update`, payloads)
+                .catch(err => console.error('배치 저장 실패:', err));
         }
     }
 
@@ -257,20 +258,28 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         if (!groupMovePending) return;
         pushUndo();
         const { elements, pivotX, pivotY } = groupMovePending;
-        const dx = newPivotX - pivotX;
-        const dy = newPivotY - pivotY;
-        const updates = elements.map(el => ({
+        const dx = parseFloat((newPivotX - pivotX).toFixed(4));
+        const dy = parseFloat((newPivotY - pivotY).toFixed(4));
+
+        // 로컬 상태 즉시 반영
+        const updateMap = new Map(elements.map(el => [el.elementId, {
             ...el,
             positionX: parseFloat((Number(el.positionX) + dx).toFixed(3)),
             positionY: parseFloat((Number(el.positionY) + dy).toFixed(3)),
-        }));
-        const updateMap = new Map(updates.map(u => [u.elementId, u]));
+        }]));
         setModelData(prev => prev.map(e => updateMap.has(e.elementId) ? { ...e, ...updateMap.get(e.elementId) } : e));
-        Promise.all(updates.map(u =>
-            AxiosCustom.put(`${API_BASE}/model/element`, {
-                ...u, projectId: selectedProject?.projectId || u.projectId,
-            })
-        )).catch(err => console.error('그룹 이동 저장 실패:', err));
+
+        const projectId = selectedProject?.projectId || elements[0]?.projectId;
+        const elementIds = elements.map(el => el.elementId);
+
+        // 단일 API 호출 — N번 PUT 대신 bulk-transform 사용
+        AxiosCustom.put(`${API_BASE}/project/${projectId}/bulk-transform`, {
+            elementIds,
+            position: { deltaX: dx, deltaY: dy, deltaZ: 0 },
+            rotation: { deltaX: 0, deltaY: 0, deltaZ: 0 },
+            scale:    { x: 1, y: 1, z: 1 },
+        }).catch(err => console.error('그룹 이동 저장 실패:', err));
+
         setGroupMovePending(null);
     }, [groupMovePending, pushUndo, selectedProject, setModelData]);
 

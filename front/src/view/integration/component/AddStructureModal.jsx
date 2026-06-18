@@ -9,7 +9,7 @@ const TAB = { BIM: 'bim', IFC: 'ifc' };
 
 // ── 이미지 리사이즈 (드론 지형용) ──────────────────────────────
 export async function resizeImageDataUrl(dataUrl, maxPx = 1024, quality = 0.75) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       const scale = Math.min(maxPx / img.width, maxPx / img.height, 1);
@@ -18,8 +18,9 @@ export async function resizeImageDataUrl(dataUrl, maxPx = 1024, quality = 0.75) 
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      resolve({ dataUrl: canvas.toDataURL('image/jpeg', quality), w, h });
+      resolve({ dataUrl: canvas.toDataURL('image/jpeg', quality), w, h, canvas });
     };
+    img.onerror = () => reject(new Error('이미지 디코딩 실패 (HEIC/TIFF 등 미지원 포맷일 수 있습니다)'));
     img.src = dataUrl;
   });
 }
