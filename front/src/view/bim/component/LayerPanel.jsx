@@ -394,6 +394,8 @@ export default function LayerPanel({
     onDeleteLine,
     onSelectLine,
     selectedLineId,
+    onRegenerateLayers,
+    isRegeneratingLayers = false,
 }) {
     const [expandedSet, setExpandedSet] = useState(new Set());
 
@@ -454,6 +456,28 @@ export default function LayerPanel({
                     <div className="text-3xl mb-2">🗂</div>
                     <p className="text-xs text-gray-500">No layers</p>
                     <p className="text-xs text-gray-600 mt-0.5">Use the + Layer button to create one</p>
+                    {onRegenerateLayers && modelData?.some(e => e.storey || e.globalId || e.building) && (
+                        <button
+                            onClick={onRegenerateLayers}
+                            disabled={isRegeneratingLayers}
+                            className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition"
+                            style={{
+                                backgroundColor: isRegeneratingLayers ? '#0f1d2d' : '#1e3a5f',
+                                border: `1px solid ${isRegeneratingLayers ? '#253347' : '#2a5080'}`,
+                                color: isRegeneratingLayers ? '#475569' : '#93c5fd',
+                                cursor: isRegeneratingLayers ? 'not-allowed' : 'pointer',
+                            }}
+                        >
+                            {isRegeneratingLayers ? (
+                                <>
+                                    <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span>
+                                    Layer 재생성 중...
+                                </>
+                            ) : (
+                                <>↺ IFC Layer 재생성</>
+                            )}
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="space-y-1">

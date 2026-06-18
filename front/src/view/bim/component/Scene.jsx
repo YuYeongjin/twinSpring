@@ -1265,6 +1265,143 @@ function GroupMoveGhost({ groupMovePending, onGroupMoveConfirm }) {
 }
 
 // ================================================================
+// 고스트 이동 — 선택된 부재를 마우스를 따라 미리보기, 클릭으로 위치 확정
+// ================================================================
+function GhostTranslateElement({ elements, onConfirm }) {
+    const { camera, raycaster, mouse, gl } = useThree();
+    const ghostRef = useRef();
+    const hitRef   = useRef(new THREE.Vector3());
+
+    // Z-up 바닥 평면 (법선=Z)
+    const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), []);
+
+    const centroid = useMemo(() => ({
+        x: elements.reduce((s, e) => s + (Number(e.positionX) || 0), 0) / (elements.length || 1),
+        y: elements.reduce((s, e) => s + (Number(e.positionY) || 0), 0) / (elements.length || 1),
+    }), [elements]);
+
+    // window click 캡처 — 브라우저가 드래그 여부 자동 구분, 캔버스 bounds 내 클릭만 확정
+    useEffect(() => {
+        const canvas = gl.domElement;
+        const onClick = (e) => {
+            if (e.target.closest?.('button, input, select, textarea, a')) return;
+            const r = canvas.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+            onConfirm(hitRef.current.x - centroid.x, hitRef.current.y - centroid.y);
+        };
+        window.addEventListener('click', onClick, true);
+        return () => window.removeEventListener('click', onClick, true);
+    }, [gl, onConfirm, centroid]);
+
+    useFrame(() => {
+        raycaster.setFromCamera(mouse, camera);
+        if (!raycaster.ray.intersectPlane(plane, hitRef.current)) return;
+        if (ghostRef.current) {
+            ghostRef.current.position.x = hitRef.current.x - centroid.x;
+            ghostRef.current.position.y = hitRef.current.y - centroid.y;
+        }
+    });
+
+    return (
+        <>
+            <group ref={ghostRef}>
+                {elements.map(el => {
+                    const sx = Math.max(0.1, Number(el.sizeX) || 1);
+                    const sy = Math.max(0.1, Number(el.sizeY) || 1);
+                    const sz = Math.max(0.1, Number(el.sizeZ) || 1);
+                    return (
+                        <mesh key={el.elementId}
+                            position={[Number(el.positionX)||0, Number(el.positionY)||0, (Number(el.positionZ)||0) + sz / 2]}>
+                            <boxGeometry args={[sx + 0.06, sy + 0.06, sz + 0.06]} />
+                            <meshBasicMaterial color="#60a5fa" transparent opacity={0.45} depthWrite={false} />
+                        </mesh>
+                    );
+                })}
+            </group>
+        </>
+    );
+}
+
+// ================================================================
+// 고스트 회전 — 선택된 부재를 마우스 방향 기반 90° 스냅 회전 미리보기
+// ================================================================
+function GhostRotateElement({ elements, onConfirm, rotateAxis = 'z' }) {
+    const { camera, mouse, gl } = useThree();
+    const ghostRef    = useRef();
+    const snapDelta   = useRef(0);
+    const labelRef    = useRef(null);
+    const centroidVec = useRef(new THREE.Vector3());
+
+    const centroid = useMemo(() => ({
+        x: elements.reduce((s, e) => s + (Number(e.positionX) || 0), 0) / (elements.length || 1),
+        y: elements.reduce((s, e) => s + (Number(e.positionY) || 0), 0) / (elements.length || 1),
+    }), [elements]);
+
+    const topZ = elements.reduce((m, e) => Math.max(m, (Number(e.positionZ)||0) + (Number(e.sizeZ)||1)), 0);
+    const SNAP = Math.PI / 2;
+
+    // window click 캡처 — 브라우저가 드래그 여부 자동 구분, 캔버스 bounds 내 클릭만 확정
+    useEffect(() => {
+        const canvas = gl.domElement;
+        const onClick = (e) => {
+            if (e.target.closest?.('button, input, select, textarea, a')) return;
+            const r = canvas.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+            onConfirm(snapDelta.current);
+        };
+        window.addEventListener('click', onClick, true);
+        return () => window.removeEventListener('click', onClick, true);
+    }, [gl, onConfirm]);
+
+    useFrame(() => {
+        // 화면 공간 기반 각도 — 카메라 오빗 후에도 일관성 유지
+        centroidVec.current.set(centroid.x, centroid.y, 0);
+        centroidVec.current.project(camera);
+        const dx = mouse.x - centroidVec.current.x;
+        const dy = mouse.y - centroidVec.current.y;
+        if (Math.hypot(dx, dy) < 0.02) return;
+
+        const snapped = Math.round(Math.atan2(dy, dx) / SNAP) * SNAP;
+        snapDelta.current = snapped;
+        if (ghostRef.current) {
+            if (rotateAxis === 'x')      ghostRef.current.rotation.set(snapped, 0, 0);
+            else if (rotateAxis === 'y') ghostRef.current.rotation.set(0, snapped, 0);
+            else                         ghostRef.current.rotation.set(0, 0, snapped);
+        }
+        if (labelRef.current) labelRef.current.textContent = `${Math.round(snapped * 180 / Math.PI)}°`;
+    });
+
+    return (
+        <>
+            <group ref={ghostRef} position={[centroid.x, centroid.y, 0]}>
+                {elements.map(el => {
+                    const sx = Math.max(0.1, Number(el.sizeX) || 1);
+                    const sy = Math.max(0.1, Number(el.sizeY) || 1);
+                    const sz = Math.max(0.1, Number(el.sizeZ) || 1);
+                    return (
+                        <mesh key={el.elementId}
+                            position={[(Number(el.positionX)||0)-centroid.x, (Number(el.positionY)||0)-centroid.y, (Number(el.positionZ)||0)+sz/2]}>
+                            <boxGeometry args={[sx + 0.06, sy + 0.06, sz + 0.06]} />
+                            <meshBasicMaterial color="#a78bfa" transparent opacity={0.45} depthWrite={false} />
+                        </mesh>
+                    );
+                })}
+                <Html position={[0, 0, topZ + 1]} center>
+                    <div style={{
+                        color: '#a78bfa', background: 'rgba(6,14,26,0.9)',
+                        border: '1px solid #7c3aed', borderRadius: 4,
+                        padding: '2px 8px', fontSize: 12, fontWeight: 700,
+                        whiteSpace: 'nowrap', pointerEvents: 'none',
+                    }}>
+                        <span ref={labelRef}>0°</span>
+                    </div>
+                </Html>
+            </group>
+        </>
+    );
+}
+
+// ================================================================
 // 메인 Scene
 // ================================================================
 export default function Scene({
@@ -1331,6 +1468,12 @@ export default function Scene({
     onWalkModeExit = null,
     // Named view 저장용 orbit target ref (외부에서 inject)
     orbitTargetRef = null,
+    // 고스트 이동/회전 모드
+    ghostMode = null,
+    ghostElements = [],
+    onGhostConfirm = null,
+    // 회전 축 필터: 'x'|'y'|'z'|'all'
+    rotateAxis = 'z',
 }) {
     const { camera } = useThree();
     const transformRef     = useRef();
@@ -1812,14 +1955,24 @@ export default function Scene({
             {/* TransformControls
                 - IFC 모드 또는 다중선택: 피벗에 연결
                 - 비-IFC 단일선택: selectedElement mesh에 직접 연결 */}
-            {!isResizeDragging && (() => {
+            {!isResizeDragging && !ghostMode && (() => {
                 if (allSelectedIds.size === 0) return null;
+                // rotate 모드는 항상 90° 스냅 강제, 자유 회전 불허
+                const snap  = transformMode === 'rotate' ? Math.PI / 2 : undefined;
+                const showX = transformMode !== 'rotate' || rotateAxis === 'x' || rotateAxis === 'all';
+                const showY = transformMode !== 'rotate' || rotateAxis === 'y' || rotateAxis === 'all';
+                const showZ = transformMode !== 'rotate' || rotateAxis === 'z' || rotateAxis === 'all';
                 if (glbUrl || ifcMeshes?.length || allSelectedIds.size > 1) {
                     return (
                         <TransformControls
                             ref={transformRef}
                             object={pivotObj}
                             mode={transformMode}
+                            size={2.2}
+                            rotationSnap={snap}
+                            showX={showX}
+                            showY={showY}
+                            showZ={showZ}
                         />
                     );
                 }
@@ -1829,6 +1982,11 @@ export default function Scene({
                         ref={transformRef}
                         object={selectedElement.meshRef.current}
                         mode={transformMode}
+                        size={2.2}
+                        rotationSnap={snap}
+                        showX={showX}
+                        showY={showY}
+                        showZ={showZ}
                     />
                 );
             })()}
@@ -1842,7 +2000,7 @@ export default function Scene({
                         ref={ifcMeshGroupRef}
                         glbUrl={glbUrl}
                         modelData={modelData}
-                        onElementSelect={(measureMode || lineDrawMode === 'click') ? null : onElementSelect}
+                        onElementSelect={(measureMode || lineDrawMode === 'click' || ghostMode) ? null : onElementSelect}
                         selectedElement={selectedElement}
                         selectedElements={selectedElements}
                         onMeshMount={null}
@@ -1858,7 +2016,7 @@ export default function Scene({
                                                selectedElement?.data?.elementId !== element.elementId,
                             }}
                             onElementSelect={onElementSelect}
-                            isPlacementMode={!!pendingElement || measureMode || lineDrawMode === 'click'}
+                            isPlacementMode={!!pendingElement || measureMode || lineDrawMode === 'click' || !!ghostMode}
                         />
                     ))}
                 </>
@@ -1882,7 +2040,7 @@ export default function Scene({
                                            selectedElement?.data?.elementId !== element.elementId,
                         }}
                         onElementSelect={onElementSelect}
-                        isPlacementMode={!!pendingElement || measureMode || lineDrawMode === 'click'}
+                        isPlacementMode={!!pendingElement || measureMode || lineDrawMode === 'click' || !!ghostMode}
                     />
                 ))
             )}
@@ -2014,6 +2172,14 @@ export default function Scene({
             {/* Walk / Fly 모드 */}
             {walkMode && (
                 <WalkController active={walkMode} orbitRef={orbitRef} onExit={onWalkModeExit} />
+            )}
+
+            {/* 고스트 이동/회전 미리보기 */}
+            {ghostMode === 'translate' && ghostElements?.length > 0 && (
+                <GhostTranslateElement elements={ghostElements} onConfirm={onGhostConfirm} />
+            )}
+            {ghostMode === 'rotate' && ghostElements?.length > 0 && (
+                <GhostRotateElement elements={ghostElements} onConfirm={onGhostConfirm} rotateAxis={rotateAxis} />
             )}
 
             {/* 월드 좌표계 축 (X=빨강, Y=초록, Z=파랑) */}
