@@ -69,10 +69,10 @@ export async function generateWbsFromLayers(layers, projectId, elements = [], op
   const mappings = [];
   const elemDataMap = new Map(elements.map(el => [el.elementId, el]));
 
-  // ID 식별 유틸
-  const isBuildingLayer = (l) => l.layerId.includes('-B') && !l.layerId.includes('-S') && !l.layerId.includes('-T');
-  const isStoreyLayer   = (l) => l.layerId.includes('-S') && !l.layerId.includes('-T');
-  const isTypeLayer     = (l) => l.layerId.includes('-T');
+  // ID 식별 유틸 — layerId 끝 패턴으로 정확하게 식별 (projectId에 -B/-S/-T가 포함돼도 오감지 없음)
+  const isBuildingLayer = (l) => /-B\d+$/.test(l.layerId);
+  const isStoreyLayer   = (l) => /-S\d+$/.test(l.layerId);
+  const isTypeLayer     = (l) => /-T\d+$/.test(l.layerId);
 
   const layerMap = new Map(layers.map(l => [l.layerId, l]));
   const buildingTree = [];

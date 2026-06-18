@@ -461,7 +461,7 @@ function SectionHeader({ title, tipData }) {
 
 function SummaryCards({ plan, t }) {
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:10, marginBottom:16 }}>
       {[
         { label:t('cardDuration'), value:t('valDays',{n:plan.totalDays}),        color:'#60a5fa' },
         { label:t('cardFloors'),   value:t('valFloors',{n:plan.floorCount}),     color:'#34d399' },

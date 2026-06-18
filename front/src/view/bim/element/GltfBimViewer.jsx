@@ -192,7 +192,6 @@ export const GltfBimViewer = forwardRef(function GltfBimViewer(
     },
   }), []);
 
-  console.log('[GltfBimViewer] render — glbUrl=', glbUrl, 'meshes=', scene.children.length);
   return (
     <primitive
       ref={groupRef}
