@@ -979,7 +979,7 @@ function PropertyPanel({ selectedElement, selectedElements, modelData, updateEle
 // 메인 BIM 대시보드
 // ================================================================
 
-export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, glbLiteUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange, wbsJobState }) {
+export default function BimDashboard({ setViceComponent, modelData, setModelData, selectedProject, onConvertDrone, ifcMeshes, glbUrl, glbLiteUrl, canvasFullscreen, onToggleCanvasFullscreen, onPlacementModeChange, wbsJobState, onRegenerateLayers, onRegenerateWbs }) {
     const {
         saveUpdateElement,
         selectedElement, setSelectedElement,
@@ -1014,6 +1014,40 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     const [showLayerPanel, setShowLayerPanel] = useState(typeof window !== 'undefined' && window.innerWidth >= 768);
     const [showLeftPanel, setShowLeftPanel] = useState(typeof window !== 'undefined' && window.innerWidth >= 768);
+    const [isRegeneratingLayers, setIsRegeneratingLayers] = useState(false);
+    const [isRegeneratingWbs, setIsRegeneratingWbs] = useState(false);
+
+    const handleRegenerateWbsClick = useCallback(async () => {
+        if (!onRegenerateWbs || !selectedProject?.projectId || !modelData?.length || !layers?.length) return;
+        setIsRegeneratingWbs(true);
+        try {
+            await onRegenerateWbs(selectedProject.projectId, modelData, layers, () => {
+                const pid = selectedProject.projectId;
+                AxiosCustom.get(`${API_BASE}/wbs?projectId=${pid}`)
+                    .then(res => setWbsNodes(res.data || []))
+                    .catch(() => {});
+                AxiosCustom.get(`${API_BASE}/element-wbs?projectId=${pid}`)
+                    .then(res => setElementWbsMappings(res.data || []))
+                    .catch(() => {});
+            });
+        } catch (e) {
+            console.error('[BIM] WBS 재생성 실패:', e);
+        } finally {
+            setIsRegeneratingWbs(false);
+        }
+    }, [onRegenerateWbs, selectedProject?.projectId, modelData, layers]);
+
+    const handleRegenerateLayers = useCallback(async () => {
+        if (!onRegenerateLayers || !selectedProject?.projectId || !modelData?.length) return;
+        setIsRegeneratingLayers(true);
+        try {
+            await onRegenerateLayers(selectedProject.projectId, modelData, reloadLayers);
+        } catch (e) {
+            console.error('[BIM] Layer 재생성 실패:', e);
+        } finally {
+            setIsRegeneratingLayers(false);
+        }
+    }, [onRegenerateLayers, selectedProject?.projectId, modelData, reloadLayers]);
 
     // 모바일 패널 닫기 애니메이션 상태 (선언만 — close 함수는 isDesktop 이후에 정의)
     const [leftClosing, setLeftClosing]   = useState(false);
@@ -1637,10 +1671,92 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         navigationTargetRef.current = { x, z };
     }, []);
 
+    // ── 고스트 이동/회전 상태 ─────────────────────────────────────────
+    const [ghostMode, setGhostMode]   = useState(null); // null | 'translate' | 'rotate'
+    const [rotateAxis, setRotateAxis] = useState('z'); // 'x'|'y'|'z'|'all'
+
+    const ghostElements = useMemo(() => {
+        if (!ghostMode) return [];
+        const ids = new Set([
+            ...selectedElements,
+            ...(selectedElement?.data?.elementId ? [selectedElement.data.elementId] : []),
+        ]);
+        return modelData.filter(e => ids.has(e.elementId));
+    }, [ghostMode, selectedElement, selectedElements, modelData]);
+
+    const handleGhostConfirm = useCallback((dxOrAngle, dy) => {
+        if (ghostMode === 'translate') {
+            const dx = dxOrAngle;
+            for (const el of ghostElements) {
+                updateElementData(el.elementId, {
+                    positionX: parseFloat(((Number(el.positionX)||0) + dx).toFixed(3)),
+                    positionY: parseFloat(((Number(el.positionY)||0) + dy).toFixed(3)),
+                });
+            }
+        } else if (ghostMode === 'rotate') {
+            const angle = dxOrAngle;
+            const n   = ghostElements.length || 1;
+            const cos = Math.cos(angle), sin = Math.sin(angle);
+
+            if (rotateAxis === 'x') {
+                // YZ 평면 회전 (X축 기준)
+                const cy = ghostElements.reduce((s, e) => s + (Number(e.positionY)||0), 0) / n;
+                const cz = ghostElements.reduce((s, e) => s + (Number(e.positionZ)||0) + (Number(e.sizeZ)||1)/2, 0) / n;
+                for (const el of ghostElements) {
+                    const ry = (Number(el.positionY)||0) - cy;
+                    const rz = (Number(el.positionZ)||0) + (Number(el.sizeZ)||1)/2 - cz;
+                    updateElementData(el.elementId, {
+                        positionY: parseFloat((cy + ry * cos - rz * sin).toFixed(3)),
+                        positionZ: parseFloat((cz + ry * sin + rz * cos - (Number(el.sizeZ)||1)/2).toFixed(3)),
+                        rotationX: parseFloat(((Number(el.rotationX)||0) + angle).toFixed(5)),
+                    });
+                }
+            } else if (rotateAxis === 'y') {
+                // XZ 평면 회전 (Y축 기준)
+                const cx = ghostElements.reduce((s, e) => s + (Number(e.positionX)||0), 0) / n;
+                const cz = ghostElements.reduce((s, e) => s + (Number(e.positionZ)||0) + (Number(e.sizeZ)||1)/2, 0) / n;
+                for (const el of ghostElements) {
+                    const rx = (Number(el.positionX)||0) - cx;
+                    const rz = (Number(el.positionZ)||0) + (Number(el.sizeZ)||1)/2 - cz;
+                    updateElementData(el.elementId, {
+                        positionX: parseFloat((cx + rx * cos + rz * sin).toFixed(3)),
+                        positionZ: parseFloat((cz - rx * sin + rz * cos - (Number(el.sizeZ)||1)/2).toFixed(3)),
+                        rotationY: parseFloat(((Number(el.rotationY)||0) + angle).toFixed(5)),
+                    });
+                }
+            } else {
+                // XY 평면 회전 (Z축 기준, 기본)
+                const cx = ghostElements.reduce((s, e) => s + (Number(e.positionX)||0), 0) / n;
+                const cy = ghostElements.reduce((s, e) => s + (Number(e.positionY)||0), 0) / n;
+                for (const el of ghostElements) {
+                    const rx = (Number(el.positionX)||0) - cx;
+                    const ry = (Number(el.positionY)||0) - cy;
+                    updateElementData(el.elementId, {
+                        positionX: parseFloat((cx + rx * cos - ry * sin).toFixed(3)),
+                        positionY: parseFloat((cy + rx * sin + ry * cos).toFixed(3)),
+                        rotationZ: parseFloat(((Number(el.rotationZ)||0) + angle).toFixed(5)),
+                    });
+                }
+            }
+        }
+        setGhostMode(null);
+    }, [ghostMode, ghostElements, updateElementData, rotateAxis]);
+
     const handleElementSelectAndClearLine = useCallback((el, meshRef, shiftKey) => {
         if (el) setSelectedLineId(null);
+        // 이미 선택된 부재를 translate/rotate 모드에서 재클릭 → 고스트 모드 진입
+        if (el && !shiftKey && (transformMode === 'translate' || transformMode === 'rotate')) {
+            const alreadySelected = (
+                selectedElement?.data?.elementId === el.elementId ||
+                selectedElements?.has(el.elementId)
+            );
+            if (alreadySelected) {
+                setGhostMode(transformMode);
+                return;
+            }
+        }
         handleElementSelect(el, meshRef, shiftKey);
-    }, [handleElementSelect]);
+    }, [handleElementSelect, transformMode, selectedElement, selectedElements]);
 
     const currentProjectId = useMemo(
         () => selectedProject?.projectId ?? modelData?.[0]?.projectId ?? null,
@@ -1839,8 +1955,26 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             }
             if (e.key === 't' || e.key === 'T') setTransformMode('translate');
             if (e.key === 'm' || e.key === 'M') setTransformMode('translate');
-            if (e.key === 'r' || e.key === 'R') setTransformMode('rotate');
+            if (e.key === 'r' || e.key === 'R') {
+                // 이미 rotate 모드이고, 부재 선택 + 축 선택 완료 → 고스트 회전 진입
+                if (transformMode === 'rotate' && totalSelectedCount > 0 && rotateAxis !== 'all') {
+                    setGhostMode('rotate');
+                } else {
+                    // 첫 번째 R: rotate 모드로 전환 + 축 선택 초기화
+                    setTransformMode('rotate');
+                    setRotateAxis('all');
+                }
+            }
             if (e.key === 's' || e.key === 'S') setTransformMode('scale');
+            // X/Y/Z 키: rotate 모드에서 회전축 선택 (같은 축 다시 누르면 전체로)
+            if (!e.ctrlKey && !e.metaKey) {
+                if ((e.key === 'x' || e.key === 'X') && transformMode === 'rotate' && !ghostMode)
+                    setRotateAxis(prev => prev === 'x' ? 'all' : 'x');
+                if ((e.key === 'y' || e.key === 'Y') && transformMode === 'rotate' && !ghostMode)
+                    setRotateAxis(prev => prev === 'y' ? 'all' : 'y');
+                if ((e.key === 'z' || e.key === 'Z') && transformMode === 'rotate' && !ghostMode)
+                    setRotateAxis(prev => prev === 'z' ? 'all' : 'z');
+            }
             if (e.key === 'q' || e.key === 'Q') toggleSelectMode();
             if (e.key === 'm' || e.key === 'M') {
                 if (groupMovePending) { cancelGroupMove(); }
@@ -1862,6 +1996,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                 undo();
             }
             if (e.key === 'Escape') {
+                if (ghostMode) { setGhostMode(null); return; }
                 if (walkMode) { setWalkMode(false); }
                 else if (measureMode) {
                     if (measurePoints.a && !measurePoints.b) setMeasurePoints({ a: null, b: null });
@@ -1883,7 +2018,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
     }, [selectedElement, pendingElement, isSelectMode, lineDrawMode, deleteSelectedElements,
         cancelPlacement, toggleSelectMode, setTransformMode, setSelectedElement, setSelectedElements,
         undo, finishLineDraw, selectedLineId, deleteLine, setSelectedLineId,
-        walkMode, measureMode, measurePoints, handleGlobalSave]);
+        walkMode, measureMode, measurePoints, handleGlobalSave, ghostMode, totalSelectedCount, rotateAxis]);
 
     return (
         <div ref={rootContainerRef} className="w-full bg-space-900 flex flex-col overflow-hidden"
@@ -2234,7 +2369,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
             <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'flex' : 'none', gap: 0, flexDirection: 'column' }}>
                 {/* WBS 생성 중 배너 */}
-                {isWbsGenerating && (
+                {(isWbsGenerating || isRegeneratingWbs) && (
                     <div style={{
                         display: 'flex', alignItems: 'center', gap: 10,
                         padding: '10px 16px', flexShrink: 0,
@@ -2242,11 +2377,11 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         color: '#60a5fa', fontSize: 12,
                     }}>
                         <span style={{ fontSize: 16, animation: 'spin 1.2s linear infinite' }}>⚙</span>
-                        <span>WBS를 생성하는 중입니다... 잠시 후 자동으로 표시됩니다.</span>
+                        <span>{isRegeneratingWbs ? 'WBS를 재생성하는 중입니다...' : 'WBS를 생성하는 중입니다... 잠시 후 자동으로 표시됩니다.'}</span>
                     </div>
                 )}
                 {/* WBS 생성 실패 배너 */}
-                {isWbsFailed && (
+                {isWbsFailed && !isRegeneratingWbs && (
                     <div style={{
                         display: 'flex', alignItems: 'center', gap: 10,
                         padding: '10px 16px', flexShrink: 0,
@@ -2254,14 +2389,54 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         color: '#f87171', fontSize: 12,
                     }}>
                         <span style={{ fontSize: 14 }}>✕</span>
-                        <span>WBS 자동 생성에 실패했습니다. IFC 파일을 다시 업로드하거나 서버 로그를 확인하세요.</span>
+                        <span style={{ flex: 1 }}>WBS 자동 생성에 실패했습니다.</span>
+                        {onRegenerateWbs && layers.length > 0 && modelData.length > 0 && (
+                            <button
+                                onClick={handleRegenerateWbsClick}
+                                style={{
+                                    padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                                    background: '#7f1d1d', border: '1px solid #ef4444',
+                                    color: '#fca5a5', cursor: 'pointer', flexShrink: 0,
+                                }}
+                            >↺ WBS 재생성</button>
+                        )}
                     </div>
                 )}
-                <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-                {/* 왼쪽: WBS 트리 + 진척도 */}
+                {/* WBS 데이터 없음 + 재생성 가능 배너 */}
+                {!isWbsGenerating && !isWbsFailed && !isRegeneratingWbs && wbsNodes.length === 0 && layers.length > 0 && modelData.length > 0 && (
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 16px', flexShrink: 0,
+                        background: '#0d1a2a', borderBottom: '1px solid #1a3a5c',
+                        color: '#94a3b8', fontSize: 12,
+                    }}>
+                        <span style={{ flex: 1 }}>WBS 데이터가 없습니다. 레이어가 준비되어 있으면 재생성할 수 있습니다.</span>
+                        {onRegenerateWbs && (
+                            <button
+                                onClick={handleRegenerateWbsClick}
+                                style={{
+                                    padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                                    background: '#1e3a5f', border: '1px solid #3b82f6',
+                                    color: '#93c5fd', cursor: 'pointer', flexShrink: 0,
+                                }}
+                            >↺ WBS 재생성</button>
+                        )}
+                    </div>
+                )}
                 <div style={{
+                    display: 'flex', flex: 1, minHeight: 0,
+                    flexDirection: isDesktop ? 'row' : 'column',
+                }}>
+                {/* WBS 트리 + 진척도 */}
+                <div style={isDesktop ? {
                     width: 280, minWidth: 220, flexShrink: 0,
                     borderRight: '1px solid #1a2a3a',
+                    overflowY: 'auto',
+                    background: '#060e1a',
+                } : {
+                    width: '100%', flexShrink: 0,
+                    maxHeight: 220,
+                    borderBottom: '1px solid #1a2a3a',
                     overflowY: 'auto',
                     background: '#060e1a',
                 }}>
@@ -2275,11 +2450,11 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         isGenerating={isWbsGenerating}
                     />
                 </div>
-                {/* 오른쪽: 기존 공정 대시보드 */}
-                <div style={{ flex: 1, overflowY: 'auto' }}>
+                {/* 공정 대시보드 */}
+                <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                     <WorkPlanDashboard selectedProject={selectedProject} modelData={modelData} layers={layers} />
                 </div>
-                </div>{/* flex row wrapper */}
+                </div>{/* flex wrapper */}
             </div>
 
             <div
@@ -2565,6 +2740,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             walkMode={walkMode}
                                             onWalkModeExit={() => setWalkMode(false)}
                                             orbitTargetRef={orbitTargetRef}
+                                            ghostMode={ghostMode}
+                                            ghostElements={ghostElements}
+                                            onGhostConfirm={handleGhostConfirm}
+                                            rotateAxis={rotateAxis}
                                         />
                                         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
                                             <GizmoViewport axisColors={['#ff4060', '#80ff80', '#2080ff']} labelColor="white"/>
@@ -2644,12 +2823,111 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         />
                                     )}
 
-                                    {selectedElement && (
+                                    {selectedElement && !ghostMode && (
                                         <div className="absolute bottom-3 left-3 bg-space-900/80 border border-space-700 rounded-lg px-3 py-2 text-xs text-gray-300 z-20">
                                             <span className="text-orange-400 font-bold">{selectedElement.data.elementType}</span>
                                             <span className="ml-2 text-gray-500">{selectedElement.data.elementId}</span>
                                         </div>
                                     )}
+
+                                    {/* 고스트 진입 버튼 + 축 선택 — 부재 선택 상태 + translate/rotate 모드 */}
+                                    {totalSelectedCount > 0 && !ghostMode && (transformMode === 'translate' || transformMode === 'rotate') && (
+                                        <div className="absolute top-3 left-3 z-20 pointer-events-auto flex gap-1.5 items-center flex-wrap">
+                                            {transformMode === 'translate' && (
+                                                <button
+                                                    onClick={() => setGhostMode('translate')}
+                                                    title="고스트 이동: 클릭하여 미리보기 후 위치 확정"
+                                                    style={{
+                                                        padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                                                        background: 'rgba(6,14,26,0.88)', backdropFilter: 'blur(4px)',
+                                                        border: '1px solid #3b82f6', color: '#93c5fd',
+                                                        cursor: 'pointer', whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    ▶ 고스트 이동
+                                                </button>
+                                            )}
+                                            {transformMode === 'rotate' && (<>
+                                                {/* 축 선택 버튼 */}
+                                                {[['x','#ef4444','#f87171'],['y','#22c55e','#86efac'],['z','#3b82f6','#93c5fd']].map(([ax, bc, tc]) => (
+                                                    <button key={ax}
+                                                        onClick={() => setRotateAxis(rotateAxis === ax ? 'all' : ax)}
+                                                        title={`${ax.toUpperCase()}축만 표시 (다시 클릭 = 전체)`}
+                                                        style={{
+                                                            padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 800,
+                                                            background: rotateAxis === ax ? `${bc}33` : 'rgba(6,14,26,0.88)',
+                                                            backdropFilter: 'blur(4px)',
+                                                            border: `1px solid ${rotateAxis === ax ? bc : '#334155'}`,
+                                                            color: rotateAxis === ax ? tc : '#6b7280',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                    >
+                                                        {ax.toUpperCase()}
+                                                    </button>
+                                                ))}
+                                                <button
+                                                    onClick={() => setGhostMode('rotate')}
+                                                    title="고스트 회전 (R): 마우스 방향으로 90° 스냅 회전 미리보기"
+                                                    style={{
+                                                        padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                                                        background: 'rgba(6,14,26,0.88)', backdropFilter: 'blur(4px)',
+                                                        border: '1px solid #7c3aed', color: '#c4b5fd',
+                                                        cursor: 'pointer', whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    ↻ 고스트 회전 (R)
+                                                </button>
+                                            </>)}
+                                        </div>
+                                    )}
+
+                                    {/* rotate 모드 + 부재 미선택 → 힌트 */}
+                                    {transformMode === 'rotate' && totalSelectedCount === 0 && !ghostMode && (
+                                        <div className="absolute bottom-3 right-3 z-20 pointer-events-none"
+                                            style={{
+                                                background: 'rgba(6,14,26,0.82)', backdropFilter: 'blur(4px)',
+                                                border: '1px solid #334155', borderRadius: 8,
+                                                padding: '5px 12px', fontSize: 11, color: '#6b7280',
+                                            }}
+                                        >
+                                            부재를 선택하세요
+                                        </div>
+                                    )}
+
+                                    {/* rotate 모드 + 부재 선택 + 축 미선택 → 힌트 */}
+                                    {transformMode === 'rotate' && totalSelectedCount > 0 && rotateAxis === 'all' && !ghostMode && (
+                                        <div className="absolute bottom-3 right-3 z-20 pointer-events-none"
+                                            style={{
+                                                background: 'rgba(6,14,26,0.82)', backdropFilter: 'blur(4px)',
+                                                border: '1px solid #334155', borderRadius: 8,
+                                                padding: '5px 12px', fontSize: 11, color: '#a78bfa',
+                                            }}
+                                        >
+                                            X · Y · Z 중 회전축을 선택 후 R
+                                        </div>
+                                    )}
+
+                                    {/* 고스트 모드 안내 */}
+                                    {ghostMode && (
+                                        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex items-center gap-3"
+                                            style={{
+                                                background: 'rgba(6,14,26,0.88)', backdropFilter: 'blur(4px)',
+                                                border: `1px solid ${ghostMode === 'rotate' ? '#7c3aed' : '#3b82f6'}`,
+                                                borderRadius: 12, padding: '6px 14px', fontSize: 12, whiteSpace: 'nowrap',
+                                            }}
+                                        >
+                                            <span style={{ color: ghostMode === 'rotate' ? '#c4b5fd' : '#93c5fd', fontWeight: 700 }}>
+                                                {ghostMode === 'translate'
+                                                    ? `▶ 클릭 → ${totalSelectedCount}개 부재 이동 확정`
+                                                    : `▶ 클릭 → ${totalSelectedCount}개 부재 ${rotateAxis.toUpperCase()}축 회전 확정`}
+                                            </span>
+                                            <span style={{ color: '#4b5563' }}>· ESC 취소</span>
+                                            <button onClick={() => setGhostMode(null)}
+                                                style={{ color: '#6b7280', fontSize: 13, lineHeight: 1, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                                            >✕</button>
+                                        </div>
+                                    )}
+
 
                                     {/* 단면 절단 컨트롤 */}
                                     {sectionCutEnabled && (
@@ -2848,6 +3126,8 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                 onDeleteLine={deleteLine}
                                 onSelectLine={(lineId) => { setSelectedLineId(lineId); }}
                                 selectedLineId={selectedLineId}
+                                onRegenerateLayers={onRegenerateLayers ? handleRegenerateLayers : null}
+                                isRegeneratingLayers={isRegeneratingLayers}
                             />
                         </Card>
 

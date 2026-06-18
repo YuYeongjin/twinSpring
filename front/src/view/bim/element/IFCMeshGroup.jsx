@@ -73,8 +73,8 @@ function IFCMesh({
   useEffect(() => () => baseMaterial.dispose(), [baseMaterial]);
 
   const handleClick = (e) => {
-    e.stopPropagation();
     if (!onElementSelect) return;
+    e.stopPropagation();
     const target = element ?? {
       elementId: mesh.elementId,
       elementType: mesh.elementType,
