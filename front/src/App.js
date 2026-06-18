@@ -1,4 +1,5 @@
 import AxiosCustom from './axios/AxiosCustom';
+import { generateLayersFromElements, IFC_LAYER_LABEL, IFC_LAYER_COLOR, IFC_TYPE_ORDER, storeyRank, isRealBuilding, normalizeStoreyName } from './utils/layerGenerator';
 import { useT } from './i18n/LanguageContext';
 import SatelliteAPI from './view/SatelliteAPI';
 import Footer from './component/Footer';
@@ -57,179 +58,6 @@ function OrientationLockOverlay() {
       <p style={{ color: '#4b5563', fontSize: 13 }}>Please rotate to portrait</p>
     </div>
   );
-}
-
-// ── IFC 임포트 시 레이어 자동 생성 ─────────────────────────────
-const IFC_LAYER_LABEL = {
-  IfcColumn:     '기둥공사',    IfcBeam:   '보공사',      IfcWall:      '벽체공사',
-  IfcSlab:       '슬래브 공사', IfcPier:   '교각공사',    IfcMember:    '부재공사',
-  IfcWindow:     '창호공사',    IfcDoor:   '문공사',      IfcStair:     '계단공사',
-  IfcRoof:       '지붕공사',    IfcFoundation: '기초공사',
-};
-const IFC_LAYER_COLOR = {
-  IfcColumn: '#3b82f6', IfcBeam:       '#22c55e', IfcWall:   '#64748b',
-  IfcSlab:   '#f59e0b', IfcPier:       '#ec4899', IfcMember: '#84cc16',
-  IfcWindow: '#06b6d4', IfcDoor:       '#8b5cf6', IfcStair:  '#f97316',
-  IfcRoof:   '#6366f1', IfcFoundation: '#92400e',
-};
-const IFC_TYPE_ORDER = ['IfcColumn','IfcBeam','IfcFoundation','IfcSlab','IfcWall','IfcPier','IfcMember','IfcWindow','IfcDoor','IfcStair','IfcRoof'];
-
-function storeyRank(name) {
-  if (!name || name === '(층 미지정)') return 9999;
-  const lc = name.toLowerCase();
-  const b = lc.match(/^b(\d+)/); if (b) return -parseInt(b[1], 10);
-  const f = name.match(/^(\d+)/); if (f) return parseInt(f[1], 10);
-  if (lc === 'rf' || lc.includes('roof') || lc.includes('옥상') || lc.includes('지붕')) return 1000;
-  return 500;
-}
-
-// IFC 기본 빌딩 이름 더미값 — 동 레이어를 만들지 않는 것으로 취급
-const IFC_DUMMY_BUILDING_NAMES = new Set([
-  '// building/name //', 'building name', 'building/name', 'building', 'default',
-  'unnamed', 'no building', 'building_0', 'building_1', 'building_2', 'none', '(none)', '',
-]);
-
-function isRealBuilding(name) {
-  if (!name) return false;
-  return !IFC_DUMMY_BUILDING_NAMES.has(name.trim().toLowerCase());
-}
-
-/**
- * 다양한 IFC 층 이름 표현을 표준 형식으로 정규화합니다.
- * 예: "2F", "2층", "Floor 2", "Level 2", "Story 2" → "2F"
- *     "B1", "지하1층" → "B1"
- *     "지붕", "Roof" → "RF"
- */
-function normalizeStoreyName(name) {
-  if (!name) return null;
-  const lc = name.toLowerCase().trim();
-
-  // 지하 (B, Basement)
-  const basementMatch = lc.match(/(b|지하|basement)\s*(\d+)/);
-  if (basementMatch) {
-    return `B${basementMatch[2]}`;
-  }
-
-  // 지상 (F, Floor, 층, Story, Storey, Level) — "2층", "2F", "Floor 2", "Level 2", "Story 2" 등
-  const floorMatch = lc.match(/(\d+)\s*(f|층|floor|level|story|storey)/);
-  if (floorMatch) return `${floorMatch[1]}F`;
-  const levelMatch = lc.match(/(floor|level|story|storey)\s*(\d+)/);
-  if (levelMatch) return `${levelMatch[2]}F`;
-
-  // 그냥 숫자만 있는 경우 (예: "1", "2")
-  const numMatch = lc.match(/^(\d+)$/);
-  if (numMatch) {
-    return `${numMatch[1]}F`;
-  }
-
-  // "지붕", "옥상", "Roof", "RF"
-  if (lc.includes('roof') || lc.includes('지붕') || lc.includes('옥상') || lc === 'rf') {
-    return 'RF';
-  }
-
-  return name; // 일치하는 패턴이 없으면 원본 이름 반환
-}
-
-
-export function generateLayersFromElements(elements, projectId) {
-  // building → storey → type 3단계 그루핑
-  const byBuilding = new Map();
-  for (const el of elements) {
-    if (!IFC_LAYER_LABEL[el.elementType]) continue;
-    const building = isRealBuilding(el.building) ? el.building : null;
-    const storey   = el.storey || null;
-    
-    // 층 이름 정규화 — null이면 '미분류'로 대체하여 WBS 누락 방지
-    const normalizedStoreyName = normalizeStoreyName(storey) ?? '미분류';
-
-    const bKey = building ?? '__none__';
-    if (!byBuilding.has(bKey)) byBuilding.set(bKey, { name: building, storeys: new Map() });
-    const byStorey = byBuilding.get(bKey).storeys;
-
-    const sKey = normalizedStoreyName;
-    if (!byStorey.has(sKey)) byStorey.set(sKey, { name: normalizedStoreyName, types: new Map() });
-    const byType = byStorey.get(sKey).types;
-    if (!byType.has(el.elementType)) byType.set(el.elementType, []);
-
-    // 부재 ID뿐만 아니라 물성치 판별을 위해 부재 객체 전체를 임시 보관
-    byType.get(el.elementType).push(el);
-  }
-
-  const layers = [];
-  const sortedBuildingKeys = [...byBuilding.keys()].sort((a, b) => {
-    if (a === '__none__') return 1;
-    if (b === '__none__') return -1;
-    return byBuilding.get(a).name.localeCompare(byBuilding.get(b).name, 'ko');
-  });
-
-  sortedBuildingKeys.forEach((bKey, bIdx) => {
-    const { name: buildingName, storeys: byStorey } = byBuilding.get(bKey);
-    const hasBuilding = buildingName !== null;
-    const buildingId  = hasBuilding ? `layer-${projectId}-B${bIdx}` : null;
-
-    if (hasBuilding) {
-      layers.push({
-        layerId: buildingId, projectId, parentLayerId: null,
-        layerName: buildingName, color: '#94a3b8',
-        visible: true, elementIds: [], sortOrder: bIdx * 10000,
-      });
-    }
-
-    const sortedStoreyKeys = [...byStorey.keys()].sort((a, b) => {
-      const na = byStorey.get(a).name, nb = byStorey.get(b).name;
-      if (a === '__none__') return 1;
-      if (b === '__none__') return -1;
-      return storeyRank(na) - storeyRank(nb);
-    });
-
-    sortedStoreyKeys.forEach((sKey, sIdx) => {
-      const { name: storeyName, types: byType } = byStorey.get(sKey);
-      const hasStorey = storeyName !== null;
-      const storeyId  = `layer-${projectId}-B${bIdx}-S${sIdx}`;
-
-      if (hasStorey) {
-        // 💡 [핵심] 해당 층의 첫 번째 부재를 샘플링하여 오리지널 고도 및 지하 여부 추출
-        let sampleElement = null;
-        for (const typeElements of byType.values()) {
-          if (typeElements && typeElements.length > 0) {
-            sampleElement = typeElements[0];
-            break;
-          }
-        }
-
-        layers.push({
-          layerId: storeyId, projectId, parentLayerId: buildingId,
-          layerName: storeyName, color: '#64748b',
-          visible: true, elementIds: [], sortOrder: bIdx * 10000 + sIdx * 100,
-          // 💡 WBS 연동용 메타데이터 심기
-          elevation: sampleElement ? (sampleElement.elevation ?? null) : null,
-          isUnderground: sampleElement ? (sampleElement.isUnderground ?? null) : null,
-        });
-      }
-
-      const typeParentId = hasStorey ? storeyId : buildingId;
-      const sortedTypes = [...byType.keys()].sort(
-          (a, b) => IFC_TYPE_ORDER.indexOf(a) - IFC_TYPE_ORDER.indexOf(b)
-      );
-
-      sortedTypes.forEach((type, tIdx) => {
-        const typeElements = byType.get(type);
-        layers.push({
-          layerId:       `layer-${projectId}-B${bIdx}-S${sIdx}-T${tIdx}`,
-          projectId,
-          parentLayerId: typeParentId,
-          layerName:     IFC_LAYER_LABEL[type],
-          color:         IFC_LAYER_COLOR[type] || '#888888',
-          visible:       true,
-          // 부재 객체 배열에서 ID 배열만 추출하여 매핑
-          elementIds:    typeElements.map(el => el.elementId),
-          sortOrder:     bIdx * 10000 + sIdx * 100 + tIdx,
-        });
-      });
-    });
-  });
-
-  return layers;
 }
 
 function App() {
@@ -711,6 +539,49 @@ function App() {
   }, [refreshProjectList, projectList]);
 
   // ---------------------------------------------------------------
+  // WBS 재생성 (BIM workplan 탭 재시도 버튼용)
+  // ---------------------------------------------------------------
+  const handleRegenerateWbs = useCallback(async (projectId, elements, layers, onDone) => {
+    if (!projectId || !elements?.length || !layers?.length) return;
+    const { generateWbsFromLayers } = await import('./utils/wbsGenerator');
+    const storeyRes = await AxiosCustom.get(`/api/bim/storeys?projectId=${projectId}`);
+    const storeys = storeyRes.data ?? [];
+    const { wbsNodes, mappings } = await generateWbsFromLayers(
+      layers, projectId, elements,
+      { storeys, geoOrigin: null, standard: 'KDS',
+        axiosPost: (url, data) => AxiosCustom.post(url, data) },
+    );
+    if (wbsNodes.length > 0)  await AxiosCustom.post('/api/bim/wbs/batch', wbsNodes);
+    if (mappings.length > 0)  await AxiosCustom.post('/api/bim/element-wbs/batch', mappings);
+    onDone?.();
+  }, []);
+
+  // ---------------------------------------------------------------
+  // IFC Layer 재생성 (BIM 내 Layer 탭 재시도 버튼용)
+  // ---------------------------------------------------------------
+  const handleRegenerateLayers = useCallback(async (projectId, elements, onDone) => {
+    if (!projectId || !elements?.length) return;
+    const rawNames = [...new Set(elements.map(e => e.storey).filter(Boolean))];
+    let normalizedMap = {};
+    if (rawNames.length > 0) {
+      try {
+        const normRes = await AxiosCustom.post('/api/bim/normalize-storeys', { names: rawNames });
+        normalizedMap = normRes.data || {};
+      } catch (e) {
+        console.warn('[LayerRegen] Ollama 정규화 실패, 내부 폴백 사용:', e.message);
+      }
+    }
+    const patchedElements = Object.keys(normalizedMap).length > 0
+      ? elements.map(e => ({ ...e, storey: normalizedMap[e.storey] ?? e.storey }))
+      : elements;
+    const generatedLayers = generateLayersFromElements(patchedElements, projectId);
+    if (generatedLayers.length > 0) {
+      await AxiosCustom.post('/api/bim/layers/batch', generatedLayers);
+    }
+    onDone?.();
+  }, []);
+
+  // ---------------------------------------------------------------
   // Select BIM project → load BIM model data
   // ---------------------------------------------------------------
   function handleProjectSelect(projectData) {
@@ -988,6 +859,8 @@ function App() {
           onToggleCanvasFullscreen={toggleCanvasFullscreen}
           onPlacementModeChange={setBimPlacementMode}
           wbsJobState={wbsJobState}
+          onRegenerateLayers={handleRegenerateLayers}
+          onRegenerateWbs={handleRegenerateWbs}
         />
       );
     }
