@@ -1175,12 +1175,23 @@ export default function ControlSidebar() {
   };
 
   const handleTerrainFile = async (file) => {
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      console.warn('[Terrain] 이미지 파일이 아닙니다:', file.type || '(타입 미상)');
+      alert('이미지 파일만 업로드할 수 있습니다 (JPG, PNG, WEBP 등)');
+      return;
+    }
     const reader = new FileReader();
+    reader.onerror = () => console.error('[Terrain] 파일 읽기 실패');
     reader.onload = async (e) => {
-      const { dataUrl, w, h } = await resizeImageDataUrl(e.target.result, 1024, 0.8);
-      const aspect = h / w;
-      dispatch({ type: 'SET_TERRAIN', terrain: { imageDataUrl: dataUrl, width: 80, height: Math.round(80 * aspect) } });
+      try {
+        const { dataUrl, w, h } = await resizeImageDataUrl(e.target.result, 1024, 0.8);
+        const aspect = h / w;
+        dispatch({ type: 'SET_TERRAIN', terrain: { imageDataUrl: dataUrl, width: 80, height: Math.round(80 * aspect) } });
+      } catch (err) {
+        console.error('[Terrain] 이미지 처리 실패:', err.message);
+        alert(`드론 사진 로드 실패: ${err.message}`);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -1366,6 +1377,7 @@ export default function ControlSidebar() {
           type="file"
           accept="image/*"
           style={{ display: 'none' }}
+          onClick={e => { e.target.value = ''; }}
           onChange={e => handleTerrainFile(e.target.files[0])}
         />
       </Section>
