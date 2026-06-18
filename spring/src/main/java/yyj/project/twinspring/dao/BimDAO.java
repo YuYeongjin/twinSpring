@@ -104,5 +104,20 @@ public interface BimDAO {
 
     void deleteElementWbsMapping(@Param("elementId") String elementId);
 
+    /** 다건 부재 절대값 일괄 upsert (position/size/rotation 덮어쓰기) */
+    void batchUpsertElements(List<BimElementDTO> elements);
+
+    /**
+     * 단일 SQL로 부재 일괄 변환 (이동·회전·크기 동시 적용).
+     * elementIds == null 이면 projectId 전체 부재 대상.
+     */
+    void bulkTransformElements(
+            @Param("projectId")  String       projectId,
+            @Param("elementIds") List<String> elementIds,
+            @Param("dPosX") double dPosX, @Param("dPosY") double dPosY, @Param("dPosZ") double dPosZ,
+            @Param("dRotX") double dRotX, @Param("dRotY") double dRotY, @Param("dRotZ") double dRotZ,
+            @Param("sclX")  double sclX,  @Param("sclY")  double sclY,  @Param("sclZ")  double sclZ
+    );
+
     void decrementWbsElementCount(@Param("wbsId") String wbsId);
 }

@@ -398,6 +398,52 @@
         SELECT wbs_id FROM bim_element_wbs WHERE element_id = #{elementId} LIMIT 1
     </select>
 
+    <!-- 단일 SQL 부재 일괄 변환 (이동·회전·크기 동시 적용) -->
+    <update id="bulkTransformElements">
+        UPDATE bim_element
+        SET position_x = COALESCE(position_x, 0) + #{dPosX},
+            position_y = COALESCE(position_y, 0) + #{dPosY},
+            position_z = COALESCE(position_z, 0) + #{dPosZ},
+            rotation_x = COALESCE(rotation_x, 0) + #{dRotX},
+            rotation_y = COALESCE(rotation_y, 0) + #{dRotY},
+            rotation_z = COALESCE(rotation_z, 0) + #{dRotZ},
+            size_x     = COALESCE(size_x,     1) * #{sclX},
+            size_y     = COALESCE(size_y,     1) * #{sclY},
+            size_z     = COALESCE(size_z,     1) * #{sclZ}
+        WHERE project_id = #{projectId}
+        <if test="elementIds != null and !elementIds.isEmpty()">
+            AND element_id IN
+            <foreach collection="elementIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+    </update>
+
+    <!-- 다건 부재 절대값 일괄 업데이트 (transform gizmo 저장용) -->
+    <insert id="batchUpsertElements">
+        INSERT INTO bim_element (element_id, project_id, element_type, material,
+                                  position_x, position_y, position_z,
+                                  size_x, size_y, size_z,
+                                  rotation_x, rotation_y, rotation_z)
+        VALUES
+        <foreach collection="list" item="e" separator=",">
+            (#{e.elementId}, #{e.projectId}, #{e.elementType,jdbcType=VARCHAR}, #{e.material,jdbcType=VARCHAR},
+             #{e.positionX,jdbcType=DOUBLE}, #{e.positionY,jdbcType=DOUBLE}, #{e.positionZ,jdbcType=DOUBLE},
+             #{e.sizeX,jdbcType=DOUBLE}, #{e.sizeY,jdbcType=DOUBLE}, #{e.sizeZ,jdbcType=DOUBLE},
+             #{e.rotationX,jdbcType=DOUBLE}, #{e.rotationY,jdbcType=DOUBLE}, #{e.rotationZ,jdbcType=DOUBLE})
+        </foreach>
+        ON CONFLICT (element_id) DO UPDATE SET
+            position_x = EXCLUDED.position_x,
+            position_y = EXCLUDED.position_y,
+            position_z = EXCLUDED.position_z,
+            size_x     = EXCLUDED.size_x,
+            size_y     = EXCLUDED.size_y,
+            size_z     = EXCLUDED.size_z,
+            rotation_x = EXCLUDED.rotation_x,
+            rotation_y = EXCLUDED.rotation_y,
+            rotation_z = EXCLUDED.rotation_z
+    </insert>
+
     <!-- 단일 부재 로컬 DB 삭제 -->
     <delete id="deleteElementById" parameterType="string">
         DELETE FROM bim_element WHERE element_id = #{elementId}

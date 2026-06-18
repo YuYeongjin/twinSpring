@@ -1271,6 +1271,122 @@ public class BimServiceImpl implements BimService {
                 });
     }
 
+    // ── 단일 SQL 일괄 변환 (Spring DB 직접) ─────────────────────────────
+    @Override
+    public Mono<Map<String, Object>> bulkTransformDirect(
+            String projectId, List<String> elementIds,
+            double dPosX, double dPosY, double dPosZ,
+            double dRotX, double dRotY, double dRotZ,
+            double sclX,  double sclY,  double sclZ) {
+
+        return Mono.fromCallable(() -> {
+            // ① Spring DB 단일 UPDATE — 부재 수와 무관하게 쿼리 1번
+            bimDAO.bulkTransformElements(projectId, elementIds,
+                    dPosX, dPosY, dPosZ, dRotX, dRotY, dRotZ, sclX, sclY, sclZ);
+
+            int count = bimDAO.getElementsByProject(projectId).size();
+            if (elementIds != null && !elementIds.isEmpty()) {
+                count = elementIds.size();
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success",   true);
+            result.put("updated",   count);
+            result.put("projectId", projectId);
+            result.put("position",  Map.of("dx", dPosX, "dy", dPosY, "dz", dPosZ));
+            result.put("rotation",  Map.of("dx", dRotX, "dy", dRotY, "dz", dRotZ));
+            result.put("scale",     Map.of("x",  sclX,  "y",  sclY,  "z",  sclZ));
+            return result;
+        })
+        .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+        .doOnSuccess(r -> syncToCSharpAsync(projectId, elementIds))
+        .onErrorResume(e -> {
+            log.error("[BIM] bulkTransformDirect 실패: {}", e.getMessage(), e);
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error",   e.getMessage());
+            return Mono.just(err);
+        });
+    }
+
+    // ── 다건 부재 절대값 일괄 업데이트 ─────────────────────────────────────
+    @Override
+    public Mono<Map<String, Object>> batchAbsoluteUpdate(String projectId, List<BimElementDTO> elements) {
+        if (elements == null || elements.isEmpty()) {
+            return Mono.just(Map.of("success", false, "error", "elements is empty"));
+        }
+        return Mono.fromCallable(() -> {
+            for (BimElementDTO el : elements) el.setProjectId(projectId);
+            bimDAO.batchUpsertElements(elements);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("updated", elements.size());
+            result.put("projectId", projectId);
+            return result;
+        })
+        .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+        .doOnSuccess(r -> {
+            List<String> ids = elements.stream()
+                    .map(BimElementDTO::getElementId)
+                    .collect(java.util.stream.Collectors.toList());
+            syncToCSharpAsync(projectId, ids);
+        })
+        .onErrorResume(e -> {
+            log.error("[BIM] batchAbsoluteUpdate 실패: {}", e.getMessage(), e);
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error",   e.getMessage());
+            return Mono.just(err);
+        });
+    }
+
+    /** Spring DB 업데이트 후 C# 서버를 비동기로 동기화 (응답 차단 없음). */
+    private void syncToCSharpAsync(String projectId, List<String> elementIds) {
+        final Set<String> idSet = (elementIds != null && !elementIds.isEmpty())
+                ? new HashSet<>(elementIds) : null;
+
+        Mono.fromCallable(() -> bimDAO.getElementsByProject(projectId))
+            .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+            .flatMapMany(rows -> Flux.fromIterable(rows)
+                    .filter(m -> idSet == null || idSet.contains(m.get("elementId")))
+                    .map(m -> {
+                        BimElementDTO el = new BimElementDTO();
+                        el.setElementId((String)  m.get("elementId"));
+                        el.setProjectId(projectId);
+                        el.setElementType((String) m.get("elementType"));
+                        el.setMaterial((String)    m.get("material"));
+                        el.setPositionX(toDoubleOrNull(m.get("positionX")));
+                        el.setPositionY(toDoubleOrNull(m.get("positionY")));
+                        el.setPositionZ(toDoubleOrNull(m.get("positionZ")));
+                        el.setSizeX(toDoubleOrNull(m.get("sizeX")));
+                        el.setSizeY(toDoubleOrNull(m.get("sizeY")));
+                        el.setSizeZ(toDoubleOrNull(m.get("sizeZ")));
+                        el.setRotationX(toDoubleOrNull(m.get("rotationX")));
+                        el.setRotationY(toDoubleOrNull(m.get("rotationY")));
+                        el.setRotationZ(toDoubleOrNull(m.get("rotationZ")));
+                        el.setGlobalId((String)    m.get("globalId"));
+                        el.setIfcName((String)     m.get("ifcName"));
+                        el.setStorey((String)      m.get("storey"));
+                        el.setBuilding((String)    m.get("building"));
+                        return el;
+                    })
+            )
+            .flatMap(el -> webClient.put()
+                    .uri("/api/bim/element")
+                    .bodyValue(el)
+                    .retrieve()
+                    .bodyToMono(Void.class)
+                    .onErrorResume(e -> {
+                        log.warn("[BIM] C# sync 실패 (무시): elementId={}", el.getElementId());
+                        return Mono.empty();
+                    }), 20) // 동시 최대 20개 제한
+            .subscribe(
+                null,
+                e  -> log.warn("[BIM] C# 비동기 동기화 오류: projectId={}, {}", projectId, e.getMessage()),
+                () -> log.info("[BIM] C# 동기화 완료: projectId={}", projectId)
+            );
+    }
+
     // ── Ollama 층 이름 정규화 ────────────────────────────────────────────
 
     @Override

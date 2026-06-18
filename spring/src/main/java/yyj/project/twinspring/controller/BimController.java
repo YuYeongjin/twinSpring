@@ -451,6 +451,51 @@ public class BimController {
     }
 
     /**
+     * 부재 일괄 변환 (고속) — Spring DB 단일 UPDATE + C# 비동기 동기화
+     * PUT /api/bim/project/{projectId}/bulk-transform
+     *
+     * 기존 /transform 과 동일한 바디 형식.
+     * 부재 수와 무관하게 DB 쿼리 1번으로 즉시 처리됩니다.
+     */
+    @PutMapping("/project/{projectId}/bulk-transform")
+    public Mono<ResponseEntity<Map<String, Object>>> bulkTransformElements(
+            @PathVariable String projectId,
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> elementIds = body.containsKey("elementIds")
+                ? (List<String>) body.get("elementIds") : null;
+
+        Map<?, ?> pos = body.containsKey("position") ? (Map<?, ?>) body.get("position") : Map.of();
+        Map<?, ?> rot = body.containsKey("rotation") ? (Map<?, ?>) body.get("rotation") : Map.of();
+        Map<?, ?> scl = body.containsKey("scale")    ? (Map<?, ?>) body.get("scale")    : Map.of();
+
+        double dPosX = toDouble(pos.get("deltaX")), dPosY = toDouble(pos.get("deltaY")), dPosZ = toDouble(pos.get("deltaZ"));
+        double dRotX = toDouble(rot.get("deltaX")), dRotY = toDouble(rot.get("deltaY")), dRotZ = toDouble(rot.get("deltaZ"));
+        // factorX/Y/Z (Agent/기존) 또는 x/y/z (confirmGroupMove) 모두 지원
+        double sclX  = scl.containsKey("factorX") ? toDouble(scl.get("factorX")) : scl.containsKey("x") ? toDouble(scl.get("x")) : 1.0;
+        double sclY  = scl.containsKey("factorY") ? toDouble(scl.get("factorY")) : scl.containsKey("y") ? toDouble(scl.get("y")) : 1.0;
+        double sclZ  = scl.containsKey("factorZ") ? toDouble(scl.get("factorZ")) : scl.containsKey("z") ? toDouble(scl.get("z")) : 1.0;
+
+        return bimService.bulkTransformDirect(projectId, elementIds,
+                dPosX, dPosY, dPosZ, dRotX, dRotY, dRotZ, sclX, sclY, sclZ)
+                .map(result -> ResponseEntity.ok(result));
+    }
+
+    /**
+     * 다건 부재 절대값 일괄 업데이트 — Transform Gizmo 저장용
+     * PUT /api/bim/project/{projectId}/batch-update
+     *
+     * 요청 바디: BimElementDTO 배열 (positionX/Y/Z, sizeX/Y/Z, rotationX/Y/Z 절대값)
+     */
+    @PutMapping("/project/{projectId}/batch-update")
+    public Mono<ResponseEntity<Map<String, Object>>> batchUpdateElements(
+            @PathVariable String projectId,
+            @RequestBody List<BimElementDTO> elements) {
+        return bimService.batchAbsoluteUpdate(projectId, elements)
+                .map(result -> ResponseEntity.ok(result));
+    }
+
+    /**
      * 부재 통합 변환 API (이동·회전·크기 동시 적용)
      * PUT /api/bim/project/{projectId}/transform
      *

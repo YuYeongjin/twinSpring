@@ -75,20 +75,30 @@ function throttledCall(map, key, ms, fn) {
   if (!map[key] || now - map[key] > ms) { map[key] = now; fn(); }
 }
 
-// ── 드론 지형 레이어 ─────────────────────────────────────────────
+// ── 드론 지형 레이어 (z-up: PlaneGeometry = XY 평면 = 지면) ────────
 function TerrainLayer() {
   const { terrain } = useIntegration();
   const [texture, setTexture] = useState(null);
   const prevUrl = useRef(null);
 
   useEffect(() => {
-    if (!terrain?.imageDataUrl) { setTexture(t => { t?.dispose(); return null; }); return; }
+    if (!terrain?.imageDataUrl) {
+      setTexture(prev => { prev?.dispose(); return null; });
+      return;
+    }
     if (terrain.imageDataUrl === prevUrl.current) return;
     prevUrl.current = terrain.imageDataUrl;
-    const loader = new THREE.TextureLoader();
-    loader.load(terrain.imageDataUrl, tex => {
+
+    // TextureLoader 대신 Image → THREE.Texture 직접 생성 (DataURL 신뢰성 향상)
+    const img = new Image();
+    img.onload = () => {
+      const tex = new THREE.Texture(img);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
       setTexture(prev => { prev?.dispose(); return tex; });
-    });
+    };
+    img.onerror = () => console.error('[Terrain] 텍스처 이미지 로드 실패');
+    img.src = terrain.imageDataUrl;
   }, [terrain?.imageDataUrl]);
 
   if (!terrain || !texture) return null;
@@ -96,6 +106,8 @@ function TerrainLayer() {
   const w = terrain.width  || 80;
   const h = terrain.height || 80;
 
+  // z-up 씬: PlaneGeometry 기본 XY 평면 → 지면과 일치, 별도 회전 불필요
+  // position Z=-0.015: 그리드(Z=0)와 z-fighting 방지
   return (
     <mesh position={[0, 0, -0.015]} receiveShadow>
       <planeGeometry args={[w, h, 1, 1]} />
@@ -1958,9 +1970,10 @@ function SceneInner() {
       {/* 드론 지형 텍스처 */}
       <TerrainLayer />
 
-      {/* 그리드 (지형 위에 얇게 오버레이) */}
+      {/* 그리드 — z-up 씬: 기본 XZ 평면을 XY 평면(지면)으로 90° 회전 */}
       <Grid
         args={[80, 80]}
+        rotation={[-Math.PI / 2, 0, 0]}
         cellSize={1}
         cellThickness={0.3}
         cellColor={terrain ? '#ffffff' : '#1a3a22'}
