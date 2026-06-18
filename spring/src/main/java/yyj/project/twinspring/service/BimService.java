@@ -187,6 +187,23 @@ public interface BimService {
             double dRotX, double dRotY, double dRotZ,
             double sclX,  double sclY,  double sclZ);
 
+    /**
+     * Spring DB 단일 UPDATE로 부재를 일괄 변환합니다 (이동·회전·크기 동시 적용).
+     * C# 서버와의 동기화는 백그라운드 비동기로 처리하므로 응답이 즉시 반환됩니다.
+     * elementIds == null 이면 projectId 전체 부재 대상.
+     */
+    Mono<Map<String, Object>> bulkTransformDirect(
+            String projectId, List<String> elementIds,
+            double dPosX, double dPosY, double dPosZ,
+            double dRotX, double dRotY, double dRotZ,
+            double sclX,  double sclY,  double sclZ);
+
+    /**
+     * 다건 부재 절대값 일괄 업데이트 (transform gizmo 저장용).
+     * 단일 SQL upsert 후 C# 서버 동기화는 백그라운드에서 수행.
+     */
+    Mono<Map<String, Object>> batchAbsoluteUpdate(String projectId, List<BimElementDTO> elements);
+
     // ── Ollama 층 이름 정규화 ───────────────────────────────────────
     /** IFC 층 이름 목록을 Ollama 3B 모델로 정규화한다. (예: "Story 1" → "1F") */
     Map<String, String> normalizeStoreyNames(List<String> names);
