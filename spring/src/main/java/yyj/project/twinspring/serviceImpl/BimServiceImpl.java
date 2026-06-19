@@ -1,6 +1,8 @@
 package yyj.project.twinspring.serviceImpl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.beans.factory.annotation.Value;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -28,6 +30,8 @@ import yyj.project.twinspring.storage.StorageService;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -1385,6 +1389,111 @@ public class BimServiceImpl implements BimService {
                 e  -> log.warn("[BIM] C# 비동기 동기화 오류: projectId={}, {}", projectId, e.getMessage()),
                 () -> log.info("[BIM] C# 동기화 완료: projectId={}", projectId)
             );
+    }
+
+    // ── GLB 노드 translation 패치 ────────────────────────────────────────
+
+    @Override
+    public Mono<Map<String, Object>> applyGlbDelta(
+            String projectId, List<String> elementIds,
+            double dx, double dy, double dz) {
+        return Mono.fromCallable(() -> {
+            String key = getGlbStorageKey(projectId);
+            if (key == null) {
+                Map<String, Object> r = new LinkedHashMap<>();
+                r.put("success", false);
+                r.put("reason",  "no_glb");
+                return r;
+            }
+            byte[] glbBytes;
+            try (InputStream is = storageService.download(key)) {
+                glbBytes = is.readAllBytes();
+            }
+            byte[] patched = patchGlbNodeTranslations(glbBytes, elementIds, dx, dy, dz);
+            try (java.io.ByteArrayInputStream newIs = new java.io.ByteArrayInputStream(patched)) {
+                storageService.upload(key, newIs, patched.length, "model/gltf-binary");
+            }
+            log.info("[BIM] GLB translation 패치 완료: projectId={}, elements={}, dx={},dy={},dz={}",
+                    projectId, elementIds == null ? "all" : elementIds.size(), dx, dy, dz);
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("success",   true);
+            r.put("action",    "glb_reload");
+            r.put("projectId", projectId);
+            return r;
+        })
+        .subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic())
+        .onErrorResume(e -> {
+            log.error("[BIM] applyGlbDelta 실패: {}", e.getMessage(), e);
+            Map<String, Object> err = new LinkedHashMap<>();
+            err.put("success", false);
+            err.put("error",   e.getMessage());
+            return Mono.just(err);
+        });
+    }
+
+    private byte[] patchGlbNodeTranslations(byte[] glb, List<String> elementIds,
+                                             double dx, double dy, double dz) throws Exception {
+        ByteBuffer buf = ByteBuffer.wrap(glb).order(ByteOrder.LITTLE_ENDIAN);
+
+        int magic = buf.getInt();
+        if (magic != 0x46546C67) throw new IllegalArgumentException("Not a GLB file (bad magic)");
+        buf.getInt(); // version
+        buf.getInt(); // totalLength
+
+        int jsonChunkLen  = buf.getInt();
+        int jsonChunkType = buf.getInt(); // 0x4E4F534A = "JSON"
+        if (jsonChunkType != 0x4E4F534A) throw new IllegalArgumentException("First GLB chunk is not JSON");
+
+        byte[] jsonBytes = new byte[jsonChunkLen];
+        buf.get(jsonBytes);
+
+        // parse GLTF JSON
+        ObjectNode gltf  = (ObjectNode) objectMapper.readTree(jsonBytes);
+        ArrayNode  nodes = (ArrayNode)  gltf.get("nodes");
+
+        Set<String> targetSet = (elementIds != null && !elementIds.isEmpty())
+                ? new HashSet<>(elementIds) : null;
+
+        if (nodes != null) {
+            for (int i = 0; i < nodes.size(); i++) {
+                ObjectNode node = (ObjectNode) nodes.get(i);
+                String     name = node.path("name").asText(null);
+                if (name == null) continue;
+                if (targetSet != null && !targetSet.contains(name)) continue;
+
+                if (node.has("translation")) {
+                    ArrayNode t = (ArrayNode) node.get("translation");
+                    t.set(0, t.get(0).asDouble() + dx);
+                    t.set(1, t.get(1).asDouble() + dy);
+                    t.set(2, t.get(2).asDouble() + dz);
+                } else {
+                    ArrayNode t = objectMapper.createArrayNode();
+                    t.add(dx); t.add(dy); t.add(dz);
+                    node.set("translation", t);
+                }
+            }
+        }
+
+        // re-serialize with 4-byte space-padding (GLTF spec)
+        byte[] newJson    = objectMapper.writeValueAsBytes(gltf);
+        int    paddedLen  = (newJson.length + 3) & ~3;
+        byte[] paddedJson = Arrays.copyOf(newJson, paddedLen);
+        for (int i = newJson.length; i < paddedLen; i++) paddedJson[i] = 0x20;
+
+        // original BIN chunk (everything after the JSON chunk)
+        int    binStart  = 12 + 8 + jsonChunkLen;
+        int    binLength = glb.length - binStart;
+
+        int newTotal = 12 + 8 + paddedLen + binLength;
+        ByteBuffer out = ByteBuffer.allocate(newTotal).order(ByteOrder.LITTLE_ENDIAN);
+        out.putInt(0x46546C67);  // magic "glTF"
+        out.putInt(2);           // version
+        out.putInt(newTotal);
+        out.putInt(paddedLen);
+        out.putInt(0x4E4F534A);  // "JSON"
+        out.put(paddedJson);
+        if (binLength > 0) out.put(glb, binStart, binLength);
+        return out.array();
     }
 
     // ── Ollama 층 이름 정규화 ────────────────────────────────────────────

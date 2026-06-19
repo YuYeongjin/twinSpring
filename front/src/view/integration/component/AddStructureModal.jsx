@@ -375,6 +375,9 @@ export default function AddStructureModal({ onClose }) {
           startDate:     resolvedStructure.wbsStartDate || null,
           instanceKey:   resolvedStructure.id,
         });
+        // BIM 태스크 생성 직후 state 즉시 반영 (30초 폴링 대기 없이)
+        const updatedTasksRes = await AxiosCustom.get(`/api/wbs/project/${wbsProjectId}/tasks`);
+        dispatch({ type: 'SET_REAL_DATA', wbsTasks: updatedTasksRes.data || [] });
       } catch { /* 태스크 생성 실패 — 무시 (수동으로 WBS탭에서 생성 가능) */ }
     }
   };

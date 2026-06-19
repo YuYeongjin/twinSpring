@@ -204,6 +204,14 @@ public interface BimService {
      */
     Mono<Map<String, Object>> batchAbsoluteUpdate(String projectId, List<BimElementDTO> elements);
 
+    /**
+     * MinIO에 저장된 GLB 파일의 GLTF 노드에 translation delta를 누적 적용한 뒤 재업로드합니다.
+     * elementIds == null 이면 모든 노드, 아니면 지정 노드만 패치합니다.
+     */
+    Mono<Map<String, Object>> applyGlbDelta(
+            String projectId, List<String> elementIds,
+            double dx, double dy, double dz);
+
     // ── Ollama 층 이름 정규화 ───────────────────────────────────────
     /** IFC 층 이름 목록을 Ollama 3B 모델로 정규화한다. (예: "Story 1" → "1F") */
     Map<String, String> normalizeStoreyNames(List<String> names);

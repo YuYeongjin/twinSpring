@@ -77,8 +77,10 @@ function Bubble({ msg }) {
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function BimAgentChat({
   selectedProject,
+  selectedElementIds, // string[] — 현재 선택된 부재 ID 목록
   onShowStructural,   // () => void — 구조해석 탭 전환 콜백
   onWbsChanged,       // () => void — WBS 변경 후 콜백 (선택)
+  onGlbReload,        // () => void — GLB 캐시버스트 후 뷰어 리로드 콜백
 }) {
   const t = useT('bimDashboard');
   const [open, setOpen]         = useState(false);
@@ -154,6 +156,7 @@ export default function BimAgentChat({
                                : null,
         simulationProjectId: null,
         wbsProjectId:        null,
+        selectedElementIds:  selectedElementIds?.length > 0 ? selectedElementIds : null,
       });
 
       const data = res.data;
@@ -204,6 +207,13 @@ export default function BimAgentChat({
                  + (bimData.peakWorkers ? t('agentWbsCreatedPeak', { peak: bimData.peakWorkers }) : ''),
         }]);
         onWbsChanged?.();
+      } else if (action === "glb_reload") {
+        onGlbReload?.();
+        setMessages(prev => [...prev, {
+          role:    "action",
+          success: true,
+          content: `✅ ${bimData.message ?? '부재 이동 완료'} — 3D 뷰어가 업데이트됩니다.`,
+        }]);
       } else if (action === "error") {
         setMessages(prev => [...prev, {
           role:    "action",
@@ -221,7 +231,7 @@ export default function BimAgentChat({
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [messages, loading, selectedProject, onShowStructural, onWbsChanged, t]);
+  }, [messages, loading, selectedProject, onShowStructural, onWbsChanged, onGlbReload, t]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {

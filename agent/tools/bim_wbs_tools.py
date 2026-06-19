@@ -211,6 +211,7 @@ def _build_tasks(elements: list[dict], start: datetime.date) -> list[dict]:
 # ── 구조 개요 분석 요약 ─────────────────────────────────────────────────────
 @tool
 def get_structural_summary(project_id: str) -> str:
+    """BIM 프로젝트의 구조 개요(부재 수, 층수, 타입별 분포)를 분석해 반환합니다."""
     raw = _safe_get(f"{SPRING_BASE_URL}/api/bim/project/{project_id}") or []
     elements: list[dict] = raw if isinstance(raw, list) else raw.get("elements", [])
     total = len(elements)
@@ -226,6 +227,7 @@ def get_structural_summary(project_id: str) -> str:
 # ── WBS 엔드포인트 연동 스케줄러 ──────────────────────────────────────────────
 @tool
 def schedule_wbs_for_bim(bim_project_id: str, bim_project_name: str = "", force_new: bool = True) -> str:
+    """BIM 프로젝트의 부재 데이터를 분석해 WBS 공정표를 자동 생성하거나 업데이트합니다."""
     raw = _safe_get(f"{SPRING_BASE_URL}/api/bim/project/{bim_project_id}") or []
     elements: list[dict] = raw if isinstance(raw, list) else raw.get("elements", [])
 
