@@ -80,7 +80,10 @@ def responder_node(state: AgentState) -> dict:
         content  = response.content.strip()
     except Exception:
         logger.error("[responder] LLM 응답 실패", exc_info=True)
-        content = error_msg(lang)
+        # tool 실행이 성공했다면 그 메시지를 그대로 반환 (LLM 불필요)
+        _data = tool_results.get("data") if isinstance(tool_results, dict) else None
+        _msg  = _data.get("message") if isinstance(_data, dict) else None
+        content = _msg if _msg else error_msg(lang)
 
     # None 반환 시 기존 state 값을 덮어쓰지 않도록 값이 있을 때만 포함
     out: dict = {

@@ -1007,7 +1007,12 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
 
     const t = useT('bimDashboard');
     const [useLiteGlb, setUseLiteGlb] = React.useState(false);
-    const activeGlbUrl = (useLiteGlb && glbLiteUrl) ? glbLiteUrl : glbUrl;
+    const [glbCacheBust, setGlbCacheBust] = React.useState(0);
+    const _baseGlbUrl = (useLiteGlb && glbLiteUrl) ? glbLiteUrl : glbUrl;
+    const activeGlbUrl = _baseGlbUrl
+        ? (glbCacheBust > 0 ? `${_baseGlbUrl}?t=${glbCacheBust}` : _baseGlbUrl)
+        : _baseGlbUrl;
+    const handleGlbReload = React.useCallback(() => setGlbCacheBust(Date.now()), []);
     const mainViewRef   = useRef(null);
     const hoverPosRef   = useRef({ x: 0, y: 0, z: 0 });
     const rootContainerRef = useRef(null);
@@ -3213,7 +3218,9 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             {bimSubView === 'editor' && selectedProject && (
                 <BimAgentChat
                     selectedProject={selectedProject}
+                    selectedElementIds={selectedElements ? [...selectedElements] : []}
                     onShowStructural={() => setBimSubView('structural')}
+                    onGlbReload={handleGlbReload}
                 />
             )}
         </div>

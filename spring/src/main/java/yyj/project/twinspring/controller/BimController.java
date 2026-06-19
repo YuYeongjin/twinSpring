@@ -682,4 +682,23 @@ public class BimController {
         List<String> names = (List<String>) body.getOrDefault("names", List.of());
         return ResponseEntity.ok(bimService.normalizeStoreyNames(names));
     }
+
+    /**
+     * GLB 노드 translation 누적 패치 — 에이전트 부재 이동 후 뷰어 시각 반영
+     * PUT /api/bim/project/{projectId}/apply-glb-delta
+     * 요청: { "elementIds": [...] or null, "deltaX": 0, "deltaY": 0, "deltaZ": -10 }
+     */
+    @PutMapping("/project/{projectId}/apply-glb-delta")
+    public Mono<ResponseEntity<Map<String, Object>>> applyGlbDelta(
+            @PathVariable String projectId,
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> elementIds = body.containsKey("elementIds")
+                ? (List<String>) body.get("elementIds") : null;
+        double dx = toDouble(body.get("deltaX"));
+        double dy = toDouble(body.get("deltaY"));
+        double dz = toDouble(body.get("deltaZ"));
+        return bimService.applyGlbDelta(projectId, elementIds, dx, dy, dz)
+                .map(ResponseEntity::ok);
+    }
 }
