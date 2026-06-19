@@ -495,6 +495,30 @@ async def on_startup():
     logger.info("[startup] RAG 자동 구축 스레드 시작 (DB 준비 대기 후 실행)")
 
 
+@app.get("/admin/sensor-thresholds")
+def get_sensor_thresholds():
+    """현재 런타임 센서 임계값 반환."""
+    from config import thresholds as _th
+    return _th.get()
+
+
+class SensorThresholdsBody(BaseModel):
+    temp_high: Optional[float] = None
+    temp_low:  Optional[float] = None
+    hum_high:  Optional[float] = None
+    hum_low:   Optional[float] = None
+
+
+@app.put("/admin/sensor-thresholds")
+def put_sensor_thresholds(body: SensorThresholdsBody):
+    """런타임 센서 임계값 업데이트 — 재시작 없이 즉시 반영."""
+    from config import thresholds as _th
+    data = {k: v for k, v in body.model_dump().items() if v is not None}
+    updated = _th.update(data)
+    logger.info("[admin] sensor-thresholds 업데이트: %s", updated)
+    return updated
+
+
 @app.get("/admin/rag-status")
 def rag_status():
     """RAG 인덱스 현황 반환 (청크 수 + 빌드 상태)."""

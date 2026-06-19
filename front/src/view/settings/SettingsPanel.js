@@ -609,6 +609,138 @@ function RagManager() {
   );
 }
 
+// ── 센서 임계값 편집 섹션 ───────────────────────────────────────────────────
+function SensorThresholdSection() {
+  const FIELDS = [
+    { key: 'temp_high', label: '온도 상한 (°C)', color: '#ef4444', min: 0,   max: 80 },
+    { key: 'temp_low',  label: '온도 하한 (°C)', color: '#3b82f6', min: -30, max: 40 },
+    { key: 'hum_high',  label: '습도 상한 (%)',  color: '#f59e0b', min: 0,   max: 100 },
+    { key: 'hum_low',   label: '습도 하한 (%)',  color: '#6366f1', min: 0,   max: 100 },
+  ];
+
+  const [values, setValues] = useState(null);   // null = 로딩 중
+  const [draft,  setDraft]  = useState({});
+  const [saving, setSaving] = useState(false);
+  const [msg,    setMsg]    = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const r = await AxiosCustom.get('/api/chat/sensor-thresholds');
+      setValues(r.data);
+      setDraft(r.data);
+    } catch {
+      setMsg('Agent 서버에 연결할 수 없습니다.');
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMsg('');
+    try {
+      const r = await AxiosCustom.put('/api/chat/sensor-thresholds', draft);
+      setValues(r.data);
+      setDraft(r.data);
+      setMsg('저장됨');
+      setTimeout(() => setMsg(''), 2000);
+    } catch {
+      setMsg('저장 실패');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle = (changed) => ({
+    background: '#0d1b2a',
+    border: `1px solid ${changed ? '#60a5fa' : '#253347'}`,
+    borderRadius: 6,
+    color: '#e2e8f0',
+    fontSize: 13,
+    padding: '5px 10px',
+    width: 90,
+    textAlign: 'right',
+  });
+
+  if (values === null) {
+    return <div style={{ color: '#4b5563', fontSize: 12 }}>
+      {msg || '불러오는 중…'}
+    </div>;
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 32px', marginBottom: 16 }}>
+        {FIELDS.map(({ key, label, color, min, max }) => {
+          const changed = draft[key] !== values[key];
+          return (
+            <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <span style={{ fontSize: 12, color, fontWeight: 600 }}>●</span>
+                <span style={{ fontSize: 12, color: '#e2e8f0', marginLeft: 6 }}>{label}</span>
+              </div>
+              <input
+                type="number"
+                min={min}
+                max={max}
+                step={0.5}
+                value={draft[key] ?? ''}
+                onChange={e => setDraft(p => ({ ...p, [key]: parseFloat(e.target.value) }))}
+                style={inputStyle(changed)}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 현재 값 vs 변경 값 미리보기 */}
+      {FIELDS.some(f => draft[f.key] !== values[f.key]) && (
+        <div style={{
+          fontSize: 11, color: '#60a5fa', background: '#0d1b2a',
+          border: '1px solid #1e3a5f', borderRadius: 6,
+          padding: '6px 10px', marginBottom: 12,
+        }}>
+          변경 예정: {FIELDS.filter(f => draft[f.key] !== values[f.key])
+            .map(f => `${f.label} ${values[f.key]} → ${draft[f.key]}`).join(' / ')}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            padding: '5px 18px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+            background: saving ? '#1a2a3a' : '#1e3a5f',
+            border: `1px solid ${saving ? '#253347' : '#2a5080'}`,
+            color: saving ? '#6b7280' : '#60a5fa',
+            cursor: saving ? 'wait' : 'pointer',
+          }}
+        >
+          {saving ? '저장 중…' : '적용'}
+        </button>
+        <button
+          onClick={load}
+          style={{
+            padding: '5px 12px', borderRadius: 6, fontSize: 12,
+            background: 'transparent', border: '1px solid #253347', color: '#6b7280', cursor: 'pointer',
+          }}
+        >
+          초기화
+        </button>
+        {msg && (
+          <span style={{ fontSize: 12, color: msg === '저장됨' ? '#4ade80' : '#f87171' }}>
+            {msg === '저장됨' ? '✓ ' : '✗ '}{msg}
+          </span>
+        )}
+      </div>
+      <p style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
+        Agent 재시작 없이 즉시 반영됩니다. 서버 재시작 시 환경변수(SENSOR_TEMP_HIGH 등) 값으로 초기화됩니다.
+      </p>
+    </div>
+  );
+}
+
 // ── 메인 패널 ───────────────────────────────────────────────────────────────
 export default function SettingsPanel() {
   const t = useT('settings');
@@ -705,6 +837,11 @@ export default function SettingsPanel() {
       <h2 style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 700, marginBottom: 20 }}>
         {t('title')}
       </h2>
+
+      {/* ── 센서 알람 임계값 ── */}
+      <Section title="센서 알람 임계값">
+        <SensorThresholdSection />
+      </Section>
 
       {/* ── RAG 인덱스 관리 ── */}
       <Section title={t('ragSection')}>

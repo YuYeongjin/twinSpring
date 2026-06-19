@@ -151,6 +151,25 @@ public class ChatController {
     }
 
     /**
+     * 런타임 센서 알람 임계값 조회
+     */
+    @GetMapping("/sensor-thresholds")
+    public ResponseEntity<Map<String, Object>> getSensorThresholds() {
+        return ResponseEntity.ok(chatService.getSensorThresholds());
+    }
+
+    /**
+     * 런타임 센서 알람 임계값 업데이트 — Agent 재시작 없이 즉시 반영
+     *
+     * Body 예시:
+     * { "temp_high": 38.0, "temp_low": 3.0, "hum_high": 85.0, "hum_low": 15.0 }
+     */
+    @PutMapping("/sensor-thresholds")
+    public ResponseEntity<Map<String, Object>> updateSensorThresholds(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(chatService.updateSensorThresholds(body));
+    }
+
+    /**
      * WBS 프로젝트 생성 에이전트 채팅
      *
      * Body 예시:

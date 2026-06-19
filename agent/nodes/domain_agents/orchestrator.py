@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config.state import AgentState
 
@@ -35,8 +36,8 @@ def _invoke(tool_fn, args: dict) -> dict:
         raw = tool_fn.invoke(args)
         return json.loads(raw) if isinstance(raw, str) else raw
     except Exception as e:
-        logger.error("[orchestrator] %s 실패: %s", tool_fn.name, e)
-        return {"success": False, "error": str(e)}
+        logger.error("[orchestrator] %s 실패 (args=%s): %s", tool_fn.name, args, e, exc_info=True)
+        return {"success": False, "error": "데이터를 불러올 수 없습니다."}
 
 
 def _build_report_charts(wbs: dict, bim: dict, safe: dict) -> dict:
@@ -155,9 +156,21 @@ def run_orchestrator_agent(state: AgentState) -> dict:
         collect_wbs_overview, collect_bim_overview, collect_safe_overview,
     )
 
-    wbs  = _invoke(collect_wbs_overview,  {})
-    bim  = _invoke(collect_bim_overview,  {})
-    safe = _invoke(collect_safe_overview, {})
+    # WBS / BIM / Safe 3개 도메인 데이터 병렬 수집
+    collect_tasks = {
+        "wbs":  (collect_wbs_overview,  {}),
+        "bim":  (collect_bim_overview,  {}),
+        "safe": (collect_safe_overview, {}),
+    }
+    collected: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_invoke, fn, args): key for key, (fn, args) in collect_tasks.items()}
+        for future in as_completed(futures):
+            collected[futures[future]] = future.result()
+
+    wbs  = collected["wbs"]
+    bim  = collected["bim"]
+    safe = collected["safe"]
 
     # 특정 WBS 프로젝트 링크 수집 (project_id 있을 때만)
     links: dict = {}

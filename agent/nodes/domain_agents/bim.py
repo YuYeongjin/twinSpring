@@ -148,8 +148,8 @@ def _invoke(tool_fn, args: dict) -> dict:
         logger.info("[bim] tool 완료: %s → success=%s", tool_fn.name, result.get("success", "?"))
         return result
     except Exception as e:
-        logger.error("[bim] %s 실패: %s", tool_fn.name, e)
-        return {"success": False, "error": str(e)}
+        logger.error("[bim] %s 실패 (args=%s): %s", tool_fn.name, args, e, exc_info=True)
+        return {"success": False, "error": "BIM 작업을 처리할 수 없습니다."}
 
 
 def _make_undo(desc: str, tool_name: str, inv_args: dict) -> dict:

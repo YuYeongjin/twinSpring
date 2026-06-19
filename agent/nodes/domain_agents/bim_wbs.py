@@ -55,8 +55,8 @@ def _invoke(tool_fn, args: dict) -> dict:
         logger.info("[bim_wbs] tool 완료 action=%s", result.get("action", "?"))
         return result
     except Exception as exc:
-        logger.error("[bim_wbs] tool=%s 실패: %s", tool_fn.name, exc, exc_info=True)
-        return {"success": False, "error": str(exc)}
+        logger.error("[bim_wbs] tool=%s 실패 (args=%s): %s", tool_fn.name, args, exc, exc_info=True)
+        return {"success": False, "error": "요청을 처리할 수 없습니다."}
 
 
 def run_bim_wbs_agent(state: AgentState) -> dict:
