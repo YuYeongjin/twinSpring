@@ -72,4 +72,10 @@ public interface ChatService {
 
     /** RAG 인덱스 재구축 트리거 */
     Map<String, Object> ragRebuild();
+
+    /** 현재 런타임 센서 알람 임계값 조회 */
+    Map<String, Object> getSensorThresholds();
+
+    /** 런타임 센서 알람 임계값 업데이트 */
+    Map<String, Object> updateSensorThresholds(Map<String, Object> body);
 }

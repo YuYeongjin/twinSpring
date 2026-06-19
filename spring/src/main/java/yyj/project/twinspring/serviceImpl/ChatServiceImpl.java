@@ -495,4 +495,40 @@ public class ChatServiceImpl implements ChatService {
             return Map.of("queued", false, "message", "Agent 서버 연결 실패: " + e.getMessage());
         }
     }
+
+    @Override
+    public Map<String, Object> getSensorThresholds() {
+        try {
+            String raw = agentClient.get()
+                    .uri("/admin/sensor-thresholds")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(5))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[SensorThresholds] 조회 실패: {}", e.getMessage());
+            return Map.of("error", "Agent 서버에 연결할 수 없습니다.");
+        }
+    }
+
+    @Override
+    public Map<String, Object> updateSensorThresholds(Map<String, Object> body) {
+        try {
+            String raw = agentClient.put()
+                    .uri("/admin/sensor-thresholds")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(objectMapper.writeValueAsString(body))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(5))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[SensorThresholds] 업데이트 실패: {}", e.getMessage());
+            return Map.of("error", "Agent 서버에 연결할 수 없습니다.");
+        }
+    }
 }
