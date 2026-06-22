@@ -271,7 +271,9 @@ export async function generateBimWbsTasks({
     const latestEnd   = nonBimTasks.reduce((acc, t) => (
       !t.endDate ? acc : (!acc || t.endDate > acc ? t.endDate : acc)
     ), null);
-    const baseStartStr = latestEnd ? addDays(latestEnd, 1) : startDate;
+    // latestEnd가 startDate보다 이전(과거)이면 startDate를 그대로 사용
+    // (기존 WBS가 이미 완료된 경우 BIM이 과거 날짜로 생성되는 버그 방지)
+    const baseStartStr = (latestEnd && latestEnd >= startDate) ? addDays(latestEnd, 1) : startDate;
 
     const planStart = plan.projectStart;
     const baseStart = new Date(baseStartStr.slice(0, 10) + 'T00:00:00');
