@@ -26,29 +26,60 @@ function inferYScale(elements) {
  */
 export function detectFloors(elements) {
   if (!elements?.length) return [];
-  const scale  = inferYScale(elements);
-  const gapRaw = FLOOR_GAP / scale;   // raw 좌표 기준 층 간격 임계값
-
-  // Z-up DB: positionZ = 높이
   const heightOf = el => Number(el.positionZ) || 0;
 
-  const sorted = [...elements].sort((a, b) => heightOf(a) - heightOf(b));
-  const groups = [[sorted[0]]];
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = groups[groups.length - 1];
-    if (heightOf(sorted[i]) - heightOf(prev[prev.length - 1]) >= gapRaw)
-      groups.push([sorted[i]]);
+  // IfcSlab elements cluster cleanly at each floor level.
+  // IfcMember elements span continuous Z ranges → cause false single-group detection.
+  // When ≥2 slabs exist, use them as floor anchors and assign all elements to nearest floor.
+  const slabs   = elements.filter(el => el.elementType === 'IfcSlab');
+  const anchors  = slabs.length >= 2 ? slabs : elements;
+  const scale    = inferYScale(anchors);
+  const gapRaw   = FLOOR_GAP / scale;
+
+  const anchorSorted = [...anchors].sort((a, b) => heightOf(a) - heightOf(b));
+  const levelGroups  = [[anchorSorted[0]]];
+  for (let i = 1; i < anchorSorted.length; i++) {
+    const prev = levelGroups[levelGroups.length - 1];
+    if (heightOf(anchorSorted[i]) - heightOf(prev[prev.length - 1]) >= gapRaw)
+      levelGroups.push([anchorSorted[i]]);
     else
-      prev.push(sorted[i]);
+      prev.push(anchorSorted[i]);
   }
-  return groups.map(g => {
-    const ys  = g.map(heightOf);
+
+  if (slabs.length < 2) {
+    return levelGroups.map(g => {
+      const ys  = g.map(heightOf);
+      const avg = ys.reduce((a, b) => a + b) / ys.length;
+      return { avgY: avg * scale, minY: Math.min(...ys) * scale, maxY: Math.max(...ys) * scale, scale, elements: g };
+    });
+  }
+
+  // Compute slab-floor centroids, then reassign ALL elements to their nearest floor
+  const centroids = levelGroups.map(g => {
+    const ys = g.map(heightOf);
+    return ys.reduce((a, b) => a + b) / ys.length;
+  });
+
+  const allGroups = centroids.map(() => []);
+  elements.forEach(el => {
+    const h = heightOf(el);
+    let best = 0, bestDist = Infinity;
+    centroids.forEach((c, i) => {
+      const d = Math.abs(h - c);
+      if (d < bestDist) { bestDist = d; best = i; }
+    });
+    allGroups[best].push(el);
+  });
+
+  return centroids.map((c, i) => {
+    const g  = allGroups[i];
+    const ys = g.length > 0 ? g.map(heightOf) : [c];
     const avg = ys.reduce((a, b) => a + b) / ys.length;
     return {
       avgY:     avg * scale,
       minY:     Math.min(...ys) * scale,
       maxY:     Math.max(...ys) * scale,
-      scale,                    // getElementFloorIndex 에서 재사용
+      scale,
       elements: g,
     };
   });

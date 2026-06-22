@@ -56,6 +56,7 @@ function makeInitial() {
     bimSimProgress:    {},  // { [structureId]: number } — 자동 작업 누적 진척도(%)
     pendingBimReset:   [],  // BIM 프로젝트 ID 배열 — 다음 SET_REAL_DATA 시 해당 태스크 0% 초기화
     bimWbsProgress:    {},  // { [bimProjectId]: { phases, elements } } — BIM WBS 공정 요약
+    selectedWbsTaskId: null, // 선택된 WBS 태스크 ID — BIM 부재 하이라이트용
   };
 }
 
@@ -159,15 +160,29 @@ function reducer(state, action) {
       const pending = state.pendingBimReset;
       // pendingBimReset에 있는 BIM 프로젝트 태스크만 0% 초기화
       // 30초 폴링 시에는 pendingBimReset이 비어있어 리셋하지 않음 → 시뮬 진행률 보존
-      const resolvedTasks = pending.length > 0
-        ? (() => {
-            const pendingSet = new Set(pending);
-            return incomingTasks.map(t => {
-              const m = (t.notes || '').match(/^BIM[^:]*:([^:]+):/);
-              return (m && pendingSet.has(m[1])) ? { ...t, progress: 0 } : t;
-            });
-          })()
-        : incomingTasks;
+      let resolvedTasks;
+      if (pending.length > 0) {
+        const pendingSet = new Set(pending);
+        resolvedTasks = incomingTasks.map(t => {
+          const m = (t.notes || '').match(/^BIM[^:]*:([^:]+):/);
+          return (m && pendingSet.has(m[1])) ? { ...t, progress: 0 } : t;
+        });
+      } else {
+        // 30초 폴링 갱신 시: tick이 메모리에서 계산한 BIM 진도가
+        // DB 저장(3초 debounce) 전에 refresh로 덮어씌워지는 레이스 컨디션 방지
+        // — 메모리 BIM 진도가 DB 값보다 높으면 메모리 값을 유지
+        const memBimProgress = {};
+        state.wbsTasks.forEach(t => {
+          if ((t.notes || '').startsWith('BIM:')) memBimProgress[t.taskId] = t.progress || 0;
+        });
+        const today = new Date().toISOString().slice(0, 10);
+        resolvedTasks = incomingTasks.map(t => {
+          const memP = memBimProgress[t.taskId];
+          if (memP !== undefined && memP > (t.progress || 0))
+            return { ...t, progress: memP, status: deriveTaskStatus(memP, t.endDate, today) };
+          return t;
+        });
+      }
       return {
         ...state,
         isLoading:        false,
@@ -232,6 +247,12 @@ function reducer(state, action) {
           ...state.bimWbsProgress,
           [action.bimProjectId]: action.data,
         },
+      };
+
+    case 'SELECT_WBS_TASK':
+      return {
+        ...state,
+        selectedWbsTaskId: action.taskId === state.selectedWbsTaskId ? null : action.taskId,
       };
 
     // ── 작업자 ──────────────────────────────────────────────────

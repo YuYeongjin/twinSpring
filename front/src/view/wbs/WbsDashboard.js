@@ -513,6 +513,7 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
     setTasks(sortByStartDate(r.data));
     await loadProjects();
     await loadAllTasks();
+    window.dispatchEvent(new CustomEvent('wbs-tasks-updated'));
   }, [selectedProject, loadProjects, loadAllTasks]);
 
   const handleAddTask = useCallback(async (taskData) => {
@@ -523,12 +524,14 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
         ? { ...p, taskCount: (p.taskCount || 0) + 1 } : p
     ));
     await loadAllTasks();
+    window.dispatchEvent(new CustomEvent('wbs-tasks-updated'));
   }, [selectedProject, loadAllTasks]);
 
   const handleUpdateTask = useCallback(async (taskId, taskData) => {
     await AxiosCustom.put(`/api/wbs/task/${taskId}`, taskData);
     setTasks(prev => sortByStartDate(prev.map(t => t.taskId === taskId ? { ...t, ...taskData } : t)));
     await loadAllTasks();
+    window.dispatchEvent(new CustomEvent('wbs-tasks-updated'));
   }, [loadAllTasks]);
 
   const handleDeleteTask = useCallback(async (taskId) => {
@@ -564,6 +567,7 @@ export default function WbsDashboard({ onNavigateToTab, autoEditRequest, onAutoE
       return prev.filter(t => !toRemove.has(t.taskId));
     });
     await loadAllTasks();
+    window.dispatchEvent(new CustomEvent('wbs-tasks-updated'));
   }, [tasks, selectedProject, loadAllTasks]);
 
   // ── 필터 ──────────────────────────────────────────────────────

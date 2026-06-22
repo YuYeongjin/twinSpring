@@ -78,9 +78,9 @@ _SCALE_PAT      = re.compile(
     re.I,
 )
 _TRANSLATE_PAT  = re.compile(
-    r"전체.{0,15}(이동|내리|올리|옮기|평행이동|translate|offset)"
-    r"|모두.{0,15}(이동|내리|올리|옮기)"
-    r"|부재\s*(전체|모두|all).{0,15}(이동|내리|올리|옮기)"
+    r"전체.{0,15}(이동|내리|내려|올리|올려|옮기|평행이동|translate|offset)"
+    r"|모두.{0,15}(이동|내리|내려|올리|올려|옮기)"
+    r"|부재\s*(전체|모두|all)?.{0,20}(이동|내리|내려|올리|올려|옮기|옮겨|평행이동)"
     r"|all.{0,15}(move|translate|shift|offset)"
     r"|translate.*element|offset.*element"
     r"|全体.{0,15}(移動|下げ|上げ|平行移動)"
@@ -148,8 +148,8 @@ def _invoke(tool_fn, args: dict) -> dict:
         logger.info("[bim] tool 완료: %s → success=%s", tool_fn.name, result.get("success", "?"))
         return result
     except Exception as e:
-        logger.error("[bim] %s 실패: %s", tool_fn.name, e)
-        return {"success": False, "error": str(e)}
+        logger.error("[bim] %s 실패 (args=%s): %s", tool_fn.name, args, e, exc_info=True)
+        return {"success": False, "error": "BIM 작업을 처리할 수 없습니다."}
 
 
 def _make_undo(desc: str, tool_name: str, inv_args: dict) -> dict:
@@ -451,11 +451,11 @@ def run_bim_agent(state: AgentState) -> dict:
         val  = float(nums[0]) if nums else 0.0
         dx = dy = dz = 0.0
         if re.search(r"x\s*축|x-axis|x방향|x\s*軸|x方向", text, re.I):
-            dx = -val if re.search(r"내리|빼|minus|マイナス|下げ", text, re.I) else val
+            dx = -val if re.search(r"내리|내려|빼|minus|マイナス|下げ", text, re.I) else val
         elif re.search(r"y\s*축|y-axis|y방향|y\s*軸|y方向", text, re.I):
-            dy = -val if re.search(r"내리|빼|minus|マイナス|下げ", text, re.I) else val
+            dy = -val if re.search(r"내리|내려|빼|minus|マイナス|下げ", text, re.I) else val
         else:
-            dz = -val if re.search(r"내리|아래|down|minus|下げ|下方|マイナス", text, re.I) else val
+            dz = -val if re.search(r"내리|내려|아래|down|minus|下げ|下方|マイナス", text, re.I) else val
         result = _invoke(translate_selected_elements, {
             "project_id": pid, "element_ids": sel_ids or [],
             "delta_x": dx, "delta_y": dy, "delta_z": dz,
@@ -472,11 +472,11 @@ def run_bim_agent(state: AgentState) -> dict:
         val  = float(nums[0]) if nums else 0.0
         dx = dy = dz = 0.0
         if re.search(r"x\s*축|x-axis|x방향|x\s*軸|x方向", text, re.I):
-            dx = -val if re.search(r"내리|빼|minus|マイナス|下げ", text, re.I) else val
+            dx = -val if re.search(r"내리|내려|빼|minus|マイナス|下げ", text, re.I) else val
         elif re.search(r"y\s*축|y-axis|y방향|y\s*軸|y方向", text, re.I):
-            dy = -val if re.search(r"내리|빼|minus|マイナス|下げ", text, re.I) else val
+            dy = -val if re.search(r"내리|내려|빼|minus|マイナス|下げ", text, re.I) else val
         else:
-            dz = -val if re.search(r"내리|아래|down|minus|下げ|下方|マイナス", text, re.I) else val
+            dz = -val if re.search(r"내리|내려|아래|down|minus|下げ|下方|マイナス", text, re.I) else val
         result = _invoke(translate_bim_elements, {
             "project_id": pid, "delta_x": dx, "delta_y": dy, "delta_z": dz,
         })

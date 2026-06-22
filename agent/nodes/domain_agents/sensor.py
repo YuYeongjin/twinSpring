@@ -9,8 +9,10 @@ from __future__ import annotations
 import re
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config.state import AgentState
+from config import thresholds as _thresholds
 
 logger = logging.getLogger(__name__)
 
@@ -21,28 +23,23 @@ _HISTORY_PAT = re.compile(
 )
 _NUM_PAT = re.compile(r"\d+")
 
-# ── 알람 임계값 ────────────────────────────────────────────────────────────────
-_TEMP_HIGH  = 35.0
-_TEMP_LOW   =  5.0
-_HUM_HIGH   = 80.0
-_HUM_LOW    = 20.0
-
 
 def _check_alerts(latest: dict) -> list:
     """최신 센서값에서 임계값 초과 항목을 알람 리스트로 반환."""
+    th     = _thresholds.get()
     alerts = []
-    temp = latest.get("temperature")
-    hum  = latest.get("humidity")
+    temp   = latest.get("temperature")
+    hum    = latest.get("humidity")
     if temp is not None:
-        if temp > _TEMP_HIGH:
-            alerts.append({"type": "HIGH_TEMP",     "value": temp, "threshold": _TEMP_HIGH, "level": "danger"})
-        elif temp < _TEMP_LOW:
-            alerts.append({"type": "LOW_TEMP",      "value": temp, "threshold": _TEMP_LOW,  "level": "warning"})
+        if temp > th["temp_high"]:
+            alerts.append({"type": "HIGH_TEMP",     "value": temp, "threshold": th["temp_high"], "level": "danger"})
+        elif temp < th["temp_low"]:
+            alerts.append({"type": "LOW_TEMP",      "value": temp, "threshold": th["temp_low"],  "level": "warning"})
     if hum is not None:
-        if hum > _HUM_HIGH:
-            alerts.append({"type": "HIGH_HUMIDITY", "value": hum,  "threshold": _HUM_HIGH,  "level": "warning"})
-        elif hum < _HUM_LOW:
-            alerts.append({"type": "LOW_HUMIDITY",  "value": hum,  "threshold": _HUM_LOW,   "level": "warning"})
+        if hum > th["hum_high"]:
+            alerts.append({"type": "HIGH_HUMIDITY", "value": hum,  "threshold": th["hum_high"],  "level": "warning"})
+        elif hum < th["hum_low"]:
+            alerts.append({"type": "LOW_HUMIDITY",  "value": hum,  "threshold": th["hum_low"],   "level": "warning"})
     return alerts
 
 
@@ -52,8 +49,8 @@ def _invoke(tool_fn, args: dict) -> dict:
         raw = tool_fn.invoke(args)
         return json.loads(raw) if isinstance(raw, str) else raw
     except Exception as e:
-        logger.error("[sensor] %s 실패: %s", tool_fn.name, e)
-        return {"success": False, "error": str(e)}
+        logger.error("[sensor] %s 실패 (args=%s): %s", tool_fn.name, args, e, exc_info=True)
+        return {"success": False, "error": "센서 데이터를 불러올 수 없습니다."}
 
 
 def run_sensor_agent(state: AgentState) -> dict:
@@ -68,10 +65,21 @@ def run_sensor_agent(state: AgentState) -> dict:
     limit = int(nums[0]) if nums else 20
     limit = max(1, min(limit, 100))
 
-    # ── 1) 최신값 + 원시 이력 + 24h 집계 트렌드 항상 병렬 조회 ─────────────────
-    latest_raw = _invoke(get_latest_sensor, {})
-    hist       = _invoke(get_sensor_history, {"limit": limit})
-    trend      = _invoke(get_sensor_trend,   {"hours": 24, "bucket": "1 hour"})
+    # ── 1) 최신값 + 원시 이력 + 24h 집계 트렌드 병렬 조회 ──────────────────────
+    tasks = {
+        "latest": (get_latest_sensor, {}),
+        "hist":   (get_sensor_history, {"limit": limit}),
+        "trend":  (get_sensor_trend,   {"hours": 24, "bucket": "1 hour"}),
+    }
+    results: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_invoke, fn, args): key for key, (fn, args) in tasks.items()}
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+
+    latest_raw = results["latest"]
+    hist       = results["hist"]
+    trend      = results["trend"]
 
     latest  = latest_raw if not latest_raw.get("error") else hist.get("latest", {})
     records = hist.get("records", [])

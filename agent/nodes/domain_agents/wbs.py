@@ -311,8 +311,8 @@ def _invoke(tool_fn, args: dict) -> dict:
         raw = tool_fn.invoke(args)
         return json.loads(raw) if isinstance(raw, str) else raw
     except Exception as e:
-        logger.error("[wbs] %s 실패: %s", tool_fn.name, e)
-        return {"success": False, "error": str(e)}
+        logger.error("[wbs] %s 실패 (args=%s): %s", tool_fn.name, args, e, exc_info=True)
+        return {"success": False, "error": "공정 데이터를 불러올 수 없습니다."}
 
 
 def _extract_quoted(text: str, fallback: str) -> str:

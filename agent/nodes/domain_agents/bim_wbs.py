@@ -18,6 +18,17 @@ from config.state import AgentState
 logger = logging.getLogger(__name__)
 
 # ── 의도 패턴 ──────────────────────────────────────────────────────────────────
+_MOVE_PAT = re.compile(
+    r"부재.{0,25}(이동|내리|내려|올리|올려|옮기|옮겨|translate)"
+    r"|전체.{0,15}(이동|내리|내려|올리|올려|옮기)"
+    r"|모두.{0,15}(이동|내리|내려|올리|올려)"
+    r"|이동.{0,10}(해줘|해주|시켜|부재)",
+    re.I,
+)
+_AXIS_DOWN = re.compile(r"내리|내려|아래|down|minus|マイナス|下げ|下方", re.I)
+_AXIS_X    = re.compile(r"x\s*축|x-axis|x방향|x\s*軸|x方向", re.I)
+_AXIS_Y    = re.compile(r"y\s*축|y-axis|y방향|y\s*軸|y方向", re.I)
+
 _STRUCT_PAT = re.compile(
     r"구조.{0,5}(안정성|검토|분석|해석|리뷰)"
     r"|structural.{0,5}(analysis|review|check|stability)"
@@ -44,8 +55,8 @@ def _invoke(tool_fn, args: dict) -> dict:
         logger.info("[bim_wbs] tool 완료 action=%s", result.get("action", "?"))
         return result
     except Exception as exc:
-        logger.error("[bim_wbs] tool=%s 실패: %s", tool_fn.name, exc, exc_info=True)
-        return {"success": False, "error": str(exc)}
+        logger.error("[bim_wbs] tool=%s 실패 (args=%s): %s", tool_fn.name, args, exc, exc_info=True)
+        return {"success": False, "error": "요청을 처리할 수 없습니다."}
 
 
 def run_bim_wbs_agent(state: AgentState) -> dict:
@@ -56,6 +67,33 @@ def run_bim_wbs_agent(state: AgentState) -> dict:
     text           = messages[-1].content if messages and hasattr(messages[-1], "content") else ""
     bim_project_id = state.get("bim_project_id") or ""
     logger.info("[bim_wbs] text=%.80s  projectId=%s", text, bim_project_id)
+
+    # ── 부재 이동 ─────────────────────────────────────────────────────────────
+    if _MOVE_PAT.search(text):
+        from tools.bim_tools import translate_bim_elements, translate_selected_elements
+        nums = re.findall(r'[\d.]+', text)
+        val  = float(nums[0]) if nums else 0.0
+        dx = dy = dz = 0.0
+        if _AXIS_X.search(text):
+            dx = -val if _AXIS_DOWN.search(text) else val
+        elif _AXIS_Y.search(text):
+            dy = -val if _AXIS_DOWN.search(text) else val
+        else:
+            dz = -val if _AXIS_DOWN.search(text) else val
+        sel_ids = state.get("selected_element_ids") or []
+        if sel_ids:
+            result = _invoke(translate_selected_elements, {
+                "project_id": str(bim_project_id),
+                "element_ids": sel_ids,
+                "delta_x": dx, "delta_y": dy, "delta_z": dz,
+            })
+        else:
+            result = _invoke(translate_bim_elements, {
+                "project_id": str(bim_project_id),
+                "delta_x": dx, "delta_y": dy, "delta_z": dz,
+            })
+        bim_data = {"action": "glb_reload"} if result.get("action") == "glb_reload" else None
+        return {"tool_results": {"data": result}, "bim_data": bim_data}
 
     # ── 구조 안정성 검토 ───────────────────────────────────────────────────────
     if _STRUCT_PAT.search(text):

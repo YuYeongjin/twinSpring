@@ -39,8 +39,8 @@ def _invoke(tool_fn, args: dict) -> dict:
         raw = tool_fn.invoke(args)
         return json.loads(raw) if isinstance(raw, str) else raw
     except Exception as e:
-        logger.error("[simulation] %s 실패: %s", tool_fn.name, e)
-        return {"success": False, "error": str(e)}
+        logger.error("[simulation] %s 실패 (args=%s): %s", tool_fn.name, args, e, exc_info=True)
+        return {"success": False, "error": "시뮬레이션 명령을 처리할 수 없습니다."}
 
 
 def run_simulation_agent(state: AgentState) -> dict:
