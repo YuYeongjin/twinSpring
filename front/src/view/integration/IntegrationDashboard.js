@@ -145,7 +145,11 @@ function DataLoader({ selectedProject }) {
     };
 
     const id = setInterval(refreshWbs, 30000);
-    return () => clearInterval(id);
+    window.addEventListener('wbs-tasks-updated', refreshWbs);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('wbs-tasks-updated', refreshWbs);
+    };
   }, [selectedProject?.wbsProjectId, dispatch]);
 
   // BIM 태스크 진도 실시간 자동 증가 (10초 주기)

@@ -4,8 +4,6 @@ import { useT } from '../../../i18n/LanguageContext';
 import {
   ELEMENT_META, ELEMENT_ORDER, SUB_TASKS,
   calcTotalVolume, calcSubDays,
-  generateBimWbsTasks,
-  generateFloorWbsTasks,
 } from '../bimTaskGenerator';
 
 // 일수 차이 계산 (두 날짜 문자열 'YYYY-MM-DD')
@@ -32,7 +30,6 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
   const [expandedBim, setExpandedBim] = useState({});   // { bimProjectId: bool }
   const [expandedType,setExpandedType]= useState({});   // { 'bimId_type': bool }
   const [loading,     setLoading]     = useState(true);
-  const [generating,  setGenerating]  = useState(null); // 생성 중인 bimProjectId
   const [targetDays,  setTargetDays]  = useState({});   // { bimProjectId: number } 목표 공기(일)
 
   // ── BIM 링크 + 요소 로드 ─────────────────────────────────────
@@ -144,50 +141,6 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
     };
   };
 
-  // ── 일정 자동 생성 (작업계획 차트와 동일한 공사 단계별 구조) ──
-  const handleAutoGenerate = async (bimProjectId) => {
-    const data = bimData[bimProjectId];
-    if (!data || generating) return;
-    setGenerating(bimProjectId);
-    try {
-      await generateBimWbsTasks({
-        wbsProjectId,
-        bimProjectId,
-        bimProjectName: data.name || null,
-        elements:      data.elements,
-        existingTasks: tasks,
-        startDate:     projectStartDate || null,
-      });
-      onReload();
-    } catch (err) {
-      console.error('BIM 일정 자동 생성 실패:', err);
-    } finally {
-      setGenerating(null);
-    }
-  };
-
-  // ── 층별 공정 WBS 자동 생성 ─────────────────────────────────────
-  const handleFloorGenerate = async (bimProjectId) => {
-    const data = bimData[bimProjectId];
-    if (!data || generating) return;
-    setGenerating(`floor_${bimProjectId}`);
-    try {
-      await generateFloorWbsTasks({
-        wbsProjectId,
-        bimProjectId,
-        bimProjectName: data.name || null,
-        elements:      data.elements,
-        existingTasks: tasks,
-        startDate:     projectStartDate || null,
-      });
-      onReload();
-    } catch (err) {
-      console.error('층별 WBS 자동 생성 실패:', err);
-    } finally {
-      setGenerating(null);
-    }
-  };
-
   // ── 로딩 / BIM 링크 없으면 null ─────────────────────────────
   if (loading || links.length === 0) return null;
 
@@ -264,22 +217,6 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                 style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}
                 onClick={e => e.stopPropagation()}
               >
-                {/* WBS 생성 여부 뱃지 */}
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{
-                    fontSize:   10,
-                    padding:    '2px 8px',
-                    borderRadius: 10,
-                    background: wbsGenerated ? '#14532d' : '#1e293b',
-                    color:      wbsGenerated ? '#4ade80' : '#64748b',
-                    border:     `1px solid ${wbsGenerated ? '#166534' : '#253347'}`,
-                    fontWeight: 700,
-                    whiteSpace: 'nowrap',
-                  }}>
-                    {wbsGenerated ? 'WBS 생성됨' : 'WBS 미생성'}
-                  </span>
-                </div>
-
                 {/* 인원 추산 행 */}
                 {elements.length > 0 && (
                   <div style={{
@@ -331,45 +268,6 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                   </div>
                 )}
 
-                {/* 생성 버튼 */}
-                <div style={{ display: 'flex', gap: 5 }}>
-                  <button
-                    onClick={() => handleAutoGenerate(link.linkedProjectId)}
-                    disabled={!!generating}
-                    style={{
-                      background:   generating === link.linkedProjectId ? '#111e2d' : '#1e3a5f',
-                      border:       '1px solid #3b82f6',
-                      borderRadius: 6,
-                      padding:      '4px 10px',
-                      color:        generating === link.linkedProjectId ? '#4b5563' : '#60a5fa',
-                      fontSize:     10,
-                      fontWeight:   700,
-                      cursor:       generating ? 'not-allowed' : 'pointer',
-                      whiteSpace:   'nowrap',
-                      transition:   'all 0.15s',
-                    }}
-                  >
-                    {generating === link.linkedProjectId ? '⏳ 생성 중…' : '⚡ 공사단계별 WBS'}
-                  </button>
-                  <button
-                    onClick={() => handleFloorGenerate(link.linkedProjectId)}
-                    disabled={!!generating}
-                    style={{
-                      background:   generating === `floor_${link.linkedProjectId}` ? '#111e2d' : '#1a2e1a',
-                      border:       '1px solid #22c55e',
-                      borderRadius: 6,
-                      padding:      '4px 10px',
-                      color:        generating === `floor_${link.linkedProjectId}` ? '#4b5563' : '#4ade80',
-                      fontSize:     10,
-                      fontWeight:   700,
-                      cursor:       generating ? 'not-allowed' : 'pointer',
-                      whiteSpace:   'nowrap',
-                      transition:   'all 0.15s',
-                    }}
-                  >
-                    {generating === `floor_${link.linkedProjectId}` ? '⏳ 생성 중…' : '🏗 층별 공정 WBS'}
-                  </button>
-                </div>
               </div>
 
               <span style={{ fontSize: 10, color: '#374151', marginLeft: 2, flexShrink: 0 }}>
