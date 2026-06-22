@@ -304,18 +304,18 @@ function buildTasks(elements, startDate, t) {
       const {lbl,frameP,slabP,wallP}=fRes[i], fs=fStarts[i]; let next=fs;
       if (frameP) {
         const spec=SPEC[`IfcColumn:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcColumn')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:t('taskFrame',{floor:lbl}),start:fs,end:addDays(fs,frameP.days-1),days:frameP.days,workers:frameP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'frame',volume:frameP.volume});
+        tasks.push({name:t('taskFrame',{floor:lbl}),start:fs,end:addDays(fs,frameP.days-1),days:frameP.days,workers:frameP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'frame',volume:frameP.volume,floorIdx:i});
         next=addDays(fs,frameP.days);
       }
       let se=next,we=next;
       if (slabP) {
         const spec=SPEC[`IfcSlab:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcSlab')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:t('taskSlab',{floor:lbl}),start:next,end:addDays(next,slabP.days-1),days:slabP.days,workers:slabP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'slab',volume:slabP.volume});
+        tasks.push({name:t('taskSlab',{floor:lbl}),start:next,end:addDays(next,slabP.days-1),days:slabP.days,workers:slabP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'slab',volume:slabP.volume,floorIdx:i});
         se=addDays(next,slabP.days);
       }
       if (wallP) {
         const spec=SPEC[`IfcWall:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcWall')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:t('taskWall',{floor:lbl}),start:next,end:addDays(next,wallP.days-1),days:wallP.days,workers:wallP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'wall',volume:wallP.volume});
+        tasks.push({name:t('taskWall',{floor:lbl}),start:next,end:addDays(next,wallP.days-1),days:wallP.days,workers:wallP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'wall',volume:wallP.volume,floorIdx:i});
         we=addDays(next,wallP.days);
       }
       allEnds.push(se>we?se:we);

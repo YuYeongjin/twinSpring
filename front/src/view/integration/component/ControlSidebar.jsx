@@ -1372,24 +1372,6 @@ export default function ControlSidebar() {
         {t('sidebarTitle')}
       </div>
 
-      {/* 연결 현황 */}
-      <Section title={t('sectionLinks')}>
-        {isLoading && <div style={{ fontSize: 10, color: '#374151' }}>{t('loading')}</div>}
-        <Row>
-          <span style={{ fontSize: 11 }}>📊</span>
-          <span style={{ flex: 1, fontSize: 10, color: projectMeta?.wbsProjectId ? '#a78bfa' : '#374151', fontWeight: 600 }}>WBS</span>
-          <span style={{ fontSize: 9, color: projectMeta?.wbsProjectId ? '#6d5f9a' : '#253347' }}>
-            {projectMeta?.wbsProjectId ? t('connected') : t('notConnected')}
-          </span>
-        </Row>
-      </Section>
-
-      {/* BIM/WBS 현황 — WBS 태스크가 있을 때만 표시 */}
-      {(projectMeta?.wbsProjectId || projectMeta?.bimProjectId || wbsTasks.length > 0) && (
-        <Section title={t('bimWbsSection')}>
-          <BimFloorPanel wbsTasks={wbsTasks} structures={structures} workers={workers} equipment={equipment} t={t} />
-        </Section>
-      )}
 
       {/* 드론 지형 */}
       <Section title={t('sectionDroneTerrain')}>

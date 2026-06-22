@@ -323,9 +323,13 @@ export async function generateBimWbsTasks({
 
     let noteSuffix = task.phase || '';
     if (task.phase === 'frame' || task.phase === 'slab' || task.phase === 'wall') {
-      if (task.phase === 'frame') planFloorIdx++;
-      if (planFloorIdx < 0) planFloorIdx = 0;
-      noteSuffix = `${task.phase}:${planFloorIdx}`;
+      if (task.floorIdx != null) {
+        noteSuffix = `${task.phase}:${task.floorIdx}`;
+      } else {
+        if (task.phase === 'frame') planFloorIdx++;
+        if (planFloorIdx < 0) planFloorIdx = 0;
+        noteSuffix = `${task.phase}:${planFloorIdx}`;
+      }
     }
 
     await AxiosCustom.post(`/api/wbs/project/${wbsProjectId}/task`, {

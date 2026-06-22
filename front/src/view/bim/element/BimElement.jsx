@@ -18,15 +18,25 @@ export const parseVectorData = (dataString, defaultValue = [0, 0, 0]) => {
 // PlacementGhost 에서 계속 사용 (색상 참조용)
 export const getBaseColor = (elementType) => {
   switch (elementType) {
-    case 'IfcColumn': return '#8B4513';
+    case 'IfcColumn':       return '#8B4513';
     case 'IfcBeam':
-    case 'IfcMember': return '#A9A9A9';
-    case 'IfcWall':   return '#E0E0E0';
-    case 'IfcSlab':        return '#B0C4DE';
-    case 'IfcFoundation':  return '#8B6400';  // 기초 — 흙/콘크리트 갈색
-    case 'IfcPier':        return '#D2691E';
-    case 'IfcRebar':  return '#CC2200';
-    default:          return '#ff4444';
+    case 'IfcMember':       return '#A9A9A9';
+    case 'IfcWall':         return '#E0E0E0';
+    case 'IfcCurtainWall':  return '#9BB8CD';
+    case 'IfcRailing':      return '#8896A4';
+    case 'IfcSlab':         return '#B0C4DE';
+    case 'IfcFoundation':   return '#8B6400';
+    case 'IfcPier':         return '#D2691E';
+    case 'IfcRebar':        return '#9E4A2A';
+    case 'IfcDoor':         return '#A0785A';
+    case 'IfcWindow':       return '#7EB3C8';
+    case 'IfcStair':        return '#A0A080';
+    case 'IfcRoof':         return '#8B7355';
+    case 'IfcPipe':
+    case 'IfcDuct':
+    case 'IfcFlowSegment':
+    case 'IfcFlowFitting':  return '#5A8A6A';
+    default:                return '#6B7280';
   }
 };
 

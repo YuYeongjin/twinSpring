@@ -224,7 +224,9 @@ function buildProgressMap(wbsTasks) {
     const pm = t.notes.match(/^BIM:([^:]+):PLAN:\d+:(frame|slab|wall):(\d+)$/);
     if (pm) {
       const mapType = pm[2] === 'slab' ? 'SLAB' : 'FRAME';
-      map[`${pm[1]}:floor:${pm[3]}:${mapType}`] = Math.min(100, Math.max(0, t.progress || 0));
+      const key = `${pm[1]}:floor:${pm[3]}:${mapType}`;
+      // 같은 floor 키에 여러 태스크가 매핑될 때 MAX값 사용 (planFloorIdx 중복 방지)
+      map[key] = Math.max(map[key] ?? 0, Math.min(100, Math.max(0, t.progress || 0)));
       return;
     }
     // 기존 포맷: BIM:{id}:{type}
@@ -292,61 +294,39 @@ function BimProgressFill({
         ? HIGHLIGHT_COLOR
         : null;
   const baseColor =
-    activeColor ??
-    (getBaseColor(elementType) || "#334155");
+    activeColor ?? "#334155";
   const fillColor =
     activeColor ??
     getProgressColor(p);
+  const isSlab = elementType === 'IfcSlab';
   // ── Shader Uniform 생성 ───────────────
   const uniforms = useMemo(() => ({
-    uProgress: {
-      value: 0
-    },
-    uHalfHeight: {
-      value: size[2] / 2
-    },
-    uFillColor: {
-      value: new THREE.Color()
-    },
-    uBaseColor: {
-      value: new THREE.Color()
-    },
-    uIsActive: {
-      value: 0
-    }
+    uProgress:   { value: 0 },
+    uHalfHeight: { value: size[2] / 2 },
+    uFillColor:  { value: new THREE.Color() },
+    uBaseColor:  { value: new THREE.Color() },
+    uIsActive:   { value: 0 },
+    uIsSlab:     { value: 0 },
   }), [size]);
   // ── Uniform 업데이트 ───────────────
   useEffect(() => {
-    uniforms.uProgress.value =
-      p / 100;
-    uniforms.uFillColor.value
-      .set(fillColor);
-    uniforms.uBaseColor.value
-      .set(baseColor);
-    uniforms.uIsActive.value =
-      activeColor ? 1 : 0;
-  }, [
-    p,
-    fillColor,
-    baseColor,
-    activeColor,
-    uniforms
-  ]);
+    uniforms.uProgress.value  = p / 100;
+    uniforms.uFillColor.value.set(fillColor);
+    uniforms.uBaseColor.value.set(baseColor);
+    uniforms.uIsActive.value  = activeColor ? 1 : 0;
+    uniforms.uIsSlab.value    = isSlab ? 1 : 0;
+  }, [p, fillColor, baseColor, activeColor, isSlab, uniforms]);
   // ── Shader Inject ───────────────
   const handleBeforeCompile = useCallback((shader) => {
     if (materialRef.current) {
       materialRef.current.userData.shader = shader;
     }
-    shader.uniforms.uProgress =
-      uniforms.uProgress;
-    shader.uniforms.uHalfHeight =
-      uniforms.uHalfHeight;
-    shader.uniforms.uFillColor =
-      uniforms.uFillColor;
-    shader.uniforms.uBaseColor =
-      uniforms.uBaseColor;
-    shader.uniforms.uIsActive =
-      uniforms.uIsActive;
+    shader.uniforms.uProgress   = uniforms.uProgress;
+    shader.uniforms.uHalfHeight = uniforms.uHalfHeight;
+    shader.uniforms.uFillColor  = uniforms.uFillColor;
+    shader.uniforms.uBaseColor  = uniforms.uBaseColor;
+    shader.uniforms.uIsActive   = uniforms.uIsActive;
+    shader.uniforms.uIsSlab     = uniforms.uIsSlab;
     // Vertex Shader
     shader.vertexShader = `
       varying vec3 vLocalPosition;
@@ -366,40 +346,42 @@ function BimProgressFill({
       uniform vec3 uFillColor;
       uniform vec3 uBaseColor;
       uniform float uIsActive;
+      uniform float uIsSlab;
       ${shader.fragmentShader}
     `;
-    shader.fragmentShader =
-      shader.fragmentShader.replace(
-        "#include <opaque_fragment>",
-        `
-      float normalizedZ =
-        (vLocalPosition.z + uHalfHeight)
-        /
-        (uHalfHeight * 2.0);
-      if(uIsActive > 0.5){
-        outgoingLight =
-          uBaseColor;
-        diffuseColor.a =
-          0.55;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <opaque_fragment>",
+      `
+      float normalizedZ = (vLocalPosition.z + uHalfHeight) / (uHalfHeight * 2.0);
+      if (uIsActive > 0.5) {
+        outgoingLight  = uBaseColor;
+        diffuseColor.a = 0.55;
       }
-      else if(
-        uProgress > 0.0 &&
-        normalizedZ <= uProgress
-      ){
-        outgoingLight =
-          uFillColor;
-        diffuseColor.a =
-          1.0;
+      else if (uIsSlab > 0.5) {
+        // 슬래브: 수평 평면 요소 → Z-채우기 대신 전체 면을 진도 색상으로 표시
+        if (uProgress >= 1.0) {
+          outgoingLight  = uFillColor;
+          diffuseColor.a = 1.0;
+        } else if (uProgress > 0.0) {
+          outgoingLight  = uFillColor;
+          diffuseColor.a = 0.55 + uProgress * 0.45;
+        } else {
+          outgoingLight  = uBaseColor;
+          diffuseColor.a = 0.12;
+        }
       }
-      else{
-        outgoingLight =
-          uBaseColor;
-        diffuseColor.a =
-          0.12;
+      else if (uProgress > 0.0 && normalizedZ <= uProgress) {
+        // 기둥·보·벽 등 수직 요소: 아래→위 Z축 채우기
+        outgoingLight  = uFillColor;
+        diffuseColor.a = 1.0;
+      }
+      else {
+        outgoingLight  = uBaseColor;
+        diffuseColor.a = 0.12;
       }
       #include <opaque_fragment>
       `
-      );
+    );
   }, [uniforms]);
   // Edge geometry memo
   const edgeGeometry = useMemo(() => {
@@ -592,7 +574,7 @@ function StructuresLayer() {
 
     const PHASE_TYPES = {
       slab: new Set(['IfcSlab']),
-      frame: new Set(['IfcColumn', 'IfcBeam', 'IfcMember', 'IfcPier']),
+      frame: new Set(['IfcColumn', 'IfcBeam', 'IfcMember', 'IfcPier', 'IfcWall']),
       wall: new Set(['IfcWall', 'IfcCurtainWall', 'IfcRailing']),
       finishing: new Set(['IfcDoor', 'IfcWindow', 'IfcStair', 'IfcRoof']),
       mep: new Set(['IfcPipe', 'IfcDuct', 'IfcFlowSegment', 'IfcFlowFitting']),
@@ -783,10 +765,16 @@ function StructuresLayer() {
                 const sX = Number(cv.sizeX) || 0.1;
                 const sY = Number(cv.sizeY) || 0.1;
                 const sZ = Number(cv.sizeZ) || 0.1;
-                // BIM WBS 부재별(DB) 우선 → 없으면 시뮬 phase cascade 적용
+                // 진도 우선순위:
+                //   1. BIM WBS 부재별(DB) progress > 0 인 경우
+                //   2. WBS 층별 태스크 (FLOOR/PLAN floor 포맷)
+                //   3. 시뮬 phase cascade
                 const projectFallback = perProjectProgress[s.bimProjectId] ?? overallWbsProgress;
                 const wbsData = bimWbsProgress?.[s.bimProjectId];
                 const wbsElemData = wbsData?.elements?.[el.elementId];
+                const bimElemProgress = (wbsElemData != null && (wbsElemData.progress ?? 0) > 0)
+                  ? wbsElemData.progress
+                  : null;
                 const simPhase = simPhaseProgressPerStruct[s.bimProjectId]
                   || { phaseProgress: {}, activePhaseIdx: SIM_PHASE_ORDER.length };
                 const elemPhaseKey = ELEM_TYPE_TO_SIM_PHASE[el.elementType] ?? 'ABOVE';
@@ -794,10 +782,10 @@ function StructuresLayer() {
                 const floors = floorsPerStruct[s.id] || [];
                 const floorIdx = getElementFloorIndex(el, floors);
                 const useFloor = hasFloorTasks(progressMap, s.bimProjectId);
-                const baseProgress = wbsElemData != null
-                  ? wbsElemData.progress ?? 0
+                const baseProgress = bimElemProgress != null
+                  ? bimElemProgress
                   : useFloor
-                    ? getFloorElemProgress(progressMap, s.bimProjectId, floorIdx, el.elementType, projectFallback)
+                    ? getFloorElemProgress(progressMap, s.bimProjectId, floorIdx, el.elementType, 0)
                     : elemPhaseIdx > simPhase.activePhaseIdx
                       ? 0
                       : (progressMap[`${s.bimProjectId}:${el.elementType}`]
@@ -852,7 +840,7 @@ function LinkedBimElements() {
         const sZ = Number(el.sizeZ) || 3;
         const floorIdx = useFloor ? getElementFloorIndex(el, floors) : -1;
         const elemProgress = useFloor
-          ? getFloorElemProgress(progressMap, bimProjectId, floorIdx, el.elementType, overallWbsProgress)
+          ? getFloorElemProgress(progressMap, bimProjectId, floorIdx, el.elementType, 0)
           : (progressMap[`${bimProjectId}:${el.elementType}`] ?? overallWbsProgress);
         return (
           <BimProgressFill

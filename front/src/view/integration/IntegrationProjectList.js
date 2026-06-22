@@ -133,15 +133,6 @@ function ProjectCard({ project, onSelect, onDelete }) {
             {t('wbsNone')}
           </span>
         )}
-        {project.bimProjectId ? (
-          <span style={{ fontSize: 10, color: '#60a5fa', background: '#1e3a5f', borderRadius: 4, padding: '2px 8px', border: '1px solid #2a5080' }}>
-            {t('bimLinked')}
-          </span>
-        ) : (
-          <span style={{ fontSize: 10, color: '#374151', background: 'none', borderRadius: 4, padding: '2px 8px', border: '1px solid #1e2a3a' }}>
-            {t('bimNone')}
-          </span>
-        )}
       </div>
 
       {project.createdAt && (
