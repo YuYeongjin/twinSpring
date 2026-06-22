@@ -244,12 +244,18 @@ function hasFloorTasks(progressMap, bimId) {
 
 function getFloorElemProgress(progressMap, bimId, floorIdx, elementType, fallback) {
   if (FLOOR_FRAME_TYPES.has(elementType)) {
-    const key = `${bimId}:floor:${floorIdx}:FRAME`;
-    if (key in progressMap) return progressMap[key];
+    const frameKey = `${bimId}:floor:${floorIdx}:FRAME`;
+    if (frameKey in progressMap) return progressMap[frameKey];
+    // FRAME 태스크 없으면 같은 층 SLAB 진도로 대체
+    const slabKey = `${bimId}:floor:${floorIdx}:SLAB`;
+    if (slabKey in progressMap) return progressMap[slabKey];
   }
   if (FLOOR_SLAB_TYPES.has(elementType)) {
-    const key = `${bimId}:floor:${floorIdx}:SLAB`;
-    if (key in progressMap) return progressMap[key];
+    const slabKey = `${bimId}:floor:${floorIdx}:SLAB`;
+    if (slabKey in progressMap) return progressMap[slabKey];
+    // SLAB 태스크 없으면 같은 층 FRAME 진도로 대체
+    const frameKey = `${bimId}:floor:${floorIdx}:FRAME`;
+    if (frameKey in progressMap) return progressMap[frameKey];
   }
   return fallback;
 }
@@ -259,50 +265,121 @@ function getFloorElemProgress(progressMap, bimId, floorIdx, elementType, fallbac
 // size:          Three.js Z-up [width, depth, height]
 // progress:      0-100 (WBS 공정율)
 // offsetZ:       소속 <group>의 world Z 오프셋 (clip plane은 world 좌표계)
+const getProgressColor = (p) => {
+  if (p>=100) return `#60a5fa`;
+  if (p>0) return `#f97316`;
+  return `#334155`;  
+};
 const NEON_COLOR      = '#aaff44';
 const HIGHLIGHT_COLOR = '#22d3ee'; // WBS 부재 하이라이트 (시안)
+function BimProgressFill({ localPosition, size, elementType, progress, isSelected = false, highlighted = false }) {
+  const materialRef = useRef();
+  const p = progress;
 
-function BimProgressFill({ localPosition, size, elementType, progress, offsetZ = 0, isSelected = false, highlighted = false }) {
+  // 1. 상태에 따른 색상 정의
   const activeColor = isSelected ? NEON_COLOR : highlighted ? HIGHLIGHT_COLOR : null;
   const baseColor   = activeColor ?? (getBaseColor(elementType) || '#334155');
-  const p           = progress;
-  const fillColor   = activeColor
-    ?? (p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#334155');
+  const fillColor   = activeColor ?? getProgressColor(p);
 
-  // fill 박스: 바닥에서 p/100 높이만큼 채움
-  const fillH      = size[2] * (p / 100);
-  const fillPosZ   = localPosition[2] - size[2] / 2 + fillH / 2; // 바닥부터 fillH/2 위
+  // 2. 셰이더 유니폼 값을 메모이제이션 (매 렌더링마다 객체 생성 방지)
+  const uniforms = useMemo(() => ({
+    uProgress: { value: 0 },
+    uHalfHeight: { value: size[2] / 2 }, // Z-up 기준 높이의 절반
+    uFillColor: { value: new THREE.Color() },
+    uBaseColor: { value: new THREE.Color() },
+    uIsActive: { value: 0.0 }, // 선택/하이라이트 상태 플래그
+  }), [size]);
+
+  // 3. 변수 변경 시 유니폼 값 실시간 업데이트
+  useMemo(() => {
+    uniforms.uProgress.value = p / 100; // 0.0 ~ 1.0 변환
+    uniforms.uFillColor.value.set(fillColor);
+    uniforms.uBaseColor.value.set(baseColor);
+    uniforms.uIsActive.value = activeColor ? 1.0 : 0.0;
+  }, [p, fillColor, baseColor, activeColor, uniforms]);
+
+  // 4. MeshStandardMaterial 빌드 시점에 셰이더 주입
+  const handleBeforeCompile = (shader) => {
+    materialRef.current.userData.shader = shader;
+
+    // 유니폼 연결
+    shader.uniforms.uProgress = uniforms.uProgress;
+    shader.uniforms.uHalfHeight = uniforms.uHalfHeight;
+    shader.uniforms.uFillColor = uniforms.uFillColor;
+    shader.uniforms.uBaseColor = uniforms.uBaseColor;
+    shader.uniforms.uIsActive = uniforms.uIsActive;
+
+    // Vertex Shader: 로컬 Z 좌표를 Fragment Shader로 전달 (Z-up 환경)
+    shader.vertexShader = `
+      varying vec3 vLocalPosition;
+      ${shader.vertexShader}
+    `.replace(
+      '#include <begin_vertex>',
+      `
+      #include <begin_vertex>
+      vLocalPosition = position; // Three.js Geometry 내부 로컬 좌표
+      `
+    );
+
+    // Fragment Shader: 높이 기준으로 색상 및 알파(투명도) 분기
+    // ※ diffuseColor.rgb 는 조명 계산 전에 쓰이므로, opaque_fragment 시점에서는
+    //   outgoingLight(조명 반영 후 최종 RGB)를 직접 바꿔야 색이 반영됨
+    shader.fragmentShader = `
+      varying vec3 vLocalPosition;
+      uniform float uProgress;
+      uniform float uHalfHeight;
+      uniform vec3 uFillColor;
+      uniform vec3 uBaseColor;
+      uniform float uIsActive;
+      ${shader.fragmentShader}
+    `.replace(
+      '#include <opaque_fragment>',
+      `
+      float normalizedZ = (vLocalPosition.z + uHalfHeight) / (uHalfHeight * 2.0);
+
+      if (uIsActive > 0.5) {
+          outgoingLight = uBaseColor;
+          diffuseColor.a = 0.55;
+      } else if (uProgress > 0.0 && normalizedZ <= uProgress) {
+          outgoingLight = uFillColor;
+          diffuseColor.a = 1.0;
+      } else {
+          outgoingLight = uBaseColor;
+          diffuseColor.a = 0.07;
+      }
+
+      #include <opaque_fragment>
+      `
+    );
+  };
 
   return (
-    <group>
-      {/* 고스트: 반투명 윤곽 */}
-      <mesh position={localPosition} castShadow>
+    <group position={localPosition}>
+      <mesh castShadow receiveShadow>
         <boxGeometry args={size} />
         <meshStandardMaterial
-          color={baseColor}
+          ref={materialRef}
           transparent
-          opacity={activeColor ? 0.55 : 0.07}
+          roughness={0.4}
+          metalness={0.1}
           depthWrite={false}
-          emissive={activeColor ?? '#000000'}
+          depthTest={true}
+          onBeforeCompile={handleBeforeCompile}
+          // 발광(Emissive) 효과를 주고 싶다면 유니폼이나 셰이더 내에서 조정 가능합니다.
+          emissive={activeColor ? activeColor : '#000000'}
           emissiveIntensity={isSelected ? 0.55 : highlighted ? 0.45 : 0}
         />
       </mesh>
-      {/* 외곽선 */}
-      <lineSegments position={localPosition}>
+
+      {/* 외곽선 (기존 로직 유지) */}
+      <lineSegments>
         <edgesGeometry args={[new THREE.BoxGeometry(...size)]} />
-        <lineBasicMaterial color={baseColor} transparent opacity={activeColor ? 0.95 : 0.28} />
+        <lineBasicMaterial 
+          color={baseColor} 
+          transparent 
+          opacity={activeColor ? 0.95 : 0.28} 
+        />
       </lineSegments>
-      {/* 진도 채움 박스: 바닥에서 progress% 높이 */}
-      {!activeColor && p > 0 && (
-        <mesh position={[localPosition[0], localPosition[1], fillPosZ]}>
-          <boxGeometry args={[size[0], size[1], fillH]} />
-          <meshStandardMaterial
-            color={fillColor}
-            emissive={fillColor}
-            emissiveIntensity={0.35}
-          />
-        </mesh>
-      )}
     </group>
   );
 }
