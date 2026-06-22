@@ -3,6 +3,116 @@ import { useIntegration, useIntegrationDispatch } from '../IntegrationStore';
 import { useT } from '../../../i18n/LanguageContext';
 import AxiosCustom from '../../../axios/AxiosCustom';
 import { computeWorkPlan } from '../../bim/component/WorkPlanDashboard';
+import { detectFloors, getFloorLabel } from '../floorUtils';
+
+// ── WBS notes → BIM 부재 매핑 헬퍼 ─────────────────────────────
+function parseWbsNotes(notes) {
+  const m = (notes || '').match(/^BIM:([^:]+):PLAN:(\d+):([^:]+?)(?::(\d+))?$/);
+  if (!m) return null;
+  return {
+    bimProjectId: m[1],
+    planIdx:  parseInt(m[2]),
+    phase:    m[3],
+    floorIdx: m[4] != null ? parseInt(m[4]) : null,
+  };
+}
+const PHASE_TO_ELEM_TYPES = {
+  slab:      new Set(['IfcSlab']),
+  frame:     new Set(['IfcColumn', 'IfcBeam', 'IfcMember', 'IfcPier']),
+  wall:      new Set(['IfcWall', 'IfcCurtainWall', 'IfcRailing']),
+  finishing: new Set(['IfcDoor', 'IfcWindow', 'IfcStair', 'IfcRoof']),
+  mep:       new Set(['IfcPipe', 'IfcDuct', 'IfcFlowSegment', 'IfcFlowFitting']),
+};
+const PHASE_LABEL_KO = {
+  earthwork:'토공사', foundation:'기초공사', slab:'슬래브', frame:'골조',
+  wall:'벽체', finishing:'마감', mep:'설비·전기', completion:'준공',
+};
+
+function WbsElementCard({ task, structures, t }) {
+  // ── hooks는 조건 없이 최상단에서 호출 ─────────────────────────
+  const parsed     = parseWbsNotes(task.notes);
+  const bimProjectId = parsed?.bimProjectId ?? null;
+  const phase        = parsed?.phase ?? null;
+  const floorIdx     = parsed?.floorIdx ?? null;
+
+  const struct   = useMemo(
+    () => bimProjectId ? structures.find(s => String(s.bimProjectId) === String(bimProjectId)) : null,
+    [bimProjectId, structures],
+  );
+  const allElems = struct?.elements || [];
+  const floors   = useMemo(() => detectFloors(allElems), [allElems]);
+  const matchTypes = phase ? (PHASE_TO_ELEM_TYPES[phase] ?? null) : null;
+
+  const matched = useMemo(() => {
+    if (!matchTypes) return [];
+    return allElems.filter(el => matchTypes.has(el.elementType));
+  }, [allElems, matchTypes]);
+
+  const byType = useMemo(() => {
+    const m = {};
+    matched.forEach(el => { m[el.elementType] = (m[el.elementType] || 0) + 1; });
+    return m;
+  }, [matched]);
+
+  // ── 이제 조건부 반환 가능 ─────────────────────────────────────
+  if (!parsed) {
+    return (
+      <div style={{ margin:'6px 0 2px', padding:'8px 10px', background:'#071828', border:'1px solid #1e3a5f', borderRadius:4, fontSize:8, color:'#4b5563' }}>
+        BIM 부재 매핑 없음
+      </div>
+    );
+  }
+
+  const floorLabel = floorIdx !== null ? getFloorLabel(floorIdx, floors, t) : null;
+  const phaseKo    = PHASE_LABEL_KO[phase] || phase;
+
+  return (
+    <div style={{ margin:'6px 0 4px', padding:'8px 10px', background:'#071828', border:'1px solid #22d3ee40', borderRadius:4, borderLeft:'2px solid #22d3ee' }}>
+      {/* 태그 행 */}
+      <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginBottom:6 }}>
+        {struct && (
+          <span style={{ fontSize:8, color:'#94a3b8', background:'#0f2336', padding:'2px 6px', borderRadius:3 }}>
+            🏗 {struct.name.length > 18 ? struct.name.slice(0,18)+'…' : struct.name}
+          </span>
+        )}
+        {floorLabel && (
+          <span style={{ fontSize:8, color:'#22d3ee', background:'#0a2a30', padding:'2px 6px', borderRadius:3 }}>
+            {floorLabel}
+          </span>
+        )}
+        <span style={{ fontSize:8, color:'#f59e0b', background:'#1c1500', padding:'2px 6px', borderRadius:3 }}>
+          {phaseKo}
+        </span>
+      </div>
+
+      {/* 부재 목록 or 안내 */}
+      {matchTypes ? (
+        <>
+          <div style={{ fontSize:8, color:'#22d3ee', fontWeight:700, marginBottom:4 }}>
+            ✦ 하이라이트 부재 {matched.length}개
+          </div>
+          {Object.entries(byType).length > 0
+            ? Object.entries(byType).map(([type, cnt]) => (
+                <div key={type} style={{ display:'flex', justifyContent:'space-between', fontSize:9, color:'#64748b', marginBottom:2, paddingLeft:4 }}>
+                  <span style={{ color:'#38bdf8' }}>{type}</span>
+                  <span style={{ color:'#94a3b8' }}>{cnt}개</span>
+                </div>
+              ))
+            : <div style={{ fontSize:8, color:'#374151' }}>
+                {allElems.length === 0 ? 'BIM 부재 로딩 중…' : '해당 층·공종 부재 없음'}
+              </div>
+          }
+        </>
+      ) : (
+        <div style={{ fontSize:8, color:'#475569' }}>
+          {phase === 'earthwork'   ? '토공사 — 지반 굴착 공종 (특정 부재 미매핑)' :
+           phase === 'foundation'  ? '기초공사 — 기초·파일 공종 (특정 부재 미매핑)' :
+           phase === 'completion'  ? '준공 — 전 부재 완료 단계' : '공종 정보 없음'}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const TASK_STATUS_META = {
   NOT_STARTED: { labelKey: 'taskNotStarted', color: '#94a3b8' },
@@ -83,30 +193,51 @@ function useSpecQuery(taskName, status) {
 
 // ── WBS 태스크 바 ─────────────────────────────────────────────
 function WbsBar({ task, color, tWbs, t }) {
-  const sm = TASK_STATUS_META[task.status];
+  const dispatch = useIntegrationDispatch();
+  const { selectedWbsTaskId, structures } = useIntegration();
+  const sm   = TASK_STATUS_META[task.status];
   const spec = useSpecQuery(task.taskName, task.status);
-  const p = task.progress ?? 0;
+  const p    = task.progress ?? 0;
+  const isBimTask  = /^BIM:[^:]+:(PLAN|FLOOR):/.test(task.notes || '');
+  const isSelected = selectedWbsTaskId === task.taskId;
+
+  const handleRowClick = () => {
+    if (!isBimTask) return;
+    dispatch({ type: 'SELECT_WBS_TASK', taskId: task.taskId });
+  };
 
   return (
     <div style={{ marginBottom: 9 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-        <span style={{ fontSize: 10, color: '#8896a4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130 }}>
+      <div
+        onClick={handleRowClick}
+        style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3,
+          cursor: isBimTask ? 'pointer' : 'default',
+          padding: '2px 4px', borderRadius: 3, margin: '0 -4px 3px',
+          background: isSelected ? '#0a2a30' : 'transparent',
+          border: isSelected ? '1px solid #22d3ee40' : '1px solid transparent',
+          transition: 'background 0.15s',
+        }}
+      >
+        <span style={{ fontSize: 10, color: isSelected ? '#22d3ee' : '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 126, transition: 'color 0.15s' }}>
+          {isBimTask && <span style={{ fontSize: 8, marginRight: 3, opacity: 0.6 }}>🔗</span>}
           {task.taskName}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           {sm && <span style={{ fontSize: 8, color: sm.color, fontWeight: 700 }}>{tWbs(sm.labelKey) || sm.labelKey}</span>}
           <span style={{ fontSize: 10, fontWeight: 700, color }}>{Math.round(p)}%</span>
-          <button onClick={spec.toggle} title={t('specQueryTitle')} style={{
+          <button onClick={e => { e.stopPropagation(); spec.toggle(); }} title={t('specQueryTitle')} style={{
             background: 'none', border: '1px solid #1e3a5f', borderRadius: 3,
             cursor: 'pointer', color: spec.open ? '#93c5fd' : '#4b6a8a',
             fontSize: 8, padding: '1px 4px', lineHeight: 1.4,
           }}>📋</button>
         </div>
       </div>
-      <div style={{ background: '#111e2d', borderRadius: 4, height: 5, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${Math.min(100, p)}%`, background: color, borderRadius: 4, transition: 'width 1.2s ease' }} />
+      <div style={{ background: '#1a2d44', borderRadius: 4, height: 5, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${Math.min(100, p)}%`, background: isSelected ? '#22d3ee' : color, borderRadius: 4, transition: 'width 1.2s ease, background 0.2s' }} />
       </div>
       {spec.open && <SpecPanel citations={spec.data?.citations} loading={spec.loading} hasData={spec.data?.hasData} t={t} />}
+      {isSelected && isBimTask && <WbsElementCard task={task} structures={structures} t={t} />}
     </div>
   );
 }
@@ -133,7 +264,7 @@ function BimTaskBar({ task, structName }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden', flex: 1 }}>
             <div style={{ width: 6, height: 6, borderRadius: 1, background: color, flexShrink: 0 }} />
-            <span style={{ fontSize: 10, color: '#8896a4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 10, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {task.name}
             </span>
           </div>
@@ -142,7 +273,7 @@ function BimTaskBar({ task, structName }) {
             <span style={{ fontSize: 10, fontWeight: 700, color }}>{Math.round(p)}%</span>
           </div>
         </div>
-        <div style={{ background: '#111e2d', borderRadius: 4, height: 5, overflow: 'hidden' }}>
+        <div style={{ background: '#1a2d44', borderRadius: 4, height: 5, overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${Math.min(100, p)}%`, background: color, borderRadius: 4, transition: 'width 1.2s ease' }} />
         </div>
       </button>
@@ -174,15 +305,15 @@ function CollapsibleSection({ label, count, children }) {
         style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, margin: '8px 0 6px' }}>
-          <div style={{ flex: 1, height: 1, background: '#111e2d' }} />
-          <span style={{ fontSize: 8, color: open ? '#60a5fa' : '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0, transition: 'color 0.2s' }}>
+          <div style={{ flex: 1, height: 1, background: '#1e3a5f' }} />
+          <span style={{ fontSize: 8, color: open ? '#60a5fa' : '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', flexShrink: 0, transition: 'color 0.2s' }}>
             {label}
           </span>
           {count != null && (
-            <span style={{ fontSize: 8, color: '#253347', flexShrink: 0 }}>({count})</span>
+            <span style={{ fontSize: 8, color: '#4b6a8a', flexShrink: 0 }}>({count})</span>
           )}
-          <span style={{ fontSize: 9, color: '#374151', flexShrink: 0 }}>{open ? '▾' : '▸'}</span>
-          <div style={{ flex: 1, height: 1, background: '#111e2d' }} />
+          <span style={{ fontSize: 9, color: '#6b7280', flexShrink: 0 }}>{open ? '▾' : '▸'}</span>
+          <div style={{ flex: 1, height: 1, background: '#1e3a5f' }} />
         </div>
       </button>
       {open && <div style={{ paddingBottom: 2 }}>{children}</div>}
@@ -293,18 +424,18 @@ export default function WbsProgressPanel() {
   const hasContent = wbsTasks.length > 0 || bimPlans.length > 0;
 
   return (
-    <div style={{ padding: '10px 12px', borderTop: '1px solid #111e2d', flexShrink: 0, maxHeight: 420, overflowY: 'auto' }}>
+    <div style={{ padding: '10px 12px', borderTop: '2px solid #1e3a5f', flex: 1, minHeight: 0, overflowY: 'auto' }}>
       {/* 타이틀 */}
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#4b5563', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>
         {t('wbsProgressTitle')}
       </div>
 
       {isLoading && (
-        <div style={{ color: '#374151', fontSize: 10, textAlign: 'center', padding: '8px 0' }}>{t('loading')}</div>
+        <div style={{ color: '#6b7280', fontSize: 10, textAlign: 'center', padding: '8px 0' }}>{t('loading')}</div>
       )}
 
       {!isLoading && !hasContent && (
-        <div style={{ color: '#374151', fontSize: 10, textAlign: 'center', padding: '8px 0' }}>{t('wbsNoTasks')}</div>
+        <div style={{ color: '#6b7280', fontSize: 10, textAlign: 'center', padding: '8px 0' }}>{t('wbsNoTasks')}</div>
       )}
 
       {!isLoading && hasContent && (
@@ -312,10 +443,10 @@ export default function WbsProgressPanel() {
           {/* 전체 통합 진도 */}
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-              <span style={{ fontSize: 10, color: '#8896a4' }}>{t('wbsOverall')}</span>
+              <span style={{ fontSize: 10, color: '#94a3b8' }}>{t('wbsOverall')}</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa' }}>{totalOverall}%</span>
             </div>
-            <div style={{ background: '#111e2d', borderRadius: 4, height: 5, overflow: 'hidden' }}>
+            <div style={{ background: '#1a2d44', borderRadius: 4, height: 5, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${totalOverall}%`, background: '#60a5fa', borderRadius: 4, transition: 'width 1.2s ease' }} />
             </div>
           </div>

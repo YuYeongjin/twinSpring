@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SockJS                              from 'sockjs-client';
 import { Client }                          from '@stomp/stompjs';
 import AxiosCustom                          from '../../axios/AxiosCustom';
@@ -162,7 +162,7 @@ function DataLoader({ selectedProject }) {
       const { wbsTasks: tasks, workers: ws, equipment: eq } = liveRef.current;
 
       // BIM 루트 태스크별로 CPM 순차 처리
-      const rootTasks = tasks.filter(t => /^BIM:[^:]+:ROOT$/.test(t.notes || ''));
+      const rootTasks = tasks.filter(t => /^BIM:[^:]+:ROOT(:[^:]+)?$/.test(t.notes || ''));
 
       rootTasks.forEach(rootTask => {
         const bimId = (rootTask.notes || '').split(':')[1];
@@ -208,7 +208,12 @@ function DataLoader({ selectedProject }) {
             const { rate, blocked } = calcProgressRate(reprType, ws, eq);
             const effectiveRate = blocked ? 1.0 : rate; // 장비 없어도 달력 기반으로는 진행
             const p = calcRealTimeProgress(activeFloor, effectiveRate);
-            if (p !== null) dispatch({ type: 'SET_TASK_PROGRESS', taskId: activeFloor.taskId, progress: p });
+            // 사용자가 수동으로 설정한 진도를 캘린더 기반 값이 낮추지 않도록 Math.max 적용
+            if (p !== null) {
+              const cur = activeFloor.progress || 0;
+              const next = Math.max(cur, p);
+              if (next !== cur) dispatch({ type: 'SET_TASK_PROGRESS', taskId: activeFloor.taskId, progress: next });
+            }
 
             const rootProg = floorTasks.reduce((s, t) => s + (t.progress || 0), 0) / floorTasks.length;
             dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: rootProg });
@@ -234,8 +239,13 @@ function DataLoader({ selectedProject }) {
           }
 
           // 달력 시간 기반 진도 계산 (startDate/endDate 기준)
+          // 사용자가 수동으로 설정한 진도를 캘린더 기반 값이 낮추지 않도록 Math.max 적용
           const p = calcRealTimeProgress(activePlan, 1.0);
-          if (p !== null) dispatch({ type: 'SET_TASK_PROGRESS', taskId: activePlan.taskId, progress: p });
+          if (p !== null) {
+            const cur = activePlan.progress || 0;
+            const next = Math.max(cur, p);
+            if (next !== cur) dispatch({ type: 'SET_TASK_PROGRESS', taskId: activePlan.taskId, progress: next });
+          }
 
           const rootProg = planTasks.reduce((s, t) => s + (t.progress || 0), 0) / planTasks.length;
           dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: rootProg });
@@ -283,6 +293,15 @@ function DataLoader({ selectedProject }) {
         dispatch({ type: 'SET_TASK_PROGRESS', taskId: rootTask.taskId, progress: rootProg });
       });
 
+      // 일반 WBS 태스크 (BIM: 접두사 없는 태스크) 달력 기반 진도 자동 계산
+      // BIM 태스크와 동일하게 startDate/endDate 기준으로 현재 시각 진도 산출
+      tasks
+        .filter(t => !(t.notes || '').startsWith('BIM:') && t.startDate && (t.progress || 0) < 100)
+        .forEach(t => {
+          const p = calcRealTimeProgress(t, 1.0);
+          if (p !== null) dispatch({ type: 'SET_TASK_PROGRESS', taskId: t.taskId, progress: p });
+        });
+
       // 활동 중인 장비 누적 시간 갱신
       dispatch({ type: 'TICK_EQUIP_ACTIVE', equipment: eq, intervalSec: RECALC_INTERVAL_MS / 1000 });
     };
@@ -299,56 +318,61 @@ function DataLoader({ selectedProject }) {
 function BimLinkSync({ selectedProject }) {
   const { structures, projectMeta } = useIntegration();
   const dispatch = useIntegrationDispatch();
-  const syncedRef = useRef(false);
+  // structures를 ref로 유지 — 이벤트 핸들러에서 stale closure 없이 최신값 참조
+  const structuresRef = useRef(structures);
+  useEffect(() => { structuresRef.current = structures; }, [structures]);
 
-  useEffect(() => {
-    syncedRef.current = false;
-  }, [selectedProject?.projectId]);
+  const runSync = useCallback(async (wbsProjectId) => {
+    if (!wbsProjectId) return;
+    try {
+      const res = await AxiosCustom.get(`/api/project-link/wbs/${wbsProjectId}`);
+      const bimLinks = (res.data || []).filter(l => l.linkedType === 'BIM');
+      for (const link of bimLinks) {
+        const noteMatch = link.note?.match(/^BIM:[^:]+:ROOT:(.+)$/);
+        const instanceKey = noteMatch ? noteMatch[1] : null;
+        const cur = structuresRef.current;
+        // bimProjectId가 같은 구조물이 이미 있으면 추가하지 않음
+        const alreadyInScene = instanceKey
+          ? cur.some(s => s.type === 'bim' && s.id === instanceKey)
+          : cur.some(s => s.type === 'bim' && String(s.bimProjectId) === String(link.linkedProjectId));
+        if (alreadyInScene) continue;
+        try {
+          const bimRes = await AxiosCustom.get(`/api/bim/project/${link.linkedProjectId}`);
+          dispatch({
+            type: 'ADD_STRUCTURE',
+            structure: {
+              id:           instanceKey || `s_${Date.now()}_${link.linkedProjectId}`,
+              linkId:       link.linkId,
+              name:         link.linkedProjectName || `BIM ${link.linkedProjectId}`,
+              type:         'bim',
+              bimProjectId: link.linkedProjectId,
+              elements:     bimRes.data || [],
+              offset:       [0, 0, 0],
+              visible:      true,
+            },
+          });
+        } catch { /* BIM 로드 실패 — 무시 */ }
+      }
+    } catch { /* project_link 조회 실패 — 무시 */ }
+  }, [dispatch]);
 
+  // 프로젝트가 바뀌거나 wbsProjectId가 확정되면 초기 동기화
   useEffect(() => {
     const wbsProjectId = projectMeta?.wbsProjectId;
-    if (!wbsProjectId || syncedRef.current) return;
-    // structures 로드가 완료된 후 한 번만 실행
-    syncedRef.current = true;
+    if (!wbsProjectId) return;
+    runSync(wbsProjectId);
+  }, [projectMeta?.wbsProjectId, runSync]);
 
-    async function syncBimLinks() {
-      try {
-        const res = await AxiosCustom.get(`/api/project-link/wbs/${wbsProjectId}`);
-        const bimLinks = (res.data || []).filter(l => l.linkedType === 'BIM');
-        for (const link of bimLinks) {
-          // note에서 instanceKey 추출 (BIM:{bimId}:ROOT:{instanceKey})
-          const noteMatch = link.note?.match(/^BIM:[^:]+:ROOT:(.+)$/);
-          const instanceKey = noteMatch ? noteMatch[1] : null;
-
-          // instanceKey가 있으면 id 기준으로, 없으면 bimProjectId 기준으로 중복 체크
-          const alreadyInScene = instanceKey
-            ? structures.some(s => s.type === 'bim' && s.id === instanceKey)
-            : structures.some(s => s.type === 'bim' && String(s.bimProjectId) === String(link.linkedProjectId) && !s.linkId);
-          if (alreadyInScene) continue;
-
-          // 씬에 없는 BIM 프로젝트를 자동으로 추가
-          try {
-            const bimRes = await AxiosCustom.get(`/api/bim/project/${link.linkedProjectId}`);
-            dispatch({
-              type: 'ADD_STRUCTURE',
-              structure: {
-                id:           instanceKey || `s_${Date.now()}_${link.linkedProjectId}`,
-                linkId:       link.linkId,  // 삭제 시 직접 사용
-                name:         link.linkedProjectName || `BIM ${link.linkedProjectId}`,
-                type:         'bim',
-                bimProjectId: link.linkedProjectId,
-                elements:     bimRes.data || [],
-                offset:       [0, 0, 0],
-                visible:      true,
-              },
-            });
-          } catch { /* BIM 로드 실패 — 무시 */ }
-        }
-      } catch { /* project_link 조회 실패 — 무시 */ }
-    }
-
-    syncBimLinks();
-  }, [projectMeta?.wbsProjectId, structures, dispatch]);
+  // WBS 탭에서 BIM 링크 추가 시 즉시 재동기화 (ProjectLinkPanel → bim-project-linked 이벤트)
+  useEffect(() => {
+    const wbsProjectId = projectMeta?.wbsProjectId;
+    if (!wbsProjectId) return;
+    const handler = (e) => {
+      if (e.detail?.linkedType === 'BIM') runSync(wbsProjectId);
+    };
+    window.addEventListener('bim-project-linked', handler);
+    return () => window.removeEventListener('bim-project-linked', handler);
+  }, [projectMeta?.wbsProjectId, runSync]);
 
   // WBS 탭에서 BIM 루트 태스크를 삭제하면 통합관제 씬에서도 즉시 제거
   useEffect(() => {
@@ -731,9 +755,11 @@ function DashboardLayout() {
           )}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <IntegrationDashboardPanel />
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', borderTop: '1px solid #111e2d' }}>
+            {/* 이벤트 로그 — 최대 28% 높이로 제한 */}
+            <div style={{ flex: '0 1 auto', maxHeight: '28%', minHeight: 56, overflow: 'hidden', display: 'flex', flexDirection: 'column', borderTop: '1px solid #111e2d' }}>
               <IntegrationEventLog />
             </div>
+            {/* WBS 진척도 — 나머지 공간 전부 */}
             <WbsProgressPanel />
           </div>
         </div>

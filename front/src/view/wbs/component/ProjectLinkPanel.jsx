@@ -86,6 +86,10 @@ function AddLinkForm({ wbsProjectId, onAdded }) {
       });
       setSelectedId("");
       setNote("");
+      // 통합관제 탭의 BimLinkSync가 즉시 재동기화하도록 이벤트 발송
+      window.dispatchEvent(new CustomEvent('bim-project-linked', {
+        detail: { linkedType: type, linkedProjectId: selectedId, wbsProjectId },
+      }));
       onAdded();
     } finally {
       setSaving(false);

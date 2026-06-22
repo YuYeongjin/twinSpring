@@ -284,26 +284,48 @@ function BimWbsPanel({ wbsTasks, workers, equipment, t }) {
 }
 
 // ── 층별 진행현황 패널 ───────────────────────────────────────────
+const SIDEBAR_FRAME_TYPES = new Set(['IfcColumn', 'IfcBeam', 'IfcWall', 'IfcPier', 'IfcMember']);
+const SIDEBAR_SLAB_TYPES  = new Set(['IfcSlab']);
+
+// IntegrationScene.buildProgressMap 과 동일 로직 (PLAN 층별 포맷 지원)
+function buildSidebarProgressMap(wbsTasks) {
+  const m = {};
+  wbsTasks.forEach(tk => {
+    if (!tk.notes) return;
+    const fm = tk.notes.match(/^BIM:([^:]+):FLOOR:(\d+):(FRAME|SLAB)$/);
+    if (fm) { m[`${fm[1]}:floor:${fm[2]}:${fm[3]}`] = Math.min(100, Math.max(0, tk.progress || 0)); return; }
+    const pm = tk.notes.match(/^BIM:([^:]+):PLAN:\d+:(frame|slab|wall):(\d+)$/);
+    if (pm) { m[`${pm[1]}:floor:${pm[3]}:${pm[2] === 'slab' ? 'SLAB' : 'FRAME'}`] = Math.min(100, Math.max(0, tk.progress || 0)); return; }
+    const lm = tk.notes.match(/^BIM:([^:]+):([^:]+)/);
+    if (lm) m[`${lm[1]}:${lm[2]}`] = Math.min(100, Math.max(0, tk.progress || 0));
+  });
+  return m;
+}
+
+function getFloorTypeProgress(progressMap, pid, floorIdx, elementType) {
+  if (SIDEBAR_FRAME_TYPES.has(elementType)) {
+    const k = `${pid}:floor:${floorIdx}:FRAME`;
+    if (k in progressMap) return progressMap[k];
+  }
+  if (SIDEBAR_SLAB_TYPES.has(elementType)) {
+    const k = `${pid}:floor:${floorIdx}:SLAB`;
+    if (k in progressMap) return progressMap[k];
+  }
+  return null;
+}
+
 function BimFloorPanel({ wbsTasks, structures, workers, equipment, t }) {
   const [openKey,     setOpenKey]     = useState(null);
   const [activePulse, setActivePulse] = useState(true);
+  const { selectedWbsTaskId } = useIntegration();
+  const dispatch = useIntegrationDispatch();
 
-  // 진행 중 층 강조를 위한 펄스
   useEffect(() => {
     const id = setInterval(() => setActivePulse(v => !v), 900);
     return () => clearInterval(id);
   }, []);
 
-  // WBS notes → 공종별 진도 맵  {bimProjectId:elementType → progress}
-  const progressMap = useMemo(() => {
-    const m = {};
-    wbsTasks.forEach(tk => {
-      if (!tk.notes) return;
-      const match = tk.notes.match(/^BIM:([^:]+):([^:]+)/);
-      if (match) m[`${match[1]}:${match[2]}`] = Math.min(100, Math.max(0, tk.progress || 0));
-    });
-    return m;
-  }, [wbsTasks]);
+  const progressMap = useMemo(() => buildSidebarProgressMap(wbsTasks), [wbsTasks]);
 
   const total   = wbsTasks.length;
   const done    = wbsTasks.filter(tk => (tk.progress || 0) >= 100).length;
@@ -396,22 +418,30 @@ function BimFloorPanel({ wbsTasks, structures, workers, equipment, t }) {
             </div>
 
             {/* 층 목록: 아래층(index 0)부터 표시 */}
-            {floors.map((floor, floorIdx) => {
+            {(() => {
+              const hasFloorTasks = Object.keys(progressMap).some(k => k.startsWith(`${pid}:floor:`));
+              return floors.map((floor, floorIdx) => {
               const label = getFloorLabel(floorIdx, floors, t);
 
               // 이 층에 있는 공종 목록
               const types = [...new Set(floor.elements.map(el => el.elementType))].sort();
 
               // 이 층 공종들의 WBS 진도 평균
-              const typePcts = types.map(type =>
-                progressMap[`${pid}:${type}`] ?? overall
-              );
+              // hasFloorTasks=true일 때: 이 층에 태스크가 없으면 0 (아직 미착공)
+              // hasFloorTasks=false일 때: 타입별 전체 진도 또는 overall cascade
+              const typePcts = types.map(type => {
+                if (hasFloorTasks) {
+                  const fp = getFloorTypeProgress(progressMap, pid, floorIdx, type);
+                  return fp !== null ? fp : 0;
+                }
+                return progressMap[`${pid}:${type}`] ?? overall;
+              });
               const avgTypePct = typePcts.length
                 ? typePcts.reduce((a, b) => a + b, 0) / typePcts.length
                 : 0;
 
-              // 캐스케이딩 층 진도
-              const cascadePct  = getFloorProgress(floorIdx, N, avgTypePct);
+              // 층별 task가 있으면 직접 진도, 없으면 cascade
+              const cascadePct  = hasFloorTasks ? avgTypePct : getFloorProgress(floorIdx, N, avgTypePct);
               const status      = getFloorStatus(cascadePct);
               const color       = getFloorStatusColor(status);
               const statusLabel = t(`floor${status.charAt(0).toUpperCase() + status.slice(1)}`);
@@ -422,11 +452,25 @@ function BimFloorPanel({ wbsTasks, structures, workers, equipment, t }) {
               // 진행 중 층: 좌측 경계선 펄스
               const accentOpacity = isActive ? (activePulse ? 0.75 : 0.20) : 0;
 
+              // 이 층의 FRAME 또는 SLAB 태스크 (하이라이트용)
+              const floorFrameTask = wbsTasks.find(tk => {
+                const pm = (tk.notes || '').match(/^BIM:([^:]+):PLAN:\d+:(frame|wall):(\d+)$/);
+                return pm && pm[1] === pid && parseInt(pm[3]) === floorIdx;
+              }) || wbsTasks.find(tk => {
+                const fm = (tk.notes || '').match(/^BIM:([^:]+):FLOOR:(\d+):FRAME$/);
+                return fm && fm[1] === pid && parseInt(fm[2]) === floorIdx;
+              });
+
               return (
                 <div key={floorIdx} style={{ marginBottom: 3 }}>
                   {/* 층 헤더 행 */}
                   <div
-                    onClick={() => setOpenKey(isOpen ? null : rowKey)}
+                    onClick={() => {
+                      setOpenKey(isOpen ? null : rowKey);
+                      // 층에 연결된 태스크가 있으면 하이라이트 발동
+                      if (floorFrameTask)
+                        dispatch({ type: 'SELECT_WBS_TASK', taskId: floorFrameTask.taskId });
+                    }}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 5,
                       padding: '5px 6px', cursor: 'pointer', borderRadius: 4,
@@ -486,17 +530,33 @@ function BimFloorPanel({ wbsTasks, structures, workers, equipment, t }) {
                       </div>
 
                       {types.map(type => {
-                        const rawPct  = progressMap[`${pid}:${type}`] ?? 0;
-                        const typePct = getFloorProgress(floorIdx, N, rawPct);
+                        const rawPct = hasFloorTasks
+                          ? (getFloorTypeProgress(progressMap, pid, floorIdx, type) ?? 0)
+                          : (progressMap[`${pid}:${type}`] ?? 0);
+                        const typePct = hasFloorTasks ? rawPct : getFloorProgress(floorIdx, N, rawPct);
                         const tc      = getFloorStatusColor(getFloorStatus(typePct));
-                        const selectedTask = wbsTasks.find(
-                          tk => tk.notes?.startsWith(`BIM:${pid}:${type}`)
-                        );
+                        const isSlab  = SIDEBAR_SLAB_TYPES.has(type);
+                        const selectedTask = wbsTasks.find(tk => {
+                          if (!tk.notes) return false;
+                          const pm = tk.notes.match(/^BIM:([^:]+):PLAN:\d+:(frame|slab|wall):(\d+)$/);
+                          if (pm && pm[1] === pid && parseInt(pm[3]) === floorIdx)
+                            return isSlab ? pm[2] === 'slab' : pm[2] !== 'slab';
+                          return tk.notes.startsWith(`BIM:${pid}:${type}`);
+                        });
 
+                        const isTypeSelected = selectedTask && selectedWbsTaskId === selectedTask.taskId;
                         return (
-                          <div key={type} style={{ marginBottom: 5 }}>
+                          <div
+                            key={type}
+                            style={{ marginBottom: 5, cursor: selectedTask ? 'pointer' : 'default',
+                              background: isTypeSelected ? '#0a1929' : 'transparent',
+                              borderRadius: 3, padding: '2px 3px',
+                              border: `1px solid ${isTypeSelected ? '#1e3a5f' : 'transparent'}`,
+                            }}
+                            onClick={() => selectedTask && dispatch({ type: 'SELECT_WBS_TASK', taskId: selectedTask.taskId })}
+                          >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 8, marginBottom: 2 }}>
-                              <span style={{ color: '#6b7280', fontWeight: 600 }}>{type}</span>
+                              <span style={{ color: isTypeSelected ? '#60a5fa' : '#6b7280', fontWeight: 600 }}>{type}</span>
                               <span style={{ color: tc, fontWeight: 700 }}>{typePct.toFixed(1)}%</span>
                             </div>
                             <div style={{ background: '#0d1b2a', borderRadius: 2, height: 3, overflow: 'hidden', marginBottom: selectedTask ? 3 : 0 }}>
@@ -513,7 +573,7 @@ function BimFloorPanel({ wbsTasks, structures, workers, equipment, t }) {
                   )}
                 </div>
               );
-            })}
+            }); })()}
           </div>
         );
       })}

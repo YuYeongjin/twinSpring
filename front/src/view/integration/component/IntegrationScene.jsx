@@ -219,6 +219,14 @@ function buildProgressMap(wbsTasks) {
       map[`${fm[1]}:floor:${fm[2]}:${fm[3]}`] = Math.min(100, Math.max(0, t.progress || 0));
       return;
     }
+    // PLAN 층별 포맷: BIM:{id}:PLAN:{i}:frame|slab|wall:{floorIdx}
+    // → 층별 진도 맵으로 변환 (getFloorElemProgress에서 사용)
+    const pm = t.notes.match(/^BIM:([^:]+):PLAN:\d+:(frame|slab|wall):(\d+)$/);
+    if (pm) {
+      const mapType = pm[2] === 'slab' ? 'SLAB' : 'FRAME';
+      map[`${pm[1]}:floor:${pm[3]}:${mapType}`] = Math.min(100, Math.max(0, t.progress || 0));
+      return;
+    }
     // 기존 포맷: BIM:{id}:{type}
     const m = t.notes.match(/^BIM:([^:]+):([^:]+)/);
     if (m) map[`${m[1]}:${m[2]}`] = Math.min(100, Math.max(0, t.progress || 0));
@@ -251,72 +259,47 @@ function getFloorElemProgress(progressMap, bimId, floorIdx, elementType, fallbac
 // size:          Three.js Z-up [width, depth, height]
 // progress:      0-100 (WBS 공정율)
 // offsetZ:       소속 <group>의 world Z 오프셋 (clip plane은 world 좌표계)
-const NEON_COLOR = '#aaff44';
+const NEON_COLOR      = '#aaff44';
+const HIGHLIGHT_COLOR = '#22d3ee'; // WBS 부재 하이라이트 (시안)
 
-function BimProgressFill({ localPosition, size, elementType, progress, offsetZ = 0, isSelected = false }) {
-  const worldZBottom = localPosition[2] - size[2] / 2 + offsetZ;
-  const worldHeight  = size[2];
+function BimProgressFill({ localPosition, size, elementType, progress, offsetZ = 0, isSelected = false, highlighted = false }) {
+  const activeColor = isSelected ? NEON_COLOR : highlighted ? HIGHLIGHT_COLOR : null;
+  const baseColor   = activeColor ?? (getBaseColor(elementType) || '#334155');
+  const p           = progress;
+  const fillColor   = activeColor
+    ?? (p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#334155');
 
-  const planeRef    = useRef(null);
-  const currentPRef = useRef(progress);
-  const targetPRef  = useRef(progress);
-  const wYBRef      = useRef(worldZBottom);
-
-  if (!planeRef.current) {
-    const initLevel = worldZBottom + (progress / 100) * worldHeight;
-    planeRef.current = new THREE.Plane(new THREE.Vector3(0, 0, -1), initLevel);
-  }
-
-  useEffect(() => { targetPRef.current  = progress;     }, [progress]);
-  useEffect(() => { wYBRef.current      = worldZBottom; }, [worldZBottom]);
-
-  useFrame((_, delta) => {
-    const diff = targetPRef.current - currentPRef.current;
-    if (Math.abs(diff) < 0.01) return;
-    currentPRef.current += diff * Math.min(1, delta * 2.0);
-    planeRef.current.constant = wYBRef.current + (currentPRef.current / 100) * worldHeight;
-  });
-
-  const baseColor = isSelected ? NEON_COLOR : (getBaseColor(elementType) || '#334155');
-  const p = progress;
-  const fillColor = isSelected ? NEON_COLOR
-    : p >= 100 ? '#60a5fa'
-    : p >= 75  ? '#22c55e'
-    : p >= 40  ? '#eab308'
-    : p >  0   ? '#f97316'
-    : '#334155';
+  // fill 박스: 바닥에서 p/100 높이만큼 채움
+  const fillH      = size[2] * (p / 100);
+  const fillPosZ   = localPosition[2] - size[2] / 2 + fillH / 2; // 바닥부터 fillH/2 위
 
   return (
     <group>
-      {/* 고스트: 선택 시 형광으로 전체를 채움, 비선택 시 반투명 윤곽 */}
+      {/* 고스트: 반투명 윤곽 */}
       <mesh position={localPosition} castShadow>
         <boxGeometry args={size} />
         <meshStandardMaterial
           color={baseColor}
           transparent
-          opacity={isSelected ? 0.62 : 0.07}
+          opacity={activeColor ? 0.55 : 0.07}
           depthWrite={false}
-          emissive={isSelected ? NEON_COLOR : '#000000'}
-          emissiveIntensity={isSelected ? 0.55 : 0}
+          emissive={activeColor ?? '#000000'}
+          emissiveIntensity={isSelected ? 0.55 : highlighted ? 0.45 : 0}
         />
       </mesh>
       {/* 외곽선 */}
       <lineSegments position={localPosition}>
         <edgesGeometry args={[new THREE.BoxGeometry(...size)]} />
-        <lineBasicMaterial color={baseColor} transparent opacity={isSelected ? 0.95 : 0.28} />
+        <lineBasicMaterial color={baseColor} transparent opacity={activeColor ? 0.95 : 0.28} />
       </lineSegments>
-      {/* 채움: clip plane이 진도에 따라 아래→위로 이동 (비선택 시만 의미 있음) */}
-      {!isSelected && (
-        <mesh position={localPosition}>
-          <boxGeometry args={size} />
+      {/* 진도 채움 박스: 바닥에서 progress% 높이 */}
+      {!activeColor && p > 0 && (
+        <mesh position={[localPosition[0], localPosition[1], fillPosZ]}>
+          <boxGeometry args={[size[0], size[1], fillH]} />
           <meshStandardMaterial
             color={fillColor}
-            clippingPlanes={[planeRef.current]}
-            clipShadows
-            transparent
-            opacity={0.80}
             emissive={fillColor}
-            emissiveIntensity={0.08}
+            emissiveIntensity={0.35}
           />
         </mesh>
       )}
@@ -382,7 +365,7 @@ function StructureSelectionBox({ elements }) {
 // ── 구조물 레이어 (여러 BIM/IFC 구조물) ──────────────────────────
 function StructuresLayer() {
   const t = useT('integrationProject');
-  const { structures, wbsTasks, surveyOrigin, bimWbsProgress } = useIntegration();
+  const { structures, wbsTasks, surveyOrigin, bimWbsProgress, selectedWbsTaskId } = useIntegration();
   const [selectedStructId, setSelectedStructId] = useState(null);
 
   // WBS notes 형식(BIM:<id>:<type>) 기반 공종별 진도 맵
@@ -429,6 +412,57 @@ function StructuresLayer() {
     });
     return map;
   }, [structures]);
+
+  // 선택된 WBS 태스크 → 하이라이트할 elementId Set
+  const highlightedElemIds = useMemo(() => {
+    if (!selectedWbsTaskId) return null;
+    const task = wbsTasks.find(t => t.taskId === selectedWbsTaskId);
+    if (!task) return null;
+
+    // PLAN 포맷: BIM:{id}:PLAN:{i}:{phase}:{floorIdx}
+    const pm = (task.notes || '').match(/^BIM:([^:]+):PLAN:\d+:([^:]+?)(?::(\d+))?$/);
+    // FLOOR 포맷: BIM:{id}:FLOOR:{floorIdx}:FRAME|SLAB
+    const fm = (task.notes || '').match(/^BIM:([^:]+):FLOOR:(\d+):(FRAME|SLAB)$/);
+
+    let bimProjectId, phase, floorIdx;
+    if (pm) {
+      [, bimProjectId, phase] = pm;
+      floorIdx = pm[3] != null ? parseInt(pm[3]) : null;
+    } else if (fm) {
+      bimProjectId = fm[1];
+      floorIdx     = parseInt(fm[2]);
+      phase        = fm[3] === 'SLAB' ? 'slab' : 'frame';
+    } else {
+      return null;
+    }
+
+    const PHASE_TYPES = {
+      slab:      new Set(['IfcSlab']),
+      frame:     new Set(['IfcColumn', 'IfcBeam', 'IfcMember', 'IfcPier']),
+      wall:      new Set(['IfcWall', 'IfcCurtainWall', 'IfcRailing']),
+      finishing: new Set(['IfcDoor', 'IfcWindow', 'IfcStair', 'IfcRoof']),
+      mep:       new Set(['IfcPipe', 'IfcDuct', 'IfcFlowSegment', 'IfcFlowFitting']),
+    };
+    const matchTypes = PHASE_TYPES[phase];
+    if (!matchTypes) return null;
+
+    const ids = new Set();
+    structures.forEach(s => {
+      if (String(s.bimProjectId) !== String(bimProjectId)) return;
+      const elems  = s.elements || [];
+      // floorIdx가 있으면 해당 층 부재만, 없으면 전체 공종 타입 부재
+      const floors = floorIdx != null ? detectFloors(elems) : [];
+      elems.forEach(el => {
+        if (!matchTypes.has(el.elementType)) return;
+        if (floorIdx != null) {
+          const elFloor = getElementFloorIndex(el, floors);
+          if (elFloor !== floorIdx) return;
+        }
+        ids.add(el.elementId);
+      });
+    });
+    return ids.size > 0 ? ids : null;
+  }, [selectedWbsTaskId, wbsTasks, structures]);
 
   const progressColor = p =>
     p >= 100 ? '#60a5fa' : p >= 75 ? '#22c55e' : p >= 40 ? '#eab308' : p > 0 ? '#f97316' : '#374151';
@@ -545,17 +579,22 @@ function StructuresLayer() {
                 const wbsData   = bimWbsProgress?.[s.bimProjectId];
                 const simPhase  = simPhaseProgressPerStruct[s.bimProjectId]
                   || { phaseProgress: {}, activePhaseIdx: SIM_PHASE_ORDER.length };
-                // 층 평균 진행률: BIM WBS 부재별 우선, 없으면 시뮬 phase cascade
+                // 층 평균 진행률: BIM WBS 부재별 우선, 없으면 층별 task 우선, 없으면 phase cascade
                 const floorPcts = floor.elements.map(el => {
                   const wbsEl = wbsData?.elements?.[el.elementId];
                   if (wbsEl != null) return wbsEl.progress ?? 0;
                   const ph  = ELEM_TYPE_TO_SIM_PHASE[el.elementType] ?? 'ABOVE';
                   const idx = SIM_PHASE_ORDER.indexOf(ph);
                   if (idx > simPhase.activePhaseIdx) return 0;
-                  return progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback;
+                  const floorP = getFloorElemProgress(progressMap, s.bimProjectId, fi, el.elementType, null);
+                  if (floorP !== null) return floorP;
+                  return progressMap[`${s.bimProjectId}:${el.elementType}`]
+                    ?? simPhase.phaseProgress[ph]
+                    ?? projectFallback;
                 });
                 const avgPct    = floorPcts.length ? floorPcts.reduce((a, b) => a + b) / floorPcts.length : 0;
-                const cascade   = getFloorProgress(fi, floors.length, avgPct);
+                const useFloorLabel = hasFloorTasks(progressMap, s.bimProjectId);
+                const cascade   = useFloorLabel ? avgPct : getFloorProgress(fi, floors.length, avgPct);
                 const status    = getFloorStatus(cascade);
                 const color     = getFloorStatusColor(status);
                 // 3D 위치: floor.avgY 는 이제 미터 단위 (detectFloors 스케일 보정)
@@ -607,7 +646,9 @@ function StructuresLayer() {
                     ? getFloorElemProgress(progressMap, s.bimProjectId, floorIdx, el.elementType, projectFallback)
                     : elemPhaseIdx > simPhase.activePhaseIdx
                       ? 0
-                      : (progressMap[`${s.bimProjectId}:${el.elementType}`] ?? projectFallback);
+                      : (progressMap[`${s.bimProjectId}:${el.elementType}`]
+                         ?? simPhase.phaseProgress[elemPhaseKey]
+                         ?? projectFallback);
                 const elemProgress    = (!useFloor && floors.length >= 2)
                   ? getFloorProgress(floorIdx, floors.length, baseProgress)
                   : baseProgress;
@@ -620,6 +661,7 @@ function StructuresLayer() {
                     progress={elemProgress}
                     offsetZ={offsetZ}
                     isSelected={isStructSelected}
+                    highlighted={!isStructSelected && highlightedElemIds != null && highlightedElemIds.has(el.elementId)}
                   />
                 );
               }
