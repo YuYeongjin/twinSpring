@@ -18,6 +18,12 @@ VECTOR_DB_PASSWORD = os.getenv("VECTOR_DB_PASSWORD") or os.getenv("DB_PASSWORD",
 # RAG (pgvector — PostgreSQL vector extension)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 
+# Sensor alert thresholds — .env 또는 docker-compose 환경변수로 프로젝트별 조정 가능
+SENSOR_TEMP_HIGH = float(os.getenv("SENSOR_TEMP_HIGH", "35.0"))
+SENSOR_TEMP_LOW  = float(os.getenv("SENSOR_TEMP_LOW",  "5.0"))
+SENSOR_HUM_HIGH  = float(os.getenv("SENSOR_HUM_HIGH",  "80.0"))
+SENSOR_HUM_LOW   = float(os.getenv("SENSOR_HUM_LOW",   "20.0"))
+
 def get_pgvector_connection() -> str:
     """psycopg v3 연결 문자열 반환 (langchain-postgres>=0.0.12 는 psycopg v3 필요)"""
     return (

@@ -95,7 +95,6 @@ function elDims(el) {
 }
 
 function elVol(el) { const [x,y,z]=elDims(el); return x*y*z; }
-function elZ(el)   { return parseFloat(el.positionZ)||0; }
 function addDays(d,n){ const r=new Date(d); if(isNaN(r.getTime())) return new Date(); r.setDate(r.getDate()+n); return r; }
 function dateDiff(a,b){ return Math.round((b-a)/86400000); }
 function fmtDate(d){ return (d instanceof Date && !isNaN(d.getTime())) ? d.toISOString().slice(0,10) : (d ?? ''); }
@@ -114,30 +113,28 @@ function fwArea(el) {
 
 /**
  * 층 이름을 논리적 정렬 키로 변환.
- * 지하층 → 음수, 지상층 → 양수, RF → 9999, 알 수 없으면 null(avgZ 폴백)
+ * 지하층 → 음수, 지상층 → 양수, RF → 9999, 알 수 없으면 null(avgY 폴백)
  */
 function storeyOrder(name) {
   if (!name || name === '__none__') return null;
   const s = name.trim();
-
-  // 지하: B1, B2, 지하1층, 지하 2층 등
   let m = s.match(/^[Bb](\d+)$/) || s.match(/^지하\s*(\d+)\s*층?$/i);
   if (m) return -parseInt(m[1], 10);
-
-  // 지상: 1F, 2F, 1층, 2층 등
   m = s.match(/^(\d+)\s*[Ff]$/) || s.match(/^(\d+)\s*층$/i);
   if (m) return parseInt(m[1], 10);
-
-  // 옥탑·지붕층: RF, R/F, 옥상, 옥탑, 지붕
   if (/^r\/?f$/i.test(s) || /옥상|옥탑|지붕/i.test(s)) return 9999;
-
-  return null; // 알 수 없는 이름 → avgZ 폴백
+  return null;
 }
 
+// floorUtils.detectFloors 와 동일한 슬래브 앵커 로직
+// — IfcSlab 위치로 층 레벨을 감지하고 모든 부재를 가장 가까운 층에 배정
+// — storey 정보가 있으면 storey 기반 그루핑 우선 적용
+// — 반환 필드: { storey?, avgY, elements }[]  (avgY = 미터 단위 층 높이)
 function detectFloors(elements) {
   if (!elements.length) return [];
+  const heightOf = el => parseFloat(el.positionZ) || 0;
 
-  // IFC 공간 구조의 storey 정보가 있으면 그것으로 그루핑 (scale 독립적)
+  // storey 정보 있으면 우선 적용
   const hasStorey = elements.some(e => e.storey);
   if (hasStorey) {
     const storeyMap = new Map();
@@ -147,45 +144,70 @@ function detectFloors(elements) {
       storeyMap.get(key).push(el);
     }
     const floors = [...storeyMap.entries()].map(([key, els]) => {
-      const zs = els.map(elZ);
-      return { storey: key, avgZ: zs.reduce((a, b) => a + b) / zs.length, elements: els };
+      const ys = els.map(heightOf);
+      return { storey: key, avgY: ys.reduce((a, b) => a + b) / ys.length, elements: els };
     });
-
-    // 층 이름 기반 정렬 우선, 파싱 불가 이름은 avgZ 폴백
     floors.sort((a, b) => {
-      const ka = storeyOrder(a.storey);
-      const kb = storeyOrder(b.storey);
+      const ka = storeyOrder(a.storey), kb = storeyOrder(b.storey);
       if (ka !== null && kb !== null) return ka - kb;
       if (ka !== null && kb === null) return ka < 0 ? -1 : 1;
       if (ka === null && kb !== null) return kb < 0 ? 1 : -1;
-      return a.avgZ - b.avgZ;
+      return a.avgY - b.avgY;
     });
     return floors;
   }
 
-  // storey 미할당 요소만 있을 때: positionZ 범위 대비 상대적 비율로 층 구분
-  const sorted = [...elements].sort((a, b) => elZ(a) - elZ(b));
-  const zRange = elZ(sorted[sorted.length - 1]) - elZ(sorted[0]);
-  const gap = Math.max(zRange * 0.15, 0.001); // 전체 높이의 15%를 기준으로
-  const groups = [[sorted[0]]];
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = groups[groups.length - 1];
-    if (elZ(sorted[i]) - elZ(prev[prev.length - 1]) >= gap) groups.push([sorted[i]]);
-    else prev.push(sorted[i]);
+  // storey 없음: IfcSlab 앵커 기반 감지 (floorUtils.detectFloors 와 동일)
+  const allZs = elements.map(heightOf);
+  const range  = Math.max(...allZs) - Math.min(...allZs);
+  const scale  = range > 500 ? 0.001 : 1;
+  const gapRaw = 2.0 / scale;
+
+  const slabs   = elements.filter(el => el.elementType === 'IfcSlab');
+  const anchors = slabs.length >= 2 ? slabs : elements;
+
+  const anchorSorted = [...anchors].sort((a, b) => heightOf(a) - heightOf(b));
+  const levelGroups  = [[anchorSorted[0]]];
+  for (let i = 1; i < anchorSorted.length; i++) {
+    const prev = levelGroups[levelGroups.length - 1];
+    if (heightOf(anchorSorted[i]) - heightOf(prev[prev.length - 1]) >= gapRaw)
+      levelGroups.push([anchorSorted[i]]);
+    else
+      prev.push(anchorSorted[i]);
   }
-  return groups.map(g => {
-    const zs = g.map(elZ);
-    return { avgZ: zs.reduce((a, b) => a + b) / zs.length, elements: g };
+
+  if (slabs.length < 2) {
+    return levelGroups.map(g => {
+      const ys = g.map(heightOf);
+      return { avgY: ys.reduce((a, b) => a + b) / ys.length * scale, elements: g };
+    });
+  }
+
+  // 슬래브 중심점으로 전체 부재 배정
+  const centroids = levelGroups.map(g => {
+    const ys = g.map(heightOf);
+    return ys.reduce((a, b) => a + b) / ys.length;
+  });
+  const allGroups = centroids.map(() => []);
+  elements.forEach(el => {
+    const h = heightOf(el);
+    let best = 0, bestDist = Infinity;
+    centroids.forEach((c, i) => { const d = Math.abs(h - c); if (d < bestDist) { bestDist = d; best = i; } });
+    allGroups[best].push(el);
+  });
+  return centroids.map((c, i) => {
+    const g  = allGroups[i];
+    const ys = g.length > 0 ? g.map(heightOf) : [c];
+    return { avgY: ys.reduce((a, b) => a + b) / ys.length * scale, elements: g };
   });
 }
 
 function floorLabel(idx, floors, t) {
-  // storey 이름이 있으면 직접 사용 (IFC 공간 구조 정보 우선)
   const storeyName = floors[idx]?.elements?.[0]?.storey;
   if (storeyName) return storeyName;
-  // fallback: avgZ 기반 지상/지하 판단
-  const above = floors.map((_,i)=>i).filter(i=>floors[i].avgZ>=0.5);
-  const below  = floors.map((_,i)=>i).filter(i=>floors[i].avgZ<0.5);
+  // avgY(미터) 기준 지상/지하 판단
+  const above = floors.map((_,i)=>i).filter(i=>floors[i].avgY>=0.5);
+  const below  = floors.map((_,i)=>i).filter(i=>floors[i].avgY<0.5);
   if (above.includes(idx)) return t('floorAbove', {n: above.indexOf(idx)+1});
   return t('floorBelow', {n: below.length-below.indexOf(idx)});
 }
@@ -282,18 +304,18 @@ function buildTasks(elements, startDate, t) {
       const {lbl,frameP,slabP,wallP}=fRes[i], fs=fStarts[i]; let next=fs;
       if (frameP) {
         const spec=SPEC[`IfcColumn:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcColumn')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:t('taskFrame',{floor:lbl}),start:fs,end:addDays(fs,frameP.days-1),days:frameP.days,workers:frameP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'frame',volume:frameP.volume});
+        tasks.push({name:t('taskFrame',{floor:lbl}),start:fs,end:addDays(fs,frameP.days-1),days:frameP.days,workers:frameP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'frame',volume:frameP.volume,floorIdx:i});
         next=addDays(fs,frameP.days);
       }
       let se=next,we=next;
       if (slabP) {
         const spec=SPEC[`IfcSlab:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcSlab')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:t('taskSlab',{floor:lbl}),start:next,end:addDays(next,slabP.days-1),days:slabP.days,workers:slabP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'slab',volume:slabP.volume});
+        tasks.push({name:t('taskSlab',{floor:lbl}),start:next,end:addDays(next,slabP.days-1),days:slabP.days,workers:slabP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'slab',volume:slabP.volume,floorIdx:i});
         se=addDays(next,slabP.days);
       }
       if (wallP) {
         const spec=SPEC[`IfcWall:${classifyMat(floors[i].elements.find(e=>e.elementType==='IfcWall')?.material||'')}`]||SPEC_DEF;
-        tasks.push({name:t('taskWall',{floor:lbl}),start:next,end:addDays(next,wallP.days-1),days:wallP.days,workers:wallP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'wall',volume:wallP.volume});
+        tasks.push({name:t('taskWall',{floor:lbl}),start:next,end:addDays(next,wallP.days-1),days:wallP.days,workers:wallP.workers,roles:t(spec.rolesKey),equipment:t(spec.equipKey),phase:'wall',volume:wallP.volume,floorIdx:i});
         we=addDays(next,wallP.days);
       }
       allEnds.push(se>we?se:we);

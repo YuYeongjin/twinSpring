@@ -594,7 +594,7 @@ def transform_bim_elements(
             }
 
         res = httpx.put(
-            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/transform",
+            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/bulk-transform",
             json=payload, timeout=120,
         )
         res.raise_for_status()
@@ -643,12 +643,14 @@ def translate_selected_elements(
     try:
         payload = {
             "elementIds": element_ids,
-            "deltaX": round(float(delta_x), 3),
-            "deltaY": round(float(delta_y), 3),
-            "deltaZ": round(float(delta_z), 3),
+            "position": {
+                "deltaX": round(float(delta_x), 3),
+                "deltaY": round(float(delta_y), 3),
+                "deltaZ": round(float(delta_z), 3),
+            },
         }
         res = httpx.put(
-            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/translate-selected",
+            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/bulk-transform",
             json=payload, timeout=60,
         )
         res.raise_for_status()
@@ -658,12 +660,29 @@ def translate_selected_elements(
         if delta_x: parts.append(f"ΔX={delta_x:+.3g}")
         if delta_y: parts.append(f"ΔY={delta_y:+.3g}")
         if delta_z: parts.append(f"ΔZ={delta_z:+.3g}")
+
+        # GLB translation 패치 (시각 반영) — 실패해도 이동 자체는 성공으로 처리
+        glb_ok = False
+        try:
+            glb_res = httpx.put(
+                f"{SPRING_BASE_URL}/api/bim/project/{project_id}/apply-glb-delta",
+                json={"elementIds": element_ids,
+                      "deltaX": round(float(delta_x), 3),
+                      "deltaY": round(float(delta_y), 3),
+                      "deltaZ": round(float(delta_z), 3)},
+                timeout=60,
+            )
+            glb_ok = glb_res.status_code == 200 and glb_res.json().get("action") == "glb_reload"
+        except Exception:
+            logger.warning("[bim] GLB delta 패치 실패 (무시)", exc_info=True)
+
         return json.dumps({
             "success":   True,
+            "action":    "glb_reload" if glb_ok else "translated",
             "projectId": project_id,
             "updated":   updated,
             "skipped":   data.get("skipped", 0),
-            "delta":     payload,
+            "delta":     payload["position"],
             "message":   f"선택된 {updated}개 부재 이동 완료 ({', '.join(parts)})",
         }, ensure_ascii=False)
     except Exception:
@@ -685,11 +704,15 @@ def translate_bim_elements(
     예) 전체 Z축으로 20 내리기 → delta_z = -20
     """
     try:
-        payload = {"deltaX": round(float(delta_x), 3),
-                   "deltaY": round(float(delta_y), 3),
-                   "deltaZ": round(float(delta_z), 3)}
+        payload = {
+            "position": {
+                "deltaX": round(float(delta_x), 3),
+                "deltaY": round(float(delta_y), 3),
+                "deltaZ": round(float(delta_z), 3),
+            }
+        }
         res = httpx.put(
-            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/translate",
+            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/bulk-transform",
             json=payload, timeout=120,
         )
         res.raise_for_status()
@@ -699,12 +722,28 @@ def translate_bim_elements(
         if delta_x: parts.append(f"ΔX={delta_x:+.3g}")
         if delta_y: parts.append(f"ΔY={delta_y:+.3g}")
         if delta_z: parts.append(f"ΔZ={delta_z:+.3g}")
+
+        # GLB translation 패치 (시각 반영) — 실패해도 이동 자체는 성공으로 처리
+        glb_ok = False
+        try:
+            glb_res = httpx.put(
+                f"{SPRING_BASE_URL}/api/bim/project/{project_id}/apply-glb-delta",
+                json={"deltaX": round(float(delta_x), 3),
+                      "deltaY": round(float(delta_y), 3),
+                      "deltaZ": round(float(delta_z), 3)},
+                timeout=60,
+            )
+            glb_ok = glb_res.status_code == 200 and glb_res.json().get("action") == "glb_reload"
+        except Exception:
+            logger.warning("[bim] GLB delta 패치 실패 (무시)", exc_info=True)
+
         return json.dumps({
-            "success":     True,
-            "projectId":   project_id,
-            "updated":     updated,
-            "delta":       payload,
-            "message":     f"전체 {updated}개 부재 이동 완료 ({', '.join(parts)})",
+            "success":   True,
+            "action":    "glb_reload" if glb_ok else "translated",
+            "projectId": project_id,
+            "updated":   updated,
+            "delta":     payload["position"],
+            "message":   f"전체 {updated}개 부재 이동 완료 ({', '.join(parts)})",
         }, ensure_ascii=False)
     except Exception:
         logger.error("[bim] translate_bim_elements 실패", exc_info=True)
