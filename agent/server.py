@@ -431,8 +431,35 @@ _EVENT_RAG_QUERIES: dict[str, str] = {
 import threading
 import time as _time
 
-_rag_build_state = {"status": "idle", "message": "", "chunks": 0}  # idle | running | done | error
-_rag_build_lock  = threading.Lock()
+_rag_build_state   = {"status": "idle", "message": "", "chunks": 0}       # idle | running | done | error
+_rag_build_lock    = threading.Lock()
+
+_graph_build_state = {"status": "idle", "message": "", "communities": 0}  # idle | running | done | error
+_graph_build_lock  = threading.Lock()
+
+
+def _count_graph_communities() -> int:
+    """graph_communities 행 수 반환. 테이블 없거나 오류 시 -1."""
+    try:
+        import psycopg
+        from config.settings import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
+        with psycopg.connect(
+            host=VECTOR_DB_HOST, port=VECTOR_DB_PORT, dbname=VECTOR_DB_NAME,
+            user=VECTOR_DB_USER, password=VECTOR_DB_PASSWORD, connect_timeout=5,
+        ) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_name = 'graph_communities'
+                    )
+                """)
+                if not cur.fetchone()[0]:
+                    return 0
+                cur.execute("SELECT COUNT(*) FROM graph_communities")
+                return cur.fetchone()[0]
+    except Exception:
+        return -1
 
 
 def _count_rag_chunks() -> int:
@@ -488,11 +515,47 @@ def _auto_build_rag():
         _rag_build_state = {"status": "error", "message": str(e), "chunks": 0}
 
 
+def _auto_build_graph_rag():
+    """서버 시작 후 백그라운드에서 GraphRAG 인덱스 자동 구축 (없을 때만).
+    기존 RAG 빌드가 완료된 후 실행해 임베딩 모델 동시 로딩 충돌을 방지."""
+    global _graph_build_state
+
+    # 기존 RAG 빌드 완료 대기 (최대 10분)
+    for _ in range(60):
+        if _rag_build_state["status"] in ("done", "error"):
+            break
+        _time.sleep(10)
+
+    count = _count_graph_communities()
+    if count < 0:
+        logger.warning("[startup-graph] DB 연결 실패 — GraphRAG 자동 구축 건너뜀")
+        return
+
+    if count > 0:
+        logger.info("[startup-graph] GraphRAG 인덱스 이미 존재 (%d개 커뮤니티) — 건너뜀", count)
+        _graph_build_state = {"status": "done", "message": "기존 인덱스 사용", "communities": count}
+        return
+
+    logger.info("[startup-graph] GraphRAG 인덱스 없음 → 자동 구축 시작")
+    with _graph_build_lock:
+        _graph_build_state = {"status": "running", "message": "GraphRAG 인덱스 구축 중...", "communities": 0}
+    try:
+        from scripts.build_graph_index import build_graph_index
+        build_graph_index(force=False)
+        final = _count_graph_communities()
+        _graph_build_state = {"status": "done", "message": "자동 구축 완료", "communities": max(final, 0)}
+        logger.info("[startup-graph] GraphRAG 구축 완료 — %d개 커뮤니티", final)
+    except Exception as e:
+        logger.error("[startup-graph] GraphRAG 구축 실패", exc_info=True)
+        _graph_build_state = {"status": "error", "message": str(e), "communities": 0}
+
+
 @app.on_event("startup")
 async def on_startup():
-    """서버 시작 시 RAG 인덱스 자동 구축을 백그라운드에서 실행."""
-    threading.Thread(target=_auto_build_rag, daemon=True).start()
-    logger.info("[startup] RAG 자동 구축 스레드 시작 (DB 준비 대기 후 실행)")
+    """서버 시작 시 RAG + GraphRAG 인덱스 자동 구축을 백그라운드에서 실행."""
+    threading.Thread(target=_auto_build_rag,       daemon=True).start()
+    threading.Thread(target=_auto_build_graph_rag, daemon=True).start()
+    logger.info("[startup] RAG + GraphRAG 자동 구축 스레드 시작")
 
 
 @app.get("/admin/sensor-thresholds")
@@ -576,6 +639,42 @@ def rebuild_rag():
 
     threading.Thread(target=_run, daemon=True).start()
     return {"queued": True, "message": "RAG 인덱스 빌드를 시작했습니다. 386개 HWP 파일 처리 중..."}
+
+
+@app.get("/admin/graph-rag-status")
+def graph_rag_status():
+    """GraphRAG 인덱스 현황 반환 (커뮤니티 수 + 빌드 상태)."""
+    count = _count_graph_communities()
+    return {
+        "dbReachable":  count >= 0,
+        "communities":  max(count, 0),
+        "hasData":      count > 0,
+        **_graph_build_state,
+    }
+
+
+@app.post("/admin/rebuild-graph-rag")
+def rebuild_graph_rag():
+    """GraphRAG 인덱스를 백그라운드에서 재구축."""
+    global _graph_build_state
+    with _graph_build_lock:
+        if _graph_build_state["status"] == "running":
+            return {"queued": False, "message": "이미 GraphRAG 빌드가 진행 중입니다."}
+        _graph_build_state = {"status": "running", "message": "재구축 시작...", "communities": 0}
+
+    def _run():
+        global _graph_build_state
+        try:
+            from scripts.build_graph_index import build_graph_index
+            build_graph_index(force=True)
+            final = _count_graph_communities()
+            _graph_build_state = {"status": "done", "message": "재구축 완료", "communities": max(final, 0)}
+        except Exception as e:
+            logger.error("[rebuild_graph_rag] 빌드 실패", exc_info=True)
+            _graph_build_state = {"status": "error", "message": str(e), "communities": 0}
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"queued": True, "message": "GraphRAG 인덱스 재구축을 시작했습니다 (Leiden 커뮤니티 감지 포함)."}
 
 
 # ── WBS 공종별 시방서 RAG (BIM 공종 + 일반 WBS 태스크) ───────────────────────────

@@ -609,6 +609,96 @@ function RagManager() {
   );
 }
 
+// ── GraphRAG 인덱스 관리 (Leiden 커뮤니티) ──────────────────────────────────
+function GraphRagManager() {
+  const t = useT('settings');
+  const [status, setStatus]     = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [msg, setMsg]           = useState('');
+
+  const fetchStatus = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await AxiosCustom.get('/api/chat/graph-rag-status');
+      setStatus(r.data);
+      if (r.data?.status === 'running') {
+        setTimeout(fetchStatus, 5000);
+      } else {
+        setBuilding(false);
+      }
+    } catch {
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  // 새로고침 = GraphRAG 인덱스 재구축 (엔티티 추출 + Leiden + 요약)
+  const handleRebuild = async () => {
+    setBuilding(true);
+    setMsg('');
+    try {
+      const r = await AxiosCustom.post('/api/chat/graph-rag-rebuild');
+      setMsg(r.data?.message || '');
+      setTimeout(fetchStatus, 5000);
+    } catch {
+      setMsg(t('graphRagConnFailed'));
+      setBuilding(false);
+    }
+  };
+
+  const isRunning = building || status?.status === 'running';
+
+  const statusColor = !status ? '#4b5563'
+    : !status.dbReachable ? '#ef4444'
+    : status.hasData ? '#a78bfa'
+    : '#f59e0b';
+
+  const statusText = !status ? t('graphRagChecking')
+    : !status.dbReachable ? t('graphRagDbFail')
+    : status.status === 'running' ? t('graphRagIndexing')
+    : status.hasData ? t('graphRagOk', { n: status.communities?.toLocaleString() })
+    : t('graphRagEmpty');
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div>
+          <span style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600 }}>{t('graphRagCollection')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%',
+              background: statusColor, display: 'inline-block', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: statusColor }}>{statusText}</span>
+          </div>
+        </div>
+        {/* 새로고침 = 재구축 트리거 */}
+        <button onClick={handleRebuild} disabled={isRunning}
+          style={{
+            fontSize: 11, padding: '4px 14px', borderRadius: 6,
+            cursor: isRunning ? 'wait' : 'pointer',
+            background: isRunning ? '#1a1a2e' : '#2d1b69',
+            border: `1px solid ${isRunning ? '#2d2d4e' : '#5b21b6'}`,
+            color: isRunning ? '#6b7280' : '#a78bfa',
+          }}>
+          {isRunning ? t('graphRagBuilding') : t('graphRagRebuildBtn')}
+        </button>
+      </div>
+      {msg && (
+        <div style={{ fontSize: 11, color: '#c4b5fd', background: '#0d0d1a',
+          border: '1px solid #3b1f6e', borderRadius: 6, padding: '6px 10px', marginTop: 4 }}>
+          {msg}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
+        {t('graphRagRebuildMsg')}
+      </div>
+    </div>
+  );
+}
+
 // ── 센서 임계값 편집 섹션 ───────────────────────────────────────────────────
 function SensorThresholdSection() {
   const FIELDS = [
@@ -846,6 +936,11 @@ export default function SettingsPanel() {
       {/* ── RAG 인덱스 관리 ── */}
       <Section title={t('ragSection')}>
         <RagManager />
+      </Section>
+
+      {/* ── GraphRAG 인덱스 관리 ── */}
+      <Section title={t('graphRagSection')}>
+        <GraphRagManager />
       </Section>
 
       {/* ── 서버 모니터링 ── */}

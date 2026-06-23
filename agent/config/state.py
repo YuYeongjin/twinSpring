@@ -15,6 +15,7 @@ class AgentState(TypedDict):
     # ── 라우터 출력 ──────────────────────────────────────────────────────────
     domain: Optional[str]       # bim|sensor|simulation|safe|wbs|test|orchestrator|chat
     need_rag: Optional[bool]    # 시방서/RAG 검색 필요 여부
+    rag_type: Optional[str]     # "local" (특정 조항) | "global" (전체 요약)
     lang: Optional[str]         # ko|en|ja
 
     # ── RAG 노드 출력 ────────────────────────────────────────────────────────

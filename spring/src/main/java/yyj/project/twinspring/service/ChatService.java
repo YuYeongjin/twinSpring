@@ -73,6 +73,12 @@ public interface ChatService {
     /** RAG 인덱스 재구축 트리거 */
     Map<String, Object> ragRebuild();
 
+    /** GraphRAG 인덱스 현황 조회 (커뮤니티 수, 빌드 상태) */
+    Map<String, Object> graphRagStatus();
+
+    /** GraphRAG 인덱스 재구축 트리거 (Leiden 커뮤니티 감지 포함) */
+    Map<String, Object> graphRagRebuild();
+
     /** 현재 런타임 센서 알람 임계값 조회 */
     Map<String, Object> getSensorThresholds();
 
