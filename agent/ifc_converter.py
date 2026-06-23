@@ -15,6 +15,7 @@ node extras에 elementType, storey, color 포함.
 
 from __future__ import annotations
 
+import re
 import struct
 import json
 import logging
@@ -55,6 +56,35 @@ ELEMENT_COLORS = {
     "IfcStair":       [0.75, 0.72, 0.65, 1.0],
     "IfcRoof":        [0.60, 0.55, 0.50, 1.0],
 }
+
+_GROUND_NAME_RE = re.compile(
+    r'^(?:지상\s*)?1\s*층$'          # 1층, 지상1층, 지상 1층
+    r'|^(?:1\s*f|1fl|fl\.?\s*1)$'   # 1F, 1FL, FL1, FL.1
+    r'|^level\s*1$'                  # Level 1
+    r'|^ground(?:\s+(?:floor|level))?$',  # Ground, Ground Floor, Ground Level
+    re.IGNORECASE,
+)
+
+def _find_ground_floor_elevation(storeys: list) -> Optional[float]:
+    """지상 1층 elevation(미터)을 반환.
+    1순위: 이름이 '1층', '1F', 'Level 1', 'Ground Floor' 등과 일치하는 층
+    2순위: 가장 낮은 비음수(-0.1m 허용) elevation → 지상 최저층
+    없으면 None → 호출부에서 min_z 폴백
+    """
+    valid = [s for s in storeys if s.get("elevation") is not None]
+    if not valid:
+        return None
+
+    for s in valid:
+        if _GROUND_NAME_RE.match((s["name"] or "").strip()):
+            return s["elevation"]
+
+    non_neg = [s["elevation"] for s in valid if s["elevation"] >= -0.1]
+    if non_neg:
+        return min(non_neg)
+
+    return None
+
 
 def _dms_to_decimal(arr) -> Optional[float]:
     if not arr or len(arr) < 3:
@@ -565,17 +595,26 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
             "geo_origin":     {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale},
         }
 
-    # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z 바닥 기준) ─────────────
+    # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z 지상 1층 기준) ──────────
     all_pts = np.vstack(all_positions)
-    cx     = float((all_pts[:, 0].min() + all_pts[:, 0].max()) / 2.0)  # X 중앙
-    cy     = float((all_pts[:, 1].min() + all_pts[:, 1].max()) / 2.0)  # Y 중앙
-    min_z  = float(all_pts[:, 2].min())  # Z 최솟값 = 바닥 기준 (Z = 높이)
+    cx     = float((all_pts[:, 0].min() + all_pts[:, 0].max()) / 2.0)
+    cy     = float((all_pts[:, 1].min() + all_pts[:, 1].max()) / 2.0)
+
+    # 지상 1층 elevation을 Z 원점으로 사용 → 지하는 음수, 1층 바닥은 Z=0
+    # 층 정보가 없으면 geometry 최솟값으로 폴백 (기존 동작)
+    ground_elev = _find_ground_floor_elevation(storeys)
+    if ground_elev is not None:
+        z_origin = float(ground_elev)
+        logger.info("[IFC Convert] 지상 1층 elevation=%.3fm → Z 원점으로 사용", z_origin)
+    else:
+        z_origin = float(all_pts[:, 2].min())
+        logger.info("[IFC Convert] 층 정보 없음 → geometry min_z=%.3fm 폴백", z_origin)
 
     geo_origin = {
         **geo_info,
         "ifcOffsetX": cx,
         "ifcOffsetY": cy,
-        "ifcOffsetZ": min_z,
+        "ifcOffsetZ": z_origin,
         "scale": scale,
     }
 
@@ -583,13 +622,13 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
         pos = g["pos"].copy()
         pos[:, 0] -= cx
         pos[:, 1] -= cy
-        pos[:, 2] -= min_z  # Z 바닥을 0으로
+        pos[:, 2] -= z_origin  # 지상 1층 바닥을 Z=0으로
 
         color = ELEMENT_COLORS.get(g["our_type"], [0.7, 0.7, 0.7, 1.0])
         center = g["center"].copy()
         center[0] -= cx
         center[1] -= cy
-        center[2] -= min_z
+        center[2] -= z_origin
 
         extras = {
             "elementType": g["our_type"],
