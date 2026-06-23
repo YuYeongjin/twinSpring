@@ -36,7 +36,11 @@ _ROUTER_SYSTEM = SystemMessage(content=(
     "  chat        — general conversation, greetings, other\n\n"
     "need_rag: true ONLY when the query requires construction spec lookup "
     "(KCS/KDS standards, 시방서, specification codes, design criteria)\n\n"
-    'Output ONLY valid JSON — no explanation:\n{"domain": "<domain>", "need_rag": <true|false>}'
+    "rag_type:\n"
+    '  "global" — broad overview queries (전체 요약, 종합 정리, overview, all standards)\n'
+    '  "local"  — specific article/concept queries (specific code, 특정 조항, 수치 기준)\n\n'
+    'Output ONLY valid JSON — no explanation:\n'
+    '{"domain": "<domain>", "need_rag": <true|false>, "rag_type": "local|global"}'
 ))
 
 
@@ -64,27 +68,31 @@ _ORC_PAT = re.compile(
 _RAG_PAT = re.compile(
     r"kcs|kds|시방서|설계기준|표준시방|specification|standard.spec"
     r"|콘크리트.{0,5}(설계|기준)|철근.{0,5}(배근|간격)|허용.{0,5}응력", re.I)
+_GLOBAL_PAT = re.compile(
+    r"전체.{0,5}(요약|기준|정리|목록)|종합.{0,5}(정리|요약)|모든.{0,5}기준"
+    r"|overview|all.{0,5}standard|전반적|총괄", re.I)
 
 
 def _keyword_route(text: str) -> dict:
     """키워드 기반 즉시 분류 (폴백 전용)."""
+    is_global = bool(_GLOBAL_PAT.search(text))
     if _TEST_PAT.search(text):
-        return {"domain": "test",         "need_rag": False}
+        return {"domain": "test",         "need_rag": False,                         "rag_type": "local"}
     if _SAFE_PAT.search(text):
-        return {"domain": "safe",         "need_rag": False}
+        return {"domain": "safe",         "need_rag": False,                         "rag_type": "local"}
     if _SIM_PAT.search(text):
-        return {"domain": "simulation",   "need_rag": bool(_RAG_PAT.search(text))}
+        return {"domain": "simulation",   "need_rag": bool(_RAG_PAT.search(text)),   "rag_type": "global" if is_global else "local"}
     if _WBS_PAT.search(text):
-        return {"domain": "wbs",          "need_rag": False}
+        return {"domain": "wbs",          "need_rag": False,                         "rag_type": "local"}
     if _BIM_PAT.search(text):
-        return {"domain": "bim",          "need_rag": False}
+        return {"domain": "bim",          "need_rag": False,                         "rag_type": "local"}
     if _SENSOR_PAT.search(text):
-        return {"domain": "sensor",       "need_rag": False}
+        return {"domain": "sensor",       "need_rag": False,                         "rag_type": "local"}
     if _ORC_PAT.search(text):
-        return {"domain": "orchestrator", "need_rag": bool(_RAG_PAT.search(text))}
+        return {"domain": "orchestrator", "need_rag": bool(_RAG_PAT.search(text)),   "rag_type": "global" if is_global else "local"}
     if _RAG_PAT.search(text):
-        return {"domain": "chat",         "need_rag": True}
-    return {"domain": "chat", "need_rag": False}
+        return {"domain": "chat",         "need_rag": True,                          "rag_type": "global" if is_global else "local"}
+    return {"domain": "chat", "need_rag": False, "rag_type": "local"}
 
 
 def router_node(state: AgentState) -> dict:
@@ -122,13 +130,16 @@ def router_node(state: AgentState) -> dict:
         # 첫 번째 JSON 객체 추출
         m = re.search(r'\{[^}]+\}', raw, re.DOTALL)
         if m:
-            parsed = json.loads(m.group())
-            domain   = str(parsed.get("domain", "chat")).strip().lower()
+            parsed   = json.loads(m.group())
+            domain   = str(parsed.get("domain",   "chat")).strip().lower()
             need_rag = bool(parsed.get("need_rag", False))
+            rag_type = str(parsed.get("rag_type", "local")).strip().lower()
             if domain not in _VALID_DOMAINS:
                 domain = "chat"
-            logger.info("[router] LLM 분류 → domain=%s need_rag=%s", domain, need_rag)
-            return {"domain": domain, "need_rag": need_rag, "lang": lang, "intent": domain}
+            if rag_type not in ("local", "global"):
+                rag_type = "local"
+            logger.info("[router] LLM 분류 → domain=%s need_rag=%s rag_type=%s", domain, need_rag, rag_type)
+            return {"domain": domain, "need_rag": need_rag, "rag_type": rag_type, "lang": lang, "intent": domain}
     except Exception:
         logger.warning("[router] LLM 분류 실패 — 키워드 폴백", exc_info=True)
 
@@ -136,3 +147,8 @@ def router_node(state: AgentState) -> dict:
     routed = _keyword_route(user_text)
     logger.info("[router] 키워드 폴백 → %s", routed)
     return {**routed, "lang": lang, "intent": routed["domain"]}
+
+
+def get_rag_type_from_text(text: str) -> str:
+    """외부(server.py 스트리밍 경로 등)에서 rag_type 빠른 판단용."""
+    return "global" if _GLOBAL_PAT.search(text) else "local"

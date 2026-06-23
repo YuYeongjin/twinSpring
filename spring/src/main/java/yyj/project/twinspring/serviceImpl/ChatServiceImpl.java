@@ -497,6 +497,43 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    public Map<String, Object> graphRagStatus() {
+        try {
+            String raw = agentClient.get()
+                    .uri("/admin/graph-rag-status")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[GraphRagStatus] 조회 실패: {}", e.getMessage());
+            return Map.of("dbReachable", false, "communities", 0, "hasData", false,
+                          "status", "error", "message", e.getMessage());
+        }
+    }
+
+    @Override
+    public Map<String, Object> graphRagRebuild() {
+        try {
+            String raw = agentClient.post()
+                    .uri("/admin/rebuild-graph-rag")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue("{}")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[GraphRagRebuild] 트리거 실패: {}", e.getMessage());
+            return Map.of("queued", false, "message", "Agent 서버 연결 실패: " + e.getMessage());
+        }
+    }
+
+    @Override
     public Map<String, Object> getSensorThresholds() {
         try {
             String raw = agentClient.get()
