@@ -660,7 +660,7 @@ function CameraCard({ card, isCrack, onClick }) {
       onClick={onClick}
       className="rounded-xl border overflow-hidden flex flex-col cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-xl"
       style={{ borderColor: '#253347', background: '#0a1525' }}
-      title={`${project.projectName} 프로젝트로 이동`}>
+      title={t('goToProject', { name: project.projectName })}>
 
       {/* 썸네일 영역 */}
       <div className="relative bg-black" style={{ height: '140px' }}>

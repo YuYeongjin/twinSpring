@@ -143,6 +143,7 @@ function computeCPM(tasks) {
 //  선행작업 다중선택 드롭다운 (Portal + fixed positioning)
 // ══════════════════════════════════════════════════════════════════
 function PredecessorSelect({ value, onChange, tasks, currentTaskId }) {
+  const t = useT('wbs');
   const [open, setOpen] = useState(false);
   const [pos, setPos]   = useState({ top: 0, left: 0, width: 220 });
   const triggerRef = useRef(null);
@@ -196,7 +197,7 @@ function PredecessorSelect({ value, onChange, tasks, currentTaskId }) {
           borderRadius: 8, maxHeight: 200, overflowY: "auto", boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
         }}>
           {options.length === 0
-            ? <div className="px-3 py-2 text-xs text-gray-500">선행 작업 없음</div>
+            ? <div className="px-3 py-2 text-xs text-gray-500">{t('noPredecessors')}</div>
             : options.map(tk => (
               <label key={tk.taskId}
                      className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#1c2a3a] select-none">
@@ -241,7 +242,7 @@ function ProgressCell({ startDate, endDate, execProgress, isEditing, onExecChang
         </span>
       </div>
       <div className="flex items-center gap-1">
-        <span style={{ fontSize: 9, color: "#64748b", width: 22, flexShrink: 0, textAlign: "right" }}>실행</span>
+        <span style={{ fontSize: 9, color: "#64748b", width: 22, flexShrink: 0, textAlign: "right" }}>{t('actualLabel')}</span>
         {isEditing ? (
           <input type="number" min={0} max={100} value={execProgress}
                  onChange={e => onExecChange(e.target.value)}
@@ -292,6 +293,7 @@ function EditCell({ value, onChange, type = "text", options, min, max }) {
 //  CPM 셀 인라인 편집 (클릭하여 값 직접 입력)
 // ══════════════════════════════════════════════════════════════════
 function CpmCell({ value, field, taskId, isOverridden, editCell, editVal, onStart, onValChange, onSave, onCancel }) {
+  const t = useT('wbs');
   const isEditing = editCell?.taskId === taskId && editCell?.field === field;
 
   if (isEditing) {
@@ -314,7 +316,7 @@ function CpmCell({ value, field, taskId, isOverridden, editCell, editVal, onStar
 
   return (
     <span
-      title="클릭하여 수동 입력"
+      title={t('manualInputTip')}
       onClick={() => onStart(taskId, field, value)}
       className="cursor-pointer rounded px-1"
       style={{
@@ -570,7 +572,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
               padding: '0 4px', lineHeight: '14px', alignSelf: 'flex-start',
               whiteSpace: 'nowrap',
             }}>
-              통합관제
+              {t('integrationBadge')}
             </span>
           )}
         </div>
@@ -717,7 +719,7 @@ export default function WbsTaskTable({ tasks = [], onAdd, onUpdate, onDelete, re
                     className="px-2 py-2 text-left font-semibold text-gray-400 border-b border-[#1e3a5f] whitespace-nowrap"
                     style={stickyThStyle(c)}>
                   {c.key === "progress"
-                    ? <span>{t('colProgress')}<span className="ml-1 font-normal" style={{ color: "#475569", fontSize: 10 }}>(계획/실행)</span></span>
+                    ? <span>{t('colProgress')}<span className="ml-1 font-normal" style={{ color: "#475569", fontSize: 10 }}>{t('planActualLabel')}</span></span>
                     : c.label}
                 </th>
               ))}

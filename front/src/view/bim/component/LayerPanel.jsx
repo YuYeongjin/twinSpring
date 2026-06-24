@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { useT } from '../../../i18n/LanguageContext';
 
 // IFC 자동 생성 시 들어오는 더미 building 이름 — 레이어 트리에서 투명 처리
 const DUMMY_ROOT_NAMES = new Set([
@@ -61,8 +62,9 @@ function getAllLeafElementIds(node) {
 
 // ── ColorDot ──────────────────────────────────────────────────────────
 function ColorDot({ color, onChange, size = 16 }) {
+    const t = useT('bimDashboard');
     return (
-        <label className="cursor-pointer flex-shrink-0 relative group" title="색상 변경">
+        <label className="cursor-pointer flex-shrink-0 relative group" title={t('colorChangeTip')}>
             <input type="color" value={color} onChange={e => onChange(e.target.value)} className="sr-only" />
             <div
                 className="rounded-full border-2 border-white/20 shadow group-hover:scale-110 transition-transform"
@@ -94,6 +96,7 @@ function TreeNodeRow({
     onUpdate, onDelete, onRemoveElement, onSelectElement, onSelectAllInLayer,
     elementColors,
 }) {
+    const t          = useT('bimDashboard');
     const [editingName, setEditingName] = useState(false);
     const isLeaf     = node.children.length === 0;
     const isExpanded = expandedSet.has(node.layerId);
@@ -158,7 +161,7 @@ function TreeNodeRow({
                             ${depth === 0 ? 'font-bold' : depth === 1 ? 'font-semibold' : 'font-medium'}`}
                         style={{ color: node.visible ? (depth === 0 ? '#cbd5e1' : depth === 1 ? '#94a3b8' : '#e2e8f0') : '#8896a4' }}
                         onDoubleClick={() => setEditingName(true)}
-                        title="더블클릭: 이름 편집"
+                        title={t('dblClickRename')}
                     >
                         {node.layerName}
                     </span>
@@ -172,7 +175,7 @@ function TreeNodeRow({
                             backgroundColor: depth < 2 ? '#47556940' : node.color + '30',
                             color: node.visible ? (depth < 2 ? '#94a3b8' : node.color) : '#8896a4',
                         }}
-                        title="클릭: 전체 선택"
+                        title={t('clickSelectAll')}
                         onClick={() => onSelectAllInLayer?.(getAllLeafElementIds(node))}
                     >
                         {elemCount}
@@ -183,7 +186,7 @@ function TreeNodeRow({
                 <button
                     className="transition leading-none flex items-center flex-shrink-0"
                     style={{ color: node.visible ? '#fbbf24' : '#4b5563' }}
-                    title={node.visible ? 'Hide (하위 포함)' : 'Show (하위 포함)'}
+                    title={node.visible ? t('layerHideWithChildren') : t('layerShowWithChildren')}
                     onClick={handleToggleVisible}
                 >
                     <EyeIcon visible={node.visible} />
@@ -196,8 +199,8 @@ function TreeNodeRow({
                     onClick={() => {
                         const childCount = elemCount;
                         const msg = childCount > 0
-                            ? `"${node.layerName}" 레이어를 삭제하시겠습니까? (부재 ${childCount}개 포함)`
-                            : `"${node.layerName}" 레이어를 삭제하시겠습니까?`;
+                            ? t('layerDeleteConfirmWithCount', { name: node.layerName, count: childCount })
+                            : t('layerDeleteConfirm', { name: node.layerName });
                         if (window.confirm(msg)) onDelete(node.layerId);
                     }}
                 >🗑</button>
@@ -243,7 +246,7 @@ function TreeNodeRow({
                                         key={el.elementId}
                                         className="flex items-center gap-2 px-3 py-1.5 border-t border-[#1e2d3d] hover:bg-[#1c2a3a] transition group cursor-pointer"
                                         onClick={e => onSelectElement?.(el, null, e.shiftKey)}
-                                        title="클릭: 선택 / Shift+클릭: 다중 선택"
+                                        title={t('clickSelectTip')}
                                     >
                                         <div
                                             className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
@@ -273,6 +276,7 @@ function TreeNodeRow({
 // 도면선 그룹 (선 전용 가상 레이어 — DB 레이어와 별도)
 // ================================================================
 function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDeleteLine, onSelectLine, selectedLineId }) {
+    const t = useT('bimDashboard');
     const [expanded, setExpanded] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -294,7 +298,7 @@ function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDele
                      style={{ backgroundColor: '#60a5fa' }} />
                 <span className="flex-1 text-xs font-medium truncate"
                       style={{ color: visible ? '#e2e8f0' : '#8896a4' }}>
-                    📐 도면선
+                    {t('drawingLines')}
                 </span>
                 <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
                       style={{ backgroundColor: '#60c5fa30', color: visible ? '#60a5fa' : '#8896a4' }}>
@@ -310,7 +314,7 @@ function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDele
                     onClick={onToggleVisible}
                     className="transition leading-none flex items-center"
                     style={{ color: visible ? '#fbbf24' : '#4b5563' }}
-                    title={visible ? '선 숨기기' : '선 표시'}
+                    title={visible ? t('lineHide') : t('lineShow')}
                 >
                     <EyeIcon visible={visible} />
                 </button>
@@ -318,7 +322,7 @@ function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDele
                     <button
                         onClick={() => setConfirmDelete(true)}
                         className="text-gray-600 hover:text-red-400 transition text-xs leading-none"
-                        title="전체 삭제"
+                        title={t('deleteAll')}
                     >🗑</button>
                 ) : (
                     <div className="flex items-center gap-1 ml-1">
@@ -326,12 +330,12 @@ function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDele
                             onClick={() => { onClearLines(); setConfirmDelete(false); }}
                             className="text-xs px-1.5 py-0.5 rounded font-semibold"
                             style={{ backgroundColor: '#7f1d1d', color: '#fca5a5', border: '1px solid #ef4444' }}
-                        >확인</button>
+                        >{t('confirm')}</button>
                         <button
                             onClick={() => setConfirmDelete(false)}
                             className="text-xs px-1.5 py-0.5 rounded"
                             style={{ backgroundColor: '#1c2a3a', color: '#8896a4', border: '1px solid #253347' }}
-                        >취소</button>
+                        >{t('cancelAction')}</button>
                     </div>
                 )}
             </div>
@@ -353,14 +357,14 @@ function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDele
                                 <button
                                     onClick={e => { e.stopPropagation(); onDeleteLine?.(line.lineId); }}
                                     className="text-gray-700 hover:text-red-400 transition text-xs opacity-0 group-hover:opacity-100"
-                                    title="삭제"
+                                    title={t('deleteTip')}
                                 >✕</button>
                             </div>
                         );
                     })}
                     {lines.length > PREVIEW_LIMIT && (
                         <div className="px-4 py-2 text-xs text-gray-600 text-center border-t border-[#1e2d3d]">
-                            … 외 {lines.length - PREVIEW_LIMIT}개 더 있음
+                            {t('moreItems', { n: lines.length - PREVIEW_LIMIT })}
                         </div>
                     )}
                 </div>
@@ -397,6 +401,7 @@ export default function LayerPanel({
     onRegenerateLayers,
     isRegeneratingLayers = false,
 }) {
+    const t = useT('bimDashboard');
     const [expandedSet, setExpandedSet] = useState(new Set());
 
     const toggleExpand = id => setExpandedSet(prev => {
@@ -471,10 +476,10 @@ export default function LayerPanel({
                             {isRegeneratingLayers ? (
                                 <>
                                     <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}>⏳</span>
-                                    Layer 재생성 중...
+                                    {t('layerRegenBusy')}
                                 </>
                             ) : (
-                                <>↺ IFC Layer 재생성</>
+                                <>{t('layerRegenBtn')}</>
                             )}
                         </button>
                     )}

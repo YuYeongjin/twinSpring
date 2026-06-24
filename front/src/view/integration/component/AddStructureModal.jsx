@@ -20,7 +20,7 @@ export async function resizeImageDataUrl(dataUrl, maxPx = 1024, quality = 0.75) 
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       resolve({ dataUrl: canvas.toDataURL('image/jpeg', quality), w, h, canvas });
     };
-    img.onerror = () => reject(new Error('이미지 디코딩 실패 (HEIC/TIFF 등 미지원 포맷일 수 있습니다)'));
+    img.onerror = () => reject(new Error('Image decode failed (HEIC/TIFF or unsupported format)'));
     img.src = dataUrl;
   });
 }

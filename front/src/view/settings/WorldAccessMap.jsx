@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ComposableMap, Geographies, Geography, Marker } from 'react-simple-maps';
 import AxiosCustom from '../../axios/AxiosCustom';
+import { useT } from '../../i18n/LanguageContext';
 
 const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
@@ -11,6 +12,7 @@ function dotRadius(count) {
 }
 
 export default function WorldAccessMap() {
+  const t = useT('settings');
   const [visitors, setVisitors]   = useState([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
@@ -25,7 +27,7 @@ export default function WorldAccessMap() {
         setVisitors(res.data || []);
         setError(null);
       } catch (e) {
-        setError('지오 데이터 로드 실패: ' + (e.message || ''));
+        setError(t('geoLoadFail', { msg: e.message || '' }));
       } finally {
         setLoading(false);
       }

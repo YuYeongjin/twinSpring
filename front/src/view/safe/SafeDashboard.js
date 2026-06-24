@@ -91,6 +91,7 @@ function personInZone(position, size, zone) {
 
 // ── 안전구역 Box (빨간 반투명 + 와이어프레임) ────────────────────────
 function SafeZoneBox({ zone, violated, onDelete, editMode }) {
+  const t = useT('safe');
   const meshRef = useRef();
   const edgesGeo = useMemo(
     () => new THREE.EdgesGeometry(new THREE.BoxGeometry(zone.w, ZONE_HEIGHT, zone.d)),
@@ -129,7 +130,7 @@ function SafeZoneBox({ zone, violated, onDelete, editMode }) {
           padding: '2px 7px', borderRadius: '4px', color: '#fff',
           userSelect: 'none',
         }}>
-          <span>{violated ? '🚨 침범!' : '🚧 안전구역'}</span>
+          <span>{violated ? t('zoneViolated') : t('zoneSafeLabel')}</span>
           {editMode && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(zone.id); }}
@@ -588,9 +589,9 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
                 >
                   <span className="text-2xl shrink-0">🎬</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold" style={{ color: '#c4b5fd' }}>데모 모드</p>
+                    <p className="text-sm font-semibold" style={{ color: '#c4b5fd' }}>{t('demoModeLabel')}</p>
                     <p className="text-xs mt-0.5" style={{ color: '#6b5080' }}>
-                      카메라 없이 기능 테스트 — 균열·안전 감지 시뮬레이션
+                      {t('demoModeDesc')}
                     </p>
                   </div>
                   <span className="text-sm shrink-0" style={{ color: '#a78bfa' }}>→</span>
@@ -891,7 +892,7 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
         {zoneViolating && (
           <span className="text-xs font-bold px-2 py-0.5 rounded-full animate-pulse"
             style={{ background: '#3a0000', border: '1px solid #ff4444', color: '#ff8888' }}>
-            🚨 구역 침범!
+            {t('zoneViolated')}
           </span>
         )}
 
@@ -927,12 +928,12 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
               border: `1px solid ${zoneEditMode ? '#ff4444' : '#7f1d1d'}`,
               color: zoneEditMode ? '#ff8888' : '#f87171',
             }}>
-            {zoneEditMode ? '✓ 완료' : '🚧 구역 추가'}
+            {zoneEditMode ? t('zoneDone') : t('zoneAdd')}
           </button>
           {zones.length > 0 && !zoneEditMode && (
             <span className="text-xs px-2 py-0.5 rounded-full"
               style={{ background: '#1a0808', border: '1px solid #7f1d1d', color: '#f87171' }}>
-              {zones.length}개 구역
+              {t('zoneCount', { n: zones.length })}
             </span>
           )}
         </div>
@@ -949,7 +950,7 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
             borderRadius: '8px', padding: '5px 12px',
             fontSize: '11px', color: '#fca5a5', whiteSpace: 'nowrap',
           }}>
-            드래그로 안전구역을 그리세요 &nbsp;·&nbsp; 우클릭으로 취소 &nbsp;·&nbsp; 구역 ✕로 삭제
+            {t('zoneDrawHint')}
           </div>
         )}
 
@@ -1073,6 +1074,7 @@ function CrackLocationMap({ entry }) {
 
 /** 균열 감지 결과 사진 + BIM 위치 비교 패널 */
 function CrackCompareView({ entry, bimProject }) {
+  const t = useT('safe');
   if (!entry?.imageUrl) return null;
   const conf = Math.round((entry.confidence ?? 0) * 100);
   const regionCount = (entry.regions || []).length;
@@ -1085,7 +1087,7 @@ function CrackCompareView({ entry, bimProject }) {
                     background: 'linear-gradient(135deg,#0a1a2e,#060f1a)',
                     borderBottom: `1px solid ${entry.hasCrack ? '#7c2d12' : '#14532d'}` }}>
         <span style={{ fontSize: 16 }}>{entry.hasCrack ? '🚨' : '✅'}</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>균열 감지 비교뷰</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{t('crackCompareView')}</span>
         {bimProject && (
           <span style={{ fontSize: 10, color: '#60a5fa', background: '#0d2040', borderRadius: 8,
                          padding: '2px 8px', border: '1px solid #1e3a5f', maxWidth: 120,
@@ -1096,12 +1098,12 @@ function CrackCompareView({ entry, bimProject }) {
         {entry.hasCrack && regionCount > 0 && (
           <span style={{ fontSize: 10, background: '#3a1a00', border: '1px solid #f97316',
                          color: '#fb923c', borderRadius: 8, padding: '2px 7px' }}>
-            균열 {regionCount}개 영역 감지
+            {t('crackRegionCount', { n: regionCount })}
           </span>
         )}
         <span style={{ marginLeft: 'auto', fontSize: 10,
                        color: entry.hasCrack ? '#fb923c' : '#4ade80' }}>
-          신뢰도 {conf}% · {entry.time.toLocaleTimeString('ko-KR', { hour12: false })}
+          {t('crackConfidenceLabel', { pct: conf })} · {entry.time.toLocaleTimeString([], { hour12: false })}
         </span>
       </div>
 
@@ -1112,9 +1114,9 @@ function CrackCompareView({ entry, bimProject }) {
         <div style={{ flex: 1, padding: 12, borderRight: '1px solid #1a2a3a',
                       display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 11, color: '#8896a4', display: 'flex', alignItems: 'center', gap: 6 }}>
-            📷 감지 사진
+            {t('crackDetectedPhoto')}
             <span style={{ fontSize: 10, color: '#4b5563' }}>
-              {entry.source === 'camera' ? '(카메라 촬영)' : '(파일 업로드)'}
+              {entry.source === 'camera' ? t('camSourceCamera') : t('camSourceFile')}
             </span>
           </div>
 
@@ -1123,7 +1125,7 @@ function CrackCompareView({ entry, bimProject }) {
           {/* 좌표 목록 */}
           {regionCount > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 2 }}>📐 균열 좌표</div>
+              <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 2 }}>{t('crackCoordsTitle')}</div>
               {(entry.regions || []).map((r, i) => (
                 <div key={i} style={{ fontSize: 10, color: '#8896a4', display: 'flex', gap: 6,
                                       padding: '3px 8px', background: '#0d1b2a', borderRadius: 6,
@@ -1140,7 +1142,7 @@ function CrackCompareView({ entry, bimProject }) {
             </div>
           ) : (
             <div style={{ fontSize: 10, color: '#4b5563', textAlign: 'center', padding: '8px 0' }}>
-              {entry.hasCrack ? '좌표 데이터 없음' : '균열 미감지'}
+              {entry.hasCrack ? t('crackNoCoord') : t('crackNoneDetected')}
             </div>
           )}
         </div>
@@ -1153,7 +1155,7 @@ function CrackCompareView({ entry, bimProject }) {
           {bimProject ? (
             <div style={{ background: '#0d2040', borderRadius: 8, border: '1px solid #1e3a5f', padding: 10 }}>
               <div style={{ fontSize: 10, color: '#60a5fa', fontWeight: 700, marginBottom: 4 }}>
-                🏗 연결된 BIM 프로젝트
+                {t('linkedBimProject')}
               </div>
               <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600,
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1175,15 +1177,15 @@ function CrackCompareView({ entry, bimProject }) {
           ) : (
             <div style={{ background: '#0d1b2a', borderRadius: 8, border: '1px solid #1a2a3a',
                           padding: 10, fontSize: 10, color: '#4b5563', textAlign: 'center' }}>
-              위의 드롭다운에서 BIM 프로젝트를 선택하면 도면 정보가 연결됩니다.
+              {t('bimProjectSelectHint')}
             </div>
           )}
 
           {/* 위치 맵 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
             <div style={{ fontSize: 10, color: '#8896a4', display: 'flex', alignItems: 'center', gap: 4 }}>
-              📐 균열 위치 맵
-              <span style={{ fontSize: 9, color: '#4b5563' }}>(정규화 좌표)</span>
+              {t('crackLocationMap')}
+              <span style={{ fontSize: 9, color: '#4b5563' }}>({t('normalizedCoords')})</span>
             </div>
             <CrackLocationMap entry={entry} />
 
@@ -1275,7 +1277,7 @@ function CrackMonitorPanel({ selectedProject }) {
 
   function intervalLabel(v) {
     if (v === 0) return t('intervalManual');
-    return `${v / 60}${t('intervalManual') === '수동' ? '분' : v / 60 === 1 ? 'min' : 'min'}`;
+    return `${v / 60}${t('minuteSuffix')}`;
   }
 
   return (
@@ -1376,7 +1378,7 @@ function CrackMonitorPanel({ selectedProject }) {
           {autoRunning && (
             <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
                   style={{ background: "#3a1a00", border: "1px solid #f97316", color: "#fb923c" }}>
-              {t('autoLabel')} — 탭 이탈 후에도 계속 촬영됩니다
+              {t('autoLabel')}{t('autoLabelContinue')}
             </span>
           )}
         </div>
@@ -1808,7 +1810,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                   border: `1px solid ${isProgressMode ? "#a78bfa" : isCrackMode ? "#60a5fa" : "#4ade80"}`,
                   color: isProgressMode ? "#c4b5fd" : isCrackMode ? "#93c5fd" : "#4ade80",
                 }}>
-            {isProgressMode ? "📐 진도 모니터링" : isCrackMode ? tP('modeCrackBadge') : tP('modeSafetyBadge')}
+            {isProgressMode ? t('progressModeBadge') : isCrackMode ? tP('modeCrackBadge') : tP('modeSafetyBadge')}
           </span>
           {!isCrackMode && selectedProject.cameraUrl && (
             <span className="text-xs px-2 py-0.5 rounded-full"
@@ -1830,7 +1832,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
               border: `1px solid ${activeTab === 'live' ? '#3b82f6' : '#253347'}`,
               color: activeTab === 'live' ? '#93c5fd' : '#6b7280',
             }}>
-            {isCrackMode ? '🔍 실시간 감지' : '🛡 실시간 모니터링'}
+            {isCrackMode ? t('tabLiveDetect') : t('tabLiveMonitor')}
           </button>
           <button
             onClick={() => setActiveTab('monitoring')}
@@ -1851,7 +1853,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                 border: `1px solid ${activeTab === 'progress' ? '#a78bfa' : '#253347'}`,
                 color: activeTab === 'progress' ? '#c4b5fd' : '#6b7280',
               }}>
-              📐 진도 분석
+              {t('tabProgressAnalysis')}
             </button>
           )}
           <button
@@ -1911,9 +1913,9 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
               style={{ backgroundColor: '#3a0000', borderColor: '#ff4444' }}>
               <span className="text-xl">🚨</span>
               <div className="flex-1">
-                <p className="text-red-300 font-bold text-sm">안전구역 침범 감지!</p>
+                <p className="text-red-300 font-bold text-sm">{t('zoneViolationAlertTitle')}</p>
                 <p className="text-red-400 text-xs mt-0.5">
-                  {violatedZones.size}개 구역에 작업자가 진입했습니다. 즉시 확인하세요.
+                  {t('zoneViolationCount', { n: violatedZones.size })}
                 </p>
               </div>
             </div>

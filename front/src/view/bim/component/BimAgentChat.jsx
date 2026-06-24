@@ -212,7 +212,7 @@ export default function BimAgentChat({
         setMessages(prev => [...prev, {
           role:    "action",
           success: true,
-          content: `✅ ${bimData.message ?? '부재 이동 완료'} — 3D 뷰어가 업데이트됩니다.`,
+          content: `${bimData.message ?? t('bimAgentMoveComplete')} — ${t('bimAgentViewerUpdate')}`,
         }]);
       } else if (action === "error") {
         setMessages(prev => [...prev, {
