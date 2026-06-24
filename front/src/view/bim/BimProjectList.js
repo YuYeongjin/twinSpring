@@ -541,7 +541,7 @@ function IfcImportModal({ onClose, onImport }) {
                   Scale Factor
                 </label>
                 <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "#1c2a3a", color: "#6b7280" }}>
-                  서버가 단위(mm/cm) 자동 감지 — 기본값 ×1 권장
+                  {t('scaleAutoDetect')}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -608,7 +608,7 @@ function IfcImportModal({ onClose, onImport }) {
                     ))}
                   </div>
                   <p style={{ color: TB.text2 }}>
-                    {parsedData.storeys?.length > 0 && `${parsedData.storeys.length}개 층 · `}
+                    {parsedData.storeys?.length > 0 && `${t('storeyCount', { n: parsedData.storeys.length })} · `}
                     {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                     {parsedData.detectedScale && (
                       <span style={{ color: "#6b7280", marginLeft: 8 }}>

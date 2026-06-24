@@ -43,10 +43,11 @@ const TYPE_TKEY = {
 
 // ── 가시성 아이콘 ────────────────────────────────────────────────────
 function EyeBtn({ visible, onToggle, parentHidden }) {
+  const t = useT('bimDashboard');
   return (
     <button
       onClick={e => { e.stopPropagation(); onToggle(); }}
-      title={visible ? '숨기기' : '보이기'}
+      title={visible ? t('storeyTreeHide') : t('storeyTreeShow')}
       style={{
         flexShrink: 0, background: 'none', border: 'none',
         cursor: parentHidden ? 'default' : 'pointer',

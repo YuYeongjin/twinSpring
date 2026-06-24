@@ -262,12 +262,12 @@ export default function MonitoringGallery({ selectedProject }) {
               <span className="text-xs text-gray-500">
                 ({captureInterval < 60
                   ? tm('everySecond', { v: captureInterval })
-                  : tm('everyMinute', { v: Math.round(captureInterval / 60) })} 감지)
+                  : tm('everyMinute', { v: Math.round(captureInterval / 60) })} {tm('detectLabel')})
               </span>
             </div>
             <div className="flex items-center gap-3 pl-0">
               <span className="text-xs text-gray-600 w-24 shrink-0" />
-              <span className="text-xs text-gray-600">{SAFETY_MIN_SEC}초</span>
+              <span className="text-xs text-gray-600">{tm('secUnit', { v: SAFETY_MIN_SEC })}</span>
               <input
                 type="range"
                 min={SAFETY_MIN_SEC}
@@ -278,7 +278,7 @@ export default function MonitoringGallery({ selectedProject }) {
                 className="flex-1"
                 style={{ accentColor: '#3b82f6', cursor: 'pointer' }}
               />
-              <span className="text-xs text-gray-600">{SAFETY_MAX_SEC}초</span>
+              <span className="text-xs text-gray-600">{tm('secUnit', { v: SAFETY_MAX_SEC })}</span>
             </div>
             {/* 5초 간격 눈금 */}
             <div className="flex pl-[6.5rem] pr-12">
@@ -498,6 +498,7 @@ function SnapshotCard({ snap, onClick, onDelete }) {
 
 // ── 전체화면 모달 ───────────────────────────────────────────────────
 function SnapshotModal({ snap, onClose, onDelete }) {
+  const tm = useT('monitoring');
   const imgUrl = `/api/monitoring/snapshot/${snap.snapshotId}/image`;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center"
@@ -516,7 +517,7 @@ function SnapshotModal({ snap, onClose, onDelete }) {
           <span className="text-sm font-semibold text-gray-300">{fmtDate(snap.capturedAt)}</span>
           {snap.isProblem && (
             <span className="text-xs px-2 py-0.5 rounded"
-              style={{ background: '#7f1d1d', color: '#fca5a5' }}>⚠ 위험 감지</span>
+              style={{ background: '#7f1d1d', color: '#fca5a5' }}>{tm('dangerBadge')}</span>
           )}
           <button onClick={onClose}
             className="ml-auto text-gray-500 hover:text-gray-300 text-xl leading-none">✕</button>
@@ -527,7 +528,7 @@ function SnapshotModal({ snap, onClose, onDelete }) {
 
         {snap.detectionJson && (
           <details className="text-xs text-gray-500">
-            <summary className="cursor-pointer hover:text-gray-400">감지 결과 JSON</summary>
+            <summary className="cursor-pointer hover:text-gray-400">{tm('detectionResultJson')}</summary>
             <pre className="mt-1 p-2 rounded overflow-auto"
               style={{ background: '#060f1c', maxHeight: '120px' }}>
               {(() => { try { return JSON.stringify(JSON.parse(snap.detectionJson), null, 2); }
@@ -538,12 +539,12 @@ function SnapshotModal({ snap, onClose, onDelete }) {
 
         <div className="flex items-center gap-3">
           {snap.expiresAt && (
-            <span className="text-xs text-gray-500">만료: {fmtDate(snap.expiresAt)}</span>
+            <span className="text-xs text-gray-500">{tm('expiresAt', { time: fmtDate(snap.expiresAt) })}</span>
           )}
           <button onClick={() => { onDelete(); onClose(); }}
             className="ml-auto text-xs px-3 py-1.5 rounded-lg"
             style={{ background: '#3a0f0f', border: '1px solid #ef4444', color: '#fca5a5' }}>
-            삭제
+            {tm('deleteBtn')}
           </button>
         </div>
       </div>

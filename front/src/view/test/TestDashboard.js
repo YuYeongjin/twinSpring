@@ -484,7 +484,7 @@ export default function TestDashboard({ canvasFullscreen, onToggleCanvasFullscre
         setGpsHz(0);
       },
       onStompError: (frame) => {
-        setGpsError('STOMP 오류: ' + (frame.headers?.message || '연결 실패'));
+        setGpsError(t('errStomp', { msg: frame.headers?.message || t('errStompUnknown') }));
         setGpsConnected(false);
         gpsActiveRef.current = false;
       },

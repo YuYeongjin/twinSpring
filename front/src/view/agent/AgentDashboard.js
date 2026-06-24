@@ -24,41 +24,17 @@ const SPRING_BASE = process.env.REACT_APP_API_URL
       ? `http://${window.location.hostname}:8080`
       : '');
 
-// ── Agent step 상태 레이블 (다국어) ──────────────────────────────────────────
-const STEP_LABELS = {
-  ko: {
-    classifying:       '질문 분류 중...',
-    sensor_agent:      '센서 데이터 조회 중...',
-    bim_agent:         'BIM Agent 처리 중...',
-    simulation_agent:  '시뮬레이션 Agent 처리 중...',
-    safe_agent:        '안전 모니터링 Agent 처리 중...',
-    test_agent:        '충돌 테스트 Agent 처리 중...',
-    orchestrator:      '통합 보고서 생성 중...',
-    tab_guide:         '탭 안내 준비 중...',
-    generating:        '답변 생성 중...',
-  },
-  en: {
-    classifying:       'Classifying question...',
-    sensor_agent:      'Fetching sensor data...',
-    bim_agent:         'BIM Agent processing...',
-    simulation_agent:  'Simulation Agent processing...',
-    safe_agent:        'Safety Monitoring Agent processing...',
-    test_agent:        'Collision Test Agent processing...',
-    orchestrator:      'Generating integrated report...',
-    tab_guide:         'Preparing tab guide...',
-    generating:        'Generating response...',
-  },
-  ja: {
-    classifying:       '質問を分類中...',
-    sensor_agent:      'センサーデータ取得中...',
-    bim_agent:         'BIM エージェント処理中...',
-    simulation_agent:  'シミュレーションエージェント処理中...',
-    safe_agent:        '安全監視エージェント処理中...',
-    test_agent:        '衝突テストエージェント処理中...',
-    orchestrator:      '統合レポート生成中...',
-    tab_guide:         'タブガイドを準備中...',
-    generating:        '回答を生成中...',
-  },
+// Maps backend step keys to translation keys in agent namespace
+const STEP_KEY_MAP = {
+  classifying:       'stepClassifying',
+  sensor_agent:      'stepSensorAgent',
+  bim_agent:         'stepBimAgent',
+  simulation_agent:  'stepSimAgent',
+  safe_agent:        'stepSafeAgent',
+  test_agent:        'stepTestAgent',
+  orchestrator:      'stepOrchestrator',
+  tab_guide:         'stepTabGuide',
+  generating:        'stepGenerating',
 };
 
 const ELEMENT_TYPE_KOR = {
@@ -305,7 +281,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
       const history = messages.map(m => ({ role: m.role, content: m.content }));
 
       // 빈 assistant 버블을 먼저 추가 — 초기 상태 "질문 분류 중..."
-      const initStatus = (STEP_LABELS[lang] || STEP_LABELS.ko).classifying;
+      const initStatus = t('stepClassifying');
       setMessages(prev => [...prev, { role: 'assistant', content: '', intent: 'chat', _streaming: true, _status: initStatus }]);
 
       // SSE 스트리밍: Spring Gateway 경유 (/api/chat/stream)
@@ -356,7 +332,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 
           if (event.step) {
             // step 이벤트: 버블 상태 텍스트 업데이트
-            const label = (STEP_LABELS[lang] || STEP_LABELS.ko)[event.step] || event.step;
+            const label = STEP_KEY_MAP[event.step] ? t(STEP_KEY_MAP[event.step]) : event.step;
             updateLastMsg(msg => ({ ...msg, _status: label }));
           } else if (event.done) {
             // 완료 이벤트: 구조화 데이터 처리

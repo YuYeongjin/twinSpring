@@ -100,7 +100,7 @@ function fileToNormGrid(file) {
       URL.revokeObjectURL(url);
       resolve(norm);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이미지 로드 실패')); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('IMG_LOAD_FAILED')); };
     img.src = url;
   });
 }
@@ -294,8 +294,8 @@ export default function PhotoDiffPanel({ selectedProject }) {
     try {
       const norm = await fileToNormGrid(file);
       setNorm(norm);
-    } catch (e) {
-      alert(e.message);
+    } catch {
+      alert(t('errLoad'));
     }
   }, []);
 

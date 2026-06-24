@@ -1238,7 +1238,7 @@ export default function ControlSidebar() {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       console.warn('[Terrain] 이미지 파일이 아닙니다:', file.type || '(타입 미상)');
-      alert('이미지 파일만 업로드할 수 있습니다 (JPG, PNG, WEBP 등)');
+      alert(t('terrainImageOnly'));
       return;
     }
     const reader = new FileReader();
@@ -1250,7 +1250,7 @@ export default function ControlSidebar() {
         dispatch({ type: 'SET_TERRAIN', terrain: { imageDataUrl: dataUrl, width: 80, height: Math.round(80 * aspect) } });
       } catch (err) {
         console.error('[Terrain] 이미지 처리 실패:', err.message);
-        alert(`드론 사진 로드 실패: ${err.message}`);
+        alert(t('dronePhotoLoadFailed', { msg: err.message }));
       }
     };
     reader.readAsDataURL(file);

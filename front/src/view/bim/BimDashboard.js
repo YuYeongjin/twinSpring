@@ -156,19 +156,23 @@ const MATERIAL_OPTIONS = {
 // LinePropertyPanel — 선 선택 시 표시되는 편집 패널
 // ================================================================
 
-const LINE_TYPE_OPTIONS = [
-    { value: 'line',   label: '선 (Line)',         color: null      },
-    { value: 'rebar',  label: '철근 (Rebar)',       color: '#ef4444' },
-    { value: 'wall',   label: '벽체 (Wall)',        color: '#94a3b8' },
-    { value: 'slab',   label: '슬래브 (Slab)',      color: '#60a5fa' },
-    { value: 'beam',   label: '보 (Beam)',          color: '#a78bfa' },
-    { value: 'column', label: '기둥 (Column)',      color: '#fbbf24' },
-    { value: 'floor',  label: '바닥 (Floor)',       color: '#34d399' },
-    { value: 'pipe',   label: '배관 (Pipe)',        color: '#22d3ee' },
-];
+const LINE_TYPE_COLORS = {
+    line: null, rebar: '#ef4444', wall: '#94a3b8', slab: '#60a5fa',
+    beam: '#a78bfa', column: '#fbbf24', floor: '#34d399', pipe: '#22d3ee',
+};
 
 function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onDecompose, onClose }) {
     const t = useT('bimDashboard');
+    const lineTypeOptions = React.useMemo(() => [
+        { value: 'line',   label: t('lineTypeLine'),   color: null      },
+        { value: 'rebar',  label: t('lineTypeRebar'),  color: '#ef4444' },
+        { value: 'wall',   label: t('lineTypeWall'),   color: '#94a3b8' },
+        { value: 'slab',   label: t('lineTypeSlab'),   color: '#60a5fa' },
+        { value: 'beam',   label: t('lineTypeBeam'),   color: '#a78bfa' },
+        { value: 'column', label: t('lineTypeColumn'), color: '#fbbf24' },
+        { value: 'floor',  label: t('lineTypeFloor'),  color: '#34d399' },
+        { value: 'pipe',   label: t('lineTypePipe'),   color: '#22d3ee' },
+    ], [t]);
     const [form, setForm] = React.useState(null);
 
     // 선 전환 시 전체 폼 초기화
@@ -256,9 +260,9 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onDecompose, onCl
 
             {/* 요소 타입 선택 */}
             <div>
-                <label className="text-xs text-gray-400 block mb-1">요소 타입</label>
+                <label className="text-xs text-gray-400 block mb-1">{t('elemTypeLabel')}</label>
                 <div className="grid grid-cols-2 gap-1">
-                    {LINE_TYPE_OPTIONS.map(opt => (
+                    {lineTypeOptions.map(opt => (
                         <button
                             key={opt.value}
                             onClick={() => {
@@ -373,16 +377,16 @@ function LinePropertyPanel({ line, onUpdate, onSave, onDelete, onDecompose, onCl
                 <button
                     onClick={() => onSave({ ...line, ...form, lineType: form.lineType, pointsJson: JSON.stringify(form.points) })}
                     className="flex-1 py-1.5 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition"
-                    title="저장 (Ctrl+S)"
+                    title={t('saveTip')}
                 >
                     {t('save')} <span className="opacity-50 text-[10px]">Ctrl+S</span>
                 </button>
                 <button
                     onClick={() => onDecompose?.(line.lineId)}
                     className="px-3 py-1.5 rounded-md bg-amber-700/60 text-amber-300 hover:bg-amber-600/80 transition text-xs font-semibold"
-                    title="선을 개별 선분으로 분해"
+                    title={t('splitLineTip')}
                 >
-                    해체
+                    {t('splitLineBtn')}
                 </button>
                 <button
                     onClick={() => onDelete(line.lineId)}
@@ -549,7 +553,7 @@ function CoordCommandBar({
                                                 'bg-space-800/40 border-space-600/30 cursor-pointer hover:border-space-500/60'
                                 }`}
                                 onClick={() => handleAxisClick(axis)}
-                                title={isLocked ? `${axis.toUpperCase()} 잠금 해제` : `${axis.toUpperCase()} 입력`}
+                                title={isLocked ? t('coordAxisUnlock', { axis: axis.toUpperCase() }) : t('coordAxisInput', { axis: axis.toUpperCase() })}
                             >
                                 <span className={`font-semibold text-[11px] ${
                                     isZFixed  ? 'text-gray-600' :
@@ -1476,7 +1480,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
         }
 
         if (pts.length <= 2 && !line.closed) {
-            alert('이미 단일 선분입니다. 분해할 수 없습니다.');
+            alert(t('alreadySingleSegment'));
             return;
         }
 
@@ -2041,7 +2045,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     display: 'flex', alignItems: 'center', gap: 8,
                     pointerEvents: 'none',
                 }}>
-                    ✓ 저장됨
+                    {t('savedToast')}
                 </div>
             )}
 
@@ -2233,7 +2237,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         <button
                             onClick={() => setUseLiteGlb(v => !v)}
                             className={`px-2 py-1 rounded-lg text-xs font-semibold border transition shrink-0 ${useLiteGlb ? 'bg-green-700/30 text-green-300 border-green-600/50' : 'bg-space-800/40 text-gray-400 border-space-700/60'}`}
-                            title={useLiteGlb ? '현재: Lite 모드 (빠름) — Full 모드로 전환' : '현재: Full 모드 — Lite 모드로 전환 (빠름)'}
+                            title={useLiteGlb ? t('liteModeTip') : t('fullModeTip')}
                         >{useLiteGlb ? 'Lite' : 'Full'}</button>
                     )}
                     <button onClick={() => showLayerPanel ? closeLayerPanel() : setShowLayerPanel(true)}
@@ -2382,7 +2386,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         color: '#60a5fa', fontSize: 12,
                     }}>
                         <span style={{ fontSize: 16, animation: 'spin 1.2s linear infinite' }}>⚙</span>
-                        <span>{isRegeneratingWbs ? 'WBS를 재생성하는 중입니다...' : 'WBS를 생성하는 중입니다... 잠시 후 자동으로 표시됩니다.'}</span>
+                        <span>{isRegeneratingWbs ? t('wbsRegenerating') : t('wbsGenerating')}</span>
                     </div>
                 )}
                 {/* WBS 생성 실패 배너 */}
@@ -2394,7 +2398,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         color: '#f87171', fontSize: 12,
                     }}>
                         <span style={{ fontSize: 14 }}>✕</span>
-                        <span style={{ flex: 1 }}>WBS 자동 생성에 실패했습니다.</span>
+                        <span style={{ flex: 1 }}>{t('wbsGenerateFailed')}</span>
                         {onRegenerateWbs && layers.length > 0 && modelData.length > 0 && (
                             <button
                                 onClick={handleRegenerateWbsClick}
@@ -2403,7 +2407,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     background: '#7f1d1d', border: '1px solid #ef4444',
                                     color: '#fca5a5', cursor: 'pointer', flexShrink: 0,
                                 }}
-                            >↺ WBS 재생성</button>
+                            >{t('wbsRegenerateBtn')}</button>
                         )}
                     </div>
                 )}
@@ -2415,7 +2419,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         background: '#0d1a2a', borderBottom: '1px solid #1a3a5c',
                         color: '#94a3b8', fontSize: 12,
                     }}>
-                        <span style={{ flex: 1 }}>WBS 데이터가 없습니다. 레이어가 준비되어 있으면 재생성할 수 있습니다.</span>
+                        <span style={{ flex: 1 }}>{t('wbsNoDataWithLayers')}</span>
                         {onRegenerateWbs && (
                             <button
                                 onClick={handleRegenerateWbsClick}
@@ -2424,7 +2428,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     background: '#1e3a5f', border: '1px solid #3b82f6',
                                     color: '#93c5fd', cursor: 'pointer', flexShrink: 0,
                                 }}
-                            >↺ WBS 재생성</button>
+                            >{t('wbsRegenerateBtn')}</button>
                         )}
                     </div>
                 )}
@@ -2545,24 +2549,24 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                         {/* 다중 선 선택 액션 바 */}
                         {(multiSelectedLineIds.size >= 1 || (selectedLineId && multiSelectedLineIds.size >= 1)) && (
                             <Card
-                                title={`선 ${multiSelectedLineIds.size + (selectedLineId ? 1 : 0)}개 선택됨`}
+                                title={t('multiLineSelected', { n: multiSelectedLineIds.size + (selectedLineId ? 1 : 0) })}
                                 right={
                                     <button
                                         onClick={() => { setMultiSelectedLineIds(new Set()); setSelectedLineId(null); }}
                                         className="text-gray-500 hover:text-gray-300 text-xs"
-                                    >✕ 해제</button>
+                                    >✕ {t('cancelAction')}</button>
                                 }
                             >
                                 <div className="space-y-2">
                                     <p className="text-xs text-gray-500">
-                                        Shift+클릭으로 선을 추가 선택하세요
+                                        {t('multiLineShiftHint')}
                                     </p>
                                     <button
                                         onClick={mergeSelectedLines}
                                         disabled={(multiSelectedLineIds.size + (selectedLineId ? 1 : 0)) < 2}
                                         className="w-full py-2 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition disabled:opacity-30"
                                     >
-                                        선 합치기 (Merge) — {multiSelectedLineIds.size + (selectedLineId ? 1 : 0)}개 → 1개
+                                        {t('mergeLineBtn', { n: multiSelectedLineIds.size + (selectedLineId ? 1 : 0) })}
                                     </button>
                                 </div>
                             </Card>
@@ -2758,17 +2762,17 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                     {groupMovePending && (
                                         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none
                                             bg-black/75 text-white text-xs px-4 py-2 rounded-xl border border-blue-500/60 whitespace-nowrap">
-                                            클릭하여 <span className="text-blue-300 font-bold">{groupMovePending.elements.length}개</span> 부재 배치 &nbsp;·&nbsp; Esc 또는 M 취소
+                                            {t('groupMovePendingHint', { n: groupMovePending.elements.length })}
                                         </div>
                                     )}
 
                                     {viewMode === '3d' && (
                                         <div className="absolute bottom-16 left-3 z-20 pointer-events-auto flex flex-col gap-1 hidden sm:flex">
                                             {[
-                                                { id: 'iso',   label: 'ISO',  title: '등각뷰' },
-                                                { id: 'top',   label: 'TOP',  title: '평면도' },
-                                                { id: 'front', label: 'FRT',  title: '정면도' },
-                                                { id: 'right', label: 'RGT',  title: '우측면도' },
+                                                { id: 'iso',   label: 'ISO',  title: t('viewIso') },
+                                                { id: 'top',   label: 'TOP',  title: t('viewTop') },
+                                                { id: 'front', label: 'FRT',  title: t('viewFront') },
+                                                { id: 'right', label: 'RGT',  title: t('viewRight') },
                                             ].map(({ id, label, title }) => (
                                                 <button
                                                     key={id}
@@ -2841,7 +2845,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                             {transformMode === 'translate' && (
                                                 <button
                                                     onClick={() => setGhostMode('translate')}
-                                                    title="고스트 이동: 클릭하여 미리보기 후 위치 확정"
+                                                    title={t('ghostMoveTip')}
                                                     style={{
                                                         padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700,
                                                         background: 'rgba(6,14,26,0.88)', backdropFilter: 'blur(4px)',
@@ -2849,7 +2853,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                         cursor: 'pointer', whiteSpace: 'nowrap',
                                                     }}
                                                 >
-                                                    ▶ 고스트 이동
+                                                    {t('ghostMoveBtn')}
                                                 </button>
                                             )}
                                             {transformMode === 'rotate' && (<>
@@ -2857,7 +2861,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                 {[['x','#ef4444','#f87171'],['y','#22c55e','#86efac'],['z','#3b82f6','#93c5fd']].map(([ax, bc, tc]) => (
                                                     <button key={ax}
                                                         onClick={() => setRotateAxis(rotateAxis === ax ? 'all' : ax)}
-                                                        title={`${ax.toUpperCase()}축만 표시 (다시 클릭 = 전체)`}
+                                                        title={t('rotateAxisOnlyTip', { axis: ax.toUpperCase() })}
                                                         style={{
                                                             padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 800,
                                                             background: rotateAxis === ax ? `${bc}33` : 'rgba(6,14,26,0.88)',
@@ -2872,7 +2876,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                 ))}
                                                 <button
                                                     onClick={() => setGhostMode('rotate')}
-                                                    title="고스트 회전 (R): 마우스 방향으로 90° 스냅 회전 미리보기"
+                                                    title={t('ghostRotateTip')}
                                                     style={{
                                                         padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700,
                                                         background: 'rgba(6,14,26,0.88)', backdropFilter: 'blur(4px)',
@@ -2880,7 +2884,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                         cursor: 'pointer', whiteSpace: 'nowrap',
                                                     }}
                                                 >
-                                                    ↻ 고스트 회전 (R)
+                                                    {t('ghostRotateBtn')}
                                                 </button>
                                             </>)}
                                         </div>
@@ -2895,7 +2899,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                 padding: '5px 12px', fontSize: 11, color: '#6b7280',
                                             }}
                                         >
-                                            부재를 선택하세요
+                                            {t('selectMemberHint')}
                                         </div>
                                     )}
 
@@ -2908,7 +2912,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                 padding: '5px 12px', fontSize: 11, color: '#a78bfa',
                                             }}
                                         >
-                                            X · Y · Z 중 회전축을 선택 후 R
+                                            {t('selectAxisHint')}
                                         </div>
                                     )}
 
@@ -2923,10 +2927,10 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                         >
                                             <span style={{ color: ghostMode === 'rotate' ? '#c4b5fd' : '#93c5fd', fontWeight: 700 }}>
                                                 {ghostMode === 'translate'
-                                                    ? `▶ 클릭 → ${totalSelectedCount}개 부재 이동 확정`
-                                                    : `▶ 클릭 → ${totalSelectedCount}개 부재 ${rotateAxis.toUpperCase()}축 회전 확정`}
+                                                    ? t('ghostMoveConfirm', { n: totalSelectedCount })
+                                                    : t('ghostRotateConfirm', { n: totalSelectedCount, axis: rotateAxis.toUpperCase() })}
                                             </span>
-                                            <span style={{ color: '#4b5563' }}>· ESC 취소</span>
+                                            <span style={{ color: '#4b5563' }}>{t('escCancel')}</span>
                                             <button onClick={() => setGhostMode(null)}
                                                 style={{ color: '#6b7280', fontSize: 13, lineHeight: 1, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                                             >✕</button>
