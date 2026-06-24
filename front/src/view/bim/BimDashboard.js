@@ -415,6 +415,7 @@ function CoordCommandBar({
                              onCloseChain,
                              onFinish,
                          }) {
+    const t = useT('bimDashboard');
     const allAxes = lockZ ? ['x', 'y'] : ['x', 'y', 'z'];
     const initLocked = () => ({ x: null, y: null, z: lockZ ? 0 : null });
     const [phase, setPhase]         = React.useState('x');
@@ -2373,7 +2374,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
             )}
 
             <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'structural' ? 'block' : 'none' }}>
-                <StructuralDashboard selectedProject={selectedProject} modelData={modelData} />
+                <StructuralDashboard selectedProject={selectedProject} modelData={modelData} glbUrl={glbUrl} />
             </div>
 
             <div className="flex-1 min-h-0 overflow-auto" style={{ display: bimSubView === 'workplan' ? 'flex' : 'none', gap: 0, flexDirection: 'column' }}>

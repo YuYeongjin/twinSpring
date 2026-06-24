@@ -2,8 +2,10 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useT } from '../../i18n/LanguageContext';
 import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
 import AxiosCustom from '../../axios/AxiosCustom';
+import TheoryModal from './TheoryModal';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { GltfBimViewerSuspense } from '../bim/element/GltfBimViewer';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
   PieChart, Pie, Legend, ResponsiveContainer,
@@ -347,7 +349,22 @@ function StressBox({ element, result, isSelected, onSelect }) {
   );
 }
 
-function StressViewer3D({ modelData, resultMap, selectedId, onSelect }) {
+const EMPTY_SET = new Set();
+
+function StressViewer3D({ modelData, resultMap, selectedId, onSelect, glbUrl }) {
+  const [glbLoaded, setGlbLoaded] = useState(false);
+  useEffect(() => { if (glbUrl) setGlbLoaded(false); }, [glbUrl]);
+
+  // 분석 결과 색상을 resolvedColor로 주입 — GltfBimViewerSuspense가 이 색으로 메쉬를 칠함
+  const coloredModelData = useMemo(() => modelData.map(el => ({
+    ...el,
+    resolvedColor: resultMap[el.elementId]
+      ? STATUS_CFG[resultMap[el.elementId].status].color
+      : '#374151',
+  })), [modelData, resultMap]);
+
+  const selectedElementForGlb = selectedId ? { data: { elementId: selectedId } } : null;
+
   return (
       <Canvas
           camera={{ position: [15, -15, 12], up: [0, 0, 1], fov: 55 }}
@@ -362,15 +379,38 @@ function StressViewer3D({ modelData, resultMap, selectedId, onSelect }) {
                     rotation={[Math.PI / 2, 0, 0]}
         />
 
-        {modelData.map(el => (
-            <StressBox
-                key={el.elementId}
-                element={el}
-                result={resultMap[el.elementId]}
-                isSelected={el.elementId === selectedId}
-                onSelect={onSelect}
+        {glbUrl ? (
+          <>
+            <GltfBimViewerSuspense
+                glbUrl={glbUrl}
+                modelData={coloredModelData}
+                selectedElement={selectedElementForGlb}
+                selectedElements={EMPTY_SET}
+                onElementSelect={(element) => onSelect(element.elementId)}
+                onMeshMount={null}
+                onLoad={() => setGlbLoaded(true)}
             />
-        ))}
+            {!glbLoaded && coloredModelData.map(el => (
+                <StressBox
+                    key={el.elementId}
+                    element={el}
+                    result={resultMap[el.elementId]}
+                    isSelected={el.elementId === selectedId}
+                    onSelect={onSelect}
+                />
+            ))}
+          </>
+        ) : (
+          coloredModelData.map(el => (
+              <StressBox
+                  key={el.elementId}
+                  element={el}
+                  result={resultMap[el.elementId]}
+                  isSelected={el.elementId === selectedId}
+                  onSelect={onSelect}
+              />
+          ))
+        )}
 
         <OrbitControls makeDefault />
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
@@ -554,10 +594,196 @@ function NumRow({ label, value, unit, min = 0, max = 1000, step = 0.5, onChange,
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Formula Panel — DB 저장 공식 표시 + 변수 편집기
+// ──────────────────────────────────────────────────────────────────────────────
+
+function FormulaPanel({ codeStandard, structureType, projectId }) {
+  const t = useT('bimDashboard');
+  const [formulas, setFormulas]     = useState([]);
+  const [loading, setLoading]       = useState(false);
+  const [expanded, setExpanded]     = useState({});
+  const [editing, setEditing]       = useState(null); // { formulaId, varName, value }
+  const [saving, setSaving]         = useState(false);
+
+  useEffect(() => {
+    if (!codeStandard || !structureType) return;
+    setLoading(true);
+    const params = new URLSearchParams({ codeStandard, structureType });
+    if (projectId) params.set('projectId', projectId);
+    AxiosCustom.get(`/api/structural/formulas?${params}`)
+      .then(r => setFormulas(r.data ?? []))
+      .catch(() => setFormulas([]))
+      .finally(() => setLoading(false));
+  }, [codeStandard, structureType, projectId]);
+
+  const CATEGORY_LABEL = {
+    WIND: '풍하중', SEISMIC: '지진', DEAD: '고정하중', LIVE: '활하중',
+    SNOW: '적설', TRAFFIC: '교통', COMBO: '하중조합', BUCKLING: '좌굴', SAFETY: '안전율',
+  };
+
+  const handleSaveVar = async (formulaId, varName, value) => {
+    if (!projectId) return;
+    setSaving(true);
+    try {
+      await AxiosCustom.put('/api/structural/overrides', {
+        projectId, formulaId, varName, customValue: Number(value),
+      });
+      // 반영: effectiveValue 업데이트
+      setFormulas(prev => prev.map(f => {
+        if (f.formulaId !== formulaId) return f;
+        return {
+          ...f,
+          variables: f.variables.map(v =>
+            v.varName === varName ? { ...v, effectiveValue: Number(value) } : v
+          ),
+        };
+      }));
+    } catch (_) {}
+    setSaving(false);
+    setEditing(null);
+  };
+
+  const handleResetVar = async (formulaId, varName, defaultValue) => {
+    if (!projectId) return;
+    try {
+      await AxiosCustom.delete(`/api/structural/overrides/${projectId}/${formulaId}/${varName}`);
+      setFormulas(prev => prev.map(f => {
+        if (f.formulaId !== formulaId) return f;
+        return {
+          ...f,
+          variables: f.variables.map(v =>
+            v.varName === varName ? { ...v, effectiveValue: defaultValue } : v
+          ),
+        };
+      }));
+    } catch (_) {}
+    setEditing(null);
+  };
+
+  if (loading) return (
+    <div className="flex items-center gap-2 py-4 justify-center">
+      <span className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
+      <span className="text-xs text-gray-500">{t('structFormulaLoading')}</span>
+    </div>
+  );
+
+  if (!formulas.length) return (
+    <p className="text-xs text-gray-600 text-center py-3">{t('structFormulaEmpty')}</p>
+  );
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {formulas.map(f => {
+        const isOpen = !!expanded[f.formulaId];
+        const isModified = f.variables?.some(v => v.effectiveValue !== v.defaultValue);
+        return (
+          <div key={f.formulaId} className="border border-[#1b2236] rounded-xl overflow-hidden">
+            <button
+              onClick={() => setExpanded(p => ({ ...p, [f.formulaId]: !p[f.formulaId] }))}
+              className="w-full flex items-start justify-between gap-2 px-2.5 py-2 text-left hover:bg-[#141a2a] transition-colors"
+            >
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-blue-500 bg-blue-900/30 px-1.5 py-0.5 rounded shrink-0">
+                    {CATEGORY_LABEL[f.category] ?? f.category}
+                  </span>
+                  {isModified && (
+                    <span className="text-[10px] text-amber-400 shrink-0">{t('structFormulaModified')}</span>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-gray-200 truncate leading-tight">{f.name}</span>
+              </div>
+              <span className="text-gray-500 text-xs shrink-0 mt-0.5">{isOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {isOpen && (
+              <div className="px-2.5 pb-2.5 border-t border-[#1b2236]">
+                {/* 수식 */}
+                <div className="bg-[#0d1220] border border-[#1b2a40] rounded-lg px-2 py-1.5 mt-2 mb-2
+                                font-mono text-[10px] text-emerald-300 whitespace-pre-wrap leading-relaxed">
+                  {f.expression}
+                </div>
+                {f.description && (
+                  <p className="text-[10px] text-gray-500 mb-2">{f.description}</p>
+                )}
+
+                {/* 변수 목록 */}
+                {f.variables?.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    {f.variables.map(v => {
+                      const isEdit = editing?.formulaId === f.formulaId && editing?.varName === v.varName;
+                      const changed = v.effectiveValue !== v.defaultValue;
+                      return (
+                        <div key={v.varName} className="flex items-center gap-1.5 group">
+                          <span className="font-mono text-amber-300 text-[10px] w-[70px] shrink-0 truncate">{v.varName}</span>
+                          {isEdit ? (
+                            <input
+                              type="number"
+                              defaultValue={v.effectiveValue}
+                              step={v.minValue != null ? (v.maxValue - v.minValue) / 100 : 0.1}
+                              className="w-16 bg-[#141a2a] border border-blue-600/60 rounded text-[10px]
+                                         text-gray-100 px-1 py-0.5 focus:outline-none"
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleSaveVar(f.formulaId, v.varName, e.target.value);
+                                if (e.key === 'Escape') setEditing(null);
+                              }}
+                              autoFocus
+                            />
+                          ) : (
+                            <span className={`text-[10px] font-mono w-14 text-right ${changed ? 'text-amber-300' : 'text-gray-300'}`}>
+                              {v.effectiveValue != null ? v.effectiveValue : v.defaultValue}
+                            </span>
+                          )}
+                          <span className="text-[9px] text-gray-600 w-8 shrink-0">{v.unit || ''}</span>
+
+                          {v.isEditable !== false && projectId && !isEdit && (
+                            <button
+                              onClick={() => setEditing({ formulaId: f.formulaId, varName: v.varName })}
+                              className="opacity-0 group-hover:opacity-100 text-[9px] text-blue-400 hover:text-blue-300 transition"
+                            >✎</button>
+                          )}
+                          {isEdit && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  const inp = document.activeElement;
+                                  handleSaveVar(f.formulaId, v.varName, inp?.value ?? v.effectiveValue);
+                                }}
+                                disabled={saving}
+                                className="text-[9px] text-green-400 hover:text-green-300"
+                              >✓</button>
+                              <button
+                                onClick={() => setEditing(null)}
+                                className="text-[9px] text-gray-500 hover:text-gray-300"
+                              >✕</button>
+                            </>
+                          )}
+                          {changed && !isEdit && projectId && (
+                            <button
+                              onClick={() => handleResetVar(f.formulaId, v.varName, v.defaultValue)}
+                              className="opacity-0 group-hover:opacity-100 text-[9px] text-gray-500 hover:text-red-400 transition"
+                              title="기본값으로 초기화"
+                            >↺</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Main dashboard
 // ──────────────────────────────────────────────────────────────────────────────
 
-export default function StructuralDashboard({ selectedProject, modelData = [] }) {
+export default function StructuralDashboard({ selectedProject, modelData = [], glbUrl }) {
   const t = useT('bimDashboard');
 
   const [env, setEnv] = useState({
@@ -579,6 +805,38 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
   const [matId, setMatId] = useState('concrete_24');
   const [results, setResults] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // 코드기준 / 구조물 유형
+  const resolvedStructureType = useMemo(() => {
+    const st = selectedProject?.structureType;
+    if (!st) return 'BUILDING';
+    if (st.toUpperCase().includes('BRIDGE')) return 'BRIDGE';
+    return 'BUILDING';
+  }, [selectedProject]);
+
+  const [codeStandard, setCodeStandard]   = useState('KDS');
+  const [formulaPanelOpen, setFormulaPanelOpen] = useState(false);
+  const [theoryOpen, setTheoryOpen]       = useState(false);
+  const [dsmResult, setDsmResult]         = useState(null);
+  const [dsmError, setDsmError]           = useState(null);
+
+  const runDsmAnalysis = useCallback(async () => {
+    if (!selectedProject?.projectId) return;
+    setIsAnalyzing(true);
+    setDsmError(null);
+    try {
+      const res = await AxiosCustom.post(
+        `/api/structural/analyze/${selectedProject.projectId}`,
+        null,
+        { params: { codeStandard, structureType: resolvedStructureType } }
+      );
+      setDsmResult(res.data);
+    } catch (e) {
+      setDsmError(e.response?.data?.message ?? e.message ?? 'Unknown error');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [selectedProject, codeStandard, resolvedStructureType]);
   const [viewMode, setViewMode] = useState('3d');
   const [selectedId, setSelectedId] = useState(null);
   const [sortCfg, setSortCfg] = useState({ key: 'safetyFactor', asc: true });
@@ -764,6 +1022,15 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
             </div>
         )}
 
+        {/* 이론 가이드 모달 */}
+        <TheoryModal
+          open={theoryOpen}
+          onClose={() => setTheoryOpen(false)}
+          codeStandard={codeStandard}
+          structureType={resolvedStructureType}
+          appliedLoads={dsmResult?.appliedLoads}
+        />
+
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
           <div className="min-w-0">
@@ -793,6 +1060,62 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                   ⚠️ 드론 추출 데이터
                 </span>
             )}
+
+            {/* 코드기준 토글 */}
+            <div className="flex items-center gap-0 border border-[#1b2236] rounded-lg overflow-hidden">
+              {['KDS', 'EUROCODE2'].map(std => (
+                <button key={std}
+                  onClick={() => setCodeStandard(std)}
+                  className={`px-3 py-1.5 text-xs font-bold transition-colors ${
+                    codeStandard === std
+                      ? 'bg-blue-900/50 text-blue-300 border-r border-[#1b2236]'
+                      : 'bg-[#0f1422] text-gray-500 hover:text-gray-300'
+                  }`}
+                >
+                  {std === 'EUROCODE2' ? 'EC2' : std}
+                </button>
+              ))}
+            </div>
+
+            {/* 구조물 유형 표시 */}
+            <span className="text-xs text-gray-500 border border-[#1b2236] px-2 py-1 rounded-lg">
+              {resolvedStructureType === 'BRIDGE' ? `🌉 ${t('structBridgeType')}` : `🏢 ${t('structBuildingType')}`}
+            </span>
+
+            {/* 이론 가이드 모달 */}
+            <button
+              onClick={() => setTheoryOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition
+                         bg-[#0f1422] text-gray-400 border-[#1b2236] hover:text-indigo-300 hover:border-indigo-600/40"
+            >
+              📐 {t('structTheoryBtn')}
+            </button>
+
+            {/* 변수 편집 패널 토글 */}
+            <button
+              onClick={() => setFormulaPanelOpen(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
+                formulaPanelOpen
+                  ? 'bg-indigo-900/40 text-indigo-300 border-indigo-600/40'
+                  : 'bg-[#0f1422] text-gray-400 border-[#1b2236] hover:text-gray-200'
+              }`}
+            >
+              ⚙ {t('structVarBtn')}
+            </button>
+
+            {/* DSM 해석 버튼 */}
+            {selectedProject?.projectId && (
+              <button
+                onClick={runDsmAnalysis}
+                disabled={isAnalyzing}
+                className="flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-semibold
+                           bg-purple-900/30 text-purple-300 border border-purple-600/40
+                           hover:bg-purple-900/50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                {isAnalyzing ? `⏳ ${t('structDsmRunning')}` : `🔬 ${t('structDsmBtn')}`}
+              </button>
+            )}
+
             <button
                 onClick={handleAnalyze}
                 disabled={isAnalyzing || !modelData.length}
@@ -1031,6 +1354,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                             resultMap={resultMap}
                             selectedId={selectedId}
                             onSelect={id => setSelectedId(prev => prev === id ? null : id)}
+                            glbUrl={glbUrl}
                         />
                         {/* Legend */}
                         <div className="absolute bottom-4 left-4 bg-[#0b0f1a]/90 backdrop-blur
@@ -1437,6 +1761,87 @@ export default function StructuralDashboard({ selectedProject, modelData = [] })
                 </div>
               </div>
             </Card>
+
+            {/* 공식 패널 */}
+            {formulaPanelOpen && (
+              <Card title={`📐 ${codeStandard} ${t('structFormulaPanel')}`}>
+                <FormulaPanel
+                  codeStandard={codeStandard}
+                  structureType={resolvedStructureType}
+                  projectId={selectedProject?.projectId}
+                />
+              </Card>
+            )}
+
+            {/* DSM 해석 결과 */}
+            {dsmError && (
+              <Card title={t('structDsmError')}>
+                <p className="text-xs text-red-400">{dsmError}</p>
+              </Card>
+            )}
+            {dsmResult && (
+              <Card title={`🔬 ${t('structDsmBtn')}`}>
+                <div className="flex flex-col gap-2">
+                  {/* 요약 */}
+                  <div className="grid grid-cols-3 gap-1 text-center">
+                    <div className="bg-green-900/30 border border-green-600/30 rounded-lg py-1.5">
+                      <p className="text-[10px] text-gray-500">{t('structDsmSafe')}</p>
+                      <p className="text-base font-bold text-green-400">{dsmResult.summary?.safeCount ?? 0}</p>
+                    </div>
+                    <div className="bg-amber-900/30 border border-amber-600/30 rounded-lg py-1.5">
+                      <p className="text-[10px] text-gray-500">{t('structDsmWarning')}</p>
+                      <p className="text-base font-bold text-amber-400">{dsmResult.summary?.warningCount ?? 0}</p>
+                    </div>
+                    <div className="bg-red-900/30 border border-red-600/30 rounded-lg py-1.5">
+                      <p className="text-[10px] text-gray-500">{t('structDsmDanger')}</p>
+                      <p className="text-base font-bold text-red-400">{dsmResult.summary?.dangerCount ?? 0}</p>
+                    </div>
+                  </div>
+
+                  {/* 하중 요약 */}
+                  {dsmResult.appliedLoads && (
+                    <div className="bg-[#0d1220] border border-[#1b2a40] rounded-lg p-2 text-[10px]">
+                      <p className="text-gray-500 mb-1 font-semibold">{t('structDsmAppliedLoads')}</p>
+                      {Object.entries(dsmResult.appliedLoads)
+                        .filter(([k]) => k !== 'governingCombo')
+                        .map(([k, v]) => (
+                        <div key={k} className="flex justify-between">
+                          <span className="text-gray-500">{
+                            {
+                              deadLoad:     t('structLoadDead'),
+                              liveLoad:     t('structLoadLive'),
+                              windLoad:     t('structLoadWind'),
+                              seismicForce: t('structLoadSeismic'),
+                            }[k] ?? k
+                          }</span>
+                          <span className="font-mono text-gray-300">{Number(v).toFixed(1)}</span>
+                        </div>
+                      ))}
+                      {dsmResult.appliedLoads.governingCombo && (
+                        <div className="flex justify-between mt-1 pt-1 border-t border-[#1b2236]">
+                          <span className="text-gray-400">{t('structDsmGovCombo')}</span>
+                          <span className="text-blue-400 font-bold">#{dsmResult.appliedLoads.governingCombo}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 최대 활용률 */}
+                  {dsmResult.summary?.maxUtilization != null && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">{t('structDsmMaxUtil')}</span>
+                      <span className={`font-bold ${
+                        dsmResult.summary.maxUtilization > 1 ? 'text-red-400'
+                        : dsmResult.summary.maxUtilization > 0.7 ? 'text-amber-400'
+                        : 'text-green-400'
+                      }`}>
+                        {(dsmResult.summary.maxUtilization * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
 
             {/* 시방서 기준 (KCS/KDS) */}
             {(specLoading || specData) && (
