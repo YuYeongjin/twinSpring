@@ -669,3 +669,253 @@ CREATE INDEX IF NOT EXISTS idx_bim_element_wbs_project ON bim_element_wbs (proje
 -- glb_storage_key : MinIO/S3 오브젝트 키 (예: projects/{id}/model.glb)
 -- ================================================================
 ALTER TABLE bim_project ADD COLUMN IF NOT EXISTS glb_storage_key TEXT NULL;
+
+-- ================================================================
+-- 구조해석 공식 마스터 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS structural_formula (
+    formula_id     TEXT        NOT NULL PRIMARY KEY,
+    code_standard  TEXT        NOT NULL, -- 'KDS' | 'EUROCODE2'
+    structure_type TEXT        NOT NULL, -- 'BUILDING' | 'BRIDGE' | 'ALL'
+    category       TEXT        NOT NULL, -- 'WIND'|'SEISMIC'|'DEAD'|'LIVE'|'SNOW'|'TRAFFIC'|'COMBO'|'BUCKLING'|'SAFETY'
+    name           TEXT        NOT NULL,
+    expression     TEXT        NOT NULL, -- 수식 문자열 (표시용)
+    description    TEXT        NULL,
+    sort_order     INT         NOT NULL DEFAULT 0,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ================================================================
+-- 공식 변수 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS structural_formula_variable (
+    var_id        BIGSERIAL   PRIMARY KEY,
+    formula_id    TEXT        NOT NULL REFERENCES structural_formula(formula_id) ON DELETE CASCADE,
+    var_name      TEXT        NOT NULL,
+    var_label     TEXT        NULL,
+    default_value DOUBLE PRECISION NOT NULL,
+    min_value     DOUBLE PRECISION NULL,
+    max_value     DOUBLE PRECISION NULL,
+    unit          TEXT        NULL,
+    description   TEXT        NULL,
+    is_editable   BOOLEAN     NOT NULL DEFAULT TRUE,
+    UNIQUE (formula_id, var_name)
+);
+CREATE INDEX IF NOT EXISTS idx_sfv_formula ON structural_formula_variable(formula_id);
+
+-- ================================================================
+-- 프로젝트별 변수 오버라이드 테이블
+-- ================================================================
+CREATE TABLE IF NOT EXISTS structural_formula_override (
+    override_id  BIGSERIAL   PRIMARY KEY,
+    project_id   TEXT        NOT NULL,
+    formula_id   TEXT        NOT NULL REFERENCES structural_formula(formula_id) ON DELETE CASCADE,
+    var_name     TEXT        NOT NULL,
+    custom_value DOUBLE PRECISION NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, formula_id, var_name)
+);
+CREATE INDEX IF NOT EXISTS idx_sfo_project ON structural_formula_override(project_id);
+
+-- ================================================================
+-- 기본 공식 데이터 삽입 (KDS / Eurocode2 × Building / Bridge)
+-- ================================================================
+INSERT INTO structural_formula (formula_id, code_standard, structure_type, category, name, expression, description, sort_order) VALUES
+
+-- ── KDS · BUILDING ────────────────────────────────────────────────
+('KDS_BLDG_WIND',    'KDS','BUILDING','WIND',    '풍하중 (KDS 41 10 15)',
+ 'q_w = 0.6125 × V₀² / 1000 × K_d × K_zt × C_f × G',
+ '기본풍속도 V₀에서 설계풍압 산출. 높이 보정: h_f = ((z+H)/10+1)^0.25', 10),
+
+('KDS_BLDG_SEISMIC', 'KDS','BUILDING','SEISMIC', '등가정적 지진력 (KDS 41 17 00)',
+ 'V = C_s × W,  C_s = S_DS / (R / I_e)',
+ '밑면전단력을 층 높이 비례 역삼각형 분포로 배분', 20),
+
+('KDS_BLDG_DEAD',    'KDS','BUILDING','DEAD',    '고정하중',
+ 'W_self = γ_c × sX × sY × sZ',
+ '부재 자중 산출. 콘크리트 단위중량 γ_c = 24 kN/m³', 30),
+
+('KDS_BLDG_LIVE',    'KDS','BUILDING','LIVE',    '활하중 (KDS 41 10 05)',
+ 'q_L  [kN/m²]',
+ '사무실 2.5, 주거 2.0, 주차 5.0 kN/m²', 40),
+
+('KDS_BLDG_SNOW',    'KDS','BUILDING','SNOW',    '적설하중 (KDS 41 12 00)',
+ 'S = C_b × C_e × C_t × I_s × S_g',
+ '지붕 형상계수 C_b=0.8 기준', 50),
+
+('KDS_BLDG_COMBO',   'KDS','BUILDING','COMBO',   '하중조합 (KDS 41 10 15 LRFD)',
+ '①1.4D  ②1.2D+1.6L  ③1.2D+1.0W+L  ④1.2D+1.0E+L  ⑤0.9D+1.0W',
+ 'LRFD 설계하중 조합. 지배 조합 자동 선택', 60),
+
+('KDS_BLDG_BUCKLING','KDS','BUILDING','BUCKLING','좌굴 검토 (KDS 14 20 22)',
+ 'N_cr = π² × E × I / (k × L)²,   λ = L_e / r',
+ '세장비 λ > 200 이면 Danger 판정', 70),
+
+('KDS_BLDG_SAFETY',  'KDS','BUILDING','SAFETY',  '안전율 기준',
+ 'SF = f_allow / σ_max',
+ 'SF ≥ SF_safe → Safe,  SF ≥ SF_warn → Warning,  그 외 Danger', 80),
+
+-- ── KDS · BRIDGE ──────────────────────────────────────────────────
+('KDS_BRDG_TRAFFIC', 'KDS','BRIDGE',  'TRAFFIC', '차량하중 (KDS 24 10 11 DB-24)',
+ 'P_truck = 240 kN (표준트럭),  w_lane = 12.7 kN/m (등분포)',
+ 'DB-24 표준트럭: 전륜 24kN, 후륜 96kN×2; 차로 수 보정', 10),
+
+('KDS_BRDG_WIND',    'KDS','BRIDGE',  'WIND',    '교량 풍하중 (KDS 24 12 21)',
+ 'q_w = 0.6125 × V₀² / 1000 × C_f',
+ '교량은 기본풍속 V₀=40 m/s 기준', 20),
+
+('KDS_BRDG_DEAD',    'KDS','BRIDGE',  'DEAD',    '교량 고정하중',
+ 'W_self = γ × sX × sY × sZ',
+ '콘크리트 24, 강 78.5 kN/m³', 30),
+
+('KDS_BRDG_COMBO',   'KDS','BRIDGE',  'COMBO',   '교량 하중조합',
+ '①1.25D+1.75(L+I)  ②1.25D+1.35W  ③1.25D+1.0E',
+ 'AASHTO LRFD 기반 KDS 교량 하중조합', 40),
+
+-- ── EUROCODE2 · BUILDING ──────────────────────────────────────────
+('EC2_BLDG_WIND',    'EUROCODE2','BUILDING','WIND',    '풍하중 (EN 1991-1-4)',
+ 'w_p = q_p(z) × C_pe,  q_p(z) = c_e(z) × q_b,  q_b = 0.5 × ρ × v_b²',
+ '기본풍속 v_b에서 최대 속도압 q_p 산출', 10),
+
+('EC2_BLDG_SEISMIC', 'EUROCODE2','BUILDING','SEISMIC', '지진하중 (EN 1998-1)',
+ 'F_b = S_d(T₁) × m × λ,  S_d = a_g × S × 2.5 / q_f',
+ '응답스펙트럼 설계가속도. λ=0.85 (2층 이상)', 20),
+
+('EC2_BLDG_DEAD',    'EUROCODE2','BUILDING','DEAD',    '영구하중 (EN 1991-1-1)',
+ 'G_k = γ × V  [kN]',
+ 'γ_conc=25, γ_steel=78.5 kN/m³', 30),
+
+('EC2_BLDG_LIVE',    'EUROCODE2','BUILDING','LIVE',    '변동하중 (EN 1991-1-1)',
+ 'q_k  [kN/m²]',
+ 'Category A(주거)=2.0, B(사무)=3.0, C(집회)=3.0-5.0', 40),
+
+('EC2_BLDG_SNOW',    'EUROCODE2','BUILDING','SNOW',    '설하중 (EN 1991-1-3)',
+ 's = μ_i × C_e × C_t × s_k',
+ '지붕형상계수 μ_i=0.8 (경사 ≤ 30°)', 50),
+
+('EC2_BLDG_COMBO',   'EUROCODE2','BUILDING','COMBO',   '하중조합 (EN 1990 STR)',
+ '①1.35G_k+1.5Q_k  ②1.35G_k+1.5Q_k+0.9W_k  ③1.0G_k+1.0Q_k+1.0A_Ed',
+ 'STR 한계상태 설계 조합', 60),
+
+('EC2_BLDG_BUCKLING','EUROCODE2','BUILDING','BUCKLING','좌굴 검토 (EN 1992-1-1)',
+ 'N_cr = π² × E × I / L₀²,   λ = √(A·f_ck / N_Ed) × L₀/i',
+ '한계 세장비 λ_lim = 20·A·B·C / √n', 70),
+
+('EC2_BLDG_SAFETY',  'EUROCODE2','BUILDING','SAFETY',  '안전율 기준 (EN 1990)',
+ 'U = σ_Ed / σ_Rd  (≤ 1.0)',
+ 'U ≤ U_safe → Safe,  U ≤ U_warn → Warning,  그 외 Danger', 80),
+
+-- ── EUROCODE2 · BRIDGE ────────────────────────────────────────────
+('EC2_BRDG_TRAFFIC', 'EUROCODE2','BRIDGE',  'TRAFFIC', '교통하중 LM1 (EN 1991-2)',
+ 'Q_1k = 300 kN (탠덤축),  q_1k = 9 kN/m² (등분포)',
+ '1차로: Q1k=300kN, q1k=9kN/m². 차로 보정계수 α_Q, α_q 적용', 10),
+
+('EC2_BRDG_WIND',    'EUROCODE2','BRIDGE',  'WIND',    '교량 풍하중 (EN 1991-1-4)',
+ 'F_w = 0.5 × ρ × v_b² × C_f × A_ref',
+ '기준면적 A_ref = 교량 폭 × 높이', 20),
+
+('EC2_BRDG_DEAD',    'EUROCODE2','BRIDGE',  'DEAD',    '교량 영구하중',
+ 'G_k = γ × V  [kN]',
+ 'γ_conc=25 kN/m³', 30),
+
+('EC2_BRDG_COMBO',   'EUROCODE2','BRIDGE',  'COMBO',   '교량 하중조합 (EN 1990 Annex A2)',
+ '①1.35G_k+1.35·gr1a  ②1.35G_k+1.5·W_k  ③1.0G_k+1.0·A_Ed',
+ 'gr1a: LM1 기본 차량군', 40)
+
+ON CONFLICT (formula_id) DO NOTHING;
+
+-- ================================================================
+-- 공식 변수 기본값 삽입
+-- ================================================================
+INSERT INTO structural_formula_variable
+    (formula_id, var_name, var_label, default_value, min_value, max_value, unit, description, is_editable)
+VALUES
+-- KDS_BLDG_WIND
+('KDS_BLDG_WIND','V0',  '기본풍속도 V₀', 30,  20,  80,  'm/s',   'KDS 지역별 기본풍속도',      TRUE),
+('KDS_BLDG_WIND','Kd',  '풍향계수 K_d',  0.85, 0.85,1.0, '',     '방향성 계수 (일반 0.85)',    FALSE),
+('KDS_BLDG_WIND','Kzt', '지형계수 K_zt', 1.0,  1.0, 1.5, '',     '지형요인 (평지=1.0)',        TRUE),
+('KDS_BLDG_WIND','Cf',  '형상계수 C_f',  1.3,  0.8, 2.0, '',     '부재 공기력 계수',           TRUE),
+('KDS_BLDG_WIND','G',   '돌풍계수 G',    1.5,  1.0, 2.0, '',     '돌풍응답계수',               TRUE),
+-- KDS_BLDG_SEISMIC
+('KDS_BLDG_SEISMIC','SDS', '단주기 설계스펙트럼가속도 S_DS', 0.22, 0.04, 3.0, 'g', 'KDS 지역 스펙트럼 가속도', TRUE),
+('KDS_BLDG_SEISMIC','R',   '반응수정계수 R',   5.0, 1.0, 8.0, '',   '구조 시스템별 계수', TRUE),
+('KDS_BLDG_SEISMIC','Ie',  '중요도계수 I_e',   1.0, 1.0, 1.5, '',   '건축물 중요도 등급', TRUE),
+-- KDS_BLDG_DEAD
+('KDS_BLDG_DEAD','gamma_c','콘크리트 단위중량 γ_c', 24, 20, 30, 'kN/m³', '',TRUE),
+('KDS_BLDG_DEAD','gamma_s','강재 단위중량 γ_s',     78.5,75,85,'kN/m³','',TRUE),
+-- KDS_BLDG_LIVE
+('KDS_BLDG_LIVE','qL', '바닥 활하중 q_L', 2.5, 0.5, 10.0, 'kN/m²', '사무실=2.5, 주거=2.0', TRUE),
+-- KDS_BLDG_SNOW
+('KDS_BLDG_SNOW','Sg',   '지상 설계적설하중 S_g', 0.5, 0.0, 3.0, 'kN/m²','지역별 기준 지상설하중', TRUE),
+('KDS_BLDG_SNOW','Cb',   '지붕형상계수 C_b',       0.8, 0.5, 1.0, '','경사 ≤30° 기본값 0.8', FALSE),
+('KDS_BLDG_SNOW','Ce',   '노출계수 C_e',            1.0, 0.7, 1.2, '','풍속 노출 조건', TRUE),
+-- KDS_BLDG_COMBO
+('KDS_BLDG_COMBO','gammaD','고정하중 계수 γ_D', 1.2, 1.0, 1.4, '', 'LRFD 고정하중 계수',  FALSE),
+('KDS_BLDG_COMBO','gammaL','활하중 계수 γ_L',  1.6, 1.0, 2.0, '', 'LRFD 활하중 계수',    FALSE),
+('KDS_BLDG_COMBO','gammaW','풍하중 계수 γ_W',  1.0, 0.9, 1.3, '', 'LRFD 풍하중 계수',    FALSE),
+('KDS_BLDG_COMBO','gammaE','지진하중 계수 γ_E',1.0, 1.0, 1.0, '', 'LRFD 지진하중 계수',  FALSE),
+-- KDS_BLDG_BUCKLING
+('KDS_BLDG_BUCKLING','k',       '유효좌굴길이계수 k',   1.0, 0.5, 2.0,'',     '양단힌지=1.0, 고정-자유=2.0', TRUE),
+('KDS_BLDG_BUCKLING','lambda_lim','한계세장비 λ_lim', 200, 100, 300,'',     '이 값 초과 시 세장 기둥',     TRUE),
+-- KDS_BLDG_SAFETY
+('KDS_BLDG_SAFETY','SF_safe', '안전 기준 SF', 2.0, 1.5, 5.0,'','SF ≥ 이 값이면 Safe',   TRUE),
+('KDS_BLDG_SAFETY','SF_warn', '경고 기준 SF', 1.0, 0.8, 2.0,'','SF ≥ 이 값이면 Warning', TRUE),
+-- KDS_BRDG_TRAFFIC
+('KDS_BRDG_TRAFFIC','P_truck',   '표준트럭 총중량 P',  240, 100,500, 'kN','DB-24=240kN', TRUE),
+('KDS_BRDG_TRAFFIC','w_lane',    '차로 등분포하중 w',  12.7, 5, 25, 'kN/m','DB-24=12.7kN/m', TRUE),
+('KDS_BRDG_TRAFFIC','num_lanes', '설계차로수',          2, 1, 8,   '',    '',TRUE),
+-- KDS_BRDG_WIND
+('KDS_BRDG_WIND','V0', '기본풍속도 V₀', 40, 30, 80,'m/s','교량 기본풍속 40m/s', TRUE),
+('KDS_BRDG_WIND','Cf', '형상계수 C_f',  1.3, 0.8,2.0,'',  '교량 단면 형상계수', TRUE),
+-- KDS_BRDG_DEAD
+('KDS_BRDG_DEAD','gamma_c','콘크리트 단위중량', 24,  20,30,'kN/m³','',TRUE),
+('KDS_BRDG_DEAD','gamma_s','강재 단위중량',     78.5,75,85,'kN/m³','',TRUE),
+-- KDS_BRDG_COMBO
+('KDS_BRDG_COMBO','gammaD','고정하중 계수 γ_D', 1.25,1.0,1.5,'','AASHTO LRFD', FALSE),
+('KDS_BRDG_COMBO','gammaL','활하중 계수 γ_L',  1.75,1.0,2.0,'','충격 포함',   FALSE),
+-- EC2_BLDG_WIND
+('EC2_BLDG_WIND','vb',  '기본풍속 v_b',      28, 15, 60, 'm/s',   'EN 1991-1-4 국가부록',      TRUE),
+('EC2_BLDG_WIND','rho', '공기밀도 ρ',         1.25,1.1,1.4,'kg/m³','표준대기 1.25 kg/m³',       FALSE),
+('EC2_BLDG_WIND','Cf',  '힘 계수 C_f',        1.3, 0.8,2.0,'',     '단면 형상별 계수',           TRUE),
+('EC2_BLDG_WIND','Ce',  '노출계수 C_e(z)',     2.5, 1.0,4.0,'',     '높이·지형 복합 계수 (z=10m)', TRUE),
+-- EC2_BLDG_SEISMIC
+('EC2_BLDG_SEISMIC','ag',     '설계지반가속도 a_g', 0.1, 0.04,0.5,'g',  'EN 1998-1 지역계수', TRUE),
+('EC2_BLDG_SEISMIC','S',      '지반증폭계수 S',     1.5, 1.0, 2.0,'',   '지반 유형별 (A=1.0, D=1.8)', TRUE),
+('EC2_BLDG_SEISMIC','q_f',    '거동계수 q',          3.9, 1.0, 6.0,'',   'DCM 연성 시스템', TRUE),
+('EC2_BLDG_SEISMIC','lambda_s','보정계수 λ',         0.85,0.85,1.0,'',   '2층 이상 =0.85', FALSE),
+-- EC2_BLDG_DEAD
+('EC2_BLDG_DEAD','gamma_c','콘크리트 γ', 25,  22,30,'kN/m³','EN 1991-1-1: 25 kN/m³', TRUE),
+('EC2_BLDG_DEAD','gamma_s','강재 γ',     78.5,75,85,'kN/m³','',TRUE),
+-- EC2_BLDG_LIVE
+('EC2_BLDG_LIVE','qk','설계 활하중 q_k', 3.0, 0.5,10.0,'kN/m²','Category B 사무실 3.0', TRUE),
+-- EC2_BLDG_SNOW
+('EC2_BLDG_SNOW','sk',   '지상설하중 특성값 s_k', 0.5, 0.0, 3.0,'kN/m²','국가부록 지도값', TRUE),
+('EC2_BLDG_SNOW','mu_i', '지붕형상계수 μ_i',       0.8, 0.5, 1.0,'',     '경사 ≤30°', FALSE),
+('EC2_BLDG_SNOW','Ce_s', '노출계수 C_e',            1.0, 0.7, 1.2,'','',TRUE),
+-- EC2_BLDG_COMBO
+('EC2_BLDG_COMBO','gammaG','영구하중 계수 γ_G', 1.35,1.0,1.5,'','STR/GEO 불리 측',FALSE),
+('EC2_BLDG_COMBO','gammaQ','변동하중 계수 γ_Q', 1.5, 1.0,2.0,'','변동하중 증폭',   FALSE),
+('EC2_BLDG_COMBO','psi0',  '조합값 계수 ψ₀',   0.7, 0.5,1.0,'','동시재하 감소',   FALSE),
+-- EC2_BLDG_BUCKLING
+('EC2_BLDG_BUCKLING','lambda_lim','한계세장비 λ_lim', 46, 20, 100,'','EN 1992-1-1: 20ABC/√n', TRUE),
+('EC2_BLDG_BUCKLING','k',          '유효길이계수 k',    1.0, 0.5,2.0,'','골조 횡구속 여부',      TRUE),
+-- EC2_BLDG_SAFETY
+('EC2_BLDG_SAFETY','U_safe','활용률 안전 상한 U_safe', 0.7, 0.5,0.9,'','σ_Ed/σ_Rd ≤ 이 값 → Safe',   TRUE),
+('EC2_BLDG_SAFETY','U_warn','활용률 경고 상한 U_warn', 1.0, 0.9,1.1,'','σ_Ed/σ_Rd ≤ 이 값 → Warning', TRUE),
+-- EC2_BRDG_TRAFFIC
+('EC2_BRDG_TRAFFIC','Q1k',       '탠덤축중 Q_1k',      300, 100,500,'kN',    'LM1 1차로 탠덤 300kN', TRUE),
+('EC2_BRDG_TRAFFIC','q1k',       '등분포하중 q_1k',    9,   3,  20, 'kN/m²', 'LM1 1차로 9kN/m²',     TRUE),
+('EC2_BRDG_TRAFFIC','alpha_Q',   '탠덤 보정계수 α_Q',  0.8, 0.5,1.0,'',      '국가부록 값',           TRUE),
+('EC2_BRDG_TRAFFIC','lane_width','차로폭',              3.0, 2.5,4.0,'m',     '',                      FALSE),
+-- EC2_BRDG_WIND
+('EC2_BRDG_WIND','vb',   '기본풍속 v_b', 35, 20,60,'m/s','교량 기준풍속',    TRUE),
+('EC2_BRDG_WIND','rho',  '공기밀도 ρ',   1.25,1.1,1.4,'kg/m³','',           FALSE),
+('EC2_BRDG_WIND','Cf',   '힘 계수 C_f',  1.3, 0.8,2.0,'',   '교량 단면 계수', TRUE),
+-- EC2_BRDG_DEAD
+('EC2_BRDG_DEAD','gamma_c','콘크리트 γ', 25,  22,30,'kN/m³','',TRUE),
+-- EC2_BRDG_COMBO
+('EC2_BRDG_COMBO','gammaG','영구하중 계수 γ_G',  1.35,1.0,1.5,'','', FALSE),
+('EC2_BRDG_COMBO','gammaQ','교통하중 계수 γ_gr', 1.35,1.0,1.5,'','gr1a 차량군', FALSE)
+
+ON CONFLICT (formula_id, var_name) DO NOTHING;
