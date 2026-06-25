@@ -919,3 +919,14 @@ VALUES
 ('EC2_BRDG_COMBO','gammaQ','교통하중 계수 γ_gr', 1.35,1.0,1.5,'','gr1a 차량군', FALSE)
 
 ON CONFLICT (formula_id, var_name) DO NOTHING;
+
+-- ================================================================
+-- 구조해석 캐시 테이블 (프로젝트별 마지막 해석 결과 영구 보존)
+-- project_id PK → upsert 로 항상 최신 1건 유지
+-- ================================================================
+CREATE TABLE IF NOT EXISTS structural_analysis_cache (
+    project_id   TEXT        NOT NULL PRIMARY KEY,
+    result_json  TEXT        NOT NULL,
+    params_json  TEXT        NULL,
+    analyzed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
