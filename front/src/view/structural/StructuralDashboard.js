@@ -1251,7 +1251,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [], g
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition
                          bg-[#0f1422] text-gray-400 border-[#1b2236] hover:text-indigo-300 hover:border-indigo-600/40"
             >
-              📐 {t('structTheoryBtn')}
+              {t('structTheoryBtn')}
             </button>
 
             {/* 변수 편집 패널 토글 */}
@@ -1263,7 +1263,7 @@ export default function StructuralDashboard({ selectedProject, modelData = [], g
                   : 'bg-[#0f1422] text-gray-400 border-[#1b2236] hover:text-gray-200'
               }`}
             >
-              ⚙ {t('structVarBtn')}
+              {t('structVarBtn')}
             </button>
 
             <button
