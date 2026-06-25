@@ -1,5 +1,6 @@
 package yyj.project.twinspring.serviceImpl;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ public class StructuralServiceImpl implements StructuralService {
     private final StructuralDAO structuralDAO;
     private final BimDAO        bimDAO;
     private final StructuralAnalysisEngine engine = new StructuralAnalysisEngine();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public StructuralServiceImpl(StructuralDAO structuralDAO, BimDAO bimDAO) {
         this.structuralDAO = structuralDAO;
@@ -91,16 +93,19 @@ public class StructuralServiceImpl implements StructuralService {
 
     @Override
     public Mono<StructuralAnalysisResultDTO> analyze(
-            String projectId, String codeStandard, String structureType) {
+            String projectId, StructuralAnalysisRequestDTO req) {
 
         return Mono.fromCallable(() -> {
+            String codeStandard  = req.getCodeStandard();
+            String structureType = req.getStructureType();
+
             // 1. 부재 로드
             List<Map<String, Object>> rawElements = bimDAO.getElementsByProject(projectId);
             List<BimElementDTO> elements = rawElements.stream()
                     .map(this::mapToElementDTO)
                     .collect(Collectors.toList());
 
-            // 2. 공식 변수 effective 값 맵 구성
+            // 2. 공식 변수 effective 값 맵 (안전율·계수 등 코드기준 상수용 — 환경/하중은 req 우선)
             List<StructuralFormulaDTO> formulas =
                     structuralDAO.getFormulas(codeStandard, structureType);
 
@@ -123,13 +128,32 @@ public class StructuralServiceImpl implements StructuralService {
                 varMap.put(f.getFormulaId(), vars);
             }
 
-            // 3. 해석 수행
-            StructuralAnalysisResultDTO result =
-                    engine.analyze(elements, varMap, codeStandard, structureType);
+            // 3. DSM 해석 수행 (사용자 환경/하중 조건 전달)
+            StructuralAnalysisResultDTO result = engine.analyze(elements, varMap, req);
             result.setProjectId(projectId);
+
+            // 4. 결과를 DB에 캐시 저장
+            try {
+                StructuralAnalysisCacheDTO cache = new StructuralAnalysisCacheDTO();
+                cache.setProjectId(projectId);
+                cache.setResultJson(objectMapper.writeValueAsString(result));
+                cache.setParamsJson(objectMapper.writeValueAsString(req));
+                structuralDAO.upsertAnalysisCache(cache);
+            } catch (Exception e) {
+                log.warn("구조해석 캐시 저장 실패 (결과는 정상): {}", e.getMessage());
+            }
+
             return result;
 
         }).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    // ── 마지막 캐시 조회 ─────────────────────────────────────────────────
+
+    @Override
+    public Mono<StructuralAnalysisCacheDTO> getLastCache(String projectId) {
+        return Mono.fromCallable(() -> structuralDAO.getAnalysisCache(projectId))
+                   .subscribeOn(Schedulers.boundedElastic());
     }
 
     // ── 내부 변환 ────────────────────────────────────────────────────
@@ -161,3 +185,4 @@ public class StructuralServiceImpl implements StructuralService {
         try { return Double.parseDouble(v.toString()); } catch (Exception e) { return null; }
     }
 }
+

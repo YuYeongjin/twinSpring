@@ -7,7 +7,7 @@
     <resultMap id="formulaRM" type="yyj.project.twinspring.dto.StructuralFormulaDTO">
         <id     property="formulaId"    column="formula_id"/>
         <result property="codeStandard" column="code_standard"/>
-        <result property="structureType"column="structure_type"/>
+        <result property="structureType" column="structure_type"/>
         <result property="category"     column="category"/>
         <result property="name"         column="name"/>
         <result property="expression"   column="expression"/>
@@ -103,5 +103,25 @@
         DELETE FROM structural_formula_override
         WHERE project_id = #{projectId}
     </delete>
+
+    <!-- ── 해석 결과 캐시 upsert ─────────────────────────────────────── -->
+    <insert id="upsertAnalysisCache" parameterType="yyj.project.twinspring.dto.StructuralAnalysisCacheDTO">
+        INSERT INTO structural_analysis_cache (project_id, result_json, params_json, analyzed_at)
+        VALUES (#{projectId}, #{resultJson}, #{paramsJson}, NOW())
+        ON CONFLICT (project_id)
+        DO UPDATE SET result_json  = EXCLUDED.result_json,
+                      params_json  = EXCLUDED.params_json,
+                      analyzed_at  = NOW()
+    </insert>
+
+    <!-- ── 해석 결과 캐시 조회 ───────────────────────────────────────── -->
+    <select id="getAnalysisCache" resultType="yyj.project.twinspring.dto.StructuralAnalysisCacheDTO">
+        SELECT project_id   AS projectId,
+               result_json  AS resultJson,
+               params_json  AS paramsJson,
+               analyzed_at  AS analyzedAt
+        FROM structural_analysis_cache
+        WHERE project_id = #{projectId}
+    </select>
 
 </mapper>

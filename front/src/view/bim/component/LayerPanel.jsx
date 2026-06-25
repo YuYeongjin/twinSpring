@@ -77,18 +77,18 @@ function ColorDot({ color, onChange, size = 16 }) {
 function EyeIcon({ visible }) {
     return visible ? (
         <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
-            <path d="M9 21h6v-1H9v1zm0-2h6v-1H9v1zM12 2C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17h8v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/>
+            <path d="M9 21h6v-1H9v1zm0-2h6v-1H9v1zM12 2C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17h8v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z" />
         </svg>
     ) : (
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path strokeLinejoin="round" d="M9 21h6M9 19h6M12 3C8.69 3 6 5.69 6 9c0 2.22 1.21 4.15 3 5.19V17h6v-2.81C16.79 13.15 18 11.22 18 9c0-3.31-2.69-6-6-6z"/>
+            <path strokeLinejoin="round" d="M9 21h6M9 19h6M12 3C8.69 3 6 5.69 6 9c0 2.22 1.21 4.15 3 5.19V17h6v-2.81C16.79 13.15 18 11.22 18 9c0-3.31-2.69-6-6-6z" />
         </svg>
     );
 }
 
 // ── TreeNodeRow ──────────────────────────────────────────────────────
 // depth 0 = 동(Building), depth 1 = 층(Storey), depth 2 = 공종(Type/Leaf)
-const DEPTH_BG     = ['#1e3a5f', '#152e45', undefined];
+const DEPTH_BG = ['#1e3a5f', '#152e45', undefined];
 const DEPTH_BORDER = ['#2a508090', '#1e406090', undefined];
 
 function TreeNodeRow({
@@ -96,15 +96,15 @@ function TreeNodeRow({
     onUpdate, onDelete, onRemoveElement, onSelectElement, onSelectAllInLayer,
     elementColors,
 }) {
-    const t          = useT('bimDashboard');
+    const t = useT('bimDashboard');
     const [editingName, setEditingName] = useState(false);
-    const isLeaf     = node.children.length === 0;
+    const isLeaf = node.children.length === 0;
     const isExpanded = expandedSet.has(node.layerId);
-    const elemCount  = useMemo(() => countElements(node), [node]);
-    const indent     = depth * 14;
+    const elemCount = useMemo(() => countElements(node), [node]);
+    const indent = depth * 14;
 
-    const bgColor   = node.visible
-        ? (depth < 2 ? DEPTH_BG[depth]     : node.color + '18')
+    const bgColor = node.visible
+        ? (depth < 2 ? DEPTH_BG[depth] : node.color + '18')
         : '#1c2a3a';
     const borderCol = node.visible
         ? (depth < 2 ? DEPTH_BORDER[depth] : node.color + '60')
@@ -141,7 +141,7 @@ function TreeNodeRow({
                     : <div
                         className="w-2.5 h-2.5 rounded-sm flex-shrink-0 opacity-70"
                         style={{ backgroundColor: depth === 0 ? '#94a3b8' : '#64748b' }}
-                      />
+                    />
                 }
 
                 {/* 이름 */}
@@ -295,13 +295,13 @@ function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDele
                 style={{ backgroundColor: visible ? '#93c5fd12' : '#1c2a3a' }}
             >
                 <div className="w-4 h-4 rounded-full flex-shrink-0 border-2 border-white/20 shadow"
-                     style={{ backgroundColor: '#60a5fa' }} />
+                    style={{ backgroundColor: '#60a5fa' }} />
                 <span className="flex-1 text-xs font-medium truncate"
-                      style={{ color: visible ? '#e2e8f0' : '#8896a4' }}>
+                    style={{ color: visible ? '#e2e8f0' : '#8896a4' }}>
                     {t('drawingLines')}
                 </span>
                 <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: '#60c5fa30', color: visible ? '#60a5fa' : '#8896a4' }}>
+                    style={{ backgroundColor: '#60c5fa30', color: visible ? '#60a5fa' : '#8896a4' }}>
                     {lines.length}
                 </span>
                 <button
@@ -352,7 +352,7 @@ function LinesGroup({ lines = [], visible, onToggleVisible, onClearLines, onDele
                                 style={{ backgroundColor: isSelected ? '#0f2a4a' : undefined }}
                             >
                                 <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                                     style={{ backgroundColor: line.color ?? '#60a5fa' }} />
+                                    style={{ backgroundColor: line.color ?? '#60a5fa' }} />
                                 <span className="text-xs text-gray-400 flex-1 truncate">Line {idx + 1}</span>
                                 <button
                                     onClick={e => { e.stopPropagation(); onDeleteLine?.(line.lineId); }}
@@ -506,7 +506,7 @@ export default function LayerPanel({
             )}
 
             {/* ── 선택된 부재 섹션 ── */}
-            {allSelectedIds.size > 0 && (
+            {/* {allSelectedIds.size > 0 && (
                 <div
                     className="rounded-xl p-3 space-y-3"
                     style={{ backgroundColor: '#1c2a3a', border: '1px solid #253347' }}
@@ -514,82 +514,82 @@ export default function LayerPanel({
                     <p className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
                         {isMulti ? `${allSelectedIds.size} selected` : 'Selected Member'}
                     </p>
-
-                    {/* 개별 색상 (단일 선택) */}
-                    {selectedId && (
-                        <div>
-                            <p className="text-xs text-gray-500 mb-2">Member Color</p>
-                            <div className="flex items-center gap-2">
-                                <ColorDot
-                                    color={elementColors[selectedId] || '#888888'}
-                                    onChange={c => onSetElementColor(selectedId, c)}
-                                    size={22}
-                                />
-                                <span className="text-xs font-mono text-gray-400 flex-1">
-                                    {elementColors[selectedId]
-                                        ? elementColors[selectedId].toUpperCase()
-                                        : 'Default Color'}
-                                </span>
-                                {elementColors[selectedId] && (
-                                    <button
-                                        onClick={() => onClearElementColor(selectedId)}
-                                        className="text-xs text-gray-600 hover:text-gray-400 transition"
-                                    >Reset</button>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* 레이어 할당 — 리프 레이어만 표시 */}
-                    {leafLayers.length > 0 && (
-                        <div>
-                            <p className="text-xs text-gray-500 mb-2">
-                                {isMulti ? 'Assign to Layer (bulk)' : 'Assign to Layer'}
-                            </p>
-                            <div className="space-y-1.5">
-                                {leafLayers.map(layer => {
-                                    const isIn = isMulti
-                                        ? [...allSelectedIds].every(id => layer.elementIds.includes(id))
-                                        : layer.elementIds.includes(selectedId);
-                                    const partiallyIn = isMulti
-                                        ? !isIn && [...allSelectedIds].some(id => layer.elementIds.includes(id))
-                                        : false;
-
-                                    return (
-                                        <button
-                                            key={layer.layerId}
-                                            onClick={() => {
-                                                if (isIn) {
-                                                    [...allSelectedIds].forEach(id => onRemoveFromLayer(layer.layerId, id));
-                                                } else {
-                                                    [...allSelectedIds].forEach(id => onAssignToLayer(layer.layerId, id));
-                                                }
-                                            }}
-                                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition"
-                                            style={{
-                                                backgroundColor: isIn ? layer.color + '20' : partiallyIn ? layer.color + '10' : '#152030',
-                                                border: `1px solid ${isIn ? layer.color : partiallyIn ? layer.color + '80' : '#253347'}`,
-                                                color: isIn ? layer.color : partiallyIn ? layer.color + 'cc' : '#8896a4',
-                                            }}
-                                        >
-                                            <div className="w-3 h-3 rounded-full flex-shrink-0"
-                                                 style={{ backgroundColor: layer.color }} />
-                                            <span className="flex-1 text-left truncate">{layer.layerName}</span>
-                                            <span className="flex-shrink-0">
-                                                {isIn ? '✓ Included' : partiallyIn ? 'Partial' : '+ Add'}
-                                            </span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {leafLayers.length === 0 && (
-                        <p className="text-xs text-gray-600 text-center py-1">Create a layer first</p>
+  
+            selectedId && (
+            <div>
+                <p className="text-xs text-gray-500 mb-2">Member Color</p>
+                <div className="flex items-center gap-2">
+                    <ColorDot
+                        color={elementColors[selectedId] || '#888888'}
+                        onChange={c => onSetElementColor(selectedId, c)}
+                        size={22}
+                    />
+                    <span className="text-xs font-mono text-gray-400 flex-1">
+                        {elementColors[selectedId]
+                            ? elementColors[selectedId].toUpperCase()
+                            : 'Default Color'}
+                    </span>
+                    {elementColors[selectedId] && (
+                        <button
+                            onClick={() => onClearElementColor(selectedId)}
+                            className="text-xs text-gray-600 hover:text-gray-400 transition"
+                        >Reset</button>
                     )}
                 </div>
+            </div>
+            )
+
+            {leafLayers.length > 0 && (
+                <div>
+                    <p className="text-xs text-gray-500 mb-2">
+                        {isMulti ? 'Assign to Layer (bulk)' : 'Assign to Layer'}
+                    </p>
+                    <div className="space-y-1.5">
+                        {leafLayers.map(layer => {
+                            const isIn = isMulti
+                                ? [...allSelectedIds].every(id => layer.elementIds.includes(id))
+                                : layer.elementIds.includes(selectedId);
+                            const partiallyIn = isMulti
+                                ? !isIn && [...allSelectedIds].some(id => layer.elementIds.includes(id))
+                                : false;
+
+                            return (
+                                <button
+                                    key={layer.layerId}
+                                    onClick={() => {
+                                        if (isIn) {
+                                            [...allSelectedIds].forEach(id => onRemoveFromLayer(layer.layerId, id));
+                                        } else {
+                                            [...allSelectedIds].forEach(id => onAssignToLayer(layer.layerId, id));
+                                        }
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition"
+                                    style={{
+                                        backgroundColor: isIn ? layer.color + '20' : partiallyIn ? layer.color + '10' : '#152030',
+                                        border: `1px solid ${isIn ? layer.color : partiallyIn ? layer.color + '80' : '#253347'}`,
+                                        color: isIn ? layer.color : partiallyIn ? layer.color + 'cc' : '#8896a4',
+                                    }}
+                                >
+                                    <div className="w-3 h-3 rounded-full flex-shrink-0"
+                                        style={{ backgroundColor: layer.color }} />
+                                    <span className="flex-1 text-left truncate">{layer.layerName}</span>
+                                    <span className="flex-shrink-0">
+                                        {isIn ? '✓ Included' : partiallyIn ? 'Partial' : '+ Add'}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {leafLayers.length === 0 && (
+                <p className="text-xs text-gray-600 text-center py-1">Create a layer first</p>
             )}
         </div>
+    )
+} 
+            */}
+        </div >
     );
 }

@@ -1,6 +1,7 @@
 package yyj.project.twinspring.structural;
 
 import yyj.project.twinspring.dto.BimElementDTO;
+import yyj.project.twinspring.dto.StructuralAnalysisRequestDTO;
 import yyj.project.twinspring.dto.StructuralAnalysisResultDTO;
 
 import java.util.*;
@@ -28,9 +29,10 @@ public class StructuralAnalysisEngine {
 
     private static final int    NDOF = 6;                 // DOF per node
 
-    private static final Set<String> STRUCTURAL_TYPES = Set.of(
-            "IfcColumn","IfcBeam","IfcMember","IfcPier",
-            "ifccolumn","ifcbeam","ifcmember","ifcpier"
+    // 소문자 prefix 매칭 — IfcColumnStandardCase, IFCBEAM 등 변형 타입 포함
+    private static final Set<String> STRUCTURAL_PREFIXES = Set.of(
+            "ifccolumn","ifcbeam","ifcmember","ifcpier",
+            "ifcwall","ifcslab","ifcfooting","ifcplate"
     );
 
     // ── 내부 모델 ──────────────────────────────────────────────────────
@@ -54,15 +56,23 @@ public class StructuralAnalysisEngine {
 
     // ── 공개 API ───────────────────────────────────────────────────────
 
+    // 지진구역 → 스펙트럴 가속도 (g) 매핑  [zone 0 미사용, 1~4]
+    private static final double[] ZONE_SDS = {0.0, 0.08, 0.154, 0.22, 0.32};
+
     public StructuralAnalysisResultDTO analyze(
             List<BimElementDTO> elements,
             Map<String, Map<String, Double>> varMap,
-            String codeStandard,
-            String structureType) {
+            StructuralAnalysisRequestDTO req) {
+
+        String codeStandard  = req != null ? req.getCodeStandard()  : "KDS";
+        String structureType = req != null ? req.getStructureType() : "BUILDING";
 
         List<BimElementDTO> structural = elements.stream()
-                .filter(e -> e.getElementType() != null
-                        && STRUCTURAL_TYPES.contains(e.getElementType()))
+                .filter(e -> {
+                    if (e.getElementType() == null) return false;
+                    String t = e.getElementType().toLowerCase().trim();
+                    return STRUCTURAL_PREFIXES.stream().anyMatch(t::startsWith);
+                })
                 .toList();
 
         StructuralAnalysisResultDTO result = new StructuralAnalysisResultDTO();
@@ -85,8 +95,8 @@ public class StructuralAnalysisEngine {
         int nNodes   = nodes.size();
         int totalDof = nNodes * NDOF;
 
-        // 2. 하중 계산
-        LoadResult loads = computeLoads(structural, varMap, codeStandard, structureType);
+        // 2. 하중 계산 (사용자 파라미터 우선)
+        LoadResult loads = computeLoads(structural, varMap, req);
 
         // 3. 전체 강성 행렬 조립
         double[][] K = new double[totalDof][totalDof];
@@ -440,16 +450,23 @@ public class StructuralAnalysisEngine {
             double fAllowV= steel ? F_Y / (Math.sqrt(3.0) * sfSafe)
                                   : 0.4 * Math.sqrt(F_CK);
 
-            // 선형 상관 관계식: (σ/f_allow)² + (τ/f_allow_v)² ≤ 1 (EC 유사 판정)
             double ratio = (sigmaComb / Math.max(fAllow,  eps))
                          + (tauComb   / Math.max(fAllowV, eps));
 
             double sf = ratio > 1e-9 ? 1.0 / ratio : 999.0;
             String status = sf >= sfSafe ? "Safe" : sf >= sfWarn ? "Warning" : "Danger";
 
+            r.setAllowStress(r2(fAllow));
             r.setSafetyFactor(r2(sf));
             r.setUtilization(r2(ratio));
             r.setStatus(status);
+
+            if (!"Safe".equals(status)) {
+                String dom = dominantType(Math.abs(sigmaN), sigmaBy, sigmaBz, tauComb);
+                r.setDominantStressType(dom);
+                r.setFailureReason(buildReason(dom, Math.abs(sigmaN), sigmaBy, sigmaBz, tauComb, fAllow, fAllowV, status));
+                r.setRemediation(buildRemediation(dom, m.elementType, status));
+            }
 
         } else {
             double uSafe = varVal(varMap, "EC2_BLDG_SAFETY", "U_safe", 0.7);
@@ -464,9 +481,17 @@ public class StructuralAnalysisEngine {
             double util  = Math.max(utilN, utilV);
 
             String status = util <= uSafe ? "Safe" : util <= uWarn ? "Warning" : "Danger";
+            r.setAllowStress(r2(fRd));
             r.setSafetyFactor(r2(fRd / Math.max(sigmaComb, eps)));
             r.setUtilization(r2(util));
             r.setStatus(status);
+
+            if (!"Safe".equals(status)) {
+                String dom = dominantType(Math.abs(sigmaN), sigmaBy, sigmaBz, tauComb);
+                r.setDominantStressType(dom);
+                r.setFailureReason(buildReason(dom, Math.abs(sigmaN), sigmaBy, sigmaBz, tauComb, fRd, fRdV, status));
+                r.setRemediation(buildRemediation(dom, m.elementType, status));
+            }
         }
 
         return r;
@@ -492,33 +517,39 @@ public class StructuralAnalysisEngine {
 
     private LoadResult computeLoads(List<BimElementDTO> members,
                                      Map<String, Map<String, Double>> varMap,
-                                     String std, String sType) {
-        // 자중
-        double dead = 0;
+                                     StructuralAnalysisRequestDTO req) {
+        String std   = req.getCodeStandard();
+        String sType = req.getStructureType();
+
+        // 구조 자중 (kN)
+        double selfWeight = 0;
         for (var e : members) {
             double gamma = density(e.getMaterial());
             double vol   = safe(e.getSizeX(),0.3) * safe(e.getSizeY(),0.3) * safe(e.getSizeZ(),3.0);
-            dead += gamma * vol;
+            selfWeight += gamma * vol;
         }
 
-        // 활하중
-        String lFid = std.equals("KDS") ? "KDS_BLDG_LIVE" : "EC2_BLDG_LIVE";
-        String lVar = std.equals("KDS") ? "qL" : "qk";
-        double qL   = varVal(varMap, lFid, lVar, 2.5);
-        double floorArea = estFloorArea(members);
-        double live = qL * floorArea;
+        // 사용자 입력 하중: 슈퍼임포즈드 고정 + 적설 (지배면적 × 층수)
+        double trib     = Math.max(req.getTributaryArea(), 1.0);
+        int    floors   = Math.max(req.getNumFloors(), 1);
+        double dead     = selfWeight
+                        + req.getDeadLoad() * trib * floors   // 마감재 등 고정하중
+                        + req.getSnowLoad() * estFloorArea(members); // 적설 (지붕)
 
-        // 풍하중
-        double wind = computeWind(members, varMap, std, sType);
+        // 활하중 (kN)
+        double live     = req.getLiveLoad() * trib * floors;
 
-        // 지진
-        double seismic = computeSeismic(dead + live, varMap, std, sType);
+        // 풍하중 (kN) — 사용자 풍속 사용
+        double wind     = computeWind(members, varMap, req);
 
-        // 지배 하중 조합 (KDS LRFD 기준)
+        // 지진력 (kN) — 사용자 지진구역 사용
+        double seismic  = computeSeismic(dead + live, varMap, req);
+
+        // 지배 하중 조합 (KDS LRFD)
         double[] combos = {
             1.4 * dead,
             1.2 * dead + 1.6 * live,
-            1.2 * dead + 1.0 * wind   + live,
+            1.2 * dead + 1.0 * wind    + live,
             1.2 * dead + 1.0 * seismic + live,
             0.9 * dead + 1.0 * wind,
         };
@@ -531,21 +562,26 @@ public class StructuralAnalysisEngine {
 
     private double computeWind(List<BimElementDTO> members,
                                 Map<String, Map<String, Double>> varMap,
-                                String std, String sType) {
+                                StructuralAnalysisRequestDTO req) {
+        String std   = req.getCodeStandard();
+        String sType = req.getStructureType();
         String fid = std.equals("KDS")
                 ? (sType.equals("BRIDGE") ? "KDS_BRDG_WIND" : "KDS_BLDG_WIND")
                 : (sType.equals("BRIDGE") ? "EC2_BRDG_WIND" : "EC2_BLDG_WIND");
         double expArea = estExpArea(members);
         double Cf = varVal(varMap, fid, "Cf", 1.3);
 
+        // 사용자 설계풍속 우선 적용 (0이면 formula DB fallback)
         if (std.equals("KDS")) {
-            double V0  = varVal(varMap, fid, "V0",  30.0);
+            double V0  = req.getWindSpeed() > 0 ? req.getWindSpeed()
+                                                : varVal(varMap, fid, "V0",  30.0);
             double Kd  = varVal(varMap, fid, "Kd",  0.85);
             double Kzt = varVal(varMap, fid, "Kzt", 1.0);
             double G   = varVal(varMap, fid, "G",   1.5);
             return 0.6125 * V0*V0 / 1000.0 * Kd * Kzt * Cf * G * expArea;
         } else {
-            double vb  = varVal(varMap, fid, "vb",  28.0);
+            double vb  = req.getWindSpeed() > 0 ? req.getWindSpeed()
+                                                : varVal(varMap, fid, "vb", 28.0);
             double rho = varVal(varMap, fid, "rho", 1.25);
             double Ce  = varVal(varMap, fid, "Ce",  2.5);
             return 0.5 * rho * vb*vb / 1000.0 * Ce * Cf * expArea;
@@ -554,19 +590,28 @@ public class StructuralAnalysisEngine {
 
     private double computeSeismic(double W,
                                    Map<String, Map<String, Double>> varMap,
-                                   String std, String sType) {
+                                   StructuralAnalysisRequestDTO req) {
+        String std   = req.getCodeStandard();
+        String sType = req.getStructureType();
+
         if (sType.equals("BRIDGE")) return W * 0.05;
+
+        // 지진구역 → 스펙트럴 가속도 (사용자 입력 우선, fallback: formula DB)
+        int zone = Math.max(1, Math.min(4, req.getSeismicZone()));
+
         if (std.equals("KDS")) {
-            double SDS = varVal(varMap, "KDS_BLDG_SEISMIC", "SDS", 0.22);
-            double R   = varVal(varMap, "KDS_BLDG_SEISMIC", "R",   5.0);
-            double Ie  = varVal(varMap, "KDS_BLDG_SEISMIC", "Ie",  1.0);
-            double Cs  = Math.max(Math.min(SDS / (R/Ie), 0.5), 0.01);
+            double SDS = ZONE_SDS[zone] > 0 ? ZONE_SDS[zone]
+                                            : varVal(varMap, "KDS_BLDG_SEISMIC", "SDS", 0.22);
+            double R   = varVal(varMap, "KDS_BLDG_SEISMIC", "R",  5.0);
+            double Ie  = varVal(varMap, "KDS_BLDG_SEISMIC", "Ie", 1.0);
+            double Cs  = Math.max(Math.min(SDS / (R / Ie), 0.5), 0.01);
             return Cs * W;
         } else {
-            double ag  = varVal(varMap, "EC2_BLDG_SEISMIC", "ag",     0.1);
-            double S   = varVal(varMap, "EC2_BLDG_SEISMIC", "S",      1.5);
-            double q   = varVal(varMap, "EC2_BLDG_SEISMIC", "q_f",    3.9);
-            double lam = varVal(varMap, "EC2_BLDG_SEISMIC", "lambda_s",0.85);
+            double ag  = ZONE_SDS[zone] > 0 ? ZONE_SDS[zone]
+                                            : varVal(varMap, "EC2_BLDG_SEISMIC", "ag", 0.1);
+            double S   = varVal(varMap, "EC2_BLDG_SEISMIC", "S",       1.5);
+            double q   = varVal(varMap, "EC2_BLDG_SEISMIC", "q_f",     3.9);
+            double lam = varVal(varMap, "EC2_BLDG_SEISMIC", "lambda_s", 0.85);
             return ag * S * 2.5 / q * W * lam;
         }
     }
@@ -685,6 +730,49 @@ public class StructuralAnalysisEngine {
         OptionalDouble maxX = members.stream().mapToDouble(e -> safe(e.getPositionX(),0)+safe(e.getSizeX(),0)).max();
         OptionalDouble maxZ = members.stream().mapToDouble(e -> safe(e.getPositionZ(),0)+safe(e.getSizeZ(),0)).max();
         return maxX.orElse(10) * maxZ.orElse(10);
+    }
+
+    private String dominantType(double sigmaN, double sigmaBy, double sigmaBz, double tau) {
+        double maxNormal = Math.max(Math.max(sigmaN, sigmaBy), sigmaBz);
+        if (tau >= maxNormal) return "SHEAR";
+        if (sigmaN >= sigmaBy && sigmaN >= sigmaBz) return "AXIAL";
+        if (sigmaBy >= sigmaBz) return "BENDING_STRONG";
+        return "BENDING_WEAK";
+    }
+
+    private String buildReason(String dom, double sigmaN, double sigmaBy, double sigmaBz,
+                                double tau, double fAllow, double fAllowV, String status) {
+        String verb = "Danger".equals(status) ? "exceeds" : "approaches";
+        return switch (dom) {
+            case "SHEAR"         -> String.format(
+                "Shear stress τ=%.2f MPa %s allowable τ_allow=%.2f MPa (ratio %.0f%%)",
+                tau, verb, fAllowV, tau / Math.max(fAllowV, 1e-9) * 100);
+            case "AXIAL"         -> String.format(
+                "Axial stress σ_N=%.2f MPa %s allowable f=%.2f MPa (ratio %.0f%%)",
+                sigmaN, verb, fAllow, sigmaN / Math.max(fAllow, 1e-9) * 100);
+            case "BENDING_STRONG"-> String.format(
+                "Strong-axis bending σ_By=%.2f MPa %s allowable f=%.2f MPa (ratio %.0f%%)",
+                sigmaBy, verb, fAllow, sigmaBy / Math.max(fAllow, 1e-9) * 100);
+            default              -> String.format(
+                "Weak-axis bending σ_Bz=%.2f MPa %s allowable f=%.2f MPa (ratio %.0f%%)",
+                sigmaBz, verb, fAllow, sigmaBz / Math.max(fAllow, 1e-9) * 100);
+        };
+    }
+
+    private String buildRemediation(String dom, String elementType, String status) {
+        boolean isColumn = elementType != null && elementType.toLowerCase().contains("column");
+        boolean isBeam   = elementType != null && elementType.toLowerCase().contains("beam");
+        return switch (dom) {
+            case "SHEAR"          -> "Add shear reinforcement (stirrups/links) or increase section width";
+            case "AXIAL"          -> isColumn
+                ? "Increase column cross-section or use higher-grade concrete/steel"
+                : "Check load path — high axial may indicate unintended compression in beam";
+            case "BENDING_STRONG" -> isBeam
+                ? "Increase section depth, reduce span, or add intermediate supports"
+                : "Check lateral force magnitude; consider moment-resisting connections";
+            case "BENDING_WEAK"   -> "Add lateral bracing or increase weak-axis dimension";
+            default               -> "Review applied loads and section properties";
+        };
     }
 
     private double safe(Double v, double def) { return (v == null || v == 0.0) ? def : v; }

@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Param;
 import yyj.project.twinspring.dto.StructuralFormulaDTO;
 import yyj.project.twinspring.dto.StructuralFormulaVariableDTO;
 import yyj.project.twinspring.dto.StructuralFormulaOverrideDTO;
+import yyj.project.twinspring.dto.StructuralAnalysisCacheDTO;
 
 import java.util.List;
 
@@ -40,4 +41,9 @@ public interface StructuralDAO {
     );
 
     void deleteAllOverridesByProject(@Param("projectId") String projectId);
+
+    // ── 해석 결과 캐시 ───────────────────────────────────────────────────
+    void upsertAnalysisCache(StructuralAnalysisCacheDTO cache);
+
+    StructuralAnalysisCacheDTO getAnalysisCache(@Param("projectId") String projectId);
 }

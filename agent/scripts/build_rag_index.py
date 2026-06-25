@@ -38,15 +38,12 @@ CHUNK_OVERLAP   = 150
 
 # ── HWP 파싱 ─────────────────────────────────────────────────────────────────
 
-def _is_compressed(ole: olefile.OleFileIO) -> bool:
+def _decompress_section(raw: bytes) -> bytes:
+    """항상 압축 해제를 먼저 시도하고, 실패하면 raw 반환."""
     try:
-        header = ole.openstream("FileHeader").read()
-        if len(header) < 36:
-            return True
-        attribute = struct.unpack_from("<I", header, 32)[0]
-        return bool(attribute & 0x01)
-    except Exception:
-        return True
+        return zlib.decompress(raw, -15)
+    except zlib.error:
+        return raw
 
 
 def _parse_records(data: bytes) -> str:
@@ -66,11 +63,26 @@ def _parse_records(data: bytes) -> str:
         offset += size
         if tag_id == 67 and len(record) >= 2:
             try:
-                text = record.decode("utf-16le", errors="ignore")
-                cleaned = "".join(
-                    c if (c.isprintable() or c in "\n\r") else " "
-                    for c in text
-                ).strip()
+                # HWP5 텍스트 스트림 파싱:
+                # - 인라인 요소(코드 4-9): 2바이트 코드 + 12바이트 추가 데이터 = 14바이트
+                # - 단순 제어문자(0x0A 줄바꿈, 0x0D 문단끝 등): 2바이트만
+                # - 일반 UCS-2 문자: 2바이트
+                # 통째로 decode하면 인라인 요소의 12바이트가 한자 등으로 오변환됨
+                _INLINE = {4, 5, 6, 7, 8, 9}
+                chars = []
+                pos = 0
+                while pos + 2 <= len(record):
+                    ch = struct.unpack_from("<H", record, pos)[0]
+                    pos += 2
+                    if ch in _INLINE:
+                        pos += 12  # 인라인 요소 추가 데이터 건너뜀
+                    elif ch < 32:
+                        pass  # 단순 제어문자는 추가 데이터 없이 버림
+                    else:
+                        c = chr(ch)
+                        if c.isprintable() or c in "\n\r":
+                            chars.append(c)
+                cleaned = "".join(chars).strip()
                 if cleaned:
                     texts.append(cleaned)
             except Exception:
@@ -81,16 +93,11 @@ def _parse_records(data: bytes) -> str:
 def extract_hwp_text(hwp_path: str) -> str:
     try:
         with olefile.OleFileIO(hwp_path) as ole:
-            compressed = _is_compressed(ole)
-            all_texts  = []
+            all_texts = []
             idx = 0
             while ole.exists(f"BodyText/Section{idx}"):
                 raw = ole.openstream(f"BodyText/Section{idx}").read()
-                if compressed:
-                    try:
-                        raw = zlib.decompress(raw, -15)
-                    except zlib.error:
-                        pass
+                raw = _decompress_section(raw)  # 압축 여부 관계없이 항상 시도
                 section_text = _parse_records(raw)
                 if section_text.strip():
                     all_texts.append(section_text)

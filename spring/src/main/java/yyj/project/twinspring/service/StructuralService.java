@@ -19,6 +19,9 @@ public interface StructuralService {
     /** 프로젝트 전체 오버라이드 초기화 */
     Mono<Void> resetOverrides(String projectId);
 
-    /** DSM 구조해석 수행 */
-    Mono<StructuralAnalysisResultDTO> analyze(String projectId, String codeStandard, String structureType);
+    /** DSM 구조해석 수행 (사용자 환경/하중 조건 포함) — 결과 자동 캐시 */
+    Mono<StructuralAnalysisResultDTO> analyze(String projectId, StructuralAnalysisRequestDTO req);
+
+    /** 마지막 구조해석 캐시 조회 */
+    Mono<StructuralAnalysisCacheDTO> getLastCache(String projectId);
 }

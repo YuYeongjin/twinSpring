@@ -69,16 +69,31 @@ public class StructuralController {
     }
 
     /**
-     * POST /api/structural/analyze/{projectId}?codeStandard=KDS&structureType=BUILDING
-     * DSM 구조해석 수행
+     * POST /api/structural/analyze/{projectId}
+     * Body: StructuralAnalysisRequestDTO (환경 조건 + 하중 조건)
+     * 사이드바 슬라이더 값을 받아 DSM 구조해석 수행 — 결과 자동 캐시 저장
      */
     @PostMapping("/analyze/{projectId}")
     public Mono<ResponseEntity<StructuralAnalysisResultDTO>> analyze(
             @PathVariable String projectId,
-            @RequestParam(defaultValue = "KDS")      String codeStandard,
-            @RequestParam(defaultValue = "BUILDING") String structureType) {
+            @RequestBody(required = false) StructuralAnalysisRequestDTO req) {
 
-        return structuralService.analyze(projectId, codeStandard, structureType)
+        final StructuralAnalysisRequestDTO finalReq = (req != null) ? req : new StructuralAnalysisRequestDTO();
+        return structuralService.analyze(projectId, finalReq)
                 .map(ResponseEntity::ok);
+    }
+
+    /**
+     * GET /api/structural/results/{projectId}
+     * 마지막 구조해석 캐시 조회 — 탭 재진입 / 새로고침 시 복원용
+     */
+    @GetMapping("/results/{projectId}")
+    public Mono<ResponseEntity<StructuralAnalysisCacheDTO>> getLastResult(
+            @PathVariable String projectId) {
+
+        return structuralService.getLastCache(projectId)
+                .map(cache -> cache != null
+                        ? ResponseEntity.ok(cache)
+                        : ResponseEntity.<StructuralAnalysisCacheDTO>noContent().build());
     }
 }
