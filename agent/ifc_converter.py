@@ -164,20 +164,61 @@ def _detect_unit_scale(ifc) -> float:
 
 
 def _extract_geo_origin(ifc) -> dict:
+    """지리 원점 정보 추출.
+    1순위: IFC4 IfcMapConversion (CRS 기반 좌표 변환 정보)
+    2순위: IfcSite RefLatitude/RefLongitude (DMS, IFC2x3 방식)
+    D-2: IfcMapConversion, D-4: 다중 IfcSite 전수 탐색."""
+    # ── 1순위: IFC4 IfcMapConversion ─────────────────────────────────
     try:
-        sites = ifc.by_type("IfcSite")
-        if sites:
-            site = sites[0]
-            lat = _dms_to_decimal(getattr(site, "RefLatitude", None))
-            lon = _dms_to_decimal(getattr(site, "RefLongitude", None))
-            elev = getattr(site, "RefElevation", None)
-            return {
-                "latitude":  lat,
-                "longitude": lon,
-                "elevation": float(elev) if elev is not None else None,
-            }
+        for conv in ifc.by_type("IfcMapConversion"):
+            eastings  = getattr(conv, "Eastings",          None)
+            northings = getattr(conv, "Northings",         None)
+            height    = getattr(conv, "OrthogonalHeight",  None)
+            map_scale = getattr(conv, "Scale",             None)
+            x_abs     = getattr(conv, "XAxisAbscissa",     None)
+            x_ord     = getattr(conv, "XAxisOrdinate",     None)
+
+            # CRS 이름 추출 (IfcProjectedCRS)
+            crs_name = None
+            try:
+                src = getattr(conv, "SourceCRS", None) or getattr(conv, "TargetCRS", None)
+                if src:
+                    crs_name = getattr(src, "Name", None)
+            except Exception:
+                pass
+
+            if eastings is not None or northings is not None:
+                return {
+                    "latitude":  None,
+                    "longitude": None,
+                    "elevation": float(height) if height is not None else None,
+                    "mapConversion": {
+                        "eastings":       float(eastings)  if eastings  is not None else None,
+                        "northings":      float(northings) if northings is not None else None,
+                        "scale":          float(map_scale) if map_scale is not None else 1.0,
+                        "xAxisAbscissa":  float(x_abs)     if x_abs     is not None else 1.0,
+                        "xAxisOrdinate":  float(x_ord)     if x_ord     is not None else 0.0,
+                        "crsName":        str(crs_name)    if crs_name  is not None else None,
+                    },
+                }
     except Exception:
         pass
+
+    # ── 2순위: IfcSite RefLatitude/RefLongitude (전수 탐색 D-4) ──────
+    try:
+        for site in ifc.by_type("IfcSite"):
+            lat  = _dms_to_decimal(getattr(site, "RefLatitude",  None))
+            lon  = _dms_to_decimal(getattr(site, "RefLongitude", None))
+            elev = getattr(site, "RefElevation", None)
+            if lat is not None or lon is not None:
+                return {
+                    "latitude":  lat,
+                    "longitude": lon,
+                    "elevation": float(elev) if elev is not None else None,
+                }
+    except Exception:
+        pass
+
     return {"latitude": None, "longitude": None, "elevation": None}
 
 
@@ -413,8 +454,6 @@ def _extract_spatial_structure(ifc) -> tuple[dict, list]:
         logger.warning("[IFC Spatial] 요소-층 매핑 실패: %s", e)
 
     # ── 4b. 폴백: IfcRelAggregates로 층에 직접 집계된 요소 매핑 ──────
-    # 일부 IFC 소프트웨어는 IfcRelContainedInSpatialStructure 대신
-    # IfcRelAggregates로 요소를 층에 연결하므로 누락 방지를 위해 추가 탐색
     try:
         for rel in ifc.by_type("IfcRelAggregates"):
             parent = getattr(rel, "RelatingObject", None)
@@ -442,6 +481,62 @@ def _extract_spatial_structure(ifc) -> tuple[dict, list]:
                     storey_element_ids[pid].append(f"IFC-{cid}")
     except Exception as e:
         logger.warning("[IFC Spatial] IfcRelAggregates 폴백 매핑 실패: %s", e)
+
+    # ── 4c. 폴백: IfcRelNests (IFC4+ 계층 관계) ─────────────────────
+    # IFC4에서 IfcRelAggregates 대신 IfcRelNests를 사용하는 소프트웨어 대응 (E-1)
+    try:
+        for rel in ifc.by_type("IfcRelNests"):
+            parent = getattr(rel, "RelatingObject", None)
+            if parent is None:
+                continue
+            pid = parent.id()
+            if pid not in storey_info:
+                continue
+            info = storey_info[pid]
+            bld_id = storey_to_building.get(pid)
+            bld_name = building_info.get(bld_id) if bld_id else None
+            for child in (getattr(rel, "RelatedObjects", []) or []):
+                try:
+                    if not child.is_a("IfcElement"):
+                        continue
+                except Exception:
+                    continue
+                cid = child.id()
+                if cid not in elem_to_spatial:
+                    elem_to_spatial[cid] = {
+                        "storey": info["name"],
+                        "storeyElevation": info["elevation"],
+                        "building": bld_name,
+                    }
+                    storey_element_ids[pid].append(f"IFC-{cid}")
+    except Exception as e:
+        logger.warning("[IFC Spatial] IfcRelNests 폴백 매핑 실패: %s", e)
+
+    # ── 4d. IfcElementAssembly 자식 요소 층 전파 (F-1) ──────────────
+    # 조립 요소(Assembly) 자체가 층에 배치된 경우, 그 자식도 동일 층으로 처리
+    try:
+        for assembly in ifc.by_type("IfcElementAssembly"):
+            aid = assembly.id()
+            if aid not in elem_to_spatial:
+                continue
+            a_spatial = elem_to_spatial[aid]
+            for rel in ifc.get_inverse(assembly):
+                if not rel.is_a("IfcRelAggregates"):
+                    continue
+                relating = getattr(rel, "RelatingObject", None)
+                if relating is None or relating.id() != aid:
+                    continue
+                for child in (getattr(rel, "RelatedObjects", []) or []):
+                    try:
+                        if not child.is_a("IfcElement"):
+                            continue
+                    except Exception:
+                        continue
+                    cid = child.id()
+                    if cid not in elem_to_spatial:
+                        elem_to_spatial[cid] = a_spatial
+    except Exception as e:
+        logger.warning("[IFC Spatial] IfcElementAssembly 자식 매핑 실패: %s", e)
 
     # ── 5. 층 목록 구성 ───────────────────────────────────────────────
     try:
@@ -661,6 +756,10 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
     geom_scale = user_scale  # geometry용: ifcopenshell.geom이 이미 미터 반환
     scale = geom_scale       # geo_origin.scale 저장값 (하위 호환)
 
+    # E-3: IFC 스키마 버전 감지 (IFC2X3 / IFC4 / IFC4X3)
+    ifc_schema = getattr(ifc, "schema", None) or "UNKNOWN"
+    logger.info("[IFC] 스키마: %s, 단위스케일: %s", ifc_schema, unit_scale)
+
     geo_info = _extract_geo_origin(ifc)
     elem_to_spatial, storeys = _extract_spatial_structure(ifc)
 
@@ -786,7 +885,7 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
             "glb_lite_bytes": lite_builder.build(),
             "elements":       [],
             "storeys":        storeys,
-            "geo_origin":     {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale},
+            "geo_origin":     {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale, "ifcSchema": ifc_schema},
         }
 
     # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z 지상 1층 기준) ──────────
@@ -809,7 +908,8 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
         "ifcOffsetX": cx,
         "ifcOffsetY": cy,
         "ifcOffsetZ": z_origin,
-        "scale": scale,
+        "scale":      scale,
+        "ifcSchema":  ifc_schema,
     }
 
     for g in raw_geoms:
@@ -876,8 +976,8 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
             "material":      mat_name,
             "globalId":      g["global_id"],
             "ifcName":       g["ifc_name"],
-            "storey":        g["spatial"].get("storey"),
-            "building":      g["spatial"].get("building"),
+            "storey":        g["spatial"].get("storey") or "미분류",
+            "building":      g["spatial"].get("building") or "미분류",
             "ifcQuantities": g["quantities"],
             "ifcProperties": g["properties"],
         })

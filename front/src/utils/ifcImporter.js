@@ -290,6 +290,37 @@ function extractSpatialStructure(ifcAPI, modelId) {
         }
       }
     } catch {}
+
+    // Step 6: IfcRelAggregates 폴백 — 층에 직접 집계된 요소 매핑 (E-2)
+    // 일부 소프트웨어(Tekla 등)는 ContainedIn 대신 Aggregates로 요소를 층에 연결
+    try {
+      const aggIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELAGGREGATES, false);
+      for (let i = 0; i < aggIds.size(); i++) {
+        const rel = ifcAPI.GetLine(modelId, aggIds.get(i), false);
+        const parentId = rel?.RelatingObject?.value;
+        if (parentId === undefined || !storeyInfoMap.has(parentId)) continue;
+
+        const storeyInfo  = storeyInfoMap.get(parentId);
+        const buildingId  = storeyToBuilding.get(parentId);
+        const buildingInfo = buildingId ? buildingInfoMap.get(buildingId) : null;
+        const related = rel?.RelatedObjects;
+        if (!Array.isArray(related)) continue;
+
+        const storeyEntry = storeys.find(s => s.expressId === parentId);
+        for (const ref of related) {
+          const elId = typeof ref === 'object' ? ref.value : ref;
+          if (elemToSpatial.has(elId)) continue; // 이미 매핑된 경우 스킵
+          elemToSpatial.set(elId, {
+            storey: storeyInfo.name,
+            storeyElevation: storeyInfo.elevation,
+            building: buildingInfo?.name || null,
+          });
+          if (storeyEntry && !storeyEntry.elementExpressIds.includes(elId)) {
+            storeyEntry.elementExpressIds.push(elId);
+          }
+        }
+      }
+    } catch {}
   } catch (e) {
     console.warn('[IFC Spatial] 공간 구조 파싱 실패:', e);
   }
@@ -510,9 +541,9 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     elements.push({
       elementId:   `IFC-${expressId}`,
       elementType: ourType,
-      positionX:   parseFloat(((wMinX + wMaxX) / 2).toFixed(4)),
-      positionY:   parseFloat(((wMinZ + wMaxZ) / 2).toFixed(4)),
-      positionZ:   parseFloat(wMinY.toFixed(4)),
+      positionX:   parseFloat(((wMinX + wMaxX) / 2).toFixed(4)),  // IFC X (m)
+      positionY:   parseFloat(((wMinZ + wMaxZ) / 2).toFixed(4)),  // IFC Y (m) = Three.js Z
+      positionZ:   parseFloat(((wMinY + wMaxY) / 2).toFixed(4)),  // IFC Z (m) = Three.js Y (높이 중심, D-3)
       sizeX:       parseFloat(sX.toFixed(4)),
       sizeY:       parseFloat(sY.toFixed(4)),
       sizeZ:       parseFloat(sZ.toFixed(4)),
@@ -578,10 +609,12 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     };
   }
 
-  // ── Step 3: 중앙 정렬 ────────────────────────────────────────────
+  // ── Step 3: 중앙 정렬 (D-3 수정: IFC 좌표계 기준 3축 통일) ─────
+  // positionX = IFC X(m), positionY = IFC Y(m), positionZ = IFC Z(m, 높이 중심)
+  // Three.js 축: X=IFC X, Y=IFC Z(높이), Z=IFC Y
   let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let minZ = Infinity;
+  let minY = Infinity, maxY = -Infinity;  // IFC Y 범위
+  let minZ = Infinity;                    // IFC Z 최솟값 → 지상 1층 근사
 
   for (const el of elements) {
     if (el.positionX < minX) minX = el.positionX;
@@ -591,35 +624,28 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     if (el.positionZ < minZ) minZ = el.positionZ;
   }
 
-  const cx = (minX + maxX) / 2;
-
-  let actualMinZ = Infinity;
-  for (const m of ifcMeshes) {
-    const p = m.positions;
-    for (let i = 2; i < p.length; i += 3) {
-      if (p[i] < actualMinZ) actualMinZ = p[i];
-    }
-  }
-  if (!isFinite(actualMinZ)) actualMinZ = (minY + maxY) / 2;
+  const cx       = (minX + maxX) / 2;  // IFC X 중심
+  const cy       = (minY + maxY) / 2;  // IFC Y 중심
+  const czOrigin = isFinite(minZ) ? minZ : 0;  // IFC Z 지상 기준 (Python 동일)
 
   const centered = elements.map(el => ({
     ...el,
     positionX: parseFloat((el.positionX - cx).toFixed(3)),
-    positionY: parseFloat((el.positionY - actualMinZ).toFixed(3)),
-    positionZ: parseFloat((el.positionZ - minZ).toFixed(3)),
+    positionY: parseFloat((el.positionY - cy).toFixed(3)),
+    positionZ: parseFloat((el.positionZ - czOrigin).toFixed(3)),
   }));
 
+  // Three.js 메시 좌표 정렬: X-=cx, Y(=IFC Z)-=czOrigin, Z(=IFC Y)-=cy
   for (const mesh of ifcMeshes) {
     const pos = mesh.positions;
     for (let i = 0; i < pos.length; i += 3) {
-      pos[i]   -= cx;
-      pos[i+1] -= minZ;
-      pos[i+2] -= actualMinZ;
+      pos[i]   -= cx;        // Three.js X  = IFC X  → -cx
+      pos[i+1] -= czOrigin;  // Three.js Y  = IFC Z  → -czOrigin (지상 기준)
+      pos[i+2] -= cy;        // Three.js Z  = IFC Y  → -cy
     }
   }
 
   // ── 층 목록에 정규화된 elementId 매핑 추가 ────────────────────────
-  // expressId → 'IFC-{expressId}' 변환 (App.js에서 projectId suffix 추가 전 단계)
   const normalizedStoreys = storeys.map(s => ({
     name:      s.name,
     elevation: s.elevation,
@@ -631,11 +657,11 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     latitude:   siteInfo?.latitude  ?? null,
     longitude:  siteInfo?.longitude ?? null,
     elevation:  siteInfo?.elevation ?? null,
-    ifcOffsetX: cx,
-    ifcOffsetY: actualMinZ,
-    ifcOffsetZ: minZ,
+    ifcOffsetX: cx,        // IFC X 중심 (Three.js X 오프셋)
+    ifcOffsetY: cy,        // IFC Y 중심 (Three.js Z 오프셋)
+    ifcOffsetZ: czOrigin,  // IFC Z 지상 기준 (Three.js Y 오프셋)
     scale,
-    detectedScale,  // WBS 물량 정규화 시 사용 (userScale 역산)
+    detectedScale,
   };
 
   console.group('[IFC GeoOrigin] 최종 geoOrigin');
