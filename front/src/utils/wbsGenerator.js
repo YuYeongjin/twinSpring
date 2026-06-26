@@ -26,17 +26,29 @@ export const WBS_NODE_TYPES = {
 };
 
 export const WBS_TYPE_LABEL = {
-  IfcWall:       '벽체공사',  IfcColumn:     '기둥공사',  IfcBeam:  '보공사',   IfcSlab:  '슬래브 공사',
-  IfcWindow:     '창호공사',  IfcDoor:       '문공사',    IfcStair: '계단공사', IfcRoof:  '지붕공사',
-  IfcMember:     '부재공사',  IfcPier:       '교각공사',  IfcFoundation: '기초공사',
+  IfcWall:        '벽체공사',    IfcColumn:      '기둥공사',   IfcBeam:       '보공사',
+  IfcSlab:        '슬래브 공사', IfcWindow:      '창호공사',   IfcDoor:       '문공사',
+  IfcStair:       '계단공사',    IfcRoof:        '지붕공사',   IfcMember:     '부재공사',
+  IfcPier:        '교각공사',    IfcFoundation:  '기초공사',
+  // 신규 타입 (A-2~A-6)
+  IfcCurtainWall: '커튼월공사',  IfcRailing:     '난간공사',   IfcRamp:       '경사로공사',
+  IfcCovering:    '마감공사',    IfcProxy:       '기타공사',
 };
 
 const PHASES = [
-  { id: 'TEMP',  name: '가설공사',     sortBase: 100 },
+  { id: 'TEMP',  name: '가설공사',          sortBase: 100 },
   { id: 'EARTH', name: '토공사 및 기초굴착', sortBase: 200 },
-  { id: 'FOUND', name: '기초공사',     sortBase: 300 },
-  { id: 'ABOVE', name: '지상구조공사', sortBase: 500 },
+  { id: 'FOUND', name: '기초 및 지하구조공사', sortBase: 300 },
+  { id: 'ABOVE', name: '지상구조공사',       sortBase: 500 },
 ];
+
+// G-1: 지하층 이름 패턴 감지
+// "B1", "B-1", "지하1층", "지하", "basement", "GL-1" 등
+const _BASEMENT_RE = /^(?:b[-\s]?\d+|지\s*하|basement|gl[-\s]?\d+)/i;
+const isBasementStorey = (name) => _BASEMENT_RE.test((name || '').trim());
+
+// G-4: 기초 공종으로 라우팅되는 요소 타입
+const FOUNDATION_TYPES = new Set(['IfcFoundation', 'IfcPier']);
 
 const SUB_TASKS = [
   { id: 'REBAR', name: '철근공사',      field: 'rebar'    },
@@ -193,71 +205,107 @@ export async function generateWbsFromLayers(layers, projectId, elements = [], op
 
       if (ph.id === 'TEMP') {
         push(nid(projectId, 'T', buildingName, 'PREP'), phId, `${phCode}.01`, '가설 및 준비공사', WBS_NODE_TYPES.TASK, buildingName, null, null, 0, phBase + 1);
+
       } else if (ph.id === 'EARTH') {
         push(nid(projectId, 'T', buildingName, 'EXC'), phId, `${phCode}.01`, '토공사 및 기초굴착', WBS_NODE_TYPES.TASK, buildingName, null, null, 0, phBase + 1);
+
       } else if (ph.id === 'FOUND') {
+        // 일반 기초공사 태스크
         push(nid(projectId, 'T', buildingName, 'FND'), phId, `${phCode}.01`, '기초공사', WBS_NODE_TYPES.TASK, buildingName, null, null, 0, phBase + 1);
-      } else if (ph.id === 'ABOVE') {
 
-        // 💡 [영진님 지시 핵심 적용] 정규식/고도 다 깨부수고 UI 레이어에 들어온 순서 그대로 1:1 루프
-        let sIdx = 0;
-        for (const storey of building.storeys) {
-          sIdx++;
-          const storeyLabel = storey.name;
-          const sId    = nid(projectId, 'ST', buildingName, ph.id, storeyLabel);
-          const sCode  = `${phCode}.${p2(sIdx)}`;
-          const sTotal = storey.types.reduce((s, t) => s + t.elementIds.length, 0);
-
-          push(sId, phId, sCode, storeyLabel, WBS_NODE_TYPES.STOREY, buildingName, storeyLabel, null, sTotal, phBase + sIdx * 1000);
-
-          let tIdx = 0;
-          for (const { ifcType, elementIds } of storey.types) {
-            tIdx++;
-            const elId   = nid(projectId, 'EL', buildingName, ph.id, storeyLabel, ifcType);
-            const elCode = `${sCode}.${p2(tIdx)}`;
-            const label  = `${storeyLabel} ${WBS_TYPE_LABEL[ifcType] ?? ifcType}`;
-            const elBase = phBase + sIdx * 1000 + tIdx * 10;
-
-            push(elId, sId, elCode, label, WBS_NODE_TYPES.ELEMENT, buildingName, storeyLabel, ifcType, elementIds.length, elBase);
-
-            for (const elemId of elementIds) {
-              mappings.push({ elementId: elemId, wbsId: elId, projectId });
-            }
-
-            // ── TASK 노드 생성 (철근/거푸집/콘크리트/양생) ──────────────
-            if (STRUCTURAL_TYPES.includes(ifcType)) {
-              const totalVolume = elementIds.reduce((sum, id) => {
-                const el = elemDataMap.get(id);
-                return el ? sum + elementVolume(el) : sum;
-              }, 0);
-
-              const ragCitations = ragCitationMap[ifcType] || [];
-              const qty = resolveQuantity(ifcType, totalVolume, standard, ragCitations);
-
-              let subIdx = 0;
-              for (const sub of SUB_TASKS) {
-                const qData = qty[sub.field];
-                if (!qData) continue;
-                subIdx++;
-                push(
-                  nid(projectId, 'TK', buildingName, ph.id, storeyLabel, ifcType, sub.id),
-                  elId,
-                  `${elCode}.${p2(subIdx)}`,
-                  sub.name,
-                  WBS_NODE_TYPES.TASK,
-                  buildingName, storeyLabel, ifcType, 0,
-                  elBase + subIdx,
-                  { quantity: qData.value, unit: qData.unit, formula: qData.formula, reason: qData.reason, standard },
-                );
-              }
-            }
+        // G-4: IfcFoundation / IfcPier 요소를 기초공사 공종에 집계
+        const foundElems = building.storeys.flatMap(s =>
+          s.types.filter(t => FOUNDATION_TYPES.has(t.ifcType))
+        );
+        if (foundElems.length > 0) {
+          let fIdx = 1;
+          for (const { ifcType, elementIds } of foundElems) {
+            fIdx++;
+            const fId   = nid(projectId, 'EL', buildingName, 'FOUND', ifcType);
+            const fCode = `${phCode}.${p2(fIdx)}`;
+            const label = WBS_TYPE_LABEL[ifcType] ?? ifcType;
+            push(fId, phId, fCode, label, WBS_NODE_TYPES.ELEMENT, buildingName, null, ifcType, elementIds.length, phBase + fIdx * 10);
+            for (const elemId of elementIds) mappings.push({ elementId: elemId, wbsId: fId, projectId });
           }
+        }
+
+        // G-1: 지하층 공종 배치 (FOUND 아래)
+        const basementStoreys = building.storeys.filter(s => isBasementStorey(s.name));
+        let bsIdx = foundElems.length + 1;
+        for (const storey of basementStoreys) {
+          bsIdx++;
+          _pushStoreyBlock({ storey, parentId: phId, phCode, sIdx: bsIdx, phBase, buildingName, ph: ph.id, projectId, wbsNodes, mappings, push, elemDataMap, ragCitationMap, standard });
+        }
+
+      } else if (ph.id === 'ABOVE') {
+        // G-1: 지하층은 FOUND에서 처리했으므로 ABOVE에서 제외
+        const aboveStoreys = building.storeys.filter(s => !isBasementStorey(s.name));
+
+        let sIdx = 0;
+        for (const storey of aboveStoreys) {
+          sIdx++;
+          _pushStoreyBlock({ storey, parentId: phId, phCode, sIdx, phBase, buildingName, ph: ph.id, projectId, wbsNodes, mappings, push, elemDataMap, ragCitationMap, standard });
         }
       }
     }
   }
 
   return { wbsNodes, mappings };
+}
+
+// 층 하나의 WBS 노드 블록(STOREY → ELEMENT → TASK)을 생성하는 내부 헬퍼.
+// ABOVE와 FOUND(지하층) 두 곳에서 공유.
+function _pushStoreyBlock({ storey, parentId, phCode, sIdx, phBase, buildingName, ph, projectId, wbsNodes, mappings, push, elemDataMap, ragCitationMap, standard }) {
+  const storeyLabel = storey.name;
+  const sId    = nid(projectId, 'ST', buildingName, ph, storeyLabel);
+  const sCode  = `${phCode}.${p2(sIdx)}`;
+  // G-4: 기초 타입은 FOUND 공종으로 이미 처리됨 → ABOVE/지하 블록에서 제외
+  const validTypes = storey.types.filter(t => !FOUNDATION_TYPES.has(t.ifcType));
+  const sTotal = validTypes.reduce((s, t) => s + t.elementIds.length, 0);
+
+  push(sId, parentId, sCode, storeyLabel, WBS_NODE_TYPES.STOREY, buildingName, storeyLabel, null, sTotal, phBase + sIdx * 1000);
+
+  let tIdx = 0;
+  for (const { ifcType, elementIds } of validTypes) {
+    tIdx++;
+    const elId   = nid(projectId, 'EL', buildingName, ph, storeyLabel, ifcType);
+    const elCode = `${sCode}.${p2(tIdx)}`;
+    const label  = `${storeyLabel} ${WBS_TYPE_LABEL[ifcType] ?? ifcType}`;
+    const elBase = phBase + sIdx * 1000 + tIdx * 10;
+
+    push(elId, sId, elCode, label, WBS_NODE_TYPES.ELEMENT, buildingName, storeyLabel, ifcType, elementIds.length, elBase);
+
+    for (const elemId of elementIds) {
+      mappings.push({ elementId: elemId, wbsId: elId, projectId });
+    }
+
+    if (STRUCTURAL_TYPES.includes(ifcType)) {
+      const totalVolume = elementIds.reduce((sum, id) => {
+        const el = elemDataMap.get(id);
+        return el ? sum + elementVolume(el) : sum;
+      }, 0);
+
+      const ragCitations = ragCitationMap[ifcType] || [];
+      const qty = resolveQuantity(ifcType, totalVolume, standard, ragCitations);
+
+      let subIdx = 0;
+      for (const sub of SUB_TASKS) {
+        const qData = qty[sub.field];
+        if (!qData) continue;
+        subIdx++;
+        push(
+          nid(projectId, 'TK', buildingName, ph, storeyLabel, ifcType, sub.id),
+          elId,
+          `${elCode}.${p2(subIdx)}`,
+          sub.name,
+          WBS_NODE_TYPES.TASK,
+          buildingName, storeyLabel, ifcType, 0,
+          elBase + subIdx,
+          { quantity: qData.value, unit: qData.unit, formula: qData.formula, reason: qData.reason, standard },
+        );
+      }
+    }
+  }
 }
 
 export function buildWbsTree(nodes) {
@@ -275,8 +323,22 @@ export function buildWbsTree(nodes) {
   return roots;
 }
 
+// G-3: 짧은 해시를 붙여 이름 잘림에 의한 충돌 방지.
+// 해시는 ss() 잘리기 전 원본 문자열로 계산 → 30자 이후 차이도 구분 가능.
 function nid(...parts) {
-  return parts.map(p => ss(String(p ?? 'null'))).join('-');
+  const original  = parts.map(p => String(p ?? 'null')).join('\x00'); // 원본 (해시용)
+  const sanitized = parts.map(p => ss(String(p ?? 'null'))).join('-'); // 정제 (표시용)
+  const h = _hash(original).toString(36).slice(0, 5);
+  return `${sanitized.slice(0, 70)}-${h}`;
+}
+
+function _hash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
 }
 
 function ss(str) {

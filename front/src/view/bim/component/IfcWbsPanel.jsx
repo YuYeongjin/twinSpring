@@ -21,6 +21,7 @@ function progressColor(p) {
 
 // ── 수량 툴팁 (? 버튼) ────────────────────────────────────────────────
 function QuantityBadge({ quantity, unit, formula, reason }) {
+  const t = useT('bimDashboard');
   const [show, setShow] = useState(false);
   if (quantity == null) return null;
 
@@ -50,9 +51,9 @@ function QuantityBadge({ quantity, unit, formula, reason }) {
           width: 220, boxShadow: '0 4px 16px #0006',
           pointerEvents: 'none',
         }}>
-          <p style={{ margin: '0 0 4px', fontSize: 10, color: '#64748b', fontWeight: 600 }}>계산식</p>
+          <p style={{ margin: '0 0 4px', fontSize: 10, color: '#64748b', fontWeight: 600 }}>{t('ifcWbsFormulaLabel')}</p>
           <p style={{ margin: '0 0 6px', fontSize: 11, color: '#93c5fd', wordBreak: 'break-all' }}>{formula}</p>
-          <p style={{ margin: '0 0 4px', fontSize: 10, color: '#64748b', fontWeight: 600 }}>시방서 근거</p>
+          <p style={{ margin: '0 0 4px', fontSize: 10, color: '#64748b', fontWeight: 600 }}>{t('ifcWbsSpecBasis')}</p>
           <p style={{ margin: 0, fontSize: 11, color: '#cbd5e1', wordBreak: 'break-all' }}>{reason}</p>
         </span>
       )}
@@ -290,7 +291,7 @@ export default function IfcWbsPanel({
     return (
       <div style={{ padding: 20, textAlign: 'center', fontSize: 12 }}>
         {isGenerating ? (
-          <span style={{ color: '#60a5fa' }}>⚙ WBS 생성 중...</span>
+          <span style={{ color: '#60a5fa' }}>⚙ {t('ifcWbsGenerating')}</span>
         ) : (
           <span style={{ color: '#475569' }}>{t('wbsEmpty')}</span>
         )}

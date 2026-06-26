@@ -105,9 +105,10 @@ function ChartCard({ title, badge, children }) {
 }
 
 function EmptyChart() {
+  const t = useT('settings');
   return (
     <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ fontSize: 11, color: '#374151' }}>서버 시작 후 5분마다 수집 · 데이터 누적 중…</span>
+      <span style={{ fontSize: 11, color: '#374151' }}>{t('nginxEmptyChart')}</span>
     </div>
   );
 }
@@ -124,6 +125,7 @@ function fmtHourLabel(ts) {
 
 // nginx access.log 파싱 결과를 시각화하는 섹션
 function NginxAccessSection({ nginxLog }) {
+  const t = useT('settings');
   if (!nginxLog) return null;
 
   // 로그 파일 없음: 설치 안내
@@ -134,13 +136,13 @@ function NginxAccessSection({ nginxLog }) {
         borderRadius: 10, padding: '14px 16px', marginBottom: 14,
       }}>
         <div style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-          🖥 서버 접속 기록 (nginx)
+          {t('nginxSection')}
         </div>
         <div style={{ fontSize: 11, color: '#4b5563', lineHeight: 1.8 }}>
           <div style={{ color: '#f59e0b', marginBottom: 6 }}>⚠ {nginxLog.reason}</div>
           <div style={{ color: '#374151', fontFamily: 'monospace', fontSize: 10, background: '#0a1525',
             padding: '10px 12px', borderRadius: 6, border: '1px solid #1a2a3a' }}>
-            {'# K8s Deployment에 아래 볼륨 추가 후 재배포:'}
+            {t('nginxK8sGuide')}
             {'\n'}
             {'volumes:'}
             {'\n'}
@@ -157,7 +159,7 @@ function NginxAccessSection({ nginxLog }) {
             {'    readOnly: true'}
           </div>
           <div style={{ marginTop: 6, color: '#374151', fontSize: 10 }}>
-            또는 환경변수 <code style={{ color: '#60a5fa' }}>NGINX_ACCESS_LOG=/var/log/nginx/access.log</code>
+            {t('nginxEnvVarOr')} <code style={{ color: '#60a5fa' }}>NGINX_ACCESS_LOG=/var/log/nginx/access.log</code>
           </div>
         </div>
       </div>
@@ -183,16 +185,16 @@ function NginxAccessSection({ nginxLog }) {
       borderRadius: 10, padding: '14px 16px', marginBottom: 14,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-        <span style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700 }}>🖥 서버 접속 기록 (nginx)</span>
+        <span style={{ color: '#93c5fd', fontSize: 12, fontWeight: 700 }}>{t('nginxSectionAvailable')}</span>
         <span style={{ fontSize: 10, color: '#4b5563' }}>
-          {nginxLog.logPath} · {(nginxLog.parsedLines || 0).toLocaleString()}줄 파싱 · 총 {totalReq.toLocaleString()} 요청
+          {t('nginxParsedStats', { path: nginxLog.logPath, lines: (nginxLog.parsedLines || 0).toLocaleString(), req: totalReq.toLocaleString() })}
         </span>
       </div>
 
       {/* 시간별 요청 수 (BarChart) */}
       {chartData.length === 0
         ? <div style={{ height: 100, display:'flex', alignItems:'center', justifyContent:'center',
-            fontSize: 11, color: '#374151' }}>로그가 비어있습니다</div>
+            fontSize: 11, color: '#374151' }}>{t('nginxLogEmpty')}</div>
         : (
           <ResponsiveContainer width="100%" height={150}>
             <BarChart data={chartData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
@@ -205,10 +207,10 @@ function NginxAccessSection({ nginxLog }) {
                 contentStyle={CustomTooltipStyle}
                 formatter={(v, name) => [
                   v,
-                  name === 'requests' ? '요청 수' : '유니크 IP',
+                  name === 'requests' ? t('nginxRequests') : t('nginxUniqueIp'),
                 ]}
               />
-              <Legend formatter={(v) => v === 'requests' ? '요청 수' : '유니크 IP'}
+              <Legend formatter={(v) => v === 'requests' ? t('nginxRequests') : t('nginxUniqueIp')}
                 wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
               <Bar dataKey="requests"  fill="#38bdf8" maxBarSize={20} />
               <Bar dataKey="uniqueIps" fill="#818cf8" maxBarSize={20} />
@@ -220,7 +222,7 @@ function NginxAccessSection({ nginxLog }) {
       {/* 상위 IP 목록 */}
       {topIps.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>상위 접속 IP (nginx 로그 기준)</div>
+          <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>{t('nginxTopIp')}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {topIps.map((ip, i) => (
               <span key={i} style={{
@@ -329,7 +331,7 @@ function ServerMonitor() {
       {error && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 12 }}>⚠ {error}</div>}
 
       {/* ── 1. 접속자 수 ── */}
-      <ChartCard title="👥 접속자 수" badge="요청/5분">
+      <ChartCard title={ts('monitorVisitors')} badge={ts('monitorVisitorBadge')}>
         {chartData.length === 0 ? <EmptyChart /> : (
           <ResponsiveContainer width="100%" height={140}>
             <LineChart data={chartData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
@@ -340,7 +342,7 @@ function ServerMonitor() {
               <Tooltip
                 labelFormatter={fmtTime}
                 contentStyle={CustomTooltipStyle}
-                formatter={(v) => [`${v} 건`, '요청']}
+                formatter={(v) => [ts('monitorReqUnit', { n: v }), ts('monitorVisitors')]}
               />
               <Line type="monotone" dataKey="visitors" stroke="#60a5fa" strokeWidth={2}
                 dot={false} activeDot={{ r: 4 }} />
@@ -362,7 +364,7 @@ function ServerMonitor() {
       </ChartCard>
 
       {/* ── 2. 네트워크 트래픽 ── */}
-      <ChartCard title="📡 네트워크 트래픽" badge="MB / 5분">
+      <ChartCard title={ts('monitorNetwork')} badge={ts('monitorNetworkBadge')}>
         {chartData.length === 0 ? <EmptyChart /> : (
           <ResponsiveContainer width="100%" height={140}>
             <LineChart data={chartData} margin={{ top: 0, right: 16, left: -20, bottom: 0 }}>
@@ -373,9 +375,9 @@ function ServerMonitor() {
               <Tooltip
                 labelFormatter={fmtTime}
                 contentStyle={CustomTooltipStyle}
-                formatter={(v, name) => [`${v} MB`, name === 'rx' ? '수신 ↓' : '송신 ↑']}
+                formatter={(v, name) => [`${v} MB`, name === 'rx' ? ts('monitorNetRx') : ts('monitorNetTx')]}
               />
-              <Legend formatter={(v) => v === 'rx' ? '수신 ↓' : '송신 ↑'}
+              <Legend formatter={(v) => v === 'rx' ? ts('monitorNetRx') : ts('monitorNetTx')}
                 wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
               <Line type="monotone" dataKey="rx" stroke="#4ade80" strokeWidth={2}
                 dot={false} activeDot={{ r: 4 }} />
@@ -388,9 +390,9 @@ function ServerMonitor() {
 
       {/* ── 3. 디스크 사용률 ── */}
       <ChartCard
-        title="💾 디스크 사용률"
+        title={ts('monitorDisk')}
         badge={disk.totalBytes > 0
-          ? `현재 ${fmtBytes(disk.usedBytes)} / ${fmtBytes(disk.totalBytes)}  (${disk.usedPercent}%)`
+          ? `${ts('monitorDiskCurrent')} ${fmtBytes(disk.usedBytes)} / ${fmtBytes(disk.totalBytes)}  (${disk.usedPercent}%)`
           : undefined}
       >
         {chartData.length === 0 ? <EmptyChart /> : (
@@ -409,7 +411,7 @@ function ServerMonitor() {
               <Tooltip
                 labelFormatter={fmtTime}
                 contentStyle={CustomTooltipStyle}
-                formatter={(v) => [`${v}%`, '디스크']}
+                formatter={(v) => [`${v}%`, ts('monitorDiskLabel')]}
               />
               <Area type="monotone" dataKey="disk" stroke="#8b5cf6" strokeWidth={2}
                 fill="url(#diskGrad)" dot={false} activeDot={{ r: 4 }} />
@@ -609,13 +611,104 @@ function RagManager() {
   );
 }
 
+// ── GraphRAG 인덱스 관리 (Leiden 커뮤니티) ──────────────────────────────────
+function GraphRagManager() {
+  const t = useT('settings');
+  const [status, setStatus]     = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [msg, setMsg]           = useState('');
+
+  const fetchStatus = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await AxiosCustom.get('/api/chat/graph-rag-status');
+      setStatus(r.data);
+      if (r.data?.status === 'running') {
+        setTimeout(fetchStatus, 5000);
+      } else {
+        setBuilding(false);
+      }
+    } catch {
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+
+  // 새로고침 = GraphRAG 인덱스 재구축 (엔티티 추출 + Leiden + 요약)
+  const handleRebuild = async () => {
+    setBuilding(true);
+    setMsg('');
+    try {
+      const r = await AxiosCustom.post('/api/chat/graph-rag-rebuild');
+      setMsg(r.data?.message || '');
+      setTimeout(fetchStatus, 5000);
+    } catch {
+      setMsg(t('graphRagConnFailed'));
+      setBuilding(false);
+    }
+  };
+
+  const isRunning = building || status?.status === 'running';
+
+  const statusColor = !status ? '#4b5563'
+    : !status.dbReachable ? '#ef4444'
+    : status.hasData ? '#a78bfa'
+    : '#f59e0b';
+
+  const statusText = !status ? t('graphRagChecking')
+    : !status.dbReachable ? t('graphRagDbFail')
+    : status.status === 'running' ? t('graphRagIndexing')
+    : status.hasData ? t('graphRagOk', { n: status.communities?.toLocaleString() })
+    : t('graphRagEmpty');
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div>
+          <span style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600 }}>{t('graphRagCollection')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%',
+              background: statusColor, display: 'inline-block', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: statusColor }}>{statusText}</span>
+          </div>
+        </div>
+        {/* 새로고침 = 재구축 트리거 */}
+        <button onClick={handleRebuild} disabled={isRunning}
+          style={{
+            fontSize: 11, padding: '4px 14px', borderRadius: 6,
+            cursor: isRunning ? 'wait' : 'pointer',
+            background: isRunning ? '#1a1a2e' : '#2d1b69',
+            border: `1px solid ${isRunning ? '#2d2d4e' : '#5b21b6'}`,
+            color: isRunning ? '#6b7280' : '#a78bfa',
+          }}>
+          {isRunning ? t('graphRagBuilding') : t('graphRagRebuildBtn')}
+        </button>
+      </div>
+      {msg && (
+        <div style={{ fontSize: 11, color: '#c4b5fd', background: '#0d0d1a',
+          border: '1px solid #3b1f6e', borderRadius: 6, padding: '6px 10px', marginTop: 4 }}>
+          {msg}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
+        {t('graphRagRebuildMsg')}
+      </div>
+    </div>
+  );
+}
+
 // ── 센서 임계값 편집 섹션 ───────────────────────────────────────────────────
 function SensorThresholdSection() {
+  const t = useT('settings');
   const FIELDS = [
-    { key: 'temp_high', label: '온도 상한 (°C)', color: '#ef4444', min: 0,   max: 80 },
-    { key: 'temp_low',  label: '온도 하한 (°C)', color: '#3b82f6', min: -30, max: 40 },
-    { key: 'hum_high',  label: '습도 상한 (%)',  color: '#f59e0b', min: 0,   max: 100 },
-    { key: 'hum_low',   label: '습도 하한 (%)',  color: '#6366f1', min: 0,   max: 100 },
+    { key: 'temp_high', label: t('sensorTempHigh'), color: '#ef4444', min: 0,   max: 80 },
+    { key: 'temp_low',  label: t('sensorTempLow'),  color: '#3b82f6', min: -30, max: 40 },
+    { key: 'hum_high',  label: t('sensorHumHigh'),  color: '#f59e0b', min: 0,   max: 100 },
+    { key: 'hum_low',   label: t('sensorHumLow'),   color: '#6366f1', min: 0,   max: 100 },
   ];
 
   const [values, setValues] = useState(null);   // null = 로딩 중
@@ -629,9 +722,9 @@ function SensorThresholdSection() {
       setValues(r.data);
       setDraft(r.data);
     } catch {
-      setMsg('Agent 서버에 연결할 수 없습니다.');
+      setMsg(t('sensorConnFailed'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -642,10 +735,10 @@ function SensorThresholdSection() {
       const r = await AxiosCustom.put('/api/chat/sensor-thresholds', draft);
       setValues(r.data);
       setDraft(r.data);
-      setMsg('저장됨');
+      setMsg(t('sensorSaved'));
       setTimeout(() => setMsg(''), 2000);
     } catch {
-      setMsg('저장 실패');
+      setMsg(t('sensorSaveFailed'));
     } finally {
       setSaving(false);
     }
@@ -664,7 +757,7 @@ function SensorThresholdSection() {
 
   if (values === null) {
     return <div style={{ color: '#4b5563', fontSize: 12 }}>
-      {msg || '불러오는 중…'}
+      {msg || t('sensorLoading')}
     </div>;
   }
 
@@ -700,7 +793,7 @@ function SensorThresholdSection() {
           border: '1px solid #1e3a5f', borderRadius: 6,
           padding: '6px 10px', marginBottom: 12,
         }}>
-          변경 예정: {FIELDS.filter(f => draft[f.key] !== values[f.key])
+          {t('sensorPendingPrefix')} {FIELDS.filter(f => draft[f.key] !== values[f.key])
             .map(f => `${f.label} ${values[f.key]} → ${draft[f.key]}`).join(' / ')}
         </div>
       )}
@@ -717,7 +810,7 @@ function SensorThresholdSection() {
             cursor: saving ? 'wait' : 'pointer',
           }}
         >
-          {saving ? '저장 중…' : '적용'}
+          {saving ? t('sensorSaving') : t('sensorApply')}
         </button>
         <button
           onClick={load}
@@ -726,16 +819,16 @@ function SensorThresholdSection() {
             background: 'transparent', border: '1px solid #253347', color: '#6b7280', cursor: 'pointer',
           }}
         >
-          초기화
+          {t('sensorReset')}
         </button>
         {msg && (
-          <span style={{ fontSize: 12, color: msg === '저장됨' ? '#4ade80' : '#f87171' }}>
-            {msg === '저장됨' ? '✓ ' : '✗ '}{msg}
+          <span style={{ fontSize: 12, color: msg === t('sensorSaved') ? '#4ade80' : '#f87171' }}>
+            {msg === t('sensorSaved') ? '✓ ' : '✗ '}{msg}
           </span>
         )}
       </div>
       <p style={{ fontSize: 10, color: '#374151', marginTop: 8 }}>
-        Agent 재시작 없이 즉시 반영됩니다. 서버 재시작 시 환경변수(SENSOR_TEMP_HIGH 등) 값으로 초기화됩니다.
+        {t('sensorResetNote')}
       </p>
     </div>
   );
@@ -839,13 +932,18 @@ export default function SettingsPanel() {
       </h2>
 
       {/* ── 센서 알람 임계값 ── */}
-      <Section title="센서 알람 임계값">
+      <Section title={t('sensorAlarmSection')}>
         <SensorThresholdSection />
       </Section>
 
       {/* ── RAG 인덱스 관리 ── */}
       <Section title={t('ragSection')}>
         <RagManager />
+      </Section>
+
+      {/* ── GraphRAG 인덱스 관리 ── */}
+      <Section title={t('graphRagSection')}>
+        <GraphRagManager />
       </Section>
 
       {/* ── 서버 모니터링 ── */}

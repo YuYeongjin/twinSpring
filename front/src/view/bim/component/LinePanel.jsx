@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LINE_TYPE_COLORS, LINE_TYPE_LABELS } from '../element/BimLine';
+import { useT } from '../../../i18n/LanguageContext';
 
 /**
  * LinePanel — 3D 선(Line) 작도 사이드 패널
@@ -31,6 +32,7 @@ export default function LinePanel({
     onDeleteLine,     // (lineId) => void
     onClearLines,     // () => void
 }) {
+    const t = useT('bimDashboard');
     // 좌표 입력 폼
     const [coordForm, setCoordForm] = useState({
         x1: 0, y1: 0, z1: 0,
@@ -240,11 +242,11 @@ export default function LinePanel({
                                         <div className="flex items-center gap-1">
                                             <span className="text-xs font-medium text-gray-300 truncate">
                                                 {line.lineType && line.lineType !== 'line'
-                                                    ? LINE_TYPE_LABELS[line.lineType] ?? line.lineType
+                                                    ? t(`lineType${line.lineType.charAt(0).toUpperCase()}${line.lineType.slice(1)}`)
                                                     : `Line ${idx + 1}`}
                                             </span>
                                             {isMulti && (
-                                                <span className="text-[10px] px-1 rounded bg-orange-800/60 text-orange-300">다중</span>
+                                                <span className="text-[10px] px-1 rounded bg-orange-800/60 text-orange-300">{t('multiLineBadge')}</span>
                                             )}
                                         </div>
                                         <div className="text-xs text-gray-500">

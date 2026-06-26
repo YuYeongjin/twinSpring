@@ -15,6 +15,7 @@ node extras에 elementType, storey, color 포함.
 
 from __future__ import annotations
 
+import re
 import struct
 import json
 import logging
@@ -26,20 +27,43 @@ logger = logging.getLogger(__name__)
 
 # ── IFC 엔티티 타입 → 서비스 elementType 매핑 ─────────────────────
 ELEMENT_TYPE_MAP = {
-    "IfcColumn":             "IfcColumn",
-    "IfcBeam":               "IfcBeam",
-    "IfcWall":               "IfcWall",
-    "IfcWallStandardCase":   "IfcWall",
-    "IfcSlab":               "IfcSlab",
-    "IfcMember":             "IfcMember",
-    "IfcFooting":            "IfcFoundation",  # 기초 부재 — 슬래브와 분리
-    "IfcPile":               "IfcPier",
-    "IfcPlate":              "IfcMember",
-    "IfcDoor":               "IfcDoor",
-    "IfcWindow":             "IfcWindow",
-    "IfcStair":              "IfcStair",
-    "IfcStairFlight":        "IfcStair",
-    "IfcRoof":               "IfcRoof",
+    # 기둥
+    "IfcColumn":                 "IfcColumn",
+    "IfcColumnStandardCase":     "IfcColumn",      # IFC4 표준 케이스 (A-1)
+    # 보
+    "IfcBeam":                   "IfcBeam",
+    "IfcBeamStandardCase":       "IfcBeam",        # IFC4 표준 케이스 (A-1)
+    # 벽체
+    "IfcWall":                   "IfcWall",
+    "IfcWallStandardCase":       "IfcWall",
+    # 슬래브
+    "IfcSlab":                   "IfcSlab",
+    # 구조 부재
+    "IfcMember":                 "IfcMember",
+    "IfcPlate":                  "IfcMember",
+    # 기초
+    "IfcFooting":                "IfcFoundation",
+    "IfcPile":                   "IfcPier",
+    # 개구부 요소
+    "IfcDoor":                   "IfcDoor",
+    "IfcDoorStandardCase":       "IfcDoor",        # IFC4 (A-7)
+    "IfcWindow":                 "IfcWindow",
+    "IfcWindowStandardCase":     "IfcWindow",      # IFC4 (A-7)
+    # 수직 동선
+    "IfcStair":                  "IfcStair",
+    "IfcStairFlight":            "IfcStair",
+    "IfcRamp":                   "IfcRamp",        # 경사로 (A-4)
+    "IfcRampFlight":             "IfcRamp",        # (A-4)
+    # 지붕
+    "IfcRoof":                   "IfcRoof",
+    # 커튼월 (A-2)
+    "IfcCurtainWall":            "IfcCurtainWall",
+    # 난간 (A-3)
+    "IfcRailing":                "IfcRailing",
+    # 마감재 (A-5)
+    "IfcCovering":               "IfcCovering",
+    # 기타 미분류 요소 (A-6)
+    "IfcBuildingElementProxy":   "IfcProxy",
 }
 
 ELEMENT_COLORS = {
@@ -47,14 +71,48 @@ ELEMENT_COLORS = {
     "IfcBeam":        [0.60, 0.60, 0.70, 1.0],
     "IfcWall":        [0.80, 0.78, 0.72, 1.0],
     "IfcSlab":        [0.75, 0.75, 0.80, 1.0],
-    "IfcFoundation":  [0.55, 0.42, 0.22, 1.0],  # 기초 — 흙/콘크리트 갈색
+    "IfcFoundation":  [0.55, 0.42, 0.22, 1.0],
     "IfcMember":      [0.55, 0.65, 0.80, 1.0],
     "IfcPier":        [0.70, 0.70, 0.75, 1.0],
     "IfcDoor":        [0.65, 0.45, 0.30, 1.0],
     "IfcWindow":      [0.50, 0.70, 0.90, 0.6],
     "IfcStair":       [0.75, 0.72, 0.65, 1.0],
+    "IfcRamp":        [0.78, 0.75, 0.68, 1.0],    # (A-4)
     "IfcRoof":        [0.60, 0.55, 0.50, 1.0],
+    "IfcCurtainWall": [0.50, 0.72, 0.92, 0.50],   # 반투명 유리 (A-2)
+    "IfcRailing":     [0.55, 0.58, 0.62, 1.0],    # (A-3)
+    "IfcCovering":    [0.88, 0.84, 0.78, 1.0],    # 마감재 (A-5)
+    "IfcProxy":       [0.68, 0.50, 0.72, 0.85],   # 미분류 보라 (A-6)
 }
+
+_GROUND_NAME_RE = re.compile(
+    r'^(?:지상\s*)?1\s*층$'          # 1층, 지상1층, 지상 1층
+    r'|^(?:1\s*f|1fl|fl\.?\s*1)$'   # 1F, 1FL, FL1, FL.1
+    r'|^level\s*1$'                  # Level 1
+    r'|^ground(?:\s+(?:floor|level))?$',  # Ground, Ground Floor, Ground Level
+    re.IGNORECASE,
+)
+
+def _find_ground_floor_elevation(storeys: list) -> Optional[float]:
+    """지상 1층 elevation(미터)을 반환.
+    1순위: 이름이 '1층', '1F', 'Level 1', 'Ground Floor' 등과 일치하는 층
+    2순위: 가장 낮은 비음수(-0.1m 허용) elevation → 지상 최저층
+    없으면 None → 호출부에서 min_z 폴백
+    """
+    valid = [s for s in storeys if s.get("elevation") is not None]
+    if not valid:
+        return None
+
+    for s in valid:
+        if _GROUND_NAME_RE.match((s["name"] or "").strip()):
+            return s["elevation"]
+
+    non_neg = [s["elevation"] for s in valid if s["elevation"] >= -0.1]
+    if non_neg:
+        return min(non_neg)
+
+    return None
+
 
 def _dms_to_decimal(arr) -> Optional[float]:
     if not arr or len(arr) < 3:
@@ -106,21 +164,218 @@ def _detect_unit_scale(ifc) -> float:
 
 
 def _extract_geo_origin(ifc) -> dict:
+    """지리 원점 정보 추출.
+    1순위: IFC4 IfcMapConversion (CRS 기반 좌표 변환 정보)
+    2순위: IfcSite RefLatitude/RefLongitude (DMS, IFC2x3 방식)
+    D-2: IfcMapConversion, D-4: 다중 IfcSite 전수 탐색."""
+    # ── 1순위: IFC4 IfcMapConversion ─────────────────────────────────
     try:
-        sites = ifc.by_type("IfcSite")
-        if sites:
-            site = sites[0]
-            lat = _dms_to_decimal(getattr(site, "RefLatitude", None))
-            lon = _dms_to_decimal(getattr(site, "RefLongitude", None))
-            elev = getattr(site, "RefElevation", None)
-            return {
-                "latitude":  lat,
-                "longitude": lon,
-                "elevation": float(elev) if elev is not None else None,
-            }
+        for conv in ifc.by_type("IfcMapConversion"):
+            eastings  = getattr(conv, "Eastings",          None)
+            northings = getattr(conv, "Northings",         None)
+            height    = getattr(conv, "OrthogonalHeight",  None)
+            map_scale = getattr(conv, "Scale",             None)
+            x_abs     = getattr(conv, "XAxisAbscissa",     None)
+            x_ord     = getattr(conv, "XAxisOrdinate",     None)
+
+            # CRS 이름 추출 (IfcProjectedCRS)
+            crs_name = None
+            try:
+                src = getattr(conv, "SourceCRS", None) or getattr(conv, "TargetCRS", None)
+                if src:
+                    crs_name = getattr(src, "Name", None)
+            except Exception:
+                pass
+
+            if eastings is not None or northings is not None:
+                return {
+                    "latitude":  None,
+                    "longitude": None,
+                    "elevation": float(height) if height is not None else None,
+                    "mapConversion": {
+                        "eastings":       float(eastings)  if eastings  is not None else None,
+                        "northings":      float(northings) if northings is not None else None,
+                        "scale":          float(map_scale) if map_scale is not None else 1.0,
+                        "xAxisAbscissa":  float(x_abs)     if x_abs     is not None else 1.0,
+                        "xAxisOrdinate":  float(x_ord)     if x_ord     is not None else 0.0,
+                        "crsName":        str(crs_name)    if crs_name  is not None else None,
+                    },
+                }
     except Exception:
         pass
+
+    # ── 2순위: IfcSite RefLatitude/RefLongitude (전수 탐색 D-4) ──────
+    try:
+        for site in ifc.by_type("IfcSite"):
+            lat  = _dms_to_decimal(getattr(site, "RefLatitude",  None))
+            lon  = _dms_to_decimal(getattr(site, "RefLongitude", None))
+            elev = getattr(site, "RefElevation", None)
+            if lat is not None or lon is not None:
+                return {
+                    "latitude":  lat,
+                    "longitude": lon,
+                    "elevation": float(elev) if elev is not None else None,
+                }
+    except Exception:
+        pass
+
     return {"latitude": None, "longitude": None, "elevation": None}
+
+
+def _extract_material(ifc, product) -> Optional[str]:
+    """IfcRelAssociatesMaterial 에서 첫 번째 재료명 추출.
+    IfcMaterial / LayerSet / LayerSetUsage / ConstituentSet / List 순서로 시도."""
+    try:
+        for rel in ifc.get_inverse(product):
+            if not rel.is_a("IfcRelAssociatesMaterial"):
+                continue
+            mat = getattr(rel, "RelatingMaterial", None)
+            if mat is None:
+                continue
+
+            if mat.is_a("IfcMaterial"):
+                name = getattr(mat, "Name", None)
+                return str(name) if name else None
+
+            if mat.is_a("IfcMaterialLayerSet"):
+                for layer in (getattr(mat, "MaterialLayers", []) or []):
+                    m = getattr(layer, "Material", None)
+                    if m and getattr(m, "Name", None):
+                        return str(m.Name)
+
+            if mat.is_a("IfcMaterialLayerSetUsage"):
+                mls = getattr(mat, "ForLayerSet", None)
+                if mls:
+                    for layer in (getattr(mls, "MaterialLayers", []) or []):
+                        m = getattr(layer, "Material", None)
+                        if m and getattr(m, "Name", None):
+                            return str(m.Name)
+
+            if mat.is_a("IfcMaterialConstituentSet"):
+                for c in (getattr(mat, "MaterialConstituents", []) or []):
+                    m = getattr(c, "Material", None)
+                    if m and getattr(m, "Name", None):
+                        return str(m.Name)
+
+            if mat.is_a("IfcMaterialList"):
+                for m in (getattr(mat, "Materials", []) or []):
+                    if getattr(m, "Name", None):
+                        return str(m.Name)
+
+            if mat.is_a("IfcMaterialProfileSetUsage"):
+                mps = getattr(mat, "ForProfileSet", None)
+                if mps:
+                    for mp in (getattr(mps, "MaterialProfiles", []) or []):
+                        m = getattr(mp, "Material", None)
+                        if m and getattr(m, "Name", None):
+                            return str(m.Name)
+    except Exception:
+        pass
+    return None
+
+
+def _extract_quantities(ifc, product) -> dict:
+    """IfcElementQuantity / BaseQuantities 에서 면적·체적·길이·무게 추출.
+    반환: { "NetVolume": {"value": 1.23, "unit": "m³"}, ... }
+    단위는 IFC 길이 단위 기준 — 호출부에서 unit_scale 보정 필요."""
+    quantities: dict = {}
+    try:
+        for rel in ifc.get_inverse(product):
+            if not rel.is_a("IfcRelDefinesByProperties"):
+                continue
+            pdef = getattr(rel, "RelatingPropertyDefinition", None)
+            if pdef is None or not pdef.is_a("IfcElementQuantity"):
+                continue
+            for q in (getattr(pdef, "Quantities", []) or []):
+                name = getattr(q, "Name", None) or ""
+                if q.is_a("IfcQuantityArea"):
+                    val = getattr(q, "AreaValue", None)
+                    if val is not None:
+                        quantities[name] = {"value": round(float(val), 6), "unit": "m²"}
+                elif q.is_a("IfcQuantityVolume"):
+                    val = getattr(q, "VolumeValue", None)
+                    if val is not None:
+                        quantities[name] = {"value": round(float(val), 6), "unit": "m³"}
+                elif q.is_a("IfcQuantityLength"):
+                    val = getattr(q, "LengthValue", None)
+                    if val is not None:
+                        quantities[name] = {"value": round(float(val), 6), "unit": "m"}
+                elif q.is_a("IfcQuantityWeight"):
+                    val = getattr(q, "WeightValue", None)
+                    if val is not None:
+                        quantities[name] = {"value": round(float(val), 6), "unit": "kg"}
+                elif q.is_a("IfcQuantityCount"):
+                    val = getattr(q, "CountValue", None)
+                    if val is not None:
+                        quantities[name] = {"value": int(val), "unit": "ea"}
+    except Exception:
+        pass
+    return quantities
+
+
+def _extract_properties(ifc, product) -> dict:
+    """IfcPropertySet 에서 단일값 속성 추출 (Pset_WallCommon 등).
+    반환: { "IsExternal": True, "FireRating": "60", ... }"""
+    props: dict = {}
+    try:
+        for rel in ifc.get_inverse(product):
+            if not rel.is_a("IfcRelDefinesByProperties"):
+                continue
+            pdef = getattr(rel, "RelatingPropertyDefinition", None)
+            if pdef is None or not pdef.is_a("IfcPropertySet"):
+                continue
+            for p in (getattr(pdef, "HasProperties", []) or []):
+                if not p.is_a("IfcPropertySingleValue"):
+                    continue
+                nominal = getattr(p, "NominalValue", None)
+                if nominal is None:
+                    continue
+                key = getattr(p, "Name", None) or ""
+                try:
+                    props[key] = nominal.wrappedValue
+                except AttributeError:
+                    props[key] = str(nominal)
+    except Exception:
+        pass
+    return props
+
+
+def _extract_rotation(product) -> tuple[float, float, float]:
+    """ObjectPlacement 체인을 따라 월드 회전을 ZYX Euler 각(degree)으로 반환.
+    ifcopenshell.util.placement.get_local_placement 가 전체 체인을 이미 누적함."""
+    try:
+        import ifcopenshell.util.placement as _ifc_pl
+        placement = getattr(product, "ObjectPlacement", None)
+        if placement is None:
+            return (0.0, 0.0, 0.0)
+
+        matrix = _ifc_pl.get_local_placement(placement)  # numpy 4×4
+        if matrix is None:
+            return (0.0, 0.0, 0.0)
+
+        R = np.array(matrix[:3, :3], dtype=float)
+        # 스케일 제거 (열 정규화)
+        for i in range(3):
+            n = np.linalg.norm(R[:, i])
+            if n > 1e-8:
+                R[:, i] /= n
+
+        # ZYX Euler 추출
+        ry = float(np.arcsin(-float(np.clip(R[2, 0], -1.0, 1.0))))
+        if abs(np.cos(ry)) > 1e-6:
+            rx = float(np.arctan2(R[2, 1], R[2, 2]))
+            rz = float(np.arctan2(R[1, 0], R[0, 0]))
+        else:
+            rx = float(np.arctan2(-R[1, 2], R[1, 1]))
+            rz = 0.0
+
+        return (
+            round(float(np.degrees(rx)), 2),
+            round(float(np.degrees(ry)), 2),
+            round(float(np.degrees(rz)), 2),
+        )
+    except Exception:
+        return (0.0, 0.0, 0.0)
 
 
 def _extract_spatial_structure(ifc) -> tuple[dict, list]:
@@ -199,8 +454,6 @@ def _extract_spatial_structure(ifc) -> tuple[dict, list]:
         logger.warning("[IFC Spatial] 요소-층 매핑 실패: %s", e)
 
     # ── 4b. 폴백: IfcRelAggregates로 층에 직접 집계된 요소 매핑 ──────
-    # 일부 IFC 소프트웨어는 IfcRelContainedInSpatialStructure 대신
-    # IfcRelAggregates로 요소를 층에 연결하므로 누락 방지를 위해 추가 탐색
     try:
         for rel in ifc.by_type("IfcRelAggregates"):
             parent = getattr(rel, "RelatingObject", None)
@@ -228,6 +481,62 @@ def _extract_spatial_structure(ifc) -> tuple[dict, list]:
                     storey_element_ids[pid].append(f"IFC-{cid}")
     except Exception as e:
         logger.warning("[IFC Spatial] IfcRelAggregates 폴백 매핑 실패: %s", e)
+
+    # ── 4c. 폴백: IfcRelNests (IFC4+ 계층 관계) ─────────────────────
+    # IFC4에서 IfcRelAggregates 대신 IfcRelNests를 사용하는 소프트웨어 대응 (E-1)
+    try:
+        for rel in ifc.by_type("IfcRelNests"):
+            parent = getattr(rel, "RelatingObject", None)
+            if parent is None:
+                continue
+            pid = parent.id()
+            if pid not in storey_info:
+                continue
+            info = storey_info[pid]
+            bld_id = storey_to_building.get(pid)
+            bld_name = building_info.get(bld_id) if bld_id else None
+            for child in (getattr(rel, "RelatedObjects", []) or []):
+                try:
+                    if not child.is_a("IfcElement"):
+                        continue
+                except Exception:
+                    continue
+                cid = child.id()
+                if cid not in elem_to_spatial:
+                    elem_to_spatial[cid] = {
+                        "storey": info["name"],
+                        "storeyElevation": info["elevation"],
+                        "building": bld_name,
+                    }
+                    storey_element_ids[pid].append(f"IFC-{cid}")
+    except Exception as e:
+        logger.warning("[IFC Spatial] IfcRelNests 폴백 매핑 실패: %s", e)
+
+    # ── 4d. IfcElementAssembly 자식 요소 층 전파 (F-1) ──────────────
+    # 조립 요소(Assembly) 자체가 층에 배치된 경우, 그 자식도 동일 층으로 처리
+    try:
+        for assembly in ifc.by_type("IfcElementAssembly"):
+            aid = assembly.id()
+            if aid not in elem_to_spatial:
+                continue
+            a_spatial = elem_to_spatial[aid]
+            for rel in ifc.get_inverse(assembly):
+                if not rel.is_a("IfcRelAggregates"):
+                    continue
+                relating = getattr(rel, "RelatingObject", None)
+                if relating is None or relating.id() != aid:
+                    continue
+                for child in (getattr(rel, "RelatedObjects", []) or []):
+                    try:
+                        if not child.is_a("IfcElement"):
+                            continue
+                    except Exception:
+                        continue
+                    cid = child.id()
+                    if cid not in elem_to_spatial:
+                        elem_to_spatial[cid] = a_spatial
+    except Exception as e:
+        logger.warning("[IFC Spatial] IfcElementAssembly 자식 매핑 실패: %s", e)
 
     # ── 5. 층 목록 구성 ───────────────────────────────────────────────
     try:
@@ -447,6 +756,10 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
     geom_scale = user_scale  # geometry용: ifcopenshell.geom이 이미 미터 반환
     scale = geom_scale       # geo_origin.scale 저장값 (하위 호환)
 
+    # E-3: IFC 스키마 버전 감지 (IFC2X3 / IFC4 / IFC4X3)
+    ifc_schema = getattr(ifc, "schema", None) or "UNKNOWN"
+    logger.info("[IFC] 스키마: %s, 단위스케일: %s", ifc_schema, unit_scale)
+
     geo_info = _extract_geo_origin(ifc)
     elem_to_spatial, storeys = _extract_spatial_structure(ifc)
 
@@ -532,7 +845,7 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
                 if pre is not None and str(pre).strip(".").upper() == "ROOF":
                     our_type = "IfcRoof"
 
-            spatial = elem_to_spatial.get(express_id, {})
+            spatial   = elem_to_spatial.get(express_id, {})
             global_id = getattr(product, "GlobalId", None)
             ifc_name  = getattr(product, "Name", None)
 
@@ -541,17 +854,27 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
             center  = (min_pos + max_pos) / 2.0
             size    = np.maximum(max_pos - min_pos, 0.05)
 
+            # ── 속성 추출 (B-1~B-4, C-1) ─────────────────────────────
+            material   = _extract_material(ifc, product)
+            quantities = _extract_quantities(ifc, product)
+            properties = _extract_properties(ifc, product)
+            rotation   = _extract_rotation(product)
+
             raw_geoms.append({
                 "element_id": element_id,
-                "our_type": our_type,
-                "pos": pos,
-                "nrm": nrm,
-                "idx": idx,
-                "center": center,
-                "size": size,
-                "spatial": spatial,
-                "global_id": global_id,
-                "ifc_name": ifc_name,
+                "our_type":   our_type,
+                "pos":        pos,
+                "nrm":        nrm,
+                "idx":        idx,
+                "center":     center,
+                "size":       size,
+                "spatial":    spatial,
+                "global_id":  global_id,
+                "ifc_name":   ifc_name,
+                "material":   material,
+                "quantities": quantities,
+                "properties": properties,
+                "rotation":   rotation,
             })
             all_positions.append(pos)
 
@@ -562,34 +885,44 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
             "glb_lite_bytes": lite_builder.build(),
             "elements":       [],
             "storeys":        storeys,
-            "geo_origin":     {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale},
+            "geo_origin":     {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale, "ifcSchema": ifc_schema},
         }
 
-    # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z 바닥 기준) ─────────────
+    # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z 지상 1층 기준) ──────────
     all_pts = np.vstack(all_positions)
-    cx     = float((all_pts[:, 0].min() + all_pts[:, 0].max()) / 2.0)  # X 중앙
-    cy     = float((all_pts[:, 1].min() + all_pts[:, 1].max()) / 2.0)  # Y 중앙
-    min_z  = float(all_pts[:, 2].min())  # Z 최솟값 = 바닥 기준 (Z = 높이)
+    cx     = float((all_pts[:, 0].min() + all_pts[:, 0].max()) / 2.0)
+    cy     = float((all_pts[:, 1].min() + all_pts[:, 1].max()) / 2.0)
+
+    # 지상 1층 elevation을 Z 원점으로 사용 → 지하는 음수, 1층 바닥은 Z=0
+    # 층 정보가 없으면 geometry 최솟값으로 폴백 (기존 동작)
+    ground_elev = _find_ground_floor_elevation(storeys)
+    if ground_elev is not None:
+        z_origin = float(ground_elev)
+        logger.info("[IFC Convert] 지상 1층 elevation=%.3fm → Z 원점으로 사용", z_origin)
+    else:
+        z_origin = float(all_pts[:, 2].min())
+        logger.info("[IFC Convert] 층 정보 없음 → geometry min_z=%.3fm 폴백", z_origin)
 
     geo_origin = {
         **geo_info,
         "ifcOffsetX": cx,
         "ifcOffsetY": cy,
-        "ifcOffsetZ": min_z,
-        "scale": scale,
+        "ifcOffsetZ": z_origin,
+        "scale":      scale,
+        "ifcSchema":  ifc_schema,
     }
 
     for g in raw_geoms:
         pos = g["pos"].copy()
         pos[:, 0] -= cx
         pos[:, 1] -= cy
-        pos[:, 2] -= min_z  # Z 바닥을 0으로
+        pos[:, 2] -= z_origin  # 지상 1층 바닥을 Z=0으로
 
         color = ELEMENT_COLORS.get(g["our_type"], [0.7, 0.7, 0.7, 1.0])
         center = g["center"].copy()
         center[0] -= cx
         center[1] -= cy
-        center[2] -= min_z
+        center[2] -= z_origin
 
         extras = {
             "elementType": g["our_type"],
@@ -623,21 +956,30 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
         )
 
         size = g["size"]
+        rx, ry, rz = g["rotation"]
+        _steel_types = {"IfcMember", "IfcRailing"}
+        mat_name = g["material"] or (
+            "Steel S355" if g["our_type"] in _steel_types else "Concrete C30"
+        )
         elements.append({
-            "elementId":   g["element_id"],
-            "elementType": g["our_type"],
-            "positionX":   round(float(center[0]), 4),  # IFC X
-            "positionY":   round(float(center[1]), 4),  # IFC Y
-            "positionZ":   round(float(center[2]), 4),  # IFC Z (높이)
-            "sizeX":       round(float(size[0]), 4),
-            "sizeY":       round(float(size[1]), 4),
-            "sizeZ":       round(float(size[2]), 4),    # Z = 높이 방향 크기
-            "rotationX": 0, "rotationY": 0, "rotationZ": 0,
-            "material":  "Steel S355" if g["our_type"] == "IfcMember" else "Concrete C30",
-            "globalId":    g["global_id"],
-            "ifcName":     g["ifc_name"],
-            "storey":      g["spatial"].get("storey"),
-            "building":    g["spatial"].get("building"),
+            "elementId":     g["element_id"],
+            "elementType":   g["our_type"],
+            "positionX":     round(float(center[0]), 4),
+            "positionY":     round(float(center[1]), 4),
+            "positionZ":     round(float(center[2]), 4),
+            "sizeX":         round(float(size[0]), 4),
+            "sizeY":         round(float(size[1]), 4),
+            "sizeZ":         round(float(size[2]), 4),
+            "rotationX":     rx,
+            "rotationY":     ry,
+            "rotationZ":     rz,
+            "material":      mat_name,
+            "globalId":      g["global_id"],
+            "ifcName":       g["ifc_name"],
+            "storey":        g["spatial"].get("storey") or "미분류",
+            "building":      g["spatial"].get("building") or "미분류",
+            "ifcQuantities": g["quantities"],
+            "ifcProperties": g["properties"],
         })
 
     logger.info("[IFC Convert] 부재 %d개, 층 %d개 변환 완료", len(elements), len(storeys))

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import AxiosCustom from '../../axios/AxiosCustom';
+import { useT } from '../../i18n/LanguageContext';
 
 const overlay = {
   position: 'fixed', inset: 0, zIndex: 9999,
@@ -35,6 +36,7 @@ const btn = (primary) => ({
 });
 
 export default function TotpModal({ onSuccess }) {
+  const t = useT('totpModal');
   // loading | setup-password | setup-fetching | setup | setup-confirm | verify | reset-confirm
   const [step, setStep] = useState('loading');
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -77,9 +79,9 @@ export default function TotpModal({ onSuccess }) {
       setQrDataUrl(url);
       setStep('setup');
     } catch (e) {
-      if (e.response?.status === 401) setError('비밀번호가 올바르지 않습니다.');
-      else if (e.response?.status === 409) setError('이미 OTP가 등록되어 있습니다.');
-      else setError('오류가 발생했습니다.');
+      if (e.response?.status === 401) setError(t('errorWrongPw'));
+      else if (e.response?.status === 409) setError(t('errorAlreadyReg'));
+      else setError(t('errorGeneral'));
     } finally {
       setSubmitting(false);
     }
@@ -112,12 +114,12 @@ export default function TotpModal({ onSuccess }) {
           onSuccess();
         }
       } else {
-        setError('코드가 올바르지 않습니다.');
+        setError(t('errorWrongCode'));
         setCode('');
         inputRef.current?.focus();
       }
     } catch {
-      setError('서버 오류가 발생했습니다.');
+      setError(t('errorServer'));
     } finally {
       setSubmitting(false);
     }
@@ -128,7 +130,7 @@ export default function TotpModal({ onSuccess }) {
     return (
       <div style={overlay}>
         <div style={{ ...card, textAlign: 'center' }}>
-          <p style={{ color: '#6b7280', fontSize: 13 }}>로딩 중...</p>
+          <p style={{ color: '#6b7280', fontSize: 13 }}>{t('loading')}</p>
         </div>
       </div>
     );
@@ -140,15 +142,15 @@ export default function TotpModal({ onSuccess }) {
       <div style={overlay}>
         <div style={card}>
           <h2 style={{ color: '#93c5fd', fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
-            ⚙️ OTP 초기 설정
+            {t('setupTitle')}
           </h2>
           <p style={{ color: '#6b7280', fontSize: 12, marginBottom: 20 }}>
-            설정 비밀번호를 입력하면 QR 코드를 발급합니다.
+            {t('setupDesc')}
           </p>
           <input
             ref={pwRef}
             type="password"
-            placeholder="설정 비밀번호"
+            placeholder={t('setupPwPlaceholder')}
             value={password}
             onChange={e => { setPassword(e.target.value); setError(''); }}
             onKeyDown={e => e.key === 'Enter' && handleSetupPassword()}
@@ -160,7 +162,7 @@ export default function TotpModal({ onSuccess }) {
           )}
           <div style={{ marginTop: 16 }}>
             <button style={btn(true)} onClick={handleSetupPassword} disabled={submitting || !password}>
-              {submitting ? '확인 중...' : 'QR 코드 발급'}
+              {submitting ? t('setupChecking') : t('setupIssueBtn')}
             </button>
           </div>
         </div>
@@ -174,17 +176,17 @@ export default function TotpModal({ onSuccess }) {
       <div style={overlay}>
         <div style={card}>
           <h2 style={{ color: '#93c5fd', fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
-            ⚙️ OTP 등록
+            {t('qrTitle')}
           </h2>
           <p style={{ color: '#6b7280', fontSize: 12, marginBottom: 20 }}>
-            Google Authenticator 또는 Authy 앱으로 QR을 스캔하세요.
+            {t('qrDesc')}
           </p>
           {qrDataUrl && (
             <div style={{ textAlign: 'center', marginBottom: 16 }}>
               <img src={qrDataUrl} alt="TOTP QR" style={{ width: 180, height: 180, borderRadius: 8 }} />
             </div>
           )}
-          <p style={{ color: '#4b5563', fontSize: 11, marginBottom: 4 }}>수동 입력 키:</p>
+          <p style={{ color: '#4b5563', fontSize: 11, marginBottom: 4 }}>{t('qrManualKey')}</p>
           <div style={{
             background: '#060f18', border: '1px solid #253347', borderRadius: 6,
             padding: '7px 10px', fontFamily: 'monospace', fontSize: 12,
@@ -193,7 +195,7 @@ export default function TotpModal({ onSuccess }) {
             {secret}
           </div>
           <button style={btn(true)} onClick={() => { setCode(''); setStep('setup-confirm'); }}>
-            스캔 완료 → 코드 확인
+            {t('qrNextBtn')}
           </button>
         </div>
       </div>
@@ -204,13 +206,13 @@ export default function TotpModal({ onSuccess }) {
   const isSetupConfirm = step === 'setup-confirm';
   const isReset = step === 'reset-confirm';
 
-  const title = isSetupConfirm ? '⚙️ 설정 확인'
-    : isReset ? '🔄 OTP 재설정'
-    : '🔐 환경설정 접근';
+  const title = isSetupConfirm ? t('verifyTitleSetup')
+    : isReset ? t('verifyTitleReset')
+    : t('verifyTitleAccess');
 
-  const desc = isSetupConfirm ? '앱에 표시된 6자리 코드를 입력하여 등록을 완료하세요.'
-    : isReset ? '현재 OTP 코드를 입력하면 초기화 후 재설정 화면으로 이동합니다.'
-    : 'OTP 앱의 6자리 코드를 입력하세요.';
+  const desc = isSetupConfirm ? t('verifyDescSetup')
+    : isReset ? t('verifyDescReset')
+    : t('verifyDesc');
 
   return (
     <div style={overlay}>
@@ -237,16 +239,16 @@ export default function TotpModal({ onSuccess }) {
 
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button style={btn(true)} onClick={() => submitCode()} disabled={submitting || code.length !== 6}>
-            {submitting ? '확인 중...' : '확인'}
+            {submitting ? t('confirmingBtn') : t('confirmBtn')}
           </button>
           {isSetupConfirm && (
             <button style={{ ...btn(false), fontSize: 11 }} onClick={() => setStep('setup')}>
-              ← QR 코드로 돌아가기
+              {t('backToQr')}
             </button>
           )}
           {isReset && (
             <button style={{ ...btn(false), fontSize: 11 }} onClick={() => { setCode(''); setError(''); setStep('verify'); }}>
-              ← 취소
+              {t('cancelBtn')}
             </button>
           )}
         </div>

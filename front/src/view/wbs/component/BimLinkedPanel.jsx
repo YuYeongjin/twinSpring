@@ -207,8 +207,8 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                   {data.name}
                 </div>
                 <div style={{ fontSize: 9, color: '#4b5563' }}>
-                  BIM 연동 · 요소 {elements.length}개 · {totalTypes}개 공종
-                  {rootProgress !== null && ` · 전체 공정률 ${rootProgress}%`}
+                  {t('bimLinkSummary', { n: elements.length, types: totalTypes })}
+                  {rootProgress !== null && ` · ${t('totalProgressPct', { pct: rootProgress })}`}
                 </div>
               </div>
 
@@ -227,13 +227,13 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                   }}>
                     {/* 1행: 공사량 + 목표 공기 입력 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ color: '#475569' }}>공사량</span>
+                      <span style={{ color: '#475569' }}>{t('workVolume')}</span>
                       <span style={{ color: '#60a5fa', fontWeight: 700 }}>{stats.totalManDays}m-d</span>
                       <span style={{ color: '#1e3a5f' }}>|</span>
-                      <span style={{ color: '#475569' }}>1인공기</span>
-                      <span style={{ color: '#64748b' }}>{stats.seqDays1}일</span>
+                      <span style={{ color: '#475569' }}>{t('seqDays1Label')}</span>
+                      <span style={{ color: '#64748b' }}>{t('daysUnit', { n: stats.seqDays1 })}</span>
                       <span style={{ color: '#1e3a5f' }}>|</span>
-                      <span style={{ color: '#475569' }}>목표</span>
+                      <span style={{ color: '#475569' }}>{t('targetLabel')}</span>
                       <input
                         type="number" min={1}
                         value={targetDays[link.linkedProjectId] ?? stats.tgt}
@@ -246,22 +246,22 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
                           padding: '1px 4px', textAlign: 'center', outline: 'none',
                         }}
                       />
-                      <span style={{ color: '#475569' }}>일</span>
+                      <span style={{ color: '#475569' }}>{t('daysUnit', { n: '' }).trim()}</span>
                     </div>
                     {/* 2행: 추산 인원 + 실제 달력 공기 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <span style={{ color: '#fbbf24', fontWeight: 700 }}>👷 {stats.workers}명 균일 투입</span>
+                      <span style={{ color: '#fbbf24', fontWeight: 700 }}>👷 {t('uniformWorkers', { n: stats.workers })}</span>
                       <span style={{ color: '#1e3a5f' }}>→</span>
-                      <span style={{ color: '#475569' }}>실제 공기</span>
+                      <span style={{ color: '#475569' }}>{t('actualDurationLabel')}</span>
                       <span style={{
                         color: stats.actualDays <= stats.tgt ? '#4ade80' : '#f87171',
                         fontWeight: 700,
                       }}>
-                        {stats.actualDays}일
+                        {t('daysUnit', { n: stats.actualDays })}
                       </span>
                       {stats.actualDays > stats.tgt && (
                         <span style={{ color: '#f87171', fontSize: 8 }}>
-                          (양생 등 고정 공정으로 목표 초과)
+                          ({t('fixedProcessOverrun')})
                         </span>
                       )}
                     </div>
@@ -280,7 +280,7 @@ export default function BimLinkedPanel({ wbsProjectId, tasks, onReload, projectS
               <div>
                 {orderedTypes.length === 0 ? (
                   <div style={{ padding: '18px 14px', fontSize: 11, color: '#374151', textAlign: 'center' }}>
-                    BIM 요소가 없습니다. BIM 프로젝트에 요소를 추가해주세요.
+                    {t('noBimElements')}
                   </div>
                 ) : (
                   orderedTypes.map((elementType, idx) => {

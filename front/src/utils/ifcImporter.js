@@ -1,7 +1,9 @@
 import {
   IfcAPI,
   IFCCOLUMN,
+  IFCCOLUMNSTANDARDCASE,       // IFC4 (A-1)
   IFCBEAM,
+  IFCBEAMSTANDARDCASE,         // IFC4 (A-1)
   IFCWALL,
   IFCWALLSTANDARDCASE,
   IFCSLAB,
@@ -9,35 +11,66 @@ import {
   IFCFOOTING,
   IFCPILE,
   IFCPLATE,
+  IFCDOOR,
+  IFCDOORSTANDARDCASE,         // IFC4 (A-7)
+  IFCWINDOW,
+  IFCWINDOWSTANDARDCASE,       // IFC4 (A-7)
+  IFCSTAIR,
+  IFCSTAIRFLIGHT,
+  IFCRAMP,                     // 경사로 (A-4)
+  IFCRAMPFLIGHT,               // (A-4)
+  IFCROOF,
+  IFCCURTAINWALL,              // 커튼월 (A-2)
+  IFCRAILING,                  // 난간 (A-3)
+  IFCCOVERING,                 // 마감재 (A-5)
+  IFCBUILDINGELEMENTPROXY,     // 기타 미분류 (A-6)
   IFCSIUNIT,
   IFCSITE,
   IFCBUILDING,
   IFCBUILDINGSTOREY,
-  IFCDOOR,
-  IFCWINDOW,
-  IFCSTAIR,
-  IFCSTAIRFLIGHT,
-  IFCROOF,
   IFCRELCONTAINEDINSPATIALSTRUCTURE,
   IFCRELAGGREGATES,
 } from 'web-ifc';
 
 // IFC 엔티티 타입 → 서비스 elementType 매핑
 const ELEMENT_TYPE_MAP = [
-  { ifcType: IFCCOLUMN,           ourType: 'IfcColumn' },
-  { ifcType: IFCBEAM,             ourType: 'IfcBeam'   },
-  { ifcType: IFCWALL,             ourType: 'IfcWall'   },
-  { ifcType: IFCWALLSTANDARDCASE, ourType: 'IfcWall'   },
-  { ifcType: IFCSLAB,             ourType: 'IfcSlab'   },
-  { ifcType: IFCMEMBER,           ourType: 'IfcMember' },
-  { ifcType: IFCFOOTING,          ourType: 'IfcFoundation' },  // 기초 — 슬래브와 분리
-  { ifcType: IFCPILE,             ourType: 'IfcPier'   },
-  { ifcType: IFCPLATE,            ourType: 'IfcMember' },
-  { ifcType: IFCDOOR,             ourType: 'IfcDoor'   },
-  { ifcType: IFCWINDOW,           ourType: 'IfcWindow' },
-  { ifcType: IFCSTAIR,            ourType: 'IfcStair'  },
-  { ifcType: IFCSTAIRFLIGHT,      ourType: 'IfcStair'  },
-  { ifcType: IFCROOF,             ourType: 'IfcRoof'   },
+  // 기둥
+  { ifcType: IFCCOLUMN,               ourType: 'IfcColumn'      },
+  { ifcType: IFCCOLUMNSTANDARDCASE,   ourType: 'IfcColumn'      }, // IFC4 (A-1)
+  // 보
+  { ifcType: IFCBEAM,                 ourType: 'IfcBeam'        },
+  { ifcType: IFCBEAMSTANDARDCASE,     ourType: 'IfcBeam'        }, // IFC4 (A-1)
+  // 벽체
+  { ifcType: IFCWALL,                 ourType: 'IfcWall'        },
+  { ifcType: IFCWALLSTANDARDCASE,     ourType: 'IfcWall'        },
+  // 슬래브
+  { ifcType: IFCSLAB,                 ourType: 'IfcSlab'        },
+  // 구조 부재
+  { ifcType: IFCMEMBER,               ourType: 'IfcMember'      },
+  { ifcType: IFCPLATE,                ourType: 'IfcMember'      },
+  // 기초
+  { ifcType: IFCFOOTING,              ourType: 'IfcFoundation'  },
+  { ifcType: IFCPILE,                 ourType: 'IfcPier'        },
+  // 개구부 요소
+  { ifcType: IFCDOOR,                 ourType: 'IfcDoor'        },
+  { ifcType: IFCDOORSTANDARDCASE,     ourType: 'IfcDoor'        }, // IFC4 (A-7)
+  { ifcType: IFCWINDOW,               ourType: 'IfcWindow'      },
+  { ifcType: IFCWINDOWSTANDARDCASE,   ourType: 'IfcWindow'      }, // IFC4 (A-7)
+  // 수직 동선
+  { ifcType: IFCSTAIR,                ourType: 'IfcStair'       },
+  { ifcType: IFCSTAIRFLIGHT,          ourType: 'IfcStair'       },
+  { ifcType: IFCRAMP,                 ourType: 'IfcRamp'        }, // 경사로 (A-4)
+  { ifcType: IFCRAMPFLIGHT,           ourType: 'IfcRamp'        }, // (A-4)
+  // 지붕
+  { ifcType: IFCROOF,                 ourType: 'IfcRoof'        },
+  // 커튼월 (A-2)
+  { ifcType: IFCCURTAINWALL,          ourType: 'IfcCurtainWall' },
+  // 난간 (A-3)
+  { ifcType: IFCRAILING,              ourType: 'IfcRailing'     },
+  // 마감재 (A-5)
+  { ifcType: IFCCOVERING,             ourType: 'IfcCovering'    },
+  // 기타 미분류 (A-6)
+  { ifcType: IFCBUILDINGELEMENTPROXY, ourType: 'IfcProxy'       },
 ];
 
 // IFC 파일의 길이 단위 → 미터 스케일 팩터 감지
@@ -77,9 +110,37 @@ function transformNormal(mat, nx, ny, nz) {
 }
 
 function getMaterial(ourType) {
-  if (ourType === 'IfcMember') return 'Steel S355';
+  if (ourType === 'IfcMember' || ourType === 'IfcRailing') return 'Steel S355';
   if (ourType === 'IfcWall')   return 'Concrete C25';
+  if (ourType === 'IfcCurtainWall') return 'Glass';
+  if (ourType === 'IfcCovering')    return 'Finish';
+  if (ourType === 'IfcProxy')       return 'Unknown';
   return 'Concrete C30';
+}
+
+// column-major 4×4 행렬(flatTransformation)에서 ZYX Euler 각(degree)을 추출.
+// flatTransformation은 월드 변환 행렬 — 이미 누적된 상위 배치 포함.
+function extractRotationFromMatrix(mat) {
+  // 열 벡터 길이로 스케일 제거
+  const len0 = Math.sqrt(mat[0] ** 2 + mat[1] ** 2 + mat[2] ** 2) || 1;
+  const len1 = Math.sqrt(mat[4] ** 2 + mat[5] ** 2 + mat[6] ** 2) || 1;
+  const len2 = Math.sqrt(mat[8] ** 2 + mat[9] ** 2 + mat[10] ** 2) || 1;
+
+  const r00 = mat[0] / len0, r10 = mat[1] / len0, r20 = mat[2] / len0;
+  const r01 = mat[4] / len1, r11 = mat[5] / len1, r21 = mat[6] / len1;
+  const r02 = mat[8] / len2, r12 = mat[9] / len2, r22 = mat[10] / len2;
+
+  const ry = Math.asin(-Math.max(-1, Math.min(1, r20)));
+  let rx, rz;
+  if (Math.abs(Math.cos(ry)) > 1e-6) {
+    rx = Math.atan2(r21, r22);
+    rz = Math.atan2(r10, r00);
+  } else {
+    rx = Math.atan2(-r12, r11);
+    rz = 0;
+  }
+  const toDeg = v => Math.round(v * (180 / Math.PI) * 100) / 100;
+  return { rotationX: toDeg(rx), rotationY: toDeg(ry), rotationZ: toDeg(rz) };
 }
 
 // ── IfcSite 파싱 ───────────────────────────────────────────────────
@@ -218,6 +279,37 @@ function extractSpatialStructure(ifcAPI, modelId) {
         const storeyEntry = storeys.find(s => s.expressId === structureId);
         for (const ref of related) {
           const elId = typeof ref === 'object' ? ref.value : ref;
+          elemToSpatial.set(elId, {
+            storey: storeyInfo.name,
+            storeyElevation: storeyInfo.elevation,
+            building: buildingInfo?.name || null,
+          });
+          if (storeyEntry && !storeyEntry.elementExpressIds.includes(elId)) {
+            storeyEntry.elementExpressIds.push(elId);
+          }
+        }
+      }
+    } catch {}
+
+    // Step 6: IfcRelAggregates 폴백 — 층에 직접 집계된 요소 매핑 (E-2)
+    // 일부 소프트웨어(Tekla 등)는 ContainedIn 대신 Aggregates로 요소를 층에 연결
+    try {
+      const aggIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELAGGREGATES, false);
+      for (let i = 0; i < aggIds.size(); i++) {
+        const rel = ifcAPI.GetLine(modelId, aggIds.get(i), false);
+        const parentId = rel?.RelatingObject?.value;
+        if (parentId === undefined || !storeyInfoMap.has(parentId)) continue;
+
+        const storeyInfo  = storeyInfoMap.get(parentId);
+        const buildingId  = storeyToBuilding.get(parentId);
+        const buildingInfo = buildingId ? buildingInfoMap.get(buildingId) : null;
+        const related = rel?.RelatedObjects;
+        if (!Array.isArray(related)) continue;
+
+        const storeyEntry = storeys.find(s => s.expressId === parentId);
+        for (const ref of related) {
+          const elId = typeof ref === 'object' ? ref.value : ref;
+          if (elemToSpatial.has(elId)) continue; // 이미 매핑된 경우 스킵
           elemToSpatial.set(elId, {
             storey: storeyInfo.name,
             storeyElevation: storeyInfo.elevation,
@@ -369,10 +461,12 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     const chunkIndices   = [];
     let   baseIndex      = 0;
     let   meshColor      = null;
+    let   firstMat       = null; // 첫 번째 geometry의 변환행렬 (rotation 추출용)
 
     for (let g = 0; g < mesh.geometries.size(); g++) {
       const geom = mesh.geometries.get(g);
       const mat  = geom.flatTransformation;
+      if (!firstMat) firstMat = mat;
 
       if (!meshColor && geom.color) {
         meshColor = [geom.color.x, geom.color.y, geom.color.z, geom.color.w];
@@ -440,20 +534,23 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     const sY = Math.max(wMaxZ - wMinZ, 0.05);
     const sZ = Math.max(wMaxY - wMinY, 0.05);
 
-    const spatial  = elemToSpatial.get(expressId) ?? {};
-    const elemInfo = elemInfoMap.get(expressId)   ?? {};
+    const spatial   = elemToSpatial.get(expressId) ?? {};
+    const elemInfo  = elemInfoMap.get(expressId)   ?? {};
+    const rotAngles = firstMat ? extractRotationFromMatrix(firstMat) : { rotationX: 0, rotationY: 0, rotationZ: 0 };
 
     elements.push({
       elementId:   `IFC-${expressId}`,
       elementType: ourType,
-      positionX:   parseFloat(((wMinX + wMaxX) / 2).toFixed(4)),
-      positionY:   parseFloat(((wMinZ + wMaxZ) / 2).toFixed(4)),
-      positionZ:   parseFloat(wMinY.toFixed(4)),
+      positionX:   parseFloat(((wMinX + wMaxX) / 2).toFixed(4)),  // IFC X (m)
+      positionY:   parseFloat(((wMinZ + wMaxZ) / 2).toFixed(4)),  // IFC Y (m) = Three.js Z
+      positionZ:   parseFloat(((wMinY + wMaxY) / 2).toFixed(4)),  // IFC Z (m) = Three.js Y (높이 중심, D-3)
       sizeX:       parseFloat(sX.toFixed(4)),
       sizeY:       parseFloat(sY.toFixed(4)),
       sizeZ:       parseFloat(sZ.toFixed(4)),
-      rotationX: 0, rotationY: 0, rotationZ: 0,
-      material:  getMaterial(ourType),
+      rotationX:   rotAngles.rotationX,
+      rotationY:   rotAngles.rotationY,
+      rotationZ:   rotAngles.rotationZ,
+      material:    getMaterial(ourType),
 
       // IFC 원본 좌표 (GIS용)
       ifcWorldX: isFinite(ifcMinX) ? parseFloat(((ifcMinX + ifcMaxX) / 2).toFixed(4)) : null,
@@ -512,10 +609,12 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     };
   }
 
-  // ── Step 3: 중앙 정렬 ────────────────────────────────────────────
+  // ── Step 3: 중앙 정렬 (D-3 수정: IFC 좌표계 기준 3축 통일) ─────
+  // positionX = IFC X(m), positionY = IFC Y(m), positionZ = IFC Z(m, 높이 중심)
+  // Three.js 축: X=IFC X, Y=IFC Z(높이), Z=IFC Y
   let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let minZ = Infinity;
+  let minY = Infinity, maxY = -Infinity;  // IFC Y 범위
+  let minZ = Infinity;                    // IFC Z 최솟값 → 지상 1층 근사
 
   for (const el of elements) {
     if (el.positionX < minX) minX = el.positionX;
@@ -525,35 +624,28 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     if (el.positionZ < minZ) minZ = el.positionZ;
   }
 
-  const cx = (minX + maxX) / 2;
-
-  let actualMinZ = Infinity;
-  for (const m of ifcMeshes) {
-    const p = m.positions;
-    for (let i = 2; i < p.length; i += 3) {
-      if (p[i] < actualMinZ) actualMinZ = p[i];
-    }
-  }
-  if (!isFinite(actualMinZ)) actualMinZ = (minY + maxY) / 2;
+  const cx       = (minX + maxX) / 2;  // IFC X 중심
+  const cy       = (minY + maxY) / 2;  // IFC Y 중심
+  const czOrigin = isFinite(minZ) ? minZ : 0;  // IFC Z 지상 기준 (Python 동일)
 
   const centered = elements.map(el => ({
     ...el,
     positionX: parseFloat((el.positionX - cx).toFixed(3)),
-    positionY: parseFloat((el.positionY - actualMinZ).toFixed(3)),
-    positionZ: parseFloat((el.positionZ - minZ).toFixed(3)),
+    positionY: parseFloat((el.positionY - cy).toFixed(3)),
+    positionZ: parseFloat((el.positionZ - czOrigin).toFixed(3)),
   }));
 
+  // Three.js 메시 좌표 정렬: X-=cx, Y(=IFC Z)-=czOrigin, Z(=IFC Y)-=cy
   for (const mesh of ifcMeshes) {
     const pos = mesh.positions;
     for (let i = 0; i < pos.length; i += 3) {
-      pos[i]   -= cx;
-      pos[i+1] -= minZ;
-      pos[i+2] -= actualMinZ;
+      pos[i]   -= cx;        // Three.js X  = IFC X  → -cx
+      pos[i+1] -= czOrigin;  // Three.js Y  = IFC Z  → -czOrigin (지상 기준)
+      pos[i+2] -= cy;        // Three.js Z  = IFC Y  → -cy
     }
   }
 
   // ── 층 목록에 정규화된 elementId 매핑 추가 ────────────────────────
-  // expressId → 'IFC-{expressId}' 변환 (App.js에서 projectId suffix 추가 전 단계)
   const normalizedStoreys = storeys.map(s => ({
     name:      s.name,
     elevation: s.elevation,
@@ -565,11 +657,11 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     latitude:   siteInfo?.latitude  ?? null,
     longitude:  siteInfo?.longitude ?? null,
     elevation:  siteInfo?.elevation ?? null,
-    ifcOffsetX: cx,
-    ifcOffsetY: actualMinZ,
-    ifcOffsetZ: minZ,
+    ifcOffsetX: cx,        // IFC X 중심 (Three.js X 오프셋)
+    ifcOffsetY: cy,        // IFC Y 중심 (Three.js Z 오프셋)
+    ifcOffsetZ: czOrigin,  // IFC Z 지상 기준 (Three.js Y 오프셋)
     scale,
-    detectedScale,  // WBS 물량 정규화 시 사용 (userScale 역산)
+    detectedScale,
   };
 
   console.group('[IFC GeoOrigin] 최종 geoOrigin');

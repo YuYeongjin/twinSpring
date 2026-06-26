@@ -150,6 +150,16 @@ public class ChatController {
         return ResponseEntity.ok(chatService.ragRebuild());
     }
 
+    @GetMapping("/graph-rag-status")
+    public ResponseEntity<Map<String, Object>> graphRagStatus() {
+        return ResponseEntity.ok(chatService.graphRagStatus());
+    }
+
+    @PostMapping("/graph-rag-rebuild")
+    public ResponseEntity<Map<String, Object>> graphRagRebuild() {
+        return ResponseEntity.ok(chatService.graphRagRebuild());
+    }
+
     /**
      * 런타임 센서 알람 임계값 조회
      */

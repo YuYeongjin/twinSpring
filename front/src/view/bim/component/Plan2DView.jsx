@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import { useT } from '../../../i18n/LanguageContext';
 
 // 다크 테마 요소 타입별 2D 도면 스타일
 const TYPE_CFG = {
@@ -106,6 +107,7 @@ export default function Plan2DView({
   placementLockedAxes = null,
   lineLockedAxes = null,
 }) {
+  const t = useT('bimDashboard');
   const canvasRef  = useRef(null);
   const vpRef      = useRef({ x: 0, y: 0, scale: 20 });
   const dragRef    = useRef({ active: false, lx: 0, ly: 0, moved: false });
@@ -830,11 +832,11 @@ export default function Plan2DView({
   const isActionMode = lineDrawMode === 'click' || !!pendingElement;
 
   const hintText = isSelectMode
-    ? '선택 모드 — 드래그하여 영역 선택  |  클릭: 단일 선택'
+    ? t('plan2dSelectMode')
     : isActionMode
       ? lineDrawMode === 'click'
-        ? `선 작도 — ${lineStart ? '두 번째 점 클릭' : '첫 번째 점 클릭'}${snapEnabled ? '  🧲 스냅 ON' : ''}`
-        : `부재 배치 — 클릭하여 배치${snapEnabled ? '  🧲 스냅 ON' : ''}`
+        ? `${lineStart ? t('plan2dLineDrawSecond') : t('plan2dLineDrawFirst')}${snapEnabled ? `  🧲 ${t('plan2dSnapOn')}` : ''}`
+        : `${t('plan2dMemberPlace')}${snapEnabled ? `  🧲 ${t('plan2dSnapOn')}` : ''}`
       : '2D floor plan — Wheel: Zoom | Drag: Move | Click: Select';
 
   return (
@@ -856,14 +858,14 @@ export default function Plan2DView({
 
       <div className="absolute top-3 right-3 flex items-center gap-2">
         <div className="bg-black/75 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-400 shadow">
-          부재 {modelData.length}개
+          {t('plan2dMemberCount', { n: modelData.length })}
         </div>
         <button
           onClick={handleFit}
           className="bg-black/75 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 shadow transition"
-          title="전체 뷰로 맞추기"
+          title={t('plan2dFitAll')}
         >
-          ⊞ 전체보기
+          ⊞ {t('plan2dViewAll')}
         </button>
       </div>
 
@@ -874,7 +876,7 @@ export default function Plan2DView({
           {selectedElement.data.material && (
             <span className="ml-2 text-gray-500">{selectedElement.data.material}</span>
           )}
-          <span className="ml-2 text-gray-600 text-xs">■ 꼭짓점  ● 중간점  + 중심</span>
+          <span className="ml-2 text-gray-600 text-xs">{t('plan2dSnapLegend')}</span>
         </div>
       )}
     </div>

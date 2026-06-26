@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import DroneAnalysisModal from "./component/DroneAnalysisModal";
 import { useT } from "../../i18n/LanguageContext";
+import { parseIfcFile } from "../../utils/ifcImporter";
 import WbsLinkWidget from "../wbs/component/WbsLinkWidget";
 
 // ================================================================
@@ -373,7 +374,9 @@ function IfcImportModal({ onClose, onImport }) {
   const [projectName, setProjectName] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [dragging, setDragging]         = useState(false);
-  const [phase, setPhase]               = useState("idle"); // idle | uploading | done | error
+  const [phase, setPhase]               = useState("idle"); // idle | parsing | parsed | importing | done | error
+  const [progress, setProgress]         = useState(0);
+  const [parsedData, setParsedData]     = useState(null);
   const [errorMsg, setErrorMsg]         = useState("");
   const [userScale, setUserScale]       = useState(1);
   const fileInputRef = useRef(null);
@@ -386,6 +389,8 @@ function IfcImportModal({ onClose, onImport }) {
     }
     setErrorMsg("");
     setSelectedFile(file);
+    setParsedData(null);
+    setPhase("idle");
     if (!projectName) setProjectName(file.name.replace(/\.ifc$/i, ""));
   }, [projectName, t]);
 
@@ -395,9 +400,25 @@ function IfcImportModal({ onClose, onImport }) {
     handleFile(e.dataTransfer.files[0]);
   }, [handleFile]);
 
+  const handleParse = useCallback(async () => {
+    if (!selectedFile) return;
+    setPhase("parsing");
+    setProgress(0);
+    setErrorMsg("");
+    setParsedData(null);
+    try {
+      const result = await parseIfcFile(selectedFile, setProgress, 1);
+      setParsedData(result);
+      setPhase("parsed");
+    } catch (err) {
+      setErrorMsg(String(err?.message || err));
+      setPhase("error");
+    }
+  }, [selectedFile]);
+
   const handleImport = useCallback(() => {
     if (!selectedFile || !projectName.trim()) return;
-    setPhase("uploading");
+    setPhase("importing");
     setErrorMsg("");
     onImport(projectType, projectName.trim(), selectedFile, (project) => {
       if (project) {
@@ -520,7 +541,7 @@ function IfcImportModal({ onClose, onImport }) {
                   Scale Factor
                 </label>
                 <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "#1c2a3a", color: "#6b7280" }}>
-                  mm 단위 IFC → ×1000, cm → ×100
+                  {t('scaleAutoDetect')}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -530,7 +551,7 @@ function IfcImportModal({ onClose, onImport }) {
                   max="100000"
                   step="any"
                   value={userScale}
-                  onChange={e => setUserScale(parseFloat(e.target.value) || 1)}
+                  onChange={e => { setUserScale(parseFloat(e.target.value) || 1); setParsedData(null); setPhase(p => p === "parsed" ? "idle" : p); }}
                   className="w-24 px-2 py-1.5 rounded-lg text-sm outline-none text-right"
                   style={{ backgroundColor: "#152030", border: "1px solid #253347", color: TB.text1 }}
                 />
@@ -539,7 +560,7 @@ function IfcImportModal({ onClose, onImport }) {
                   {[1, 10, 100, 1000].map(v => (
                     <button
                       key={v}
-                      onClick={() => setUserScale(v)}
+                      onClick={() => { setUserScale(v); setParsedData(null); setPhase(p => p === "parsed" ? "idle" : p); }}
                       className="px-2 py-1 rounded text-xs font-medium transition"
                       style={{
                         backgroundColor: userScale === v ? "#0ea5e9" : "#152030",
@@ -553,8 +574,53 @@ function IfcImportModal({ onClose, onImport }) {
             </div>
 
 
-            {/* 업로드 진행 안내 */}
-            {phase === "uploading" && (
+            {/* 파싱 진행 */}
+            {phase === "parsing" && (
+                <div className="rounded-xl p-3 text-xs"
+                     style={{ backgroundColor: "#0c1f2d", border: "1px solid #7c3aed40" }}>
+                  <p className="font-semibold mb-2" style={{ color: "#a78bfa" }}>{t('analyzing')}</p>
+                  <div className="w-full h-1.5 rounded-full bg-[#1c2a3a] overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-300"
+                         style={{ width: `${progress}%`, background: "linear-gradient(90deg,#7c3aed,#a78bfa)" }}/>
+                  </div>
+                  <p className="mt-1 text-right" style={{ color: TB.text2 }}>{progress}%</p>
+                </div>
+            )}
+
+            {/* 파싱 결과 — 요소 유형 요약 */}
+            {phase === "parsed" && parsedData && (
+                <div className="rounded-xl p-3 text-xs space-y-2"
+                     style={{ backgroundColor: "#0c1f2d", border: "1px solid #22c55e40" }}>
+                  <p className="font-semibold" style={{ color: "#4ade80" }}>
+                    {t('totalDetected').replace('{count}', parsedData.elements.length)}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {Object.entries(
+                        parsedData.elements.reduce((acc, el) => {
+                          acc[el.elementType] = (acc[el.elementType] || 0) + 1;
+                          return acc;
+                        }, {})
+                    ).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+                        <span key={type} className="px-2 py-0.5 rounded-full text-xs font-medium"
+                              style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: "#93c5fd" }}>
+                          {type.replace('Ifc', '')}: {count}
+                        </span>
+                    ))}
+                  </div>
+                  <p style={{ color: TB.text2 }}>
+                    {parsedData.storeys?.length > 0 && `${t('storeyCount', { n: parsedData.storeys.length })} · `}
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                    {parsedData.detectedScale && (
+                      <span style={{ color: "#6b7280", marginLeft: 8 }}>
+                        ({parsedData.detectedScale <= 0.002 ? 'mm' : parsedData.detectedScale <= 0.02 ? 'cm' : parsedData.detectedScale <= 0.2 ? 'dm' : 'm'} IFC)
+                      </span>
+                    )}
+                  </p>
+                </div>
+            )}
+
+            {/* 서버 변환 진행 안내 */}
+            {phase === "importing" && (
                 <div className="rounded-xl p-3 text-xs"
                      style={{ backgroundColor: "#0c1f2d", border: "1px solid #0ea5e940" }}>
                   <p className="text-blue-300 font-semibold mb-2">{t('serverConverting')}</p>
@@ -579,25 +645,57 @@ function IfcImportModal({ onClose, onImport }) {
                style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
             <button
                 onClick={onClose}
-                disabled={phase === "uploading"}
+                disabled={phase === "parsing" || phase === "importing"}
                 className="flex-1 py-3 rounded-xl text-sm font-medium transition"
                 style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text2 }}
             >
               {t('cancel')}
             </button>
-            <button
-                onClick={handleImport}
-                disabled={!selectedFile || !projectName.trim() || phase === "uploading"}
-                className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
-                style={{
-                  background: selectedFile && projectName.trim() && phase === "idle"
-                      ? "linear-gradient(135deg,#7c3aed,#5b21b6)" : "#1c2a3a",
-                  border: `1px solid ${selectedFile && projectName.trim() ? "#8b5cf6" : "#253347"}`,
-                  cursor: !selectedFile || !projectName.trim() || phase === "uploading" ? "not-allowed" : "pointer",
-                }}
-            >
-              {phase === "uploading" ? t('converting') : t('uploadAndConvert')}
-            </button>
+
+            {/* 1단계: 파일 분석 버튼 (idle / error 상태) */}
+            {phase !== "parsed" && phase !== "importing" && (
+                <button
+                    onClick={handleParse}
+                    disabled={!selectedFile || phase === "parsing"}
+                    className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
+                    style={{
+                      background: selectedFile && phase !== "parsing"
+                          ? "linear-gradient(135deg,#7c3aed,#5b21b6)" : "#1c2a3a",
+                      border: `1px solid ${selectedFile ? "#8b5cf6" : "#253347"}`,
+                      cursor: !selectedFile || phase === "parsing" ? "not-allowed" : "pointer",
+                    }}
+                >
+                  {phase === "parsing" ? t('analyzing') : t('fileAnalysis')}
+                </button>
+            )}
+
+            {/* 2단계: 가져오기 버튼 (parsed 상태) */}
+            {phase === "parsed" && (
+                <button
+                    onClick={handleImport}
+                    disabled={!projectName.trim()}
+                    className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
+                    style={{
+                      background: projectName.trim()
+                          ? "linear-gradient(135deg,#059669,#047857)" : "#1c2a3a",
+                      border: `1px solid ${projectName.trim() ? "#10b981" : "#253347"}`,
+                      cursor: !projectName.trim() ? "not-allowed" : "pointer",
+                    }}
+                >
+                  {t('importProject').replace('{count}', parsedData?.elements?.length ?? 0)}
+                </button>
+            )}
+
+            {/* 서버 변환 중 */}
+            {phase === "importing" && (
+                <button
+                    disabled
+                    className="flex-[2] py-3 rounded-xl text-sm font-bold text-white transition"
+                    style={{ background: "#1c2a3a", border: "1px solid #253347", cursor: "not-allowed" }}
+                >
+                  {t('creating2')}
+                </button>
+            )}
           </div>
         </div>
       </div>

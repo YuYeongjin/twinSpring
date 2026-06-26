@@ -31,6 +31,10 @@ httpx>=0.28.0                    # Async-capable HTTP client (used for simulatio
 python-dotenv>=1.0.0             # .env file loader
 olefile>=0.47                    # HWP(OLE) 파일 파싱 (공정서·시방서 RAG 인덱싱용)
 
+# ── GraphRAG (Leiden 커뮤니티 감지) ───────────────────────────────
+python-igraph>=0.11.0            # 그래프 자료구조 (C++ 바인딩)
+leidenalg>=0.10.0                # Leiden 커뮤니티 감지 알고리즘
+
 # ── IFC 변환 (서버 사이드 IFC → GLB 변환) ─────────────────────────
 ifcopenshell                     # IFC 파싱 및 지오메트리 추출
 pygltflib>=1.16.0                # glTF 2.0 / GLB 바이너리 생성

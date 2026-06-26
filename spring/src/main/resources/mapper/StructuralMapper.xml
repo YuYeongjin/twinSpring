@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.StructuralDAO">
+
+    <!-- ── ResultMap ──────────────────────────────────────────────────── -->
+    <resultMap id="formulaRM" type="yyj.project.twinspring.dto.StructuralFormulaDTO">
+        <id     property="formulaId"    column="formula_id"/>
+        <result property="codeStandard" column="code_standard"/>
+        <result property="structureType" column="structure_type"/>
+        <result property="category"     column="category"/>
+        <result property="name"         column="name"/>
+        <result property="expression"   column="expression"/>
+        <result property="description"  column="description"/>
+        <result property="sortOrder"    column="sort_order"/>
+        <collection property="variables" ofType="yyj.project.twinspring.dto.StructuralFormulaVariableDTO"
+                    select="getVariablesByFormula" column="formula_id"/>
+    </resultMap>
+
+    <resultMap id="variableRM" type="yyj.project.twinspring.dto.StructuralFormulaVariableDTO">
+        <id     property="varId"        column="var_id"/>
+        <result property="formulaId"    column="formula_id"/>
+        <result property="varName"      column="var_name"/>
+        <result property="varLabel"     column="var_label"/>
+        <result property="defaultValue" column="default_value"/>
+        <result property="minValue"     column="min_value"/>
+        <result property="maxValue"     column="max_value"/>
+        <result property="unit"         column="unit"/>
+        <result property="description"  column="description"/>
+        <result property="isEditable"   column="is_editable"/>
+        <result property="effectiveValue" column="effective_value"/>
+    </resultMap>
+
+    <resultMap id="overrideRM" type="yyj.project.twinspring.dto.StructuralFormulaOverrideDTO">
+        <id     property="overrideId"   column="override_id"/>
+        <result property="projectId"    column="project_id"/>
+        <result property="formulaId"    column="formula_id"/>
+        <result property="varName"      column="var_name"/>
+        <result property="customValue"  column="custom_value"/>
+    </resultMap>
+
+    <!-- ── 공식 목록 조회 (변수 포함, 오버라이드 effective_value 반영) ── -->
+    <select id="getFormulas" resultMap="formulaRM">
+        SELECT formula_id, code_standard, structure_type, category,
+               name, expression, description, sort_order
+        FROM structural_formula
+        WHERE code_standard = #{codeStandard}
+          AND (structure_type = #{structureType} OR structure_type = 'ALL')
+        ORDER BY sort_order ASC
+    </select>
+
+    <select id="getFormulaById" resultMap="formulaRM">
+        SELECT formula_id, code_standard, structure_type, category,
+               name, expression, description, sort_order
+        FROM structural_formula
+        WHERE formula_id = #{formulaId}
+    </select>
+
+    <!-- ── 변수 조회 ──────────────────────────────────────────────────── -->
+    <select id="getVariablesByFormula" resultMap="variableRM">
+        SELECT var_id, formula_id, var_name, var_label,
+               default_value, min_value, max_value, unit,
+               description, is_editable,
+               default_value AS effective_value
+        FROM structural_formula_variable
+        WHERE formula_id = #{formulaId}
+        ORDER BY var_id ASC
+    </select>
+
+    <!-- ── 오버라이드 조회 ─────────────────────────────────────────────── -->
+    <select id="getOverridesByProject" resultMap="overrideRM">
+        SELECT override_id, project_id, formula_id, var_name, custom_value
+        FROM structural_formula_override
+        WHERE project_id = #{projectId}
+    </select>
+
+    <select id="getOverride" resultMap="overrideRM">
+        SELECT override_id, project_id, formula_id, var_name, custom_value
+        FROM structural_formula_override
+        WHERE project_id = #{projectId}
+          AND formula_id = #{formulaId}
+          AND var_name   = #{varName}
+    </select>
+
+    <!-- ── 오버라이드 upsert ──────────────────────────────────────────── -->
+    <insert id="upsertOverride" parameterType="yyj.project.twinspring.dto.StructuralFormulaOverrideDTO">
+        INSERT INTO structural_formula_override (project_id, formula_id, var_name, custom_value, updated_at)
+        VALUES (#{projectId}, #{formulaId}, #{varName}, #{customValue}, NOW())
+        ON CONFLICT (project_id, formula_id, var_name)
+        DO UPDATE SET custom_value = EXCLUDED.custom_value,
+                      updated_at   = NOW()
+    </insert>
+
+    <!-- ── 오버라이드 삭제 ────────────────────────────────────────────── -->
+    <delete id="deleteOverride">
+        DELETE FROM structural_formula_override
+        WHERE project_id = #{projectId}
+          AND formula_id = #{formulaId}
+          AND var_name   = #{varName}
+    </delete>
+
+    <delete id="deleteAllOverridesByProject">
+        DELETE FROM structural_formula_override
+        WHERE project_id = #{projectId}
+    </delete>
+
+    <!-- ── 해석 결과 캐시 upsert ─────────────────────────────────────── -->
+    <insert id="upsertAnalysisCache" parameterType="yyj.project.twinspring.dto.StructuralAnalysisCacheDTO">
+        INSERT INTO structural_analysis_cache (project_id, result_json, params_json, analyzed_at)
+        VALUES (#{projectId}, #{resultJson}, #{paramsJson}, NOW())
+        ON CONFLICT (project_id)
+        DO UPDATE SET result_json  = EXCLUDED.result_json,
+                      params_json  = EXCLUDED.params_json,
+                      analyzed_at  = NOW()
+    </insert>
+
+    <!-- ── 해석 결과 캐시 조회 ───────────────────────────────────────── -->
+    <select id="getAnalysisCache" resultType="yyj.project.twinspring.dto.StructuralAnalysisCacheDTO">
+        SELECT project_id   AS projectId,
+               result_json  AS resultJson,
+               params_json  AS paramsJson,
+               analyzed_at  AS analyzedAt
+        FROM structural_analysis_cache
+        WHERE project_id = #{projectId}
+    </select>
+
+</mapper>
