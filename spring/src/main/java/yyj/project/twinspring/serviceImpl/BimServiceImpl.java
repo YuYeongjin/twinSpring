@@ -944,19 +944,29 @@ public class BimServiceImpl implements BimService {
                         (convertResult != null ? convertResult.get("error") : "응답 없음"));
             }
 
-            // 3. GLB Minio 저장
+            // 3. GLB Minio 저장 — MinIO 장애 시 warn 후 계속 진행 (GLB는 IFC로 재생성 가능)
             String glbBase64 = (String) convertResult.get("glbBase64");
             byte[] glbBytes = java.util.Base64.getDecoder().decode(glbBase64);
-            uploadGlbFile(projectId, glbBytes);
+            boolean glbSaved = false;
+            try {
+                uploadGlbFile(projectId, glbBytes);
+                glbSaved = true;
+            } catch (Exception e) {
+                log.warn("[BIM] GLB 저장 실패(계속 진행): projectId={}, {}", projectId, e.getMessage());
+            }
 
             // 3b. Lite GLB Minio 저장 (convex hull 단순화 버전)
             String glbLiteBase64 = (String) convertResult.get("glbLiteBase64");
             if (glbLiteBase64 != null) {
-                byte[] liteBytes = java.util.Base64.getDecoder().decode(glbLiteBase64);
-                String liteKey = "projects/" + projectId + "/model_lite.glb";
-                storageService.upload(liteKey, new java.io.ByteArrayInputStream(liteBytes),
-                        liteBytes.length, "model/gltf-binary");
-                log.info("[BIM] Lite GLB 저장 완료: key={}, size={}bytes", liteKey, liteBytes.length);
+                try {
+                    byte[] liteBytes = java.util.Base64.getDecoder().decode(glbLiteBase64);
+                    String liteKey = "projects/" + projectId + "/model_lite.glb";
+                    storageService.upload(liteKey, new java.io.ByteArrayInputStream(liteBytes),
+                            liteBytes.length, "model/gltf-binary");
+                    log.info("[BIM] Lite GLB 저장 완료: key={}, size={}bytes", liteKey, liteBytes.length);
+                } catch (Exception e) {
+                    log.warn("[BIM] Lite GLB 저장 실패(계속 진행): projectId={}, {}", projectId, e.getMessage());
+                }
             }
 
             // 4. elements DB 저장
@@ -1016,12 +1026,13 @@ public class BimServiceImpl implements BimService {
                 saveStoreys(storeyDtos);
             }
 
-            return Map.<String, Object>of(
-                    "projectId", projectId,
-                    "elementCount", rawElements != null ? rawElements.size() : 0,
-                    "storeyCount", rawStoreys != null ? rawStoreys.size() : 0,
-                    "glbSize", glbBytes.length
-            );
+            Map<String, Object> result = new HashMap<>();
+            result.put("projectId", projectId);
+            result.put("elementCount", rawElements != null ? rawElements.size() : 0);
+            result.put("storeyCount", rawStoreys != null ? rawStoreys.size() : 0);
+            result.put("glbSize", glbBytes.length);
+            result.put("glbSaved", glbSaved);
+            return result;
         }).subscribeOn(reactor.core.scheduler.Schedulers.boundedElastic());
     }
 
