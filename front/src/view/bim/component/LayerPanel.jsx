@@ -508,8 +508,4 @@ export default function LayerPanel({
 
         </div>
     )
-} 
-            */}
-        </div >
-    );
 }

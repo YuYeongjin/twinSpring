@@ -842,6 +842,12 @@ public class BimServiceImpl implements BimService {
     public void saveElementWbsMappings(List<Map<String, Object>> mappings) {
         if (mappings == null || mappings.isEmpty()) return;
         bimDAO.insertElementWbsMappingsBatch(mappings);
+        for (Map<String, Object> mapping : mappings) {
+            String wbsId = (String) mapping.get("wbsId");
+            if (wbsId != null) {
+                bimDAO.incrementWbsElementCount(wbsId);
+            }
+        }
     }
 
     @Override

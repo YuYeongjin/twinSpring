@@ -462,4 +462,12 @@
         WHERE wbs_id = #{wbsId}
     </update>
 
+    <!-- WBS 노드 element_count 1 증가 -->
+    <update id="incrementWbsElementCount" parameterType="string">
+        UPDATE bim_wbs_node
+        SET element_count = element_count + 1,
+            updated_at    = CURRENT_TIMESTAMP
+        WHERE wbs_id = #{wbsId}
+    </update>
+
 </mapper>
