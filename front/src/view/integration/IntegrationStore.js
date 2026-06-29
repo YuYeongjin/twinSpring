@@ -143,6 +143,9 @@ function deserializeStructures(raw) {
 function reducer(state, action) {
   switch (action.type) {
 
+    case 'RESET':
+      return makeInitial();
+
     case 'SET_LOADING':
       return { ...state, isLoading: action.value };
 
@@ -668,6 +671,15 @@ function reducer(state, action) {
 // ── Provider ─────────────────────────────────────────────────────
 export function IntegrationProvider({ projectId, children }) {
   const [state, dispatch] = useReducer(reducer, undefined, makeInitial);
+
+  // 프로젝트 전환 시 이전 상태 초기화 — 이전 BIM 구조물이 새 프로젝트에 오염되는 것 방지
+  const prevProjectIdRef = useRef(null);
+  useEffect(() => {
+    if (prevProjectIdRef.current !== null && prevProjectIdRef.current !== projectId) {
+      dispatch({ type: 'RESET' });
+    }
+    prevProjectIdRef.current = projectId;
+  }, [projectId]);
 
   // WBS 태스크 진행률 변경 감지 → DB 자동 저장 (3초 debounce)
   const prevProgressRef = useRef({});  // { taskId: progress }
