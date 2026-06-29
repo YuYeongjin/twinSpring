@@ -126,12 +126,12 @@ function CameraAutoFit({ ifcMeshes, glbUrl, modelData, orbitRef, fitTrigger }) {
     const prevRef = useRef({ key: null, trigger: -1 });
 
     useEffect(() => {
-        const hasData = glbUrl || (ifcMeshes && ifcMeshes.length > 0);
+        const hasData = glbUrl || (ifcMeshes && ifcMeshes.length > 0) || (modelData && modelData.length > 0);
         if (!hasData) {
             prevRef.current = { key: null, trigger: -1 };
             return;
         }
-        const currentKey = glbUrl || ifcMeshes;
+        const currentKey = glbUrl || ifcMeshes || modelData?.[0]?.elementId || 'modelData';
         if (prevRef.current.key === currentKey && prevRef.current.trigger === fitTrigger) return;
 
         let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -1919,8 +1919,8 @@ export default function Scene({
                 />
             )}
 
-            {/* IFC/GLB 로드 시 카메라 자동 맞춤 */}
-            {(glbUrl || (ifcMeshes && ifcMeshes.length > 0)) && (
+            {/* IFC/GLB 로드 시 카메라 자동 맞춤 — GLB/ifcMeshes 없는 박스 렌더러도 포함 */}
+            {(glbUrl || (ifcMeshes && ifcMeshes.length > 0) || (modelData && modelData.length > 0)) && (
                 <CameraAutoFit
                     ifcMeshes={ifcMeshes}
                     glbUrl={glbUrl}
