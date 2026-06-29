@@ -209,7 +209,10 @@ function DataLoader({ selectedProject }) {
             const floorType = (activeFloor.notes || '').match(/:(FRAME|SLAB)$/)?.[1];
             // FRAME은 crane, SLAB은 excavator+dump 필요 — 없으면 달력 기반 rate=1.0
             const reprType = floorType === 'FRAME' ? 'IfcColumn' : 'IfcSlab';
-            const { rate, blocked } = calcProgressRate(reprType, ws, eq);
+            // assignedWbsTaskId가 있는 자원은 해당 태스크에만, 없는 자원은 모든 태스크에 공유
+            const wsForFloor = ws.filter(w => !w.assignedWbsTaskId || w.assignedWbsTaskId === activeFloor.taskId);
+            const eqForFloor = eq.filter(e => !e.assignedWbsTaskId || e.assignedWbsTaskId === activeFloor.taskId);
+            const { rate, blocked } = calcProgressRate(reprType, wsForFloor, eqForFloor);
             const effectiveRate = blocked ? 1.0 : rate; // 장비 없어도 달력 기반으로는 진행
             const p = calcRealTimeProgress(activeFloor, effectiveRate);
             // 사용자가 수동으로 설정한 진도를 캘린더 기반 값이 낮추지 않도록 Math.max 적용
@@ -264,7 +267,10 @@ function DataLoader({ selectedProject }) {
         }
 
         const elementType = (activeElem.notes || '').split(':')[2];
-        const { rate, blocked } = calcProgressRate(elementType, ws, eq);
+        // assignedWbsTaskId가 있는 자원은 해당 태스크에만, 없는 자원은 모든 태스크에 공유
+        const wsForElem = ws.filter(w => !w.assignedWbsTaskId || w.assignedWbsTaskId === activeElem.taskId);
+        const eqForElem = eq.filter(e => !e.assignedWbsTaskId || e.assignedWbsTaskId === activeElem.taskId);
+        const { rate, blocked } = calcProgressRate(elementType, wsForElem, eqForElem);
 
         if (!blocked && rate > 0) {
           // 세부 공정 태스크 (sortOrder 순 — 터파기→버림콘크리트→거푸집→...)

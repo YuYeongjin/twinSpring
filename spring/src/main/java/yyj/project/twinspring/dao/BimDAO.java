@@ -120,4 +120,6 @@ public interface BimDAO {
     );
 
     void decrementWbsElementCount(@Param("wbsId") String wbsId);
+
+    void incrementWbsElementCount(@Param("wbsId") String wbsId);
 }
