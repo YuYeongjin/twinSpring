@@ -168,16 +168,14 @@ function reducer(state, action) {
           return (m && pendingSet.has(m[1])) ? { ...t, progress: 0 } : t;
         });
       } else {
-        // 30초 폴링 갱신 시: tick이 메모리에서 계산한 BIM 진도가
+        // 30초 폴링 갱신 시: tick이 메모리에서 계산한 진도가
         // DB 저장(3초 debounce) 전에 refresh로 덮어씌워지는 레이스 컨디션 방지
-        // — 메모리 BIM 진도가 DB 값보다 높으면 메모리 값을 유지
-        const memBimProgress = {};
-        state.wbsTasks.forEach(t => {
-          if ((t.notes || '').startsWith('BIM:')) memBimProgress[t.taskId] = t.progress || 0;
-        });
+        // — BIM/일반 WBS 모두: 메모리 진도가 DB 값보다 높으면 메모리 값을 유지
+        const memProgress = {};
+        state.wbsTasks.forEach(t => { memProgress[t.taskId] = t.progress || 0; });
         const today = new Date().toISOString().slice(0, 10);
         resolvedTasks = incomingTasks.map(t => {
-          const memP = memBimProgress[t.taskId];
+          const memP = memProgress[t.taskId];
           if (memP !== undefined && memP > (t.progress || 0))
             return { ...t, progress: memP, status: deriveTaskStatus(memP, t.endDate, today) };
           return t;
