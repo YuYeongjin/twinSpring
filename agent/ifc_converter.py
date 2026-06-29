@@ -888,20 +888,21 @@ def convert_ifc_to_glb(ifc_bytes: bytes, user_scale: float = 1.0, project_id: st
             "geo_origin":     {**geo_info, "ifcOffsetX": 0, "ifcOffsetY": 0, "ifcOffsetZ": 0, "scale": scale, "ifcSchema": ifc_schema},
         }
 
-    # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z 지상 1층 기준) ──────────
+    # ── 중앙 정렬 계산 (Z-up: XY 평면 중앙, Z IFC 원점 그대로) ──────────
     all_pts = np.vstack(all_positions)
     cx     = float((all_pts[:, 0].min() + all_pts[:, 0].max()) / 2.0)
     cy     = float((all_pts[:, 1].min() + all_pts[:, 1].max()) / 2.0)
 
-    # 지상 1층 elevation을 Z 원점으로 사용 → 지하는 음수, 1층 바닥은 Z=0
-    # 층 정보가 없으면 geometry 최솟값으로 폴백 (기존 동작)
+    # IFC Z 좌표를 그대로 사용: XY만 중앙 정렬, Z는 이동하지 않음
+    # → IFC에서 지상=0, 지하=음수면 렌더에서도 지하가 Z<0으로 내려감
+    # 단, IFC 층 정보에서 명시적으로 지상 1층 elevation을 찾으면 그것을 Z 원점으로 보정
     ground_elev = _find_ground_floor_elevation(storeys)
     if ground_elev is not None:
         z_origin = float(ground_elev)
         logger.info("[IFC Convert] 지상 1층 elevation=%.3fm → Z 원점으로 사용", z_origin)
     else:
-        z_origin = float(all_pts[:, 2].min())
-        logger.info("[IFC Convert] 층 정보 없음 → geometry min_z=%.3fm 폴백", z_origin)
+        z_origin = 0.0
+        logger.info("[IFC Convert] 층 이름 미매칭 → IFC Z 원점 그대로 사용 (z_origin=0)")
 
     geo_origin = {
         **geo_info,
