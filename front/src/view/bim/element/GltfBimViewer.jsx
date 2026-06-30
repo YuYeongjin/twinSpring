@@ -79,8 +79,8 @@ export const GltfBimViewer = forwardRef(function GltfBimViewer(
       const elementId = node.name;
       const element   = modelMap.get(elementId);
 
-      // GLB 노드는 기본적으로 표시; element를 찾은 경우에만 레이어 가시성 적용
-      node.visible = true;
+      // visibleModelData에 없는 노드(레이어 꺼짐/숨김)는 invisible 처리
+      node.visible = !!element;
       if (!element) return;
 
       const isSelected      = elementId === selectedId;
@@ -101,8 +101,12 @@ export const GltfBimViewer = forwardRef(function GltfBimViewer(
 
       // 재질 업데이트 (공유 재질 클론 방지)
       if (!node._customMat) {
+        // 원본 GLB 재질 색상을 기본값으로 보존 — 레이어 미할당 시 흰색 방지
+        const origMat = Array.isArray(node.material) ? node.material[0] : node.material;
+        const origColor = origMat?.color ? origMat.color.clone() : new THREE.Color(0.7, 0.7, 0.7);
         node._customMat = new THREE.MeshStandardMaterial({
           roughness: 0.7, metalness: 0.05, side: THREE.DoubleSide,
+          color: origColor,
         });
         node.material = node._customMat;
       }
