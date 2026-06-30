@@ -31,9 +31,7 @@ pipeline {
                 dir('front') {
                     sh 'npm ci'
                     sh 'npx update-browserslist-db@latest'
-                    withEnv(['CI=false']) {
-                        sh 'npm run build'
-                    }
+                    sh 'CI=false npm run build'
                 }
             }
         }
