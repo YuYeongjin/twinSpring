@@ -29,7 +29,7 @@ pipeline {
                 }
             steps {
                 dir('front') {
-                    sh 'npm ci'
+                    sh 'npm ci --legacy-peer-deps'
                     sh 'npx update-browserslist-db@latest'
                     sh 'CI=false npm run build'
                 }
