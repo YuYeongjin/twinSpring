@@ -448,7 +448,7 @@ export default function LayerPanel({
                     Layer
                 </span>
                 <div className="flex items-center gap-1.5">
-                    {onRegenerateLayers && modelData?.some(e => e.storey || e.globalId || e.building) && (
+                    {onRegenerateLayers && (
                         <button
                             onClick={onRegenerateLayers}
                             disabled={isRegeneratingLayers}
@@ -492,7 +492,7 @@ export default function LayerPanel({
                     <div className="text-3xl mb-2">🗂</div>
                     <p className="text-xs text-gray-500">No layers</p>
                     <p className="text-xs text-gray-600 mt-0.5">Use the + Layer button to create one</p>
-                    {onRegenerateLayers && modelData?.some(e => e.storey || e.globalId || e.building) && (
+                    {onRegenerateLayers && (
                         <button
                             onClick={onRegenerateLayers}
                             disabled={isRegeneratingLayers}
