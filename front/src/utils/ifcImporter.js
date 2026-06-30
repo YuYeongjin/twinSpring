@@ -24,12 +24,16 @@ import {
   IFCRAILING,                  // 난간 (A-3)
   IFCCOVERING,                 // 마감재 (A-5)
   IFCBUILDINGELEMENTPROXY,     // 기타 미분류 (A-6)
+  IFCREINFORCINGBAR,           // 철근 (A-8)
+  IFCREINFORCINGMESH,          // 철근망 (A-8)
   IFCSIUNIT,
   IFCSITE,
   IFCBUILDING,
   IFCBUILDINGSTOREY,
   IFCRELCONTAINEDINSPATIALSTRUCTURE,
   IFCRELAGGREGATES,
+  IFCRELASSOCIATESMATERIAL,
+  IFCRELDEFINEDBYPROPERTIES,
 } from 'web-ifc';
 
 // IFC 엔티티 타입 → 서비스 elementType 매핑
@@ -71,6 +75,9 @@ const ELEMENT_TYPE_MAP = [
   { ifcType: IFCCOVERING,             ourType: 'IfcCovering'    },
   // 기타 미분류 (A-6)
   { ifcType: IFCBUILDINGELEMENTPROXY, ourType: 'IfcProxy'       },
+  // 철근 (A-8)
+  { ifcType: IFCREINFORCINGBAR,       ourType: 'IfcRebar'       },
+  { ifcType: IFCREINFORCINGMESH,      ourType: 'IfcRebar'       },
 ];
 
 // IFC 파일의 길이 단위 → 미터 스케일 팩터 감지
@@ -109,13 +116,91 @@ function transformNormal(mat, nx, ny, nz) {
   ];
 }
 
-function getMaterial(ourType) {
+// IFC 재료가 없을 때 사용하는 타입별 폴백값
+function getMaterialFallback(ourType) {
+  if (ourType === 'IfcRebar')                              return 'Steel SD400';
   if (ourType === 'IfcMember' || ourType === 'IfcRailing') return 'Steel S355';
-  if (ourType === 'IfcWall')   return 'Concrete C25';
+  if (ourType === 'IfcWall')        return 'Concrete C25';
   if (ourType === 'IfcCurtainWall') return 'Glass';
   if (ourType === 'IfcCovering')    return 'Finish';
   if (ourType === 'IfcProxy')       return 'Unknown';
   return 'Concrete C30';
+}
+
+// IfcRelAssociatesMaterial 순회 → expressId → 재료명 맵
+function buildMaterialMap(ifcAPI, modelId) {
+  const map = new Map();
+  try {
+    const relIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELASSOCIATESMATERIAL, false);
+    for (let i = 0; i < relIds.size(); i++) {
+      try {
+        const rel = ifcAPI.GetLine(modelId, relIds.get(i), true);
+        const name = _extractMatName(rel?.RelatingMaterial);
+        if (!name || !rel?.RelatedObjects) continue;
+        for (const obj of rel.RelatedObjects) {
+          const id = obj?.value ?? obj;
+          if (id != null) map.set(id, name);
+        }
+      } catch { /* 개별 실패 무시 */ }
+    }
+  } catch { /* 무시 */ }
+  return map;
+}
+
+function _extractMatName(mat) {
+  if (!mat) return null;
+  if (mat.Name?.value)                      return mat.Name.value;
+  if (mat.MaterialLayers) {
+    for (const l of (mat.MaterialLayers || []))
+      if (l?.Material?.Name?.value) return l.Material.Name.value;
+  }
+  if (mat.ForLayerSet?.MaterialLayers) {
+    for (const l of (mat.ForLayerSet.MaterialLayers || []))
+      if (l?.Material?.Name?.value) return l.Material.Name.value;
+  }
+  if (mat.MaterialConstituents) {
+    for (const c of (mat.MaterialConstituents || []))
+      if (c?.Material?.Name?.value) return c.Material.Name.value;
+  }
+  if (mat.Materials) {
+    for (const m of (mat.Materials || []))
+      if (m?.Name?.value) return m.Name.value;
+  }
+  if (mat.ForProfileSet?.MaterialProfiles) {
+    for (const mp of (mat.ForProfileSet.MaterialProfiles || []))
+      if (mp?.Material?.Name?.value) return mp.Material.Name.value;
+  }
+  return null;
+}
+
+// IfcRelDefinesByProperties 순회 → expressId → { key: value } 속성 맵
+function buildPropertiesMap(ifcAPI, modelId) {
+  const map = new Map();
+  try {
+    const relIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELDEFINEDBYPROPERTIES, false);
+    for (let i = 0; i < relIds.size(); i++) {
+      try {
+        const rel = ifcAPI.GetLine(modelId, relIds.get(i), true);
+        const pdef = rel?.RelatingPropertyDefinition;
+        if (!pdef?.HasProperties || !rel?.RelatedObjects) continue;
+        const props = {};
+        for (const p of pdef.HasProperties) {
+          const key = p?.Name?.value;
+          if (!key) continue;
+          const nominal = p?.NominalValue;
+          props[key] = nominal?.value ?? null;
+        }
+        if (Object.keys(props).length === 0) continue;
+        for (const obj of rel.RelatedObjects) {
+          const id = obj?.value ?? obj;
+          if (id == null) continue;
+          const prev = map.get(id) || {};
+          map.set(id, { ...prev, ...props });
+        }
+      } catch { /* 개별 실패 무시 */ }
+    }
+  } catch { /* 무시 */ }
+  return map;
 }
 
 // column-major 4×4 행렬(flatTransformation)에서 ZYX Euler 각(degree)을 추출.
@@ -437,6 +522,10 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
     } catch { /* 개별 실패 무시 */ }
   }
 
+  // ── IFC 재료 맵 / 속성(Pset) 맵 빌드 ──────────────────────────
+  const materialMap   = buildMaterialMap(ifcAPI, modelId);
+  const propertiesMap = buildPropertiesMap(ifcAPI, modelId);
+
   onProgress?.(15);
 
   // ── StreamAllMeshesWithTypes로 지오메트리 스트리밍 ────────────
@@ -550,7 +639,11 @@ export async function parseIfcFile(file, onProgress, userScale = 1.0) {
       rotationX:   rotAngles.rotationX,
       rotationY:   rotAngles.rotationY,
       rotationZ:   rotAngles.rotationZ,
-      material:    getMaterial(ourType),
+      material:       materialMap.get(expressId) || getMaterialFallback(ourType),
+      ifcProperties:  (() => {
+        const p = propertiesMap.get(expressId);
+        return p && Object.keys(p).length > 0 ? JSON.stringify(p) : null;
+      })(),
 
       // IFC 원본 좌표 (GIS용)
       ifcWorldX: isFinite(ifcMinX) ? parseFloat(((ifcMinX + ifcMaxX) / 2).toFixed(4)) : null,

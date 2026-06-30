@@ -591,10 +591,11 @@ ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS ifc_world_z   DOUBLE PRECISION 
 -- ================================================================
 -- bim_element IFC 구조 분석 컬럼 (GlobalId, Name, 층, 동)
 -- ================================================================
-ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS global_id  TEXT NULL;
-ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS ifc_name   TEXT NULL;
-ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS storey     TEXT NULL;
-ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS building   TEXT NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS global_id      TEXT NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS ifc_name       TEXT NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS storey         TEXT NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS building       TEXT NULL;
+ALTER TABLE bim_element ADD COLUMN IF NOT EXISTS ifc_properties TEXT NULL;
 
 -- ================================================================
 -- BIM 층(BuildingStorey) 테이블
