@@ -43,6 +43,12 @@ public class SimulationDTO {
     @JsonProperty("heightMapData")
     private String heightMapData;
 
+    @JsonProperty("zoneMapData")
+    private String zoneMapData;
+
+    @JsonProperty("hasRandomTerrain")
+    private Boolean hasRandomTerrain;
+
     public SimulationDTO() {}
 
     // ── Getters ──────────────────────────────────────────────────────────────
@@ -60,6 +66,8 @@ public class SimulationDTO {
     public Double getSoilInBucket()     { return soilInBucket; }
     public String getSelectedMachineId(){ return selectedMachineId; }
     public String getHeightMapData()    { return heightMapData; }
+    public String getZoneMapData()      { return zoneMapData; }
+    public Boolean getHasRandomTerrain(){ return hasRandomTerrain; }
 
     // ── Setters ──────────────────────────────────────────────────────────────
 
@@ -75,5 +83,7 @@ public class SimulationDTO {
     public void setOperationMode(String operationMode)     { this.operationMode = operationMode; }
     public void setSoilInBucket(Double soilInBucket)       { this.soilInBucket = soilInBucket; }
     public void setSelectedMachineId(String selectedMachineId) { this.selectedMachineId = selectedMachineId; }
-    public void setHeightMapData(String heightMapData)     { this.heightMapData = heightMapData; }
+    public void setHeightMapData(String heightMapData)         { this.heightMapData = heightMapData; }
+    public void setZoneMapData(String zoneMapData)             { this.zoneMapData = zoneMapData; }
+    public void setHasRandomTerrain(Boolean hasRandomTerrain)  { this.hasRandomTerrain = hasRandomTerrain; }
 }

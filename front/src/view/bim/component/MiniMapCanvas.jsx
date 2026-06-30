@@ -7,15 +7,16 @@ import { getBaseColor } from '../element/BimElement';
 // ================================================================
 // 부재 요소 (상단 뷰, 납작한 박스)
 // ================================================================
+// Z-up: posX→X, posY→Y, posZ→Z(높이) — 평면도는 XY를 내려봄
 function MiniElem({ element }) {
     const { pos, size, color } = useMemo(() => {
         const x  = Number(element.positionX) || 0;
-        const z  = Number(element.positionZ) || 0;
+        const y  = Number(element.positionY) || 0;
         const sx = Math.max(Number(element.sizeX) || 1, 0.3);
-        const sz = Math.max(Number(element.sizeZ) || 1, 0.3);
+        const sy = Math.max(Number(element.sizeY) || 1, 0.3);
         return {
-            pos:   [x, 0.05, z],
-            size:  [sx, 0.1, sz],
+            pos:   [x, y, 0.05],
+            size:  [sx, sy, 0.1],
             color: element.resolvedColor || getBaseColor(element.elementType),
         };
     }, [element]);
@@ -34,13 +35,13 @@ function MiniElem({ element }) {
 function CamMarker({ position, yaw }) {
     if (!position || isNaN(position.x)) return null;
     const x = position.x;
-    const z = position.z;
+    const y = position.y;  // Z-up: position.y = BIM Y (남북), 미니맵 Y축
     const angle = yaw ?? 0;
 
     return (
-        <group position={[x, 0.3, z]}>
+        <group position={[x, y, 0.3]}>
             {/* 원형 배경 */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh rotation={[0, 0, 0]}>
                 <circleGeometry args={[1.4, 32]} />
                 <meshBasicMaterial color="#1d4ed8" transparent opacity={0.9} />
             </mesh>
@@ -66,37 +67,36 @@ function AutoZoom({ modelData }) {
 
         if (modelData.length === 0) {
             camera.zoom = 4;
-            camera.position.set(0, 100, 0);
-            camera.up.set(0, 0, -1);
+            camera.position.set(0, 0, 100);
+            camera.up.set(0, 1, 0);
             camera.updateProjectionMatrix();
             return;
         }
 
         let minX = Infinity, maxX = -Infinity;
-        let minZ = Infinity, maxZ = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
 
         modelData.forEach(el => {
             const x  = Number(el.positionX) || 0;
-            const z  = Number(el.positionZ) || 0;
+            const y  = Number(el.positionY) || 0;   // Z-up: posY → Three.js Y
             const sx = (Number(el.sizeX)    || 1) / 2;
-            const sz = (Number(el.sizeZ)    || 1) / 2;
+            const sy = (Number(el.sizeY)    || 1) / 2;
             minX = Math.min(minX, x - sx);
             maxX = Math.max(maxX, x + sx);
-            minZ = Math.min(minZ, z - sz);
-            maxZ = Math.max(maxZ, z + sz);
+            minY = Math.min(minY, y - sy);
+            maxY = Math.max(maxY, y + sy);
         });
 
-        const span = Math.max(maxX - minX, maxZ - minZ, 15) + 10;
+        const span = Math.max(maxX - minX, maxY - minY, 15) + 10;
         const cx   = (minX + maxX) / 2;
-        const cz   = (minZ + maxZ) / 2;
+        const cy   = (minY + maxY) / 2;
 
-        // 미니맵 픽셀 크기 약 144px → span 미터가 120px에 들어오도록
         camera.zoom = 120 / span;
-        camera.position.set(cx, 100, cz);
-        camera.up.set(0, 0, -1);
-        camera.lookAt(cx, 0, cz);
+        camera.position.set(cx, cy, 100);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(cx, cy, 0);
         camera.updateProjectionMatrix();
-    }, [modelData.length, camera]);
+    }, [modelData, camera]);
 
     return null;
 }
@@ -121,7 +121,7 @@ export default function MiniMapCanvas({
     return createPortal(
         <Canvas
             orthographic
-            camera={{ position: [0, 100, 0], up: [0, 0, -1], zoom: 4, near: 1, far: 500 }}
+            camera={{ position: [0, 0, 100], up: [0, 1, 0], zoom: 4, near: 1, far: 500 }}
             style={{ width: '100%', height: '100%', borderRadius: '0.75rem' }}
             gl={{ antialias: false, alpha: false }}
         >
@@ -145,13 +145,12 @@ export default function MiniMapCanvas({
             {/* 카메라 위치 + 방향 마커 */}
             <CamMarker position={mainCameraPosition} yaw={mainCameraYaw} />
 
-            {/* 클릭 네비게이션 평면 */}
+            {/* 클릭 네비게이션 평면 — Z-up 미니맵은 XY가 바닥이므로 회전 불필요 */}
             <mesh
-                rotation={[-Math.PI / 2, 0, 0]}
-                position={[0, 0.02, 0]}
+                position={[0, 0, 0.01]}
                 onClick={(e) => {
                     e.stopPropagation();
-                    onNavigate?.(e.point.x, e.point.z);
+                    onNavigate?.(e.point.x, e.point.y);  // Z-up: X·Y가 수평
                 }}
             >
                 <planeGeometry args={[1000, 1000]} />

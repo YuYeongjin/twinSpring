@@ -1,37 +1,49 @@
 """
 건설 공정서/시방서 RAG 검색 도구
 
-ChromaDB의 construction_specs 컬렉션에서 유사 문서를 검색하고
+PostgreSQL pgvector의 construction_specs 컬렉션에서 유사 문서를 검색하고
 출처(규격코드·시리즈·제목)를 포함한 결과를 반환합니다.
 """
 
 from __future__ import annotations
+import logging
 
-from langchain_chroma import Chroma
+from langchain_postgres.vectorstores import PGVector
+
+logger = logging.getLogger(__name__)
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from langchain_core.tools import tool
 
-from config import CHROMA_PERSIST_DIR, EMBEDDING_MODEL
+from config.settings import EMBEDDING_MODEL, get_pgvector_connection
 
 COLLECTION_NAME = "construction_specs"
 
-# ── 벡터스토어 지연 초기화 ────────────────────────────────────────────────────
-_vectorstore: Chroma | None = None
+_embeddings: HuggingFaceEmbeddings | None = None
+_vectorstore: PGVector | None = None
 
 
-def _get_vectorstore() -> Chroma:
-    global _vectorstore
-    if _vectorstore is None:
-        embeddings = HuggingFaceEmbeddings(
+def _get_embeddings() -> HuggingFaceEmbeddings:
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = HuggingFaceEmbeddings(
             model_name=EMBEDDING_MODEL,
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
-        _vectorstore = Chroma(
+    return _embeddings
+
+
+def _get_vectorstore() -> PGVector:
+    global _vectorstore
+    if _vectorstore is None:
+        conn = get_pgvector_connection()
+        print(f"[construction_rag] Connecting: {conn.split('@')[-1]}")
+        _vectorstore = PGVector(
+            embeddings=_get_embeddings(),
             collection_name=COLLECTION_NAME,
-            embedding_function=embeddings,
-            persist_directory=CHROMA_PERSIST_DIR,
+            connection=conn,
+            use_jsonb=True,
         )
     return _vectorstore
 
@@ -46,31 +58,20 @@ def search_construction_docs(query: str, k: int = 5) -> list[Document]:
     try:
         vs = _get_vectorstore()
         results = vs.similarity_search(query, k=k)
+        print(f"[construction_rag] '{query[:40]}' → {len(results)} results")
         return results
-    except Exception as e:
-        print(f"[construction_rag] 검색 오류: {e}")
+    except Exception:
+        logger.error("[construction_rag] similarity_search 실패", exc_info=True)
         return []
 
 
 def format_rag_results(docs: list[Document]) -> str:
-    """
-    검색 결과를 '출처 + 본문' 형식의 문자열로 포맷.
-
-    예시:
-    ────────────────────────────────
-    [출처] KCS 10 10 05 공사일반
-    [시리즈] KCS 10 00 00 / 카테고리: KCS
-    콘크리트 타설 시 ...
-
-    ────────────────────────────────
-    [출처] KDS 14 20 26 콘크리트구조 피로 설계기준
-    ...
-    """
+    """검색 결과를 '출처 + 본문' 형식의 문자열로 포맷."""
     if not docs:
         return "관련 공정서/시방서 문서를 찾지 못했습니다."
 
     parts = []
-    seen_chunks: set[str] = set()   # 중복 청크 제거
+    seen_chunks: set[str] = set()
 
     for doc in docs:
         content = doc.page_content.strip()
@@ -84,7 +85,6 @@ def format_rag_results(docs: list[Document]) -> str:
         series = meta.get("series",   "")
         cat    = meta.get("category", "")
 
-        # 출처 헤더 구성
         source_label = f"{code} {title}".strip() if (code or title) else meta.get("source", "알 수 없음")
         series_label = f"{series} / 카테고리: {cat}" if series else cat
 
@@ -108,12 +108,11 @@ def get_source_list() -> str:
     """현재 인덱싱된 문서의 출처 목록 반환."""
     try:
         vs = _get_vectorstore()
-        col = vs._collection
-        result = col.get(include=["metadatas"])
-        metadatas = result.get("metadatas", [])
-
+        # PGVector는 get()을 직접 지원하지 않으므로 더미 쿼리로 메타데이터 조회
+        docs = vs.similarity_search("건설 시방서", k=200)
         seen: dict[str, str] = {}
-        for m in metadatas:
+        for doc in docs:
+            m = doc.metadata
             code  = m.get("code", "")
             title = m.get("title", "")
             series = m.get("series", "")
@@ -128,8 +127,9 @@ def get_source_list() -> str:
             lines.append(f"  • {seen[key]}")
         return "\n".join(lines)
 
-    except Exception as e:
-        return f"문서 목록 조회 실패: {e}"
+    except Exception:
+        logger.error("[rag] get_source_list 실패", exc_info=True)
+        return "문서 목록을 조회하는 중 오류가 발생했습니다."
 
 
 # ── LangChain Tool 정의 ───────────────────────────────────────────────────────
@@ -141,12 +141,6 @@ def search_spec_tool(query: str) -> str:
 
     입력: 검색할 공종·규격·조건 관련 질문 또는 키워드
     출력: 관련 규정 본문 + 출처(규격코드, 시리즈, 제목)
-
-    사용 예:
-      - "콘크리트 타설 온도 기준"
-      - "말뚝 기초 설계 하중"
-      - "비탈면 보호공법 적용 조건"
-      - "KCS 10 10 05 품질 관리 기준"
     """
     return search_as_text(query, k=5)
 
@@ -160,5 +154,4 @@ def list_spec_sources() -> str:
     return get_source_list()
 
 
-# 외부에서 import할 도구 목록
 CONSTRUCTION_RAG_TOOLS = [search_spec_tool, list_spec_sources]

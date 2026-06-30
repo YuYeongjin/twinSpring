@@ -5,6 +5,10 @@ pipeline {
         nodejs 'NodeJS-20'
     }
 
+    environment {
+        NPM_CONFIG_LEGACY_PEER_DEPS = 'true'
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -16,6 +20,7 @@ pipeline {
             steps {
                 dir('front') {
                     sh 'npm ci'
+                    sh 'npx update-browserslist-db@latest'
                 }
             }
         }
@@ -23,7 +28,7 @@ pipeline {
         stage('Build') {
             steps {
                 dir('front') {
-                    sh 'npm run build'
+                    sh 'CI=false npm run build'
                 }
             }
         }

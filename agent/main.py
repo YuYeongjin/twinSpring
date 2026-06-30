@@ -6,6 +6,7 @@ Run interactively from the terminal, or import graph from external code.
 Usage:
     python main.py
 """
+from __future__ import annotations
 
 from langchain_core.messages import HumanMessage
 from graph import graph
@@ -23,7 +24,15 @@ def run_agent(user_input: str, history: list | None = None) -> str:
         AI response string
     """
     messages = (history or []) + [HumanMessage(content=user_input)]
-    state = graph.invoke({"messages": messages, "intent": None, "query_result": None, "context": None})
+    state = graph.invoke({
+        "messages":    messages,
+        "domain":      None,
+        "need_rag":    False,
+        "lang":        None,
+        "rag_context": None,
+        "tool_results":None,
+        "intent":      None,
+    })
     return state["messages"][-1].content
 
 

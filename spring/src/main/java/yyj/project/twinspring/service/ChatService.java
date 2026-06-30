@@ -4,9 +4,11 @@ import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
 import yyj.project.twinspring.dto.MultimodalRequestDTO;
+import yyj.project.twinspring.dto.WbsRagRequestDTO;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * AI 채팅 서비스 인터페이스
@@ -33,4 +35,53 @@ public interface ChatService {
 
     /** Agent /chat-stream 을 프록시하는 SSE 스트림 */
     Flux<String> streamMessage(ChatRequestDTO request);
+
+    /**
+     * WBS 이벤트 발생 시 관련 건설 시방서(KCS/KDS) 증거를 RAG 검색하여 반환.
+     * AgentWbsPopup 에서 사용자 승인 전 근거 자료 표시에 사용.
+     */
+    Map<String, Object> wbsRagSuggest(WbsRagRequestDTO request);
+
+    /**
+     * WBS 프로젝트 생성 에이전트 채팅.
+     * 사용자 메시지에서 현장 프로젝트 정보를 수집하고, 충분한 정보가 모이면 ready=true 반환.
+     * WbsDashboard 의 에이전트 채팅 패널에서 사용.
+     */
+    Map<String, Object> wbsProjectChat(Map<String, Object> request);
+
+    /**
+     * 구조해석 결과에 기반한 KCS/KDS 시방서 RAG 검색.
+     * StructuralDashboard 의 시방서 패널에서 사용.
+     */
+    Map<String, Object> structuralSpec(Map<String, Object> request);
+
+    /**
+     * 굴착 존·날씨·깊이에 맞는 KCS/KDS 토공 시방서 RAG 검색.
+     * SimulationDashboard 의 시방서 패널에서 사용.
+     */
+    Map<String, Object> excavationSpec(Map<String, Object> request);
+
+    /**
+     * BIM 공종(elementType) 또는 일반 WBS 태스크명 기반 KCS/KDS 시방서 RAG 검색.
+     * 통합관제 WbsProgressPanel 의 공종별 시방서 조회에서 사용.
+     */
+    Map<String, Object> wbsTaskSpec(Map<String, Object> request);
+
+    /** RAG 인덱스 현황 조회 (청크 수, 빌드 상태) */
+    Map<String, Object> ragStatus();
+
+    /** RAG 인덱스 재구축 트리거 */
+    Map<String, Object> ragRebuild();
+
+    /** GraphRAG 인덱스 현황 조회 (커뮤니티 수, 빌드 상태) */
+    Map<String, Object> graphRagStatus();
+
+    /** GraphRAG 인덱스 재구축 트리거 (Leiden 커뮤니티 감지 포함) */
+    Map<String, Object> graphRagRebuild();
+
+    /** 현재 런타임 센서 알람 임계값 조회 */
+    Map<String, Object> getSensorThresholds();
+
+    /** 런타임 센서 알람 임계값 업데이트 */
+    Map<String, Object> updateSensorThresholds(Map<String, Object> body);
 }

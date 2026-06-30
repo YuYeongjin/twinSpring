@@ -1,13 +1,24 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Box, Plane, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useT } from '../../i18n/LanguageContext';
-import { pushAlert } from '../../utils/alertStore';
+import { pushAlert, pushWbsSuggest } from '../../utils/alertStore';
+import { useCrackMonitor } from '../../context/CrackMonitorContext';
+import { createMockCameraStream } from '../../utils/mockCamera';
+import { getMockSafetyDetection } from '../../utils/mockDetection';
+import MonitoringGallery from './MonitoringGallery';
+import ProgressMonitoringPanel from './ProgressMonitoringPanel';
+import PhotoDiffPanel from './PhotoDiffPanel';
+import WeatherWidget from '../../component/WeatherWidget';
+import SensorPanel from '../../component/SensorPanel';
 
-const DETECT_SERVER_URL = process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '';
+const DETECT_SERVER_URL = process.env.REACT_APP_API_URL
+  || (process.env.NODE_ENV === 'development'
+      ? `http://${window.location.hostname}:8080`
+      : '');
 
 /**
  * SockJS 연결 URL을 항상 절대 경로로 반환한다.
@@ -28,6 +39,14 @@ const RESTRICTED_CLASSES = new Set(['restricted', 'prohibited', 'danger-zone', '
 const PERSON_CLASSES = new Set(['person', 'people', 'man', 'woman', 'child', 'worker']);
 const CAM_MIN_H = 200;
 const CAM_MAX_H = 720;
+const CAM_STORAGE_KEY = 'safe_webcam_state';
+function camKey(projectId) { return projectId ? `${CAM_STORAGE_KEY}_${projectId}` : CAM_STORAGE_KEY; }
+function loadCamState(projectId) {
+  try { return JSON.parse(localStorage.getItem(camKey(projectId)) || 'null'); } catch { return null; }
+}
+function saveCamState(s, projectId) {
+  try { localStorage.setItem(camKey(projectId), JSON.stringify(s)); } catch {}
+}
 
 function analyzeDetections(detections = []) {
   const noHelmet = detections.some(d => NO_HELMET_CLASSES.has((d.class ?? '').toLowerCase()));
@@ -57,96 +76,351 @@ function buildSceneObjects(detections, imgW = 640, imgH = 480) {
   });
 }
 
+// ── 안전구역 상수 / 유틸 ──────────────────────────────────────────────
+const ZONE_HEIGHT = 3.0; // 안전구역 기본 높이 (m)
+
+/** AABB XZ 평면 충돌 검사 */
+function personInZone(position, size, zone) {
+  const [px, , pz] = position;
+  const [sw, , sz] = size;
+  return (
+    Math.abs(px - zone.cx) < (sw / 2 + zone.w / 2) &&
+    Math.abs(pz - zone.cz) < (sz / 2 + zone.d / 2)
+  );
+}
+
+// ── 안전구역 Box (빨간 반투명 + 와이어프레임) ────────────────────────
+function SafeZoneBox({ zone, violated, onDelete, editMode }) {
+  const t = useT('safe');
+  const meshRef = useRef();
+  const edgesGeo = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(zone.w, ZONE_HEIGHT, zone.d)),
+    [zone.w, zone.d]
+  );
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return;
+    meshRef.current.material.opacity = violated
+      ? 0.48 + 0.18 * Math.sin(clock.elapsedTime * 6)
+      : 0.22;
+    meshRef.current.material.color.setStyle(violated ? '#ff1111' : '#ef4444');
+  });
+
+  return (
+    <group>
+      {/* 반투명 채움 */}
+      <mesh ref={meshRef} position={[zone.cx, ZONE_HEIGHT / 2, zone.cz]}>
+        <boxGeometry args={[zone.w, ZONE_HEIGHT, zone.d]} />
+        <meshStandardMaterial
+          color="#ef4444" transparent opacity={0.22}
+          side={THREE.DoubleSide} depthWrite={false}
+        />
+      </mesh>
+      {/* 와이어프레임 엣지 */}
+      <lineSegments position={[zone.cx, ZONE_HEIGHT / 2, zone.cz]} geometry={edgesGeo}>
+        <lineBasicMaterial color={violated ? '#ff4444' : '#ff8888'} />
+      </lineSegments>
+      {/* 라벨 + 삭제 버튼 */}
+      <Html position={[zone.cx, ZONE_HEIGHT + 0.5, zone.cz]} center>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '4px',
+          fontSize: '10px', whiteSpace: 'nowrap', pointerEvents: 'auto',
+          background: violated ? 'rgba(180,0,0,0.92)' : 'rgba(60,0,0,0.85)',
+          border: `1px solid ${violated ? '#ff4444' : '#ef4444'}`,
+          padding: '2px 7px', borderRadius: '4px', color: '#fff',
+          userSelect: 'none',
+        }}>
+          <span>{violated ? t('zoneViolated') : t('zoneSafeLabel')}</span>
+          {editMode && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(zone.id); }}
+              style={{
+                background: 'none', border: 'none', color: '#fca5a5',
+                cursor: 'pointer', fontSize: '12px', padding: '0 2px', marginLeft: '2px',
+              }}>✕</button>
+          )}
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+// ── 구역 드래그 그리기 레이어 ─────────────────────────────────────────
+function ZoneDrawingLayer({ enabled, onZoneCreated }) {
+  const { camera, gl, raycaster } = useThree();
+  const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const startPt     = useRef(null);
+  const previewRef  = useRef(null);
+  const [preview, setPreview] = useState(null);
+
+  const getGroundPt = useCallback((e) => {
+    const rect = gl.domElement.getBoundingClientRect();
+    const nx = ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+    const ny = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+    raycaster.setFromCamera({ x: nx, y: ny }, camera);
+    const target = new THREE.Vector3();
+    return raycaster.ray.intersectPlane(groundPlane, target) ? target : null;
+  }, [camera, gl, raycaster, groundPlane]);
+
+  useEffect(() => {
+    if (!enabled) {
+      setPreview(null); previewRef.current = null; startPt.current = null; return;
+    }
+    const canvas = gl.domElement;
+
+    const onDown = (e) => {
+      const pt = getGroundPt(e); if (!pt) return;
+      startPt.current = { x: pt.x, z: pt.z };
+      previewRef.current = null; setPreview(null);
+    };
+    const onMove = (e) => {
+      if (!startPt.current) return;
+      const pt = getGroundPt(e); if (!pt) return;
+      const { x: sx, z: sz } = startPt.current;
+      const next = {
+        cx: (sx + pt.x) / 2, cz: (sz + pt.z) / 2,
+        w: Math.max(Math.abs(pt.x - sx), 0.3),
+        d: Math.max(Math.abs(pt.z - sz), 0.3),
+      };
+      previewRef.current = next; setPreview({ ...next });
+    };
+    const onUp = () => {
+      const p = previewRef.current;
+      if (p && p.w > 0.5 && p.d > 0.5)
+        onZoneCreated({ id: `zone-${Date.now()}`, ...p });
+      startPt.current = null; previewRef.current = null; setPreview(null);
+    };
+    const onRightClick = (e) => { e.preventDefault(); startPt.current = null; setPreview(null); };
+
+    canvas.addEventListener('mousedown',   onDown);
+    canvas.addEventListener('mousemove',   onMove);
+    canvas.addEventListener('mouseup',     onUp);
+    canvas.addEventListener('contextmenu', onRightClick);
+    return () => {
+      canvas.removeEventListener('mousedown',   onDown);
+      canvas.removeEventListener('mousemove',   onMove);
+      canvas.removeEventListener('mouseup',     onUp);
+      canvas.removeEventListener('contextmenu', onRightClick);
+    };
+  }, [enabled, getGroundPt, onZoneCreated, gl]);
+
+  if (!preview) return null;
+  return (
+    <group>
+      <mesh position={[preview.cx, ZONE_HEIGHT / 2, preview.cz]}>
+        <boxGeometry args={[preview.w, ZONE_HEIGHT, preview.d]} />
+        <meshStandardMaterial color="#ef4444" transparent opacity={0.35}
+          side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      <lineSegments position={[preview.cx, ZONE_HEIGHT / 2, preview.cz]}>
+        <edgesGeometry args={[new THREE.BoxGeometry(preview.w, ZONE_HEIGHT, preview.d)]} />
+        <lineBasicMaterial color="#ff6666" />
+      </lineSegments>
+    </group>
+  );
+}
+
+// ── 구역 침범 검사 (매 프레임, 변경 시에만 콜백) ─────────────────────
+function ZoneChecker({ persons, zones, onViolationChange }) {
+  const lastSet = useRef(new Set());
+  useFrame(() => {
+    const current = new Set();
+    for (const p of persons)
+      for (const z of zones)
+        if (personInZone(p.position, p.size ?? [0.4, 1.6, 0.4], z))
+          current.add(z.id);
+
+    const same = current.size === lastSet.current.size &&
+      [...current].every(id => lastSet.current.has(id));
+    if (!same) { lastSet.current = new Set(current); onViolationChange(current); }
+  });
+  return null;
+}
+
 // ── 웹캠 패널 (컨테이너 없음 — 부모가 관리) ─────────────────────────
 
 function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onError,
-  makeCaptureRef, onStreamingChange, stopDetectRef }) {
+  makeCaptureRef, onStreamingChange, stopDetectRef, projectId }) {
   const t = useT('safe');
   const videoRef = useRef(null);
   const [streaming, setStreaming] = useState(false);
   const [liveDetecting, setLiveDetecting] = useState(false);
   const [camError, setCamError] = useState('');
   const liveDetectingRef = useRef(false);
+  const [showSourceModal, setShowSourceModal] = useState(false);
+  const [urlInput, setUrlInput] = useState(() => loadCamState(projectId)?.url || '');
+  const [camMode, setCamMode] = useState(() => loadCamState(projectId)?.mode || 'local');
 
-  // t를 ref로 보관 — startCamera가 언어 변경 때마다 재생성되어
-  // useEffect 무한루프가 발생하는 것을 완전히 차단
   const tRef = useRef(t);
   useEffect(() => { tRef.current = t; }, [t]);
 
-  const startCamera = useCallback(async () => {
+  const [isDemoMode,  setIsDemoMode]  = useState(() => loadCamState(projectId)?.mode === 'demo');
+  const isDemoRef  = useRef(false);
+  const demoStopRef = useRef(null);
+
+  // saveStop=true: 사용자가 명시적으로 끈 경우 (wasStreaming: false 저장)
+  // saveStop=false: 언마운트 클린업 (localStorage 그대로 유지 → 복귀 시 자동 재시작 가능)
+  const stopCamera = useCallback((saveStop = true) => {
+    liveDetectingRef.current = false;
+    setLiveDetecting(false);
+    isDemoRef.current = false;
+    setIsDemoMode(false);
+    if (demoStopRef.current) { demoStopRef.current(); demoStopRef.current = null; }
+    if (videoRef.current) {
+      if (videoRef.current.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(tr => tr.stop());
+        videoRef.current.srcObject = null;
+      }
+      if (videoRef.current.src) {
+        videoRef.current.pause();
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      }
+    }
+    setStreaming(false);
+    setCamError('');
+    if (saveStop) {
+      const prev = loadCamState(projectId);
+      if (prev) saveCamState({ ...prev, wasStreaming: false }, projectId);
+    }
+  }, [projectId]);
+
+  const startWithLocal = useCallback(async () => {
     const tr = tRef.current;
+    setShowSourceModal(false);
+    setCamMode('local');
     setCamError('');
 
-    // 1) Secure Context 체크
     if (!window.isSecureContext) {
-      setCamError('[K8s] 페이지가 Secure Context가 아닙니다. HTTPS 인증서를 확인하거나 브라우저 주소창에서 직접 https://를 확인하세요.');
+      setCamError(t('camErrSecureCtx'));
       return;
     }
-    // 2) mediaDevices API 가용성 체크
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCamError('[브라우저] navigator.mediaDevices.getUserMedia 를 지원하지 않습니다. — ' + tr('cameraHttpsRequired'));
+      setCamError('[Browser] navigator.mediaDevices.getUserMedia not supported. — ' + t('cameraHttpsRequired'));
       return;
     }
-    // 3) Permissions-Policy 체크 (K8s ingress가 camera=() 헤더를 내려보낼 경우)
     if (navigator.permissions) {
       try {
         const perm = await navigator.permissions.query({ name: 'camera' });
         if (perm.state === 'denied') {
-          setCamError('[권한 거부] 브라우저가 이 사이트의 카메라를 차단했습니다. 브라우저 설정 → 사이트 권한에서 카메라를 허용해 주세요.');
+          setCamError(t('camErrPermBrowser'));
           return;
         }
-      } catch (_) { /* permissions API 미지원 브라우저는 무시 */ }
+      } catch (_) {}
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+        setStreaming(true);
+        saveCamState({ mode: 'local', wasStreaming: true }, projectId);
+      }
     } catch (e) {
-      // NotAllowedError: 사용자 거부 또는 Permissions-Policy 차단
-      // NotFoundError: 카메라 없음
-      // NotReadableError: 카메라가 다른 앱에서 사용 중
       const name = e.name ?? '';
       if (name === 'NotAllowedError') {
-        setCamError('[권한 거부] 카메라 접근이 차단되었습니다. K8s Ingress의 Permissions-Policy 헤더를 확인하거나 브라우저 주소창 자물쇠 → 카메라를 "허용"으로 설정하세요.');
+        setCamError(t('camErrPermDenied'));
       } else if (name === 'NotFoundError') {
-        setCamError('[장치 없음] 연결된 카메라를 찾을 수 없습니다.');
+        setCamError(t('camErrNoDevice'));
       } else if (name === 'NotReadableError') {
-        setCamError('[장치 사용 중] 카메라가 다른 앱에서 사용 중입니다. 다른 탭/앱을 닫고 다시 시도하세요.');
+        setCamError(t('camErrInUse'));
       } else {
-        setCamError(tr('cameraError') + e.message);
+        setCamError(t('cameraError') + e.message);
       }
     }
-  }, []); // ← 의존성 없음: tRef를 통해 최신 t를 참조하므로 안전
-
-  const stopCamera = useCallback(() => {
-    liveDetectingRef.current = false;
-    setLiveDetecting(false);
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-      videoRef.current.srcObject = null;
-    }
-    setStreaming(false);
   }, []);
 
-  useEffect(() => { startCamera(); return () => stopCamera(); }, [startCamera, stopCamera]);
+  const startWithUrl = useCallback((url) => {
+    const trimmed = url.trim();
+    if (!trimmed) { setCamError(tRef.current('camUrlRequired')); return; }
+    setShowSourceModal(false);
+    setCamMode('url');
+    setCamError('');
+    saveCamState({ mode: 'url', url: trimmed, wasStreaming: true }, projectId);
+    if (!videoRef.current) return;
+    if (videoRef.current.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(tr => tr.stop());
+      videoRef.current.srcObject = null;
+    }
+    videoRef.current.removeAttribute('crossorigin');
+    videoRef.current.src = trimmed;
+    videoRef.current.load();
+    const onPlay = () => { setStreaming(true); };
+    const onErr = () => { setCamError(tRef.current('camUrlFailed')); setStreaming(false); };
+    videoRef.current.addEventListener('playing', onPlay, { once: true });
+    videoRef.current.addEventListener('error', onErr, { once: true });
+    videoRef.current.play().catch(() => {});
+  }, []);
+
+  const startWithDemo = useCallback(() => {
+    setShowSourceModal(false);
+    setCamMode('demo');
+    setCamError('');
+    isDemoRef.current = true;
+    setIsDemoMode(true);
+    if (demoStopRef.current) { demoStopRef.current(); demoStopRef.current = null; }
+    const { stream, stop } = createMockCameraStream(640, 480);
+    demoStopRef.current = stop;
+    if (videoRef.current) {
+      if (videoRef.current.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(tr => tr.stop());
+      }
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
+      setStreaming(true);
+      saveCamState({ mode: 'demo', wasStreaming: true }, projectId);
+    }
+  }, [projectId]);
+
+  // 언마운트 시 정리 — localStorage 유지 (탭 복귀 시 자동 재시작 위해)
+  useEffect(() => { return () => stopCamera(false); }, [stopCamera]);
   useEffect(() => { onStreamingChange?.(streaming); }, [streaming, onStreamingChange]);
+
+  // 마운트 시 이전 카메라 상태 복원 (프로젝트별)
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    const s = loadCamState(projectId);
+    if (!s?.wasStreaming) return;
+    if (s.mode === 'local') {
+      startWithLocal();
+    } else if (s.mode === 'url' && s.url) {
+      setUrlInput(s.url);
+      startWithUrl(s.url);
+    } else if (s.mode === 'demo') {
+      startWithDemo();
+    }
+  }, [projectId, startWithLocal, startWithUrl, startWithDemo]);
   useEffect(() => {
     if (!streaming) { liveDetectingRef.current = false; setLiveDetecting(false); }
   }, [streaming]);
 
   const captureOnce = useCallback(async () => {
+    if (isDemoRef.current) {
+      const data = await getMockSafetyDetection();
+      return { ...data, _imgW: 640, _imgH: 480 };
+    }
     if (!videoRef.current || videoRef.current.videoWidth === 0) return null;
     const imgW = videoRef.current.videoWidth;
     const imgH = videoRef.current.videoHeight;
     const canvas = document.createElement('canvas');
     canvas.width = imgW; canvas.height = imgH;
-    canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    try {
+      canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+    } catch (e) {
+      // CORS 없는 URL 스트림은 canvas에 그릴 수 없음 (보안 제한)
+      throw new Error(t('camErrCors'));
+    }
     const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.8));
     const form = new FormData();
     form.append('file', blob, 'capture.jpg');
     const res = await fetch(`${DETECT_SERVER_URL}/api/detection/detect`, { method: 'POST', body: form });
     if (!res.ok) throw new Error(`${res.status}`);
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('detect server returned non-JSON response'); }
     return { ...data, _imgW: imgW, _imgH: imgH };
   }, []);
 
@@ -173,7 +447,7 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
       }
     }
     setLiveDetecting(false);
-  }, [captureOnce, onDetectResult, onError]);
+  }, [captureOnce, onDetectResult, onError, t]);
 
   const canDetect = streaming;
   const serverColor = detectAvailable === true ? '#22c55e' : detectAvailable === false ? '#f87171' : '#6b7280';
@@ -190,6 +464,18 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
         <span className="text-xs" style={{ color: streaming ? '#22c55e' : '#6b7280' }}>
           {streaming ? t('on') : t('off')}
         </span>
+        {streaming && camMode === 'url' && (
+          <span className="text-xs px-2 py-0.5 rounded-full"
+            style={{ background: '#0d1b2a', border: '1px solid #60a5fa40', color: '#60a5fa' }}>
+            🌐 URL
+          </span>
+        )}
+        {isDemoMode && (
+          <span className="text-xs px-2 py-0.5 rounded-full"
+            style={{ background: '#1a0d2a', border: '1px solid #a78bfa', color: '#c4b5fd' }}>
+            🎬 DEMO
+          </span>
+        )}
         {liveDetecting && (
           <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
             style={{ background: '#3a1a0a', border: '1px solid #f97316', color: '#f97316' }}>
@@ -205,10 +491,10 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
         )}
         <div className="ml-auto flex gap-2">
           {!streaming
-            ? <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg"
-              style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>{t('startCamera')}</button>
+            ? <button onClick={() => setShowSourceModal(true)} className="text-xs px-3 py-1 rounded-lg"
+                style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>{t('startCamera')}</button>
             : <button onClick={stopCamera} className="text-xs px-3 py-1 rounded-lg"
-              style={{ background: '#2a1010', border: '1px solid #ef4444', color: '#ef4444' }}>{t('stopCamera')}</button>
+                style={{ background: '#2a1010', border: '1px solid #ef4444', color: '#ef4444' }}>{t('stopCamera')}</button>
           }
           <button onClick={toggleLiveDetect} disabled={!canDetect}
             className="text-xs px-3 py-1 rounded-lg transition"
@@ -224,23 +510,131 @@ function WebcamPanel({ detectAvailable, checkDetectServer, onDetectResult, onErr
       </div>
 
       {/* 비디오 영역 */}
-      <div className="flex-1 relative bg-black flex items-center justify-center">
+      <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
         <video ref={videoRef} autoPlay playsInline muted
           style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        {!streaming && !camError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <span className="text-4xl opacity-30">📷</span>
-            <p className="text-sm text-gray-600">{t('cameraOff')}</p>
+
+        {/* 꺼진 상태 — 켜기 버튼 표시 */}
+        {!streaming && !camError && !showSourceModal && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <span className="text-5xl opacity-20">📷</span>
+            <p className="text-sm" style={{ color: '#4b6280' }}>{t('cameraOff')}</p>
+            <button
+              onClick={() => setShowSourceModal(true)}
+              className="text-xs px-4 py-1.5 rounded-lg"
+              style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}
+            >{t('startCamera')}</button>
           </div>
         )}
-        {camError && (
+
+        {/* 에러 상태 */}
+        {camError && !showSourceModal && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
             <span className="text-4xl opacity-40">🚫</span>
-            <p className="text-xs text-red-400">{camError}</p>
-            <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg mt-1"
+            <p className="text-xs text-red-400 max-w-xs">{camError}</p>
+            <button onClick={() => setShowSourceModal(true)} className="text-xs px-3 py-1 rounded-lg mt-1"
               style={{ background: '#0d2a1a', border: '1px solid #22c55e', color: '#22c55e' }}>
               {t('tryAgain')}
             </button>
+          </div>
+        )}
+
+        {/* ── 소스 선택 모달 ── */}
+        {showSourceModal && (
+          <div className="fixed inset-0 flex items-center justify-center p-4 z-50"
+            style={{ background: 'rgba(0,0,0,0.82)' }}
+            onClick={e => e.target === e.currentTarget && setShowSourceModal(false)}>
+            <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
+              style={{ background: '#1c2a3a', border: '1px solid #2d4060' }}>
+
+              {/* 모달 헤더 */}
+              <div className="flex items-center justify-between px-4 py-3 border-b"
+                style={{ borderColor: '#253347' }}>
+                <span className="text-sm font-semibold text-gray-200">📹 {t('camSourceTitle')}</span>
+                <button onClick={() => setShowSourceModal(false)}
+                  className="w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition text-base">✕</button>
+              </div>
+
+              <div className="p-4 space-y-3">
+                {/* 옵션 1: 로컬 카메라 */}
+                <button
+                  onClick={startWithLocal}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                  style={{ border: '1px solid #253347', background: '#162032' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#22c55e'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = '#253347'}
+                >
+                  <span className="text-2xl shrink-0">📷</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-200">{t('localCamera')}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#4b6280' }}>{t('localCameraDesc')}</p>
+                  </div>
+                  <span className="text-green-400 text-sm shrink-0">→</span>
+                </button>
+
+                {/* 구분선 */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px" style={{ background: '#253347' }} />
+                  <span className="text-xs" style={{ color: '#374a5f' }}>{t('or')}</span>
+                  <div className="flex-1 h-px" style={{ background: '#253347' }} />
+                </div>
+
+                {/* 옵션 2: 데모 모드 */}
+                <button
+                  onClick={startWithDemo}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                  style={{ border: '1px solid #3b2060', background: '#1a0d2a' }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#a78bfa'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = '#3b2060'}
+                >
+                  <span className="text-2xl shrink-0">🎬</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: '#c4b5fd' }}>{t('demoModeLabel')}</p>
+                    <p className="text-xs mt-0.5" style={{ color: '#6b5080' }}>
+                      {t('demoModeDesc')}
+                    </p>
+                  </div>
+                  <span className="text-sm shrink-0" style={{ color: '#a78bfa' }}>→</span>
+                </button>
+
+                {/* 구분선 */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px" style={{ background: '#253347' }} />
+                  <span className="text-xs" style={{ color: '#374a5f' }}>{t('or')}</span>
+                  <div className="flex-1 h-px" style={{ background: '#253347' }} />
+                </div>
+
+                {/* 옵션 3: URL 스트림 */}
+                <div className="rounded-xl p-3 space-y-2.5"
+                  style={{ border: '1px solid #253347', background: '#162032' }}>
+                  <div className="flex items-start gap-2">
+                    <span className="text-xl shrink-0 mt-0.5">🌐</span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-200">{t('urlStream')}</p>
+                      <p className="text-xs mt-0.5" style={{ color: '#4b6280' }}>{t('urlStreamDesc')}</p>
+                    </div>
+                  </div>
+                  <input
+                    type="url"
+                    value={urlInput}
+                    onChange={e => setUrlInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && startWithUrl(urlInput)}
+                    placeholder={t('urlPlaceholder')}
+                    className="w-full rounded-lg px-3 py-2 text-xs text-gray-200 outline-none focus:ring-1 focus:ring-blue-500/50"
+                    style={{ background: '#0d1b2a', border: '1px solid #2d4060' }}
+                    spellCheck={false}
+                    autoComplete="off"
+                  />
+                  <p className="text-xs leading-relaxed" style={{ color: '#374a5f' }}>{t('urlStreamTip')}</p>
+                  <button
+                    onClick={() => startWithUrl(urlInput)}
+                    disabled={!urlInput.trim()}
+                    className="w-full py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-30"
+                    style={{ background: '#0d2040', border: '1px solid #3b82f6', color: '#93c5fd' }}
+                  >{t('urlConnect')}</button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -285,8 +679,26 @@ function Worker({ position, dangerous }) {
   );
 }
 
-function DefaultScene({ dangerous }) {
-  const WORKERS = [[-2, 0.4, 0], [0, 0.4, 2], [3, 0.4, -1], [-1, 0.4, -3], [2, 0.4, 3]];
+const DEFAULT_WORKERS = [
+  { pos: [-2, 0.4, 0],  size: [0.4, 0.8, 0.4] },
+  { pos: [0,  0.4, 2],  size: [0.4, 0.8, 0.4] },
+  { pos: [3,  0.4, -1], size: [0.4, 0.8, 0.4] },
+  { pos: [-1, 0.4, -3], size: [0.4, 0.8, 0.4] },
+  { pos: [2,  0.4, 3],  size: [0.4, 0.8, 0.4] },
+];
+
+function DefaultScene({ dangerous, zones = [], violatedZones = new Set(),
+  editMode, onZoneCreate, onZoneDelete, controlsRef, onViolationChange }) {
+
+  // OrbitControls: editMode 시 비활성화
+  useEffect(() => {
+    if (controlsRef?.current) controlsRef.current.enabled = !editMode;
+  }, [editMode, controlsRef]);
+
+  const persons = useMemo(() =>
+    DEFAULT_WORKERS.map((w, i) => ({ id: `def-${i}`, position: w.pos, size: w.size })),
+  []);
+
   return (
     <>
       <ambientLight intensity={0.6} />
@@ -297,8 +709,26 @@ function DefaultScene({ dangerous }) {
       <Building position={[-4, 1.5, -4]} size={[3, 3, 3]} />
       <Building position={[0, 2.5, -5]} size={[4, 5, 3]} />
       <Building position={[5, 1, -3]} size={[2.5, 2, 2.5]} />
-      {WORKERS.map((pos, i) => <Worker key={i} position={pos} dangerous={dangerous} />)}
-      <OrbitControls enablePan enableZoom enableRotate />
+
+      {DEFAULT_WORKERS.map((w, i) => {
+        const inZone = zones.some(z => personInZone(w.pos, w.size, z));
+        return <Worker key={i} position={w.pos} dangerous={dangerous || inZone} />;
+      })}
+
+      {/* 안전구역 박스 */}
+      {zones.map(zone => (
+        <SafeZoneBox key={zone.id} zone={zone}
+          violated={violatedZones.has(zone.id)}
+          onDelete={onZoneDelete} editMode={editMode} />
+      ))}
+
+      {/* 구역 그리기 레이어 (editMode) */}
+      <ZoneDrawingLayer enabled={editMode} onZoneCreated={onZoneCreate} />
+
+      {/* 침범 체크 */}
+      <ZoneChecker persons={persons} zones={zones} onViolationChange={onViolationChange} />
+
+      <OrbitControls ref={controlsRef} enablePan enableZoom enableRotate />
     </>
   );
 }
@@ -365,7 +795,19 @@ function NoObjectsDetectedText() {
   );
 }
 
-function MadeScene({ objects }) {
+function MadeScene({ objects, zones = [], violatedZones = new Set(),
+  editMode, onZoneCreate, onZoneDelete, controlsRef, onViolationChange }) {
+
+  useEffect(() => {
+    if (controlsRef?.current) controlsRef.current.enabled = !editMode;
+  }, [editMode, controlsRef]);
+
+  const persons = useMemo(() =>
+    objects.filter(o => o.isPerson).map(o => ({
+      id: o.id, position: o.position, size: o.size,
+    })),
+  [objects]);
+
   return (
     <>
       <ambientLight intensity={0.55} />
@@ -375,26 +817,47 @@ function MadeScene({ objects }) {
         <meshStandardMaterial color="#080f1a" roughness={1} />
       </Plane>
       <primitive object={new THREE.GridHelper(24, 24, 0x1a3a5a, 0x0d1f2d)} />
+
       {objects.length === 0
-        ? <Html center position={[0, 2, 0]}>
-          <NoObjectsDetectedText />
-        </Html>
-        : objects.map(obj => obj.isPerson
-          ? <PersonFigure key={obj.id} {...obj} />
-          : <ObjectBox key={obj.id} {...obj} />)
+        ? <Html center position={[0, 2, 0]}><NoObjectsDetectedText /></Html>
+        : objects.map(obj => {
+          const inZone = obj.isPerson && zones.some(z => personInZone(obj.position, obj.size, z));
+          return obj.isPerson
+            ? <PersonFigure key={obj.id} {...obj} isDanger={obj.isDanger || inZone} />
+            : <ObjectBox key={obj.id} {...obj} />;
+        })
       }
-      <OrbitControls enablePan enableZoom enableRotate />
+
+      {/* 안전구역 박스 */}
+      {zones.map(zone => (
+        <SafeZoneBox key={zone.id} zone={zone}
+          violated={violatedZones.has(zone.id)}
+          onDelete={onZoneDelete} editMode={editMode} />
+      ))}
+
+      {/* 구역 그리기 레이어 (editMode) */}
+      <ZoneDrawingLayer enabled={editMode} onZoneCreated={onZoneCreate} />
+
+      {/* 침범 체크 */}
+      <ZoneChecker persons={persons} zones={zones} onViolationChange={onViolationChange} />
+
+      <OrbitControls ref={controlsRef} enablePan enableZoom enableRotate />
     </>
   );
 }
 
 // ── 3D 씬 패널 (우측 상단) ────────────────────────────────────────
 
-function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasDetections, camStreaming, isFallback, madeFallback }) {
+function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasDetections,
+  camStreaming, isFallback, madeFallback,
+  zones, violatedZones, onZoneCreate, onZoneDelete, onViolationChange }) {
+
   const t = useT('safe');
   const hasMade = madeObjects !== null;
+  const controlsRef = useRef();
+  const [zoneEditMode, setZoneEditMode] = useState(false);
 
-  const makeDisabled = !camStreaming || !hasDetections || making || makeCooldown;
+  const makeDisabled = !camStreaming || !hasDetections || making || makeCooldown || zoneEditMode;
   const makeLabel = making ? t('creating')
     : makeCooldown ? t('waitCooldown')
       : !hasDetections ? t('makeDetectionRequired')
@@ -404,6 +867,10 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
     : !hasDetections ? t('detectTip')
       : t('makeTip');
 
+  const toggleZoneEdit = useCallback(() => setZoneEditMode(v => !v), []);
+
+  const zoneViolating = violatedZones.size > 0;
+
   return (
     <>
       {/* 헤더 */}
@@ -411,6 +878,7 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
         style={{ borderColor: '#253347' }}>
         <span className="text-sm font-semibold text-gray-300">{t('safeViewer')}</span>
 
+        {/* 감지 위험 배지 */}
         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${dangerous ? 'animate-pulse' : ''}`}
           style={{
             background: dangerous ? '#3a0f0f' : '#0d2a1a',
@@ -419,6 +887,14 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
           }}>
           {dangerous ? `⚠ ${t('danger')}` : `✓ ${t('safe')}`}
         </span>
+
+        {/* 구역 침범 경고 배지 */}
+        {zoneViolating && (
+          <span className="text-xs font-bold px-2 py-0.5 rounded-full animate-pulse"
+            style={{ background: '#3a0000', border: '1px solid #ff4444', color: '#ff8888' }}>
+            {t('zoneViolated')}
+          </span>
+        )}
 
         <button onClick={onMake} disabled={makeDisabled} title={makeTip}
           className="text-xs px-3 py-1 rounded-lg transition"
@@ -442,16 +918,295 @@ function ScenePanel({ dangerous, madeObjects, onMake, making, makeCooldown, hasD
             {t('defaultBadge')}
           </span>
         )}
+
+        {/* ── 안전구역 컨트롤 ── */}
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={toggleZoneEdit}
+            className="text-xs px-3 py-1 rounded-lg transition font-semibold"
+            style={{
+              background: zoneEditMode ? '#2a0000' : '#1a0a0a',
+              border: `1px solid ${zoneEditMode ? '#ff4444' : '#7f1d1d'}`,
+              color: zoneEditMode ? '#ff8888' : '#f87171',
+            }}>
+            {zoneEditMode ? t('zoneDone') : t('zoneAdd')}
+          </button>
+          {zones.length > 0 && !zoneEditMode && (
+            <span className="text-xs px-2 py-0.5 rounded-full"
+              style={{ background: '#1a0808', border: '1px solid #7f1d1d', color: '#f87171' }}>
+              {t('zoneCount', { n: zones.length })}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Canvas */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative', cursor: zoneEditMode ? 'crosshair' : 'default' }}>
+        {/* 구역 그리기 모드 안내 */}
+        {zoneEditMode && (
+          <div style={{
+            position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 10, pointerEvents: 'none',
+            background: 'rgba(60,0,0,0.92)', border: '1px solid #ef4444',
+            borderRadius: '8px', padding: '5px 12px',
+            fontSize: '11px', color: '#fca5a5', whiteSpace: 'nowrap',
+          }}>
+            {t('zoneDrawHint')}
+          </div>
+        )}
+
         <Canvas shadows camera={{ position: [8, 8, 10], fov: 50 }}
           style={{ width: '100%', height: '100%', background: '#060e18' }}>
-          {hasMade ? <MadeScene objects={madeObjects} /> : <DefaultScene dangerous={dangerous} />}
+          {hasMade
+            ? <MadeScene objects={madeObjects}
+                zones={zones} violatedZones={violatedZones}
+                editMode={zoneEditMode}
+                onZoneCreate={onZoneCreate} onZoneDelete={onZoneDelete}
+                controlsRef={controlsRef} onViolationChange={onViolationChange} />
+            : <DefaultScene dangerous={dangerous}
+                zones={zones} violatedZones={violatedZones}
+                editMode={zoneEditMode}
+                onZoneCreate={onZoneCreate} onZoneDelete={onZoneDelete}
+                controlsRef={controlsRef} onViolationChange={onViolationChange} />
+          }
         </Canvas>
       </div>
     </>
+  );
+}
+
+// ── 균열 비교뷰 ───────────────────────────────────────────────────
+
+/** 감지 결과 이미지 위에 균열 bbox를 캔버스로 오버레이 */
+function CrackPhotoCanvas({ entry }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!entry?.imageUrl || !ref.current) return;
+    const canvas = ref.current;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.onload = () => {
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+      const lw = Math.max(2, img.naturalWidth / 200);
+      (entry.regions || []).forEach((r, i) => {
+        ctx.fillStyle   = 'rgba(239,68,68,0.14)';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth   = lw;
+        ctx.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+        ctx.strokeRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+        ctx.fillStyle = '#ef4444';
+        ctx.font = `bold ${Math.max(13, img.naturalWidth / 45)}px sans-serif`;
+        ctx.fillText(`#${i + 1}`, r.x1 + 4, r.y1 + 16);
+      });
+    };
+    img.src = entry.imageUrl;
+  }, [entry]);
+  return (
+    <canvas ref={ref}
+      style={{ width: '100%', height: 'auto', display: 'block', borderRadius: 8, maxHeight: 260 }} />
+  );
+}
+
+/** 균열 영역을 정규화 좌표로 보여주는 위치 맵 */
+function CrackLocationMap({ entry }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!entry?.imageUrl || !ref.current) return;
+    const canvas = ref.current;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.offsetWidth  || 200;
+    const H = canvas.offsetHeight || 150;
+    canvas.width  = W;
+    canvas.height = H;
+
+    const img = new Image();
+    img.onload = () => {
+      const iw = img.naturalWidth  || 640;
+      const ih = img.naturalHeight || 480;
+
+      ctx.fillStyle = '#060f1a';
+      ctx.fillRect(0, 0, W, H);
+      ctx.strokeStyle = '#1e3a5f';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(1, 1, W - 2, H - 2);
+
+      // 격자
+      ctx.strokeStyle = '#0d1e30';
+      ctx.lineWidth = 0.5;
+      for (let i = 1; i < 4; i++) {
+        ctx.beginPath(); ctx.moveTo((W * i) / 4, 0); ctx.lineTo((W * i) / 4, H); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, (H * i) / 4); ctx.lineTo(W, (H * i) / 4); ctx.stroke();
+      }
+
+      // 퍼센트 레이블
+      ctx.fillStyle = '#1e3a5f';
+      ctx.font = '9px sans-serif';
+      ['0%','25%','50%','75%','100%'].forEach((lbl, i) => {
+        ctx.fillText(lbl, (W * i) / 4, H - 2);
+      });
+
+      // 균열 영역
+      (entry.regions || []).forEach((r, idx) => {
+        const nx = (r.x1 / iw) * W;
+        const ny = (r.y1 / ih) * H;
+        const nw = ((r.x2 - r.x1) / iw) * W;
+        const nh = ((r.y2 - r.y1) / ih) * H;
+        ctx.fillStyle   = 'rgba(239,68,68,0.4)';
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth   = 1.5;
+        ctx.fillRect(nx, ny, Math.max(nw, 4), Math.max(nh, 4));
+        ctx.strokeRect(nx, ny, Math.max(nw, 4), Math.max(nh, 4));
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillText(`#${idx + 1}`, nx + 2, ny + 10);
+      });
+    };
+    img.src = entry.imageUrl;
+  }, [entry]);
+
+  return (
+    <canvas ref={ref} style={{ width: '100%', aspectRatio: '4/3', display: 'block',
+                                borderRadius: 8, border: '1px solid #1e3a5f' }}
+            width={200} height={150} />
+  );
+}
+
+/** 균열 감지 결과 사진 + BIM 위치 비교 패널 */
+function CrackCompareView({ entry, bimProject }) {
+  const t = useT('safe');
+  if (!entry?.imageUrl) return null;
+  const conf = Math.round((entry.confidence ?? 0) * 100);
+  const regionCount = (entry.regions || []).length;
+
+  return (
+    <div style={{ borderRadius: 12, border: `1px solid ${entry.hasCrack ? '#7c2d12' : '#14532d'}`,
+                  background: '#060f1a', overflow: 'hidden' }}>
+      {/* 헤더 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                    background: 'linear-gradient(135deg,#0a1a2e,#060f1a)',
+                    borderBottom: `1px solid ${entry.hasCrack ? '#7c2d12' : '#14532d'}` }}>
+        <span style={{ fontSize: 16 }}>{entry.hasCrack ? '🚨' : '✅'}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{t('crackCompareView')}</span>
+        {bimProject && (
+          <span style={{ fontSize: 10, color: '#60a5fa', background: '#0d2040', borderRadius: 8,
+                         padding: '2px 8px', border: '1px solid #1e3a5f', maxWidth: 120,
+                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            🏗 {bimProject.projectName}
+          </span>
+        )}
+        {entry.hasCrack && regionCount > 0 && (
+          <span style={{ fontSize: 10, background: '#3a1a00', border: '1px solid #f97316',
+                         color: '#fb923c', borderRadius: 8, padding: '2px 7px' }}>
+            {t('crackRegionCount', { n: regionCount })}
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', fontSize: 10,
+                       color: entry.hasCrack ? '#fb923c' : '#4ade80' }}>
+          {t('crackConfidenceLabel', { pct: conf })} · {entry.time.toLocaleTimeString([], { hour12: false })}
+        </span>
+      </div>
+
+      {/* 본문: 좌(사진+박스) · 우(BIM정보+위치맵) */}
+      <div style={{ display: 'flex', gap: 0, minHeight: 280 }}>
+
+        {/* ── 좌: 감지 사진 ── */}
+        <div style={{ flex: 1, padding: 12, borderRight: '1px solid #1a2a3a',
+                      display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, color: '#8896a4', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {t('crackDetectedPhoto')}
+            <span style={{ fontSize: 10, color: '#4b5563' }}>
+              {entry.source === 'camera' ? t('camSourceCamera') : t('camSourceFile')}
+            </span>
+          </div>
+
+          <CrackPhotoCanvas entry={entry} />
+
+          {/* 좌표 목록 */}
+          {regionCount > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <div style={{ fontSize: 10, color: '#4b5563', marginBottom: 2 }}>{t('crackCoordsTitle')}</div>
+              {(entry.regions || []).map((r, i) => (
+                <div key={i} style={{ fontSize: 10, color: '#8896a4', display: 'flex', gap: 6,
+                                      padding: '3px 8px', background: '#0d1b2a', borderRadius: 6,
+                                      border: '1px solid #1a2a3a' }}>
+                  <span style={{ color: '#ef4444', fontWeight: 700, minWidth: 22 }}>#{i + 1}</span>
+                  <span>({r.x1},{r.y1})</span>
+                  <span style={{ color: '#253347' }}>→</span>
+                  <span>({r.x2},{r.y2})</span>
+                  <span style={{ color: '#4b5563', marginLeft: 'auto' }}>
+                    {r.x2 - r.x1}×{r.y2 - r.y1}px
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 10, color: '#4b5563', textAlign: 'center', padding: '8px 0' }}>
+              {entry.hasCrack ? t('crackNoCoord') : t('crackNoneDetected')}
+            </div>
+          )}
+        </div>
+
+        {/* ── 우: BIM 정보 + 위치 맵 ── */}
+        <div style={{ width: 210, padding: 12, display: 'flex', flexDirection: 'column', gap: 10,
+                      flexShrink: 0 }}>
+
+          {/* BIM 프로젝트 카드 */}
+          {bimProject ? (
+            <div style={{ background: '#0d2040', borderRadius: 8, border: '1px solid #1e3a5f', padding: 10 }}>
+              <div style={{ fontSize: 10, color: '#60a5fa', fontWeight: 700, marginBottom: 4 }}>
+                {t('linkedBimProject')}
+              </div>
+              <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 600,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {bimProject.projectName}
+              </div>
+              {bimProject.location && (
+                <div style={{ fontSize: 10, color: '#4b5563', marginTop: 3 }}>
+                  📍 {bimProject.location}
+                </div>
+              )}
+              {bimProject.description && (
+                <div style={{ fontSize: 10, color: '#4b5563', marginTop: 2,
+                              display: '-webkit-box', WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {bimProject.description}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ background: '#0d1b2a', borderRadius: 8, border: '1px solid #1a2a3a',
+                          padding: 10, fontSize: 10, color: '#4b5563', textAlign: 'center' }}>
+              {t('bimProjectSelectHint')}
+            </div>
+          )}
+
+          {/* 위치 맵 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
+            <div style={{ fontSize: 10, color: '#8896a4', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {t('crackLocationMap')}
+              <span style={{ fontSize: 9, color: '#4b5563' }}>({t('normalizedCoords')})</span>
+            </div>
+            <CrackLocationMap entry={entry} />
+
+            {/* 정규화 % 좌표 */}
+            {regionCount > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {(entry.regions || []).map((r, i) => {
+                  // 이미지 크기를 모를 때 640×480 기본값 사용 (캔버스 드로우 후)
+                  return (
+                    <div key={i} style={{ fontSize: 9, color: '#4b5563', display: 'flex', gap: 4 }}>
+                      <span style={{ color: '#ef4444' }}>#{i + 1}</span>
+                      <span>X:{r.x1}–{r.x2}px · Y:{r.y1}–{r.y2}px</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -462,122 +1217,57 @@ const CRACK_INTERVAL_VALUES = [0, 60, 300, 600];
 
 function CrackMonitorPanel({ selectedProject }) {
   const t = useT('safe');
+
+  // ── Context에서 영속 상태·함수 가져오기 ────────────────────────
+  const {
+    streaming, camError,
+    capturing,
+    autoRunning, setAutoRunning,
+    intervalSec, setIntervalSec,
+    crackLog,
+    streamRef,
+    selectedProjectRef,
+    isDemoMode,
+    startCamera, stopCamera, startDemoCamera,
+    captureFromCamera, detectFromBlob,
+  } = useCrackMonitor();
+
   const [bimProjects, setBimProjects] = useState([]);
   const [bimProjectId, setBimProjectId] = useState('');
-  const [interval, setInterval_] = useState(0);          // seconds; 0 = manual
-  const [crackLog, setCrackLog] = useState([]);
-  const [capturing, setCapturing] = useState(false);
-  const [autoRunning, setAutoRunning] = useState(false);
-  const [camError, setCamError] = useState('');
-  const videoRef = useRef(null);
-  const [streaming, setStreaming] = useState(false);
-  const autoTimerRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const fileInputRef    = useRef(null);
+  const visibleVideoRef = useRef(null);  // 표시 전용 (캡처는 Context 숨김 비디오)
+
+  // 선택된 BIM 프로젝트 객체 (비교뷰에 전달)
+  const selectedBimProject = bimProjects.find(p => (p.projectId || p.id) === bimProjectId) || null;
+
+  // 현재 Safe 프로젝트를 Context ref에 주입 — 탭 이탈 후에도 알림 전송 시 사용
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject ?? null;
+  }, [selectedProject, selectedProjectRef]);
+
+  // 표시용 <video>에 Context 스트림 연결 (탭 복귀 시 자동 복원)
+  useEffect(() => {
+    const video = visibleVideoRef.current;
+    if (!video) return;
+    video.srcObject = streaming ? (streamRef.current ?? null) : null;
+    if (streaming && streamRef.current) video.play().catch(() => {});
+  }, [streaming, streamRef]);
 
   // BIM 프로젝트 목록 로드
   useEffect(() => {
     fetch('/api/bim/db-projects')
-      .then(r => r.ok ? r.json() : [])
-      .then(list => setBimProjects(list || []))
+      .then(r => r.ok ? r.text() : '[]')
+      .then(t => { try { setBimProjects(JSON.parse(t) || []); } catch { setBimProjects([]); } })
       .catch(() => setBimProjects([]));
   }, []);
 
-  // 웹캠 시작
-  const startCamera = useCallback(async () => {
-    setCamError('');
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCamError(t('cameraHttpsRequired'));
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      if (videoRef.current) { videoRef.current.srcObject = stream; setStreaming(true); }
-    } catch (e) {
-      setCamError(t('cameraError') + e.message);
-    }
-  }, [t]);
-
-  const stopCamera = useCallback(() => {
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
-      videoRef.current.srcObject = null;
-    }
-    setStreaming(false);
-  }, []);
-
-  useEffect(() => { startCamera(); return () => stopCamera(); }, [startCamera, stopCamera]);
-
-  // 이미지 → crack API 호출
-  const sendCrackDetect = useCallback(async (blob, source) => {
-    setCapturing(true);
-    const form = new FormData();
-    form.append('file', blob, 'capture.jpg');
-    try {
-      const res = await fetch(`${DETECT_SERVER_URL}/api/detection/crack`, { method: 'POST', body: form });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setCrackLog(prev => [{
-        time: new Date(),
-        hasCrack: !!data.hasCrack,
-        confidence: data.confidence ?? 0,
-        method: data.method ?? 'unknown',
-        detail: data.detail ?? '',
-        source,
-      }, ...prev.slice(0, 99)]);
-      // ── WBS 로그에 알림 전송 ──────────────────────────────────
-      if (data.hasCrack) {
-        const conf = Math.round((data.confidence ?? 0) * 100);
-        pushAlert({
-          source:      'CRACK',
-          severity:    conf >= 70 ? 'HIGH' : 'MEDIUM',
-          title:       `균열 감지 — ${selectedProject?.projectName ?? ''}`,
-          detail:      `신뢰도 ${conf}% (${data.method ?? 'unknown'}) · ${data.detail ?? ''}`.trim().replace(/·\s*$/, ''),
-          projectId:   selectedProject?.projectId   ?? '',
-          projectName: selectedProject?.projectName ?? '',
-        });
-      }
-    } catch (e) {
-      setCrackLog(prev => [{
-        time: new Date(),
-        hasCrack: false,
-        confidence: 0,
-        method: 'error',
-        detail: e.message,
-        source,
-        error: true,
-      }, ...prev.slice(0, 99)]);
-    } finally {
-      setCapturing(false);
-    }
-  }, []);
-
-  // 웹캠 캡처 → 전송
-  const captureFromCamera = useCallback(async () => {
-    if (!videoRef.current || videoRef.current.videoWidth === 0) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
-    canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
-    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
-    await sendCrackDetect(blob, 'camera');
-  }, [sendCrackDetect]);
-
-  // 파일 업로드 → 전송
+  // 파일 업로드 → 감지 (Context의 detectFromBlob 사용)
   const handleFileUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await sendCrackDetect(file, 'file');
+    await detectFromBlob(file, 'file');
     e.target.value = '';
-  }, [sendCrackDetect]);
-
-  // 자동 인터벌 관리
-  useEffect(() => {
-    if (autoTimerRef.current) clearInterval(autoTimerRef.current);
-    if (autoRunning && interval > 0) {
-      autoTimerRef.current = setInterval(captureFromCamera, interval * 1000);
-    }
-    return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); };
-  }, [autoRunning, interval, captureFromCamera]);
+  }, [detectFromBlob]);
 
   const hasCrackNow = crackLog.length > 0 && crackLog[0].hasCrack;
   const crackCount  = crackLog.filter(e => e.hasCrack).length;
@@ -585,10 +1275,9 @@ function CrackMonitorPanel({ selectedProject }) {
 
   function fmtTime(d) { return d.toLocaleTimeString([], { hour12: false }); }
 
-  // 간격 버튼 레이블 (번역)
   function intervalLabel(v) {
     if (v === 0) return t('intervalManual');
-    return `${v / 60}${t('intervalManual') === '수동' ? '분' : v / 60 === 1 ? 'min' : 'min'}`;
+    return `${v / 60}${t('minuteSuffix')}`;
   }
 
   return (
@@ -635,12 +1324,12 @@ function CrackMonitorPanel({ selectedProject }) {
           </label>
           <div className="flex gap-1.5 flex-wrap">
             {CRACK_INTERVAL_VALUES.map(v => (
-              <button key={v} onClick={() => setInterval_(v)}
+              <button key={v} onClick={() => setIntervalSec(v)}
                       className="px-3 py-1 rounded-full text-xs transition"
                       style={{
-                        backgroundColor: interval === v ? "#1e3a5f" : "#0d1b2a",
-                        border: `1px solid ${interval === v ? "#60a5fa" : "#253347"}`,
-                        color: interval === v ? "#93c5fd" : "#8896a4",
+                        backgroundColor: intervalSec === v ? "#1e3a5f" : "#0d1b2a",
+                        border: `1px solid ${intervalSec === v ? "#60a5fa" : "#253347"}`,
+                        color: intervalSec === v ? "#93c5fd" : "#8896a4",
                       }}>
                 {intervalLabel(v)}
               </button>
@@ -674,7 +1363,7 @@ function CrackMonitorPanel({ selectedProject }) {
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
                  onChange={handleFileUpload} />
 
-          {interval > 0 && (
+          {intervalSec > 0 && (
             <button onClick={() => setAutoRunning(r => !r)}
                     className="px-4 py-2 rounded-lg text-sm font-semibold"
                     style={{
@@ -689,7 +1378,7 @@ function CrackMonitorPanel({ selectedProject }) {
           {autoRunning && (
             <span className="text-xs px-2 py-0.5 rounded-full animate-pulse"
                   style={{ background: "#3a1a00", border: "1px solid #f97316", color: "#fb923c" }}>
-              {t('autoLabel')}
+              {t('autoLabel')}{t('autoLabelContinue')}
             </span>
           )}
         </div>
@@ -709,21 +1398,34 @@ function CrackMonitorPanel({ selectedProject }) {
             <span className="text-xs" style={{ color: streaming ? "#22c55e" : "#6b7280" }}>
               {streaming ? t('on') : t('off')}
             </span>
+            {isDemoMode && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full"
+                    style={{ background: '#1a0d2a', border: '1px solid #a78bfa', color: '#c4b5fd' }}>
+                🎬 DEMO
+              </span>
+            )}
             <div className="ml-auto flex gap-2">
-              {!streaming
-                ? <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg"
+              {!streaming ? (
+                <>
+                  <button onClick={startCamera} className="text-xs px-3 py-1 rounded-lg"
                           style={{ background: "#0d2a1a", border: "1px solid #22c55e", color: "#22c55e" }}>
                     {t('startCamera')}
                   </button>
-                : <button onClick={stopCamera} className="text-xs px-3 py-1 rounded-lg"
-                          style={{ background: "#2a1010", border: "1px solid #ef4444", color: "#ef4444" }}>
-                    {t('stopCamera')}
+                  <button onClick={startDemoCamera} className="text-xs px-3 py-1 rounded-lg"
+                          style={{ background: "#1a0d2a", border: "1px solid #7c3aed", color: "#c4b5fd" }}>
+                    🎬 데모
                   </button>
-              }
+                </>
+              ) : (
+                <button onClick={stopCamera} className="text-xs px-3 py-1 rounded-lg"
+                        style={{ background: "#2a1010", border: "1px solid #ef4444", color: "#ef4444" }}>
+                  {t('stopCamera')}
+                </button>
+              )}
             </div>
           </div>
           <div className="flex-1 relative bg-black flex items-center justify-center">
-            <video ref={videoRef} autoPlay playsInline muted
+            <video ref={visibleVideoRef} autoPlay playsInline muted
                    style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             {!streaming && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
@@ -797,6 +1499,14 @@ function CrackMonitorPanel({ selectedProject }) {
           </div>
         </div>
       </div>
+
+      {/* 균열 감지 비교뷰 — 감지 결과가 있을 때만 표시 */}
+      {crackLog.length > 0 && crackLog[0].imageUrl && (
+        <CrackCompareView
+          entry={crackLog[0]}
+          bimProject={selectedBimProject}
+        />
+      )}
     </div>
   );
 }
@@ -918,6 +1628,57 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   const [madeFallback, setMadeFallback] = useState(false);
   const [devNoticeDismissed, setDevNoticeDismissed]         = useState(false);
   const [offlineNoticeDismissed, setOfflineNoticeDismissed] = useState(false);
+  const [iotMappings, setIotMappings] = useState([]);
+
+  useEffect(() => {
+    if (!selectedProject?.projectId) { setIotMappings([]); return; }
+    fetch(`/api/safe/iot/mappings/${selectedProject.projectId}`)
+      .then(r => r.ok ? r.text() : '[]')
+      .then(t => { try { setIotMappings(JSON.parse(t) || []); } catch { setIotMappings([]); } })
+      .catch(() => setIotMappings([]));
+  }, [selectedProject?.projectId]);
+
+  // ── 안전구역 상태 ──────────────────────────────────────────────────
+  const [zones, setZones]               = useState([]);          // {id, cx, cz, w, d}[]
+  const [violatedZones, setViolatedZones] = useState(new Set()); // 침범 중인 zone id Set
+  const prevViolated = useRef(new Set());
+
+  const handleZoneCreate = useCallback((zone) => {
+    setZones(prev => [...prev, zone]);
+  }, []);
+
+  const handleZoneDelete = useCallback((id) => {
+    setZones(prev => prev.filter(z => z.id !== id));
+    setViolatedZones(prev => { const next = new Set(prev); next.delete(id); return next; });
+  }, []);
+
+  const handleViolationChange = useCallback((newSet) => {
+    setViolatedZones(new Set(newSet));
+    // 새로 침범한 구역에 대해서만 알림 발생 (중복 방지)
+    for (const id of newSet) {
+      if (!prevViolated.current.has(id)) {
+        const projName = selectedProject?.projectName ?? t('zoneViolationSite');
+        const zoneAlert = pushAlert({
+          source:      'SAFE_ZONE',
+          severity:    'HIGH',
+          title:       t('zoneViolationTitle', { name: projName }),
+          detail:      t('zoneViolationDetail'),
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: projName,
+        });
+        pushWbsSuggest({
+          eventType:   'SAFE_ZONE',
+          source:      'SAFE_ZONE_VIOLATION',
+          title:       t('zoneViolationAlertTitle'),
+          detail:      t('zoneViolationWbs', { name: projName }),
+          projectId:   selectedProject?.projectId   ?? '',
+          projectName: projName,
+          alertId:     zoneAlert.id,
+        });
+      }
+    }
+    prevViolated.current = new Set(newSet);
+  }, [selectedProject]);
 
   // 패널 높이 (드래그 리사이즈) — 데스크톱 전용
   const [panelH, setPanelH] = useState(480);
@@ -972,7 +1733,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
     const client = new Client({
       webSocketFactory: () => new SockJS(wsUrl),
       reconnectDelay: 5000,
-      onConnect: () => client.subscribe('/topic/safe', msg => setSafeEvent(JSON.parse(msg.body))),
+      onConnect: () => client.subscribe('/topic/safe', msg => { try { setSafeEvent(JSON.parse(msg.body)); } catch {} }),
       onStompError: () => { /* 재접속은 reconnectDelay가 처리 — 콘솔 오류 억제 */ },
     });
     client.activate();
@@ -1008,10 +1769,23 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
   }, [making, makeCooldown, lastResult]);
 
   const dangerous = safeEvent?.dangerous ?? false;
-  const isCrackMode = (selectedProject?.mode || 'SAFETY') === 'CRACK';
+  const mode = selectedProject?.mode || 'SAFETY';
+  const isCrackMode     = mode === 'CRACK';
+  const isProgressMode  = mode === 'PROGRESS';
+  const [activeTab, setActiveTab] = useState('live'); // 'live' | 'monitoring' | 'progress' | 'diff'
+
+  // 프로젝트가 바뀌면 실시간 탭으로 초기화
+  useEffect(() => { setActiveTab('live'); }, [selectedProject?.projectId]);
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* ── 외부 날씨 (좌) + 현장 IoT 센서 (우, 매핑된 경우만) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: iotMappings.length > 0 ? '1fr 2fr' : '1fr', gap: 12 }}
+           className="flex-col md:grid">
+        <WeatherWidget />
+        {iotMappings.length > 0 && <SensorPanel />}
+      </div>
 
       {/* 현장 정보 헤더 바 */}
       {selectedProject && (
@@ -1025,18 +1799,18 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
             </button>
           )}
           <span className="text-base font-bold text-white">
-            {isCrackMode ? "🔍" : "🛡"} {selectedProject.projectName}
+            {isProgressMode ? "📐" : isCrackMode ? "🔍" : "🛡"} {selectedProject.projectName}
           </span>
           {selectedProject.location && (
             <span className="text-xs text-gray-400">📍 {selectedProject.location}</span>
           )}
           <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
                 style={{
-                  backgroundColor: isCrackMode ? "#1e3a5f" : "#14532d",
-                  border: `1px solid ${isCrackMode ? "#60a5fa" : "#4ade80"}`,
-                  color: isCrackMode ? "#93c5fd" : "#4ade80",
+                  backgroundColor: isProgressMode ? "#1a1040" : isCrackMode ? "#1e3a5f" : "#14532d",
+                  border: `1px solid ${isProgressMode ? "#a78bfa" : isCrackMode ? "#60a5fa" : "#4ade80"}`,
+                  color: isProgressMode ? "#c4b5fd" : isCrackMode ? "#93c5fd" : "#4ade80",
                 }}>
-            {isCrackMode ? tP('modeCrackBadge') : tP('modeSafetyBadge')}
+            {isProgressMode ? t('progressModeBadge') : isCrackMode ? tP('modeCrackBadge') : tP('modeSafetyBadge')}
           </span>
           {!isCrackMode && selectedProject.cameraUrl && (
             <span className="text-xs px-2 py-0.5 rounded-full"
@@ -1047,12 +1821,75 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
         </div>
       )}
 
-      {/* ── 균열 감지 모드 ── */}
-      {isCrackMode ? (
+      {/* ── 탭 버튼 ── */}
+      {selectedProject && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('live')}
+            className="text-xs px-4 py-1.5 rounded-lg"
+            style={{
+              background: activeTab === 'live' ? '#1e3a5f' : '#0d1b2a',
+              border: `1px solid ${activeTab === 'live' ? '#3b82f6' : '#253347'}`,
+              color: activeTab === 'live' ? '#93c5fd' : '#6b7280',
+            }}>
+            {isCrackMode ? t('tabLiveDetect') : t('tabLiveMonitor')}
+          </button>
+          <button
+            onClick={() => setActiveTab('monitoring')}
+            className="text-xs px-4 py-1.5 rounded-lg"
+            style={{
+              background: activeTab === 'monitoring' ? '#1e3a5f' : '#0d1b2a',
+              border: `1px solid ${activeTab === 'monitoring' ? '#3b82f6' : '#253347'}`,
+              color: activeTab === 'monitoring' ? '#93c5fd' : '#6b7280',
+            }}>
+            {t('monTab')}
+          </button>
+          {isProgressMode && (
+            <button
+              onClick={() => setActiveTab('progress')}
+              className="text-xs px-4 py-1.5 rounded-lg"
+              style={{
+                background: activeTab === 'progress' ? '#1a1040' : '#0d1b2a',
+                border: `1px solid ${activeTab === 'progress' ? '#a78bfa' : '#253347'}`,
+                color: activeTab === 'progress' ? '#c4b5fd' : '#6b7280',
+              }}>
+              {t('tabProgressAnalysis')}
+            </button>
+          )}
+          <button
+            onClick={() => setActiveTab('diff')}
+            className="text-xs px-4 py-1.5 rounded-lg"
+            style={{
+              background: activeTab === 'diff' ? '#1a2a10' : '#0d1b2a',
+              border: `1px solid ${activeTab === 'diff' ? '#4ade80' : '#253347'}`,
+              color: activeTab === 'diff' ? '#86efac' : '#6b7280',
+            }}>
+            {t('diffTab')}
+          </button>
+        </div>
+      )}
+
+      {/* ── 진도 분석 탭 (PROGRESS 모드) ── */}
+      {selectedProject && activeTab === 'progress' && (
+        <ProgressMonitoringPanel selectedProject={selectedProject} />
+      )}
+
+      {/* ── 변화 비교 탭 ── */}
+      {selectedProject && activeTab === 'diff' && (
+        <PhotoDiffPanel selectedProject={selectedProject} />
+      )}
+
+      {/* ── 모니터링 기록 탭 ── */}
+      {selectedProject && activeTab === 'monitoring' && (
+        <MonitoringGallery selectedProject={selectedProject} />
+      )}
+
+      {/* ── 실시간 탭 (균열 감지 모드) ── */}
+      {(!selectedProject || activeTab === 'live') && isCrackMode ? (
         <CrackMonitorPanel selectedProject={selectedProject} />
-      ) : (
+      ) : (!selectedProject || activeTab === 'live') && !isCrackMode ? (
         <>
-          {/* 위험 배너 */}
+          {/* 위험 배너 (감지 서버) */}
           {dangerous && (
             <div className="flex items-start gap-3 px-4 py-3 rounded-xl border animate-pulse"
               style={{ backgroundColor: '#3a0f0f', borderColor: '#ef4444' }}>
@@ -1067,6 +1904,20 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                 </p>
               </div>
               <button onClick={() => setSafeEvent(null)} className="text-gray-500 hover:text-gray-300 text-lg">✕</button>
+            </div>
+          )}
+
+          {/* 안전구역 침범 배너 */}
+          {violatedZones.size > 0 && (
+            <div className="flex items-start gap-3 px-4 py-3 rounded-xl border animate-pulse"
+              style={{ backgroundColor: '#3a0000', borderColor: '#ff4444' }}>
+              <span className="text-xl">🚨</span>
+              <div className="flex-1">
+                <p className="text-red-300 font-bold text-sm">{t('zoneViolationAlertTitle')}</p>
+                <p className="text-red-400 text-xs mt-0.5">
+                  {t('zoneViolationCount', { n: violatedZones.size })}
+                </p>
+              </div>
             </div>
           )}
 
@@ -1121,6 +1972,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                 makeCaptureRef={makeCaptureRef}
                 stopDetectRef={stopDetectRef}
                 onStreamingChange={setCamStreaming}
+                projectId={selectedProject?.projectId}
               />
             </div>
 
@@ -1137,6 +1989,11 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
                 camStreaming={camStreaming}
                 isFallback={!!lastResult?.fallback}
                 madeFallback={madeFallback}
+                zones={zones}
+                violatedZones={violatedZones}
+                onZoneCreate={handleZoneCreate}
+                onZoneDelete={handleZoneDelete}
+                onViolationChange={handleViolationChange}
               />
             </div>
           </div>
@@ -1154,7 +2011,7 @@ export default function SafeDashboard({ selectedProject = null, onBack }) {
           {/* ── 하단: 탐지 로그 ── */}
           <LogPanel detectionHistory={detectionHistory} />
         </>
-      )}
+      ) : null}
 
     </div>
   );

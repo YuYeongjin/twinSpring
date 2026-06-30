@@ -10,9 +10,10 @@ langgraph>=0.2.0
 langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-ollama>=0.2.0          # Ollama LLM integration
-langchain-chroma>=0.1.0          # ChromaDB vector store integration
+langchain-postgres>=0.0.9        # PGVector (PostgreSQL pgvector) integration
 langchain-community>=0.3.0       # Community tools & utilities
 langchain-huggingface>=0.1.0     # HuggingFace 임베딩 (RAG 벡터화)
+langchain-text-splitters>=0.3.0  # RecursiveCharacterTextSplitter (RAG 청크 분할)
 
 # ── Web framework ──────────────────────────────────────────────
 fastapi>=0.115.0
@@ -20,10 +21,8 @@ uvicorn[standard]>=0.32.0        # ASGI server (includes websockets, httptools)
 pydantic>=2.0.0
 
 # ── Database ───────────────────────────────────────────────────
-psycopg2-binary>=2.9.0           # PostgreSQL driver (binary, no build tools needed)
-
-# ── IoT / Time-series ──────────────────────────────────────────
-influxdb-client>=1.44.0          # InfluxDB 2.x client
+psycopg2-binary>=2.9.0           # PostgreSQL driver (legacy, kept for direct psycopg2 usage)
+psycopg[binary]>=3.1.0           # PostgreSQL driver v3 (required by langchain-postgres>=0.0.12)
 
 # ── HTTP client ────────────────────────────────────────────────
 httpx>=0.28.0                    # Async-capable HTTP client (used for simulation API calls)
@@ -31,3 +30,13 @@ httpx>=0.28.0                    # Async-capable HTTP client (used for simulatio
 # ── Utilities ──────────────────────────────────────────────────
 python-dotenv>=1.0.0             # .env file loader
 olefile>=0.47                    # HWP(OLE) 파일 파싱 (공정서·시방서 RAG 인덱싱용)
+
+# ── GraphRAG (Leiden 커뮤니티 감지) ───────────────────────────────
+python-igraph>=0.11.0            # 그래프 자료구조 (C++ 바인딩)
+leidenalg>=0.10.0                # Leiden 커뮤니티 감지 알고리즘
+
+# ── IFC 변환 (서버 사이드 IFC → GLB 변환) ─────────────────────────
+ifcopenshell                     # IFC 파싱 및 지오메트리 추출
+pygltflib>=1.16.0                # glTF 2.0 / GLB 바이너리 생성
+numpy>=1.24.0                    # 버텍스 배열 처리
+python-multipart>=0.0.9          # FastAPI 파일 업로드

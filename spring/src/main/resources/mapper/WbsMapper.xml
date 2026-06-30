@@ -3,46 +3,6 @@
 
 <mapper namespace="yyj.project.twinspring.dao.WbsDAO">
 
-    <!--
-        PostgreSQL: alias 는 큰따옴표로 camelCase 보존
-        DDL (초기 실행):
-        CREATE TABLE IF NOT EXISTS wbs_project (
-            project_id      VARCHAR(64)  PRIMARY KEY,
-            project_name    VARCHAR(255) NOT NULL,
-            location        VARCHAR(512),
-            contract_amount BIGINT,
-            status          VARCHAR(32)  DEFAULT 'PLANNED',
-            description     TEXT,
-            start_date      DATE,
-            end_date        DATE,
-            client_name     VARCHAR(255),
-            manager_name    VARCHAR(255),
-            created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-            updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS wbs_task (
-            task_id         VARCHAR(64)  PRIMARY KEY,
-            wbs_project_id  VARCHAR(64)  NOT NULL REFERENCES wbs_project(project_id) ON DELETE CASCADE,
-            wbs_code        VARCHAR(64),
-            task_name       VARCHAR(512) NOT NULL,
-            start_date      DATE,
-            end_date        DATE,
-            duration        INTEGER,
-            progress        INTEGER      DEFAULT 0,
-            predecessor_ids TEXT,
-            status          VARCHAR(32)  DEFAULT 'NOT_STARTED',
-            responsible     VARCHAR(255),
-            notes           TEXT,
-            source          VARCHAR(32)  DEFAULT 'MANUAL',
-            sort_order      INTEGER      DEFAULT 0,
-            created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-            updated_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-        );
-    -->
-
-    <!-- ═══════════════════════════════ WBS PROJECT ═════════════════════════════ -->
-
     <select id="getAllWbsProjects" resultType="map">
         SELECT
             p.project_id      AS "projectId",
@@ -90,7 +50,7 @@
         ) VALUES (
             #{projectId}, #{projectName}, #{location}, #{contractAmount},
             #{status}, #{description},
-            #{startDate}::DATE, #{endDate}::DATE,
+            NULLIF(#{startDate}, '')::DATE, NULLIF(#{endDate}, '')::DATE,
             #{clientName}, #{managerName}
         )
     </insert>
@@ -102,8 +62,8 @@
             contract_amount = #{contractAmount},
             status          = #{status},
             description     = #{description},
-            start_date      = #{startDate}::DATE,
-            end_date        = #{endDate}::DATE,
+            start_date      = NULLIF(#{startDate}, '')::DATE,
+            end_date        = NULLIF(#{endDate}, '')::DATE,
             client_name     = #{clientName},
             manager_name    = #{managerName},
             updated_at      = CURRENT_TIMESTAMP
@@ -113,8 +73,6 @@
     <delete id="deleteWbsProject" parameterType="string">
         DELETE FROM wbs_project WHERE project_id = #{projectId}
     </delete>
-
-    <!-- ═══════════════════════════════ WBS TASK ════════════════════════════════ -->
 
     <select id="getTasksByProject" parameterType="string" resultType="map">
         SELECT
@@ -132,6 +90,7 @@
             notes            AS "notes",
             source           AS "source",
             sort_order       AS "sortOrder",
+            parent_task_id   AS "parentTaskId",
             TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
         FROM wbs_task
         WHERE wbs_project_id = #{projectId}
@@ -154,7 +113,8 @@
             t.responsible      AS "responsible",
             t.notes            AS "notes",
             t.source           AS "source",
-            t.sort_order       AS "sortOrder"
+            t.sort_order       AS "sortOrder",
+            t.parent_task_id   AS "parentTaskId"
         FROM wbs_task t
         JOIN wbs_project p ON p.project_id = t.wbs_project_id
         ORDER BY p.project_id ASC, t.sort_order ASC, t.created_at ASC
@@ -175,7 +135,8 @@
             responsible      AS "responsible",
             notes            AS "notes",
             source           AS "source",
-            sort_order       AS "sortOrder"
+            sort_order       AS "sortOrder",
+            parent_task_id   AS "parentTaskId"
         FROM wbs_task
         WHERE task_id = #{taskId}
     </select>
@@ -185,13 +146,13 @@
             task_id, wbs_project_id, wbs_code, task_name,
             start_date, end_date, duration, progress,
             predecessor_ids, status, responsible, notes,
-            source, sort_order
+            source, sort_order, parent_task_id
         ) VALUES (
             #{taskId}, #{wbsProjectId}, #{wbsCode}, #{taskName},
-            #{startDate}::DATE, #{endDate}::DATE,
+            NULLIF(#{startDate}, '')::DATE, NULLIF(#{endDate}, '')::DATE,
             #{duration}, #{progress},
             #{predecessorIds}, #{status}, #{responsible}, #{notes},
-            #{source}, #{sortOrder}
+            #{source}, #{sortOrder}, #{parentTaskId}
         )
     </insert>
 
@@ -199,8 +160,8 @@
         UPDATE wbs_task SET
             wbs_code        = #{wbsCode},
             task_name       = #{taskName},
-            start_date      = #{startDate}::DATE,
-            end_date        = #{endDate}::DATE,
+            start_date      = NULLIF(#{startDate}, '')::DATE,
+            end_date        = NULLIF(#{endDate}, '')::DATE,
             duration        = #{duration},
             progress        = #{progress},
             predecessor_ids = #{predecessorIds},
@@ -208,16 +169,74 @@
             responsible     = #{responsible},
             notes           = #{notes},
             sort_order      = #{sortOrder},
+            parent_task_id  = #{parentTaskId},
             updated_at      = CURRENT_TIMESTAMP
         WHERE task_id = #{taskId}
     </update>
 
     <delete id="deleteTask" parameterType="string">
-        DELETE FROM wbs_task WHERE task_id = #{taskId}
+        WITH RECURSIVE subtree AS (
+            SELECT task_id FROM wbs_task WHERE task_id = #{taskId}
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            JOIN subtree s ON t.parent_task_id = s.task_id
+        )
+        DELETE FROM wbs_task WHERE task_id IN (SELECT task_id FROM subtree)
+    </delete>
+
+    <!-- 진도 분석 로그: 대상 태스크 + 모든 하위 항목의 로그를 먼저 삭제 (FK 없으므로 수동 정리) -->
+    <delete id="deleteProgressLogsByTaskTree" parameterType="string">
+        WITH RECURSIVE descendants AS (
+            SELECT task_id FROM wbs_task WHERE task_id = #{taskId}
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            INNER JOIN descendants d ON t.parent_task_id = d.task_id
+        )
+        DELETE FROM progress_analysis_log
+        WHERE wbs_task_id IN (SELECT task_id FROM descendants)
+    </delete>
+
+    <!-- 재귀 삭제: 대상 태스크 + 모든 하위 항목(1.1, 1.2, 1.2.1 ...) 일괄 삭제 -->
+    <delete id="deleteTaskWithDescendants" parameterType="string">
+        WITH RECURSIVE descendants AS (
+            SELECT task_id FROM wbs_task WHERE task_id = #{taskId}
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            INNER JOIN descendants d ON t.parent_task_id = d.task_id
+        )
+        DELETE FROM wbs_task WHERE task_id IN (SELECT task_id FROM descendants)
+    </delete>
+
+    <!-- 특정 BIM 루트(rootMarker)와 그 하위 태스크만 삭제 (동일 BIM 여러 개일 때 개별 삭제용) -->
+    <delete id="deleteTasksByRootMarker">
+        WITH RECURSIVE descendants AS (
+            SELECT task_id FROM wbs_task
+            WHERE wbs_project_id = #{wbsProjectId}
+              AND notes          = #{rootMarker}
+              AND source         = 'BIM_AUTO'
+            UNION ALL
+            SELECT t.task_id FROM wbs_task t
+            INNER JOIN descendants d ON t.parent_task_id = d.task_id
+        )
+        DELETE FROM wbs_task WHERE task_id IN (SELECT task_id FROM descendants)
     </delete>
 
     <delete id="deleteTasksByProject" parameterType="string">
         DELETE FROM wbs_task WHERE wbs_project_id = #{projectId}
+    </delete>
+
+    <delete id="deleteTasksByBimMarker">
+        WITH bim_parents AS (
+            SELECT task_id FROM wbs_task
+            WHERE wbs_project_id = #{wbsProjectId}
+              AND notes LIKE 'BIM:' || #{bimProjectId} || ':%'
+        )
+        DELETE FROM wbs_task
+        WHERE wbs_project_id = #{wbsProjectId}
+          AND (
+              notes LIKE 'BIM:' || #{bimProjectId} || ':%'
+              OR parent_task_id IN (SELECT task_id FROM bim_parents)
+          )
     </delete>
 
     <insert id="insertTaskBatch" parameterType="list">
@@ -225,15 +244,15 @@
             task_id, wbs_project_id, wbs_code, task_name,
             start_date, end_date, duration, progress,
             predecessor_ids, status, responsible, notes,
-            source, sort_order
+            source, sort_order, parent_task_id
         )
         <foreach collection="list" item="t" separator=" UNION ALL ">
             SELECT
                 #{t.taskId}, #{t.wbsProjectId}, #{t.wbsCode}, #{t.taskName},
-                #{t.startDate}::DATE, #{t.endDate}::DATE,
+                NULLIF(#{t.startDate}, '')::DATE, NULLIF(#{t.endDate}, '')::DATE,
                 #{t.duration}, #{t.progress},
                 #{t.predecessorIds}, #{t.status}, #{t.responsible}, #{t.notes},
-                #{t.source}, #{t.sortOrder}
+                #{t.source}, #{t.sortOrder}, #{t.parentTaskId}
         </foreach>
     </insert>
 

@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { LINE_TYPE_COLORS, LINE_TYPE_LABELS } from '../element/BimLine';
+import { useT } from '../../../i18n/LanguageContext';
 
 /**
  * LinePanel — 3D 선(Line) 작도 사이드 패널
@@ -25,10 +27,12 @@ export default function LinePanel({
     lines,
     selectedLineId,
     setSelectedLineId,
+    multiSelectedLineIds,
     onAddLine,        // (start, end, color, lineWidth) => void
     onDeleteLine,     // (lineId) => void
     onClearLines,     // () => void
 }) {
+    const t = useT('bimDashboard');
     // 좌표 입력 폼
     const [coordForm, setCoordForm] = useState({
         x1: 0, y1: 0, z1: 0,
@@ -215,6 +219,9 @@ export default function LinePanel({
                     <div className="space-y-1 max-h-48 overflow-y-auto">
                         {lines.map((line, idx) => {
                             const isSelected = line.lineId === selectedLineId;
+                            const isMulti = multiSelectedLineIds?.has(line.lineId) && !isSelected;
+                            const typeColor = line.lineType ? LINE_TYPE_COLORS[line.lineType] : null;
+                            const displayColor = typeColor || (line.color ?? '#60a5fa');
                             return (
                                 <div
                                     key={line.lineId}
@@ -222,16 +229,25 @@ export default function LinePanel({
                                     className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition
                                         ${isSelected
                                             ? 'bg-cyan-900/40 border border-cyan-700/60'
-                                            : 'bg-space-700/40 border border-space-600/40 hover:bg-space-700/70'}`}
+                                            : isMulti
+                                                ? 'bg-orange-900/30 border border-orange-600/50'
+                                                : 'bg-space-700/40 border border-space-600/40 hover:bg-space-700/70'}`}
                                 >
                                     {/* 색상 점 */}
                                     <div
                                         className="w-3 h-3 rounded-full flex-shrink-0"
-                                        style={{ backgroundColor: line.color ?? '#60a5fa' }}
+                                        style={{ backgroundColor: displayColor }}
                                     />
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-xs font-medium text-gray-300 truncate">
-                                            Line {idx + 1}
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-xs font-medium text-gray-300 truncate">
+                                                {line.lineType && line.lineType !== 'line'
+                                                    ? t(`lineType${line.lineType.charAt(0).toUpperCase()}${line.lineType.slice(1)}`)
+                                                    : `Line ${idx + 1}`}
+                                            </span>
+                                            {isMulti && (
+                                                <span className="text-[10px] px-1 rounded bg-orange-800/60 text-orange-300">{t('multiLineBadge')}</span>
+                                            )}
                                         </div>
                                         <div className="text-xs text-gray-500">
                                             ({(line.start[0]).toFixed(1)},{(line.start[1]).toFixed(1)},{(line.start[2]).toFixed(1)})

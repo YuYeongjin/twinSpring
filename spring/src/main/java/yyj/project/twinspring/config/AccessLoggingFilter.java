@@ -9,6 +9,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import yyj.project.twinspring.service.RecentAccessService;
 
 import java.io.IOException;
 
@@ -16,6 +17,12 @@ import java.io.IOException;
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class AccessLoggingFilter extends OncePerRequestFilter {
+
+    private final RecentAccessService recentAccessService;
+
+    public AccessLoggingFilter(RecentAccessService recentAccessService) {
+        this.recentAccessService = recentAccessService;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -26,9 +33,11 @@ public class AccessLoggingFilter extends OncePerRequestFilter {
         } finally {
             long duration = System.currentTimeMillis() - startTime;
             String clientIp = getClientIp(request);
+            String uri = request.getRequestURI();
+            int status = response.getStatus();
             log.info("ACCESS_LOG | IP: {} | Method: {} | URI: {} | Status: {} | Duration: {}ms",
-                    clientIp, request.getMethod(), request.getRequestURI(),
-                    response.getStatus(), duration);
+                    clientIp, request.getMethod(), uri, status, duration);
+            recentAccessService.record(clientIp, request.getMethod(), uri, status);
         }
     }
 

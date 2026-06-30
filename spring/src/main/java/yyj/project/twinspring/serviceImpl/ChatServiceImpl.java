@@ -23,6 +23,7 @@ import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
 import yyj.project.twinspring.dto.MultimodalRequestDTO;
+import yyj.project.twinspring.dto.WbsRagRequestDTO;
 import yyj.project.twinspring.service.ChatService;
 
 import java.util.ArrayList;
@@ -98,12 +99,28 @@ public class ChatServiceImpl implements ChatService {
         } else {
             context.putNull("simulationProjectId");
         }
+        if (request.getWbsProjectId() != null) {
+            context.put("wbsProjectId", request.getWbsProjectId());
+        } else {
+            context.putNull("wbsProjectId");
+        }
+        if (request.getDirectAgent() != null) {
+            context.put("directAgent", request.getDirectAgent());
+        } else {
+            context.putNull("directAgent");
+        }
+        if (request.getUiLang() != null) {
+            context.put("uiLang", request.getUiLang());
+        } else {
+            context.putNull("uiLang");
+        }
 
         // Python Agent 호출
         String agentResponse;
         String intent = "chat";
         Map<String, Object> bimData = null;
         Map<String, Object> sensorData = null;
+        Map<String, Object> reportData = null;
         try {
             String raw = agentClient.post()
                     .uri("/chat")
@@ -130,6 +147,12 @@ public class ChatServiceImpl implements ChatService {
                 sensorData = objectMapper.convertValue(sensorDataNode, Map.class);
             }
 
+            // reportData 파싱 (orchestrator 노드에서 반환)
+            JsonNode reportDataNode = json.path("reportData");
+            if (!reportDataNode.isMissingNode() && !reportDataNode.isNull()) {
+                reportData = objectMapper.convertValue(reportDataNode, Map.class);
+            }
+
         } catch (Exception e) {
             log.error("Agent 호출 실패: {}", e.getMessage());
             agentResponse = "AI Agent에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
@@ -142,6 +165,7 @@ public class ChatServiceImpl implements ChatService {
         ChatResponseDTO responseDTO = new ChatResponseDTO(agentResponse, intent, sessionId);
         responseDTO.setBimData(bimData);
         responseDTO.setSensorData(sensorData);
+        responseDTO.setReportData(reportData);
         return responseDTO;
     }
 
@@ -166,8 +190,10 @@ public class ChatServiceImpl implements ChatService {
             msgNode.put("content", msg.getContent());
         }
 
-        // context 빈 객체 전달 (스키마 호환)
-        body.putObject("context");
+        // context — uiLang 포함
+        ObjectNode simpleContext = body.putObject("context");
+        if (request.getUiLang() != null) simpleContext.put("uiLang", request.getUiLang());
+        else simpleContext.putNull("uiLang");
 
         String agentResponse;
         try {
@@ -268,6 +294,12 @@ public class ChatServiceImpl implements ChatService {
         else context.putNull("projectId");
         if (request.getSimulationProjectId() != null) context.put("simulationProjectId", request.getSimulationProjectId());
         else context.putNull("simulationProjectId");
+        if (request.getWbsProjectId() != null) context.put("wbsProjectId", request.getWbsProjectId());
+        else context.putNull("wbsProjectId");
+        if (request.getDirectAgent() != null) context.put("directAgent", request.getDirectAgent());
+        else context.putNull("directAgent");
+        if (request.getUiLang() != null) context.put("uiLang", request.getUiLang());
+        else context.putNull("uiLang");
 
         /*
          * SSE 프록시 방식:
@@ -314,10 +346,226 @@ public class ChatServiceImpl implements ChatService {
             agentClient.get()
                     .uri("/health")
                     .exchangeToMono(cr -> Mono.just(cr.statusCode()))
-                    .block(Duration.ofSeconds(3));
+                    .block(Duration.ofSeconds(5));
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    @Override
+    public Map<String, Object> wbsProjectChat(Map<String, Object> request) {
+        try {
+            String raw = agentClient.post()
+                    .uri("/wbs-project-chat")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(60))
+                    .block();
+
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[WbsProjectChat] 에이전트 호출 실패: {}", e.getMessage());
+            return Map.of(
+                "response", "죄송합니다, 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+                "collected", Map.of(),
+                "ready", false
+            );
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> structuralSpec(Map<String, Object> request) {
+        try {
+            String raw = agentClient.post()
+                    .uri("/structural-spec")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(30))
+                    .block();
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[StructuralSpec] RAG 검색 실패: {}", e.getMessage());
+            return Map.of("citations", List.of(), "hasData", false, "query", "");
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> excavationSpec(Map<String, Object> request) {
+        try {
+            String raw = agentClient.post()
+                    .uri("/excavation-spec")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(30))
+                    .block();
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[ExcavationSpec] RAG 검색 실패: {}", e.getMessage());
+            return Map.of("citations", List.of(), "hasData", false, "query", "");
+        }
+    }
+
+    @Override
+    public Map<String, Object> wbsRagSuggest(WbsRagRequestDTO request) {
+        try {
+            ObjectNode body = objectMapper.createObjectNode();
+            body.put("eventType", request.getEventType() != null ? request.getEventType() : "");
+            body.put("title",     request.getTitle()     != null ? request.getTitle()     : "");
+            body.put("detail",    request.getDetail()    != null ? request.getDetail()    : "");
+
+            String raw = agentClient.post()
+                    .uri("/wbs-rag-suggest")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(15))
+                    .block();
+
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[WbsRagSuggest] RAG 검색 실패: {}", e.getMessage());
+            return Map.of("query", "", "evidence", List.of(), "hasData", false);
+        }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> wbsTaskSpec(Map<String, Object> request) {
+        try {
+            String raw = agentClient.post()
+                    .uri("/wbs-task-spec")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(30))
+                    .block();
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[WbsTaskSpec] RAG 검색 실패: {}", e.getMessage());
+            return Map.of("citations", List.of(), "hasData", false, "query", "");
+        }
+    }
+
+    @Override
+    public Map<String, Object> ragStatus() {
+        try {
+            String raw = agentClient.get()
+                    .uri("/admin/rag-status")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[RagStatus] 조회 실패: {}", e.getMessage());
+            return Map.of("dbReachable", false, "chunks", 0, "hasData", false,
+                          "status", "error", "message", e.getMessage());
+        }
+    }
+
+    @Override
+    public Map<String, Object> ragRebuild() {
+        try {
+            String raw = agentClient.post()
+                    .uri("/admin/rebuild-rag")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue("{}")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[RagRebuild] 트리거 실패: {}", e.getMessage());
+            return Map.of("queued", false, "message", "Agent 서버 연결 실패: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Map<String, Object> graphRagStatus() {
+        try {
+            String raw = agentClient.get()
+                    .uri("/admin/graph-rag-status")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[GraphRagStatus] 조회 실패: {}", e.getMessage());
+            return Map.of("dbReachable", false, "communities", 0, "hasData", false,
+                          "status", "error", "message", e.getMessage());
+        }
+    }
+
+    @Override
+    public Map<String, Object> graphRagRebuild() {
+        try {
+            String raw = agentClient.post()
+                    .uri("/admin/rebuild-graph-rag")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue("{}")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[GraphRagRebuild] 트리거 실패: {}", e.getMessage());
+            return Map.of("queued", false, "message", "Agent 서버 연결 실패: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public Map<String, Object> getSensorThresholds() {
+        try {
+            String raw = agentClient.get()
+                    .uri("/admin/sensor-thresholds")
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(5))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[SensorThresholds] 조회 실패: {}", e.getMessage());
+            return Map.of("error", "Agent 서버에 연결할 수 없습니다.");
+        }
+    }
+
+    @Override
+    public Map<String, Object> updateSensorThresholds(Map<String, Object> body) {
+        try {
+            String raw = agentClient.put()
+                    .uri("/admin/sensor-thresholds")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(objectMapper.writeValueAsString(body))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(5))
+                    .block();
+            //noinspection unchecked
+            return objectMapper.readValue(raw, Map.class);
+        } catch (Exception e) {
+            log.error("[SensorThresholds] 업데이트 실패: {}", e.getMessage());
+            return Map.of("error", "Agent 서버에 연결할 수 없습니다.");
         }
     }
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { useT } from "../../../i18n/LanguageContext";
 import AxiosCustom from "../../../axios/AxiosCustom";
 
 /**
@@ -10,6 +11,7 @@ import AxiosCustom from "../../../axios/AxiosCustom";
  *   compact         : boolean  — 카드 내 인라인 표시 모드 (기본 false)
  */
 export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = false }) {
+  const t = useT('projectLink');
   const [links,       setLinks]       = useState([]);   // { linkId, wbsProjectId, wbsProjectName, ... }
   const [wbsProjects, setWbsProjects] = useState([]);   // 연결 가능한 WBS 프로젝트 목록
   const [loading,     setLoading]     = useState(true);
@@ -36,7 +38,7 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
   }, []);
 
   useEffect(() => { loadLinks(); }, [loadLinks]);
-  useEffect(() => { if (open) loadWbsProjects(); }, [open, loadWbsProjects]);
+  useEffect(() => { if (open || adding) loadWbsProjects(); }, [open, adding, loadWbsProjects]);
 
   // ── 링크 추가 ────────────────────────────────────────────────────
   async function handleAdd() {
@@ -58,7 +60,7 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
 
   // ── 링크 해제 ────────────────────────────────────────────────────
   async function handleDelete(linkId) {
-    if (!window.confirm("WBS 연결을 해제하시겠습니까?")) return;
+    if (!window.confirm(t('removeConfirm'))) return;
     await AxiosCustom.delete(`/api/project-link/${linkId}`);
     loadLinks();
   }
@@ -89,9 +91,9 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
           {loading ? (
             <span>…</span>
           ) : links.length > 0 ? (
-            <span>WBS {links.length}개 연결됨</span>
+            <span>WBS {links.length}</span>
           ) : (
-            <span>WBS 연결 없음</span>
+            <span>WBS —</span>
           )}
           <span className="ml-auto" style={{ color: "#475569" }}>
             {open ? "▲" : "▼"}
@@ -107,7 +109,7 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
             <div className="px-2.5 py-2">
               {links.length === 0 ? (
                 <p className="text-xs text-center py-2" style={{ color: "#334155" }}>
-                  연결된 WBS 프로젝트가 없습니다
+                  {t('noLinks')}
                 </p>
               ) : (
                 <div className="flex flex-col gap-1">
@@ -145,7 +147,7 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
               <div className="px-2.5 pb-2.5 flex flex-col gap-1.5 border-t border-[#1e3a5f] pt-2">
                 <select value={selectedWbs} onChange={e => setSelectedWbs(e.target.value)}
                         className={inputCls}>
-                  <option value="">-- WBS 프로젝트 선택 --</option>
+                  <option value="">{t('selectProjectPh')}</option>
                   {candidates.map(p => (
                     <option key={p.projectId} value={p.projectId}>
                       {p.projectName}
@@ -153,7 +155,7 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
                   ))}
                 </select>
                 <input type="text" value={note} onChange={e => setNote(e.target.value)}
-                       placeholder="연결 메모 (선택)" className={inputCls} />
+                       placeholder={t('linkMemoPh')} className={inputCls} />
                 <div className="flex gap-1.5">
                   <button onClick={handleAdd} disabled={!selectedWbs || saving}
                           className="flex-1 py-1 rounded-lg text-xs font-semibold text-white transition"
@@ -161,12 +163,12 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
                             background: selectedWbs ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "#1c2a3a",
                             border: `1px solid ${selectedWbs ? "#3b82f6" : "#253347"}`,
                           }}>
-                    {saving ? "추가 중…" : "🔗 연결"}
+                    {saving ? t('addingLink') : t('addLinkBtn')}
                   </button>
                   <button onClick={() => { setAdding(false); setSelectedWbs(""); setNote(""); }}
                           className="px-3 py-1 rounded-lg text-xs text-gray-400"
                           style={{ border: "1px solid #253347" }}>
-                    취소
+                    {t('closeBtn')}
                   </button>
                 </div>
               </div>
@@ -212,21 +214,20 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
             color: adding ? "#60a5fa" : "#8896a4",
           }}
         >
-          {adding ? "✕ 닫기" : "+ WBS 연결 추가"}
+          {adding ? t('closeBtn') : t('openAddBtn')}
         </button>
       </div>
 
       {/* 목록 */}
       {loading ? (
-        <p className="text-xs text-gray-500 py-4 text-center">로드 중…</p>
+        <p className="text-xs text-gray-500 py-4 text-center">{t('loadingList')}</p>
       ) : links.length === 0 && !adding ? (
         <div className="text-center py-6">
-          <p className="text-sm text-gray-500 mb-1">연결된 WBS 프로젝트가 없습니다</p>
-          <p className="text-xs text-gray-600">이 프로젝트와 관련된 WBS 공정표를 연결하세요</p>
+          <p className="text-sm text-gray-500 mb-1">{t('noLinks')}</p>
           <button onClick={() => setAdding(true)}
                   className="mt-3 px-4 py-1.5 rounded-lg text-xs font-semibold text-blue-400"
                   style={{ border: "1px dashed #1d4ed8" }}>
-            + WBS 연결
+            {t('openAddBtn')}
           </button>
         </div>
       ) : (
@@ -269,10 +270,10 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
       {adding && (
         <div className="flex flex-col gap-2 mt-3 p-3 rounded-xl"
              style={{ backgroundColor: "#0a1521", border: "1px solid #1e3a5f" }}>
-          <p className="text-xs font-semibold text-gray-400 mb-1">+ WBS 프로젝트 연결</p>
+          <p className="text-xs font-semibold text-gray-400 mb-1">{t('addLinkTitle')}</p>
           <select value={selectedWbs} onChange={e => setSelectedWbs(e.target.value)}
                   className="bg-[#0d1b2a] border border-[#253347] rounded-lg px-2.5 py-1.5 text-sm text-gray-200 outline-none focus:border-blue-500 w-full">
-            <option value="">-- WBS 프로젝트 선택 --</option>
+            <option value="">{t('selectProjectPh')}</option>
             {candidates.map(p => (
               <option key={p.projectId} value={p.projectId}>
                 {p.projectName}
@@ -280,13 +281,8 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
               </option>
             ))}
           </select>
-          {candidates.length === 0 && wbsProjects.length > 0 && (
-            <p className="text-xs" style={{ color: "#475569" }}>
-              모든 WBS 프로젝트가 이미 연결되어 있습니다
-            </p>
-          )}
           <input type="text" value={note} onChange={e => setNote(e.target.value)}
-                 placeholder="연결 메모 (선택)"
+                 placeholder={t('linkMemoPh')}
                  className="bg-[#0d1b2a] border border-[#253347] rounded-lg px-2.5 py-1.5 text-sm text-gray-200 outline-none focus:border-blue-500 w-full" />
           <button onClick={handleAdd} disabled={!selectedWbs || saving}
                   className="w-full py-2 rounded-lg text-sm font-semibold text-white transition"
@@ -294,7 +290,7 @@ export default function WbsLinkWidget({ linkedType, linkedProjectId, compact = f
                     background: selectedWbs ? "linear-gradient(135deg,#1d4ed8,#1e40af)" : "#1c2a3a",
                     border: `1px solid ${selectedWbs ? "#3b82f6" : "#253347"}`,
                   }}>
-            {saving ? "추가 중…" : "🔗 WBS 연결 추가"}
+            {saving ? t('addingLink') : t('addLinkBtn')}
           </button>
         </div>
       )}

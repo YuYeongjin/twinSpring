@@ -2,28 +2,28 @@
 BIM Agent 도구 모음
 
 담당 도메인:
-  - BIM 부재 CRUD (createElement / createComposite / deleteElement / updateElement / createProject)
-  - BIM 프로젝트·부재 통계 조회
-  - 드론 사진 분석 안내 (Spring /api/drone 정보)
-  - 구조 해석 조회 (Spring /api/bim/structural)
-  - IFC 파일 가져오기 안내 (Spring /api/bim/ifc 정보)
-
-Note:
-  BIM 부재 생성은 여러 단계 대화(좌표 확인 등)가 필요하므로
-  create_bim_element 는 좌표가 없을 때 "NEED_COORDS" 신호를 반환합니다.
-  bim_agent.py 의 ReAct 루프가 이 신호를 받아 사용자에게 추가 질문합니다.
+  - BIM 부재 CRUD (create_bim_element / create_composite_structure / delete_bim_element / create_bim_project)
+  - BIM 프로젝트·부재 통계 조회 (list_bim_projects / get_bim_stats)
+  - 드론 사진 분석 안내, 구조 해석 조회, IFC 파일 가져오기 안내
 """
+from __future__ import annotations
+from typing import Optional
 
 import json
+import logging
 import uuid
 import httpx
 from langchain_core.tools import tool
+
+logger = logging.getLogger(__name__)
+_ERR = "처리 중 오류가 발생했습니다."
 from tools.db_tool import (
     query_bim_projects,
     query_bim_element_stats,
     query_bim_total_count,
+    insert_bim_project,
 )
-from config import SPRING_BASE_URL
+from config.settings import SPRING_BASE_URL
 
 # ── 기본 부재 크기 ─────────────────────────────────────────────────────────────
 _DEFAULT_SIZES = {
@@ -39,13 +39,20 @@ _DEFAULT_SIZES = {
 @tool
 def list_bim_projects() -> str:
     """
-    DB에 저장된 BIM 프로젝트 목록을 반환합니다.
+    BIM 프로젝트 목록을 반환합니다.
     각 프로젝트의 ID, 이름, 구조 유형을 포함합니다.
     """
-    projects = query_bim_projects()
-    if not projects:
-        return json.dumps({"projects": [], "count": 0})
-    return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
+    try:
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/projects", timeout=10)
+        res.raise_for_status()
+        projects = res.json() or []
+        return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
+    except Exception:
+        logger.warning("[bim] list_bim_projects Spring 조회 실패, DB 폴백", exc_info=True)
+        projects = query_bim_projects()
+        if not projects:
+            return json.dumps({"projects": [], "count": 0})
+        return json.dumps({"projects": projects, "count": len(projects)}, ensure_ascii=False)
 
 
 @tool
@@ -54,8 +61,19 @@ def get_bim_stats(project_id: str) -> str:
     특정 BIM 프로젝트의 부재 타입별 통계를 반환합니다.
     project_id 는 list_bim_projects 로 확인한 ID 를 사용합니다.
     """
-    stats = query_bim_element_stats(project_id)
-    total = query_bim_total_count(project_id)
+    try:
+        # 부재 데이터는 C# 서버에만 저장되므로 Spring Boot 프록시 엔드포인트를 사용
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/project/{project_id}", timeout=10)
+        res.raise_for_status()
+        elements: list = res.json() or []
+        from collections import Counter
+        counts = Counter(e.get("elementType", "Unknown") for e in elements)
+        stats = [{"elementType": k, "elementCount": v} for k, v in counts.most_common()]
+        total = len(elements)
+    except Exception:
+        logger.warning("[bim] get_bim_stats Spring 조회 실패, DB 폴백", exc_info=True)
+        stats = query_bim_element_stats(project_id)
+        total = query_bim_total_count(project_id)
     return json.dumps({
         "projectId": project_id,
         "stats":     stats,
@@ -71,9 +89,9 @@ def create_bim_element(
     position_x: float,
     position_y: float,
     position_z: float,
-    size_x: float | None = None,
-    size_y: float | None = None,
-    size_z: float | None = None,
+    size_x: Optional[float] = None,
+    size_y: Optional[float] = None,
+    size_z: Optional[float] = None,
 ) -> str:
     """
     BIM 프로젝트에 단일 부재를 생성합니다.
@@ -104,9 +122,11 @@ def create_bim_element(
         return json.dumps({"success": True, "elementId": payload["elementId"],
                            "message": f"{element_type} 부재 생성 완료"}, ensure_ascii=False)
     except httpx.ConnectError:
-        return json.dumps({"success": False, "error": f"Spring 서버 연결 실패 ({SPRING_BASE_URL})"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+        logger.error("[bim] create_bim_element: Spring 서버 연결 실패 (%s)", SPRING_BASE_URL, exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+    except Exception:
+        logger.error("[bim] create_bim_element 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -119,8 +139,9 @@ def delete_bim_element(element_id: str) -> str:
         res = httpx.delete(f"{SPRING_BASE_URL}/api/bim/element/{element_id}", timeout=10)
         res.raise_for_status()
         return json.dumps({"success": True, "message": f"부재 {element_id} 삭제 완료"}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[bim] delete_bim_element(%s) 실패", element_id, exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -134,13 +155,31 @@ def create_bim_project(project_name: str, structure_type: str = "Building") -> s
         res = httpx.post(f"{SPRING_BASE_URL}/api/bim/project", json=payload, timeout=10)
         res.raise_for_status()
         data = res.json()
-        return json.dumps({"success": True, "projectId": data.get("projectId"),
+        project_id = data.get("projectId")
+        # Spring/C# 성공 후 PostgreSQL에도 동기화 (목록 조회 일관성 보장)
+        if project_id:
+            try:
+                insert_bim_project(project_id, project_name, structure_type)
+            except Exception:
+                logger.warning("[bim] PostgreSQL project 동기화 실패 (무시)", exc_info=True)
+        return json.dumps({"success": True, "projectId": project_id,
                            "projectName": project_name}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.warning("[bim] Spring/C# project 생성 실패 — PostgreSQL 직접 저장 시도", exc_info=True)
+        # C# 서버 장애 시 PostgreSQL에 직접 저장하여 에이전트 운영 지속
+        try:
+            fallback_id = "P-" + uuid.uuid4().hex[:8].upper()
+            insert_bim_project(fallback_id, project_name, structure_type)
+            logger.info("[bim] PostgreSQL 직접 저장 성공: projectId=%s", fallback_id)
+            return json.dumps({"success": True, "projectId": fallback_id,
+                               "projectName": project_name,
+                               "note": "C# 서버 없이 DB에 저장됨"}, ensure_ascii=False)
+        except Exception:
+            logger.error("[bim] create_bim_project PostgreSQL 폴백도 실패", exc_info=True)
+            return json.dumps({"success": False, "error": _ERR})
 
 
-# ── 복합 구조물 템플릿 (기존 bim_builder.py 에서 이관) ─────────────────────────
+# ── 복합 구조물 템플릿 ────────────────────────────────────────────────────────
 _COMPOSITE_TEMPLATES: dict[str, dict] = {
     "pier":           {"name": "교각 구조", "desc": "기초슬래브+기둥2+캡보"},
     "building_frame": {"name": "건물 골조", "desc": "슬래브+기둥4+보4"},
@@ -192,8 +231,9 @@ def create_composite_structure(
             "name":          tmpl.get("name", composite_type),
             "message":       f"{tmpl.get('name', composite_type)} 구조물 생성 완료",
         }, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[bim] create_composite_structure 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
 
 
 @tool
@@ -249,9 +289,11 @@ def get_structural_analysis(project_id: str) -> str:
                     "BIM 뷰어에서 '구조 해석' 탭을 열어 계산을 실행하세요."
                 ),
             }, ensure_ascii=False)
-        return json.dumps({"available": False, "error": str(e)})
-    except Exception as e:
-        return json.dumps({"available": False, "error": str(e)})
+        logger.error("[bim] get_structural_analysis HTTP error", exc_info=True)
+        return json.dumps({"available": False, "error": _ERR})
+    except Exception:
+        logger.error("[bim] get_structural_analysis 실패", exc_info=True)
+        return json.dumps({"available": False, "error": _ERR})
 
 
 @tool
@@ -282,14 +324,453 @@ def get_ifc_import_guide() -> str:
     return json.dumps(guide, ensure_ascii=False)
 
 
+@tool
+def get_bim_full_stats(project_id: str) -> str:
+    """
+    BIM 프로젝트의 부재 타입별·재료별 전체 통계를 반환합니다.
+    get_bim_stats의 확장 버전으로 재료 분포와 타입×재료 교차 집계를 포함합니다.
+    """
+    try:
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/project/{project_id}", timeout=10)
+        res.raise_for_status()
+        elements: list = res.json() or []
+
+        from collections import Counter
+        type_counts     = Counter(e.get("elementType", "Unknown") for e in elements)
+        material_counts = Counter(e.get("material",    "Unknown") for e in elements)
+
+        # 타입 × 재료 교차 집계 {elementType: {material: count}}
+        cross: dict[str, dict[str, int]] = {}
+        for e in elements:
+            etype = e.get("elementType", "Unknown")
+            mat   = e.get("material",    "Unknown")
+            cross.setdefault(etype, {})
+            cross[etype][mat] = cross[etype].get(mat, 0) + 1
+
+        return json.dumps({
+            "projectId":     project_id,
+            "total":         len(elements),
+            "elementStats":  [{"elementType": k, "elementCount": v} for k, v in type_counts.most_common()],
+            "materialStats": [{"material": k, "count": v}           for k, v in material_counts.most_common()],
+            "crossStats":    cross,
+        }, ensure_ascii=False)
+
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return json.dumps({"projectId": project_id, "total": 0,
+                               "elementStats": [], "materialStats": [], "crossStats": {}})
+        logger.error("[bim] get_bim_full_stats HTTP error", exc_info=True)
+        return json.dumps({"error": _ERR})
+    except Exception:
+        logger.error("[bim] get_bim_full_stats 실패", exc_info=True)
+        return json.dumps({"error": _ERR})
+
+
+# ── 레이어 도구 ───────────────────────────────────────────────────────────────
+
+@tool
+def list_bim_layers(project_id: str) -> str:
+    """BIM 프로젝트의 레이어 목록(이름·색상·가시성·소속 부재 수)을 반환합니다."""
+    try:
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/layers",
+                        params={"projectId": project_id}, timeout=10)
+        res.raise_for_status()
+        layers = res.json() or []
+        return json.dumps({"layers": layers, "count": len(layers)}, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] list_bim_layers 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def create_bim_layer(
+    project_id: str,
+    layer_name: str,
+    color: str = "#3b82f6",
+    visible: bool = True,
+) -> str:
+    """새 BIM 레이어를 생성합니다. color 는 #RRGGBB 형식."""
+    try:
+        import uuid as _uuid
+        payload = {
+            "layerId":    "LAYER-" + _uuid.uuid4().hex[:8].upper(),
+            "projectId":  project_id,
+            "layerName":  layer_name,
+            "color":      color,
+            "visible":    visible,
+            "elementIds": [],
+            "sortOrder":  0,
+        }
+        res = httpx.post(f"{SPRING_BASE_URL}/api/bim/layer", json=payload, timeout=10)
+        res.raise_for_status()
+        return json.dumps({
+            "success":   True,
+            "layerId":   payload["layerId"],
+            "layerName": layer_name,
+            "message":   f"레이어 '{layer_name}' 생성 완료",
+        }, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] create_bim_layer 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def set_bim_layer_visibility(
+    project_id: str,
+    visible: bool,
+    layer_id: Optional[str] = None,
+    layer_name: Optional[str] = None,
+) -> str:
+    """레이어를 켜거나(visible=True) 끕니다(visible=False).
+    layer_id 또는 layer_name 중 하나를 지정하세요."""
+    try:
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/layers",
+                        params={"projectId": project_id}, timeout=10)
+        res.raise_for_status()
+        layers = res.json() or []
+        target = None
+        for la in layers:
+            if layer_id and la.get("layerId") == layer_id:
+                target = la; break
+            if layer_name and layer_name.lower() in (la.get("layerName") or "").lower():
+                target = la; break
+        if not target:
+            return json.dumps({"success": False,
+                               "error": f"레이어를 찾을 수 없습니다: {layer_id or layer_name}"})
+        target["visible"] = visible
+        res2 = httpx.put(f"{SPRING_BASE_URL}/api/bim/layer", json=target, timeout=10)
+        res2.raise_for_status()
+        action = "켜짐(표시)" if visible else "꺼짐(숨김)"
+        return json.dumps({
+            "success":   True,
+            "layerId":   target.get("layerId"),
+            "layerName": target.get("layerName"),
+            "visible":   visible,
+            "message":   f"레이어 '{target.get('layerName')}' {action}",
+        }, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] set_bim_layer_visibility 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def assign_elements_to_layer(
+    project_id: str,
+    element_ids: list,
+    layer_id: Optional[str] = None,
+    layer_name: Optional[str] = None,
+    replace: bool = False,
+) -> str:
+    """부재들을 레이어에 할당합니다.
+    replace=True 이면 기존 목록을 교체, False(기본)이면 기존 목록에 추가합니다."""
+    try:
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/layers",
+                        params={"projectId": project_id}, timeout=10)
+        res.raise_for_status()
+        layers = res.json() or []
+        target = None
+        for la in layers:
+            if layer_id and la.get("layerId") == layer_id:
+                target = la; break
+            if layer_name and layer_name.lower() in (la.get("layerName") or "").lower():
+                target = la; break
+        if not target:
+            return json.dumps({"success": False,
+                               "error": f"레이어를 찾을 수 없습니다: {layer_id or layer_name}"})
+        existing = target.get("elementIds") or []
+        target["elementIds"] = element_ids if replace else list(dict.fromkeys(existing + element_ids))
+        res2 = httpx.put(f"{SPRING_BASE_URL}/api/bim/layer", json=target, timeout=10)
+        res2.raise_for_status()
+        return json.dumps({
+            "success":    True,
+            "layerId":    target.get("layerId"),
+            "layerName":  target.get("layerName"),
+            "addedCount": len(element_ids),
+            "totalCount": len(target["elementIds"]),
+            "message":    f"레이어 '{target.get('layerName')}'에 {len(element_ids)}개 부재 추가 완료",
+        }, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] assign_elements_to_layer 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def delete_bim_layer(layer_id: str) -> str:
+    """BIM 레이어를 삭제합니다. 레이어에 속한 부재 자체는 삭제되지 않습니다."""
+    try:
+        res = httpx.delete(f"{SPRING_BASE_URL}/api/bim/layer/{layer_id}", timeout=10)
+        res.raise_for_status()
+        return json.dumps({"success": True, "message": f"레이어 {layer_id} 삭제 완료"}, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] delete_bim_layer 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+# ── 스냅샷(저장·복원) 도구 ────────────────────────────────────────────────────
+
+@tool
+def snapshot_bim_project(project_id: str) -> str:
+    """현재 BIM 프로젝트의 모든 부재 상태를 스냅샷으로 저장합니다.
+    이후 '복원해줘' 명령으로 이 시점으로 돌아올 수 있습니다."""
+    try:
+        res = httpx.get(f"{SPRING_BASE_URL}/api/bim/project/{project_id}", timeout=15)
+        res.raise_for_status()
+        elements = res.json() or []
+        return json.dumps({
+            "success":       True,
+            "projectId":     project_id,
+            "element_count": len(elements),
+            "elements":      elements,          # 서버에서 세션에 저장됨
+            "message":       f"{len(elements)}개 부재 상태 저장 완료",
+        }, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] snapshot_bim_project 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def restore_bim_from_snapshot(project_id: str, elements: list) -> str:
+    """저장된 스냅샷 데이터로 BIM 부재들의 위치·회전·크기를 원래대로 복원합니다."""
+    try:
+        success_ids: list[str] = []
+        for el in elements:
+            r = httpx.put(f"{SPRING_BASE_URL}/api/bim/model/element", json=el, timeout=10)
+            if r.is_success:
+                success_ids.append(el.get("elementId", ""))
+        return json.dumps({
+            "success":  True,
+            "restored": len(success_ids),
+            "total":    len(elements),
+            "message":  f"{len(success_ids)}/{len(elements)}개 부재 복원 완료",
+        }, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] restore_bim_from_snapshot 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def transform_bim_elements(
+    project_id: str,
+    element_ids: Optional[list] = None,
+    delta_pos_x: float = 0.0,
+    delta_pos_y: float = 0.0,
+    delta_pos_z: float = 0.0,
+    delta_rot_x: float = 0.0,
+    delta_rot_y: float = 0.0,
+    delta_rot_z: float = 0.0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+    scale_z: float = 1.0,
+) -> str:
+    """
+    BIM 부재를 일괄 변환합니다 (이동·회전·크기 동시 적용 가능).
+
+    element_ids: 대상 부재 ID 목록 (None 또는 생략 시 프로젝트 전체)
+    delta_pos_x/y/z : 위치 오프셋 (미터, 음수 가능)
+    delta_rot_x/y/z : 회전 오프셋 (도, degrees, 음수 가능)
+    scale_x/y/z     : 크기 배율 (1.0 = 변화 없음, 2.0 = 2배, 0.5 = 절반)
+    """
+    try:
+        payload: dict = {}
+        if element_ids is not None:
+            payload["elementIds"] = element_ids
+        if any([delta_pos_x, delta_pos_y, delta_pos_z]):
+            payload["position"] = {
+                "deltaX": round(float(delta_pos_x), 3),
+                "deltaY": round(float(delta_pos_y), 3),
+                "deltaZ": round(float(delta_pos_z), 3),
+            }
+        if any([delta_rot_x, delta_rot_y, delta_rot_z]):
+            payload["rotation"] = {
+                "deltaX": round(float(delta_rot_x), 3),
+                "deltaY": round(float(delta_rot_y), 3),
+                "deltaZ": round(float(delta_rot_z), 3),
+            }
+        if any(s != 1.0 for s in [scale_x, scale_y, scale_z]):
+            payload["scale"] = {
+                "factorX": round(float(scale_x), 4),
+                "factorY": round(float(scale_y), 4),
+                "factorZ": round(float(scale_z), 4),
+            }
+
+        res = httpx.put(
+            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/bulk-transform",
+            json=payload, timeout=120,
+        )
+        res.raise_for_status()
+        data    = res.json()
+        updated = data.get("updated", 0)
+
+        parts: list[str] = []
+        if "position" in payload:
+            p = payload["position"]
+            parts.append(f"이동(ΔX={p['deltaX']},ΔY={p['deltaY']},ΔZ={p['deltaZ']})")
+        if "rotation" in payload:
+            r = payload["rotation"]
+            parts.append(f"회전(ΔX={r['deltaX']}°,ΔY={r['deltaY']}°,ΔZ={r['deltaZ']}°)")
+        if "scale" in payload:
+            s = payload["scale"]
+            parts.append(f"크기(×{s['factorX']},×{s['factorY']},×{s['factorZ']})")
+
+        scope = f"{len(element_ids)}개 선택 부재" if element_ids else "전체 부재"
+        return json.dumps({
+            "success":   True,
+            "projectId": project_id,
+            "updated":   updated,
+            "scope":     scope,
+            "ops":       parts,
+            "message":   f"{scope} {updated}개 변환 완료 — {', '.join(parts)}",
+        }, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] transform_bim_elements 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def translate_selected_elements(
+    project_id: str,
+    element_ids: list,
+    delta_x: float = 0.0,
+    delta_y: float = 0.0,
+    delta_z: float = 0.0,
+) -> str:
+    """
+    선택된 BIM 부재들만 지정한 방향으로 이동합니다.
+
+    element_ids: 이동할 부재 ID 목록 (예: ["ELEM-1A2B", "ELEM-3C4D"])
+    delta_x/y/z: 각 축 이동량 (미터 단위, 음수 가능)
+    """
+    try:
+        payload = {
+            "elementIds": element_ids,
+            "position": {
+                "deltaX": round(float(delta_x), 3),
+                "deltaY": round(float(delta_y), 3),
+                "deltaZ": round(float(delta_z), 3),
+            },
+        }
+        res = httpx.put(
+            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/bulk-transform",
+            json=payload, timeout=60,
+        )
+        res.raise_for_status()
+        data    = res.json()
+        updated = data.get("updated", 0)
+        parts   = []
+        if delta_x: parts.append(f"ΔX={delta_x:+.3g}")
+        if delta_y: parts.append(f"ΔY={delta_y:+.3g}")
+        if delta_z: parts.append(f"ΔZ={delta_z:+.3g}")
+
+        # GLB translation 패치 (시각 반영) — 실패해도 이동 자체는 성공으로 처리
+        glb_ok = False
+        try:
+            glb_res = httpx.put(
+                f"{SPRING_BASE_URL}/api/bim/project/{project_id}/apply-glb-delta",
+                json={"elementIds": element_ids,
+                      "deltaX": round(float(delta_x), 3),
+                      "deltaY": round(float(delta_y), 3),
+                      "deltaZ": round(float(delta_z), 3)},
+                timeout=60,
+            )
+            glb_ok = glb_res.status_code == 200 and glb_res.json().get("action") == "glb_reload"
+        except Exception:
+            logger.warning("[bim] GLB delta 패치 실패 (무시)", exc_info=True)
+
+        return json.dumps({
+            "success":   True,
+            "action":    "glb_reload" if glb_ok else "translated",
+            "projectId": project_id,
+            "updated":   updated,
+            "skipped":   data.get("skipped", 0),
+            "delta":     payload["position"],
+            "message":   f"선택된 {updated}개 부재 이동 완료 ({', '.join(parts)})",
+        }, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] translate_selected_elements 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def translate_bim_elements(
+    project_id: str,
+    delta_x: float = 0.0,
+    delta_y: float = 0.0,
+    delta_z: float = 0.0,
+) -> str:
+    """
+    BIM 프로젝트의 모든 부재를 지정한 방향으로 일괄 이동합니다.
+
+    delta_x/y/z: 각 축 이동량 (미터 단위, 음수 가능)
+    예) 전체 Z축으로 20 내리기 → delta_z = -20
+    """
+    try:
+        payload = {
+            "position": {
+                "deltaX": round(float(delta_x), 3),
+                "deltaY": round(float(delta_y), 3),
+                "deltaZ": round(float(delta_z), 3),
+            }
+        }
+        res = httpx.put(
+            f"{SPRING_BASE_URL}/api/bim/project/{project_id}/bulk-transform",
+            json=payload, timeout=120,
+        )
+        res.raise_for_status()
+        data = res.json()
+        updated = data.get("updated", 0)
+        parts = []
+        if delta_x: parts.append(f"ΔX={delta_x:+.3g}")
+        if delta_y: parts.append(f"ΔY={delta_y:+.3g}")
+        if delta_z: parts.append(f"ΔZ={delta_z:+.3g}")
+
+        # GLB translation 패치 (시각 반영) — 실패해도 이동 자체는 성공으로 처리
+        glb_ok = False
+        try:
+            glb_res = httpx.put(
+                f"{SPRING_BASE_URL}/api/bim/project/{project_id}/apply-glb-delta",
+                json={"deltaX": round(float(delta_x), 3),
+                      "deltaY": round(float(delta_y), 3),
+                      "deltaZ": round(float(delta_z), 3)},
+                timeout=60,
+            )
+            glb_ok = glb_res.status_code == 200 and glb_res.json().get("action") == "glb_reload"
+        except Exception:
+            logger.warning("[bim] GLB delta 패치 실패 (무시)", exc_info=True)
+
+        return json.dumps({
+            "success":   True,
+            "action":    "glb_reload" if glb_ok else "translated",
+            "projectId": project_id,
+            "updated":   updated,
+            "delta":     payload["position"],
+            "message":   f"전체 {updated}개 부재 이동 완료 ({', '.join(parts)})",
+        }, ensure_ascii=False)
+    except Exception:
+        logger.error("[bim] translate_bim_elements 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
 # ── 도구 목록 ──────────────────────────────────────────────────────────────────
 BIM_TOOLS = [
     list_bim_projects,
     get_bim_stats,
+    get_bim_full_stats,
     create_bim_element,
     delete_bim_element,
     create_bim_project,
     create_composite_structure,
+    transform_bim_elements,
+    translate_bim_elements,
+    translate_selected_elements,
+    # 레이어
+    list_bim_layers,
+    create_bim_layer,
+    set_bim_layer_visibility,
+    assign_elements_to_layer,
+    delete_bim_layer,
+    # 저장·복원
+    snapshot_bim_project,
+    restore_bim_from_snapshot,
     get_drone_analysis_info,
     get_structural_analysis,
     get_ifc_import_guide,

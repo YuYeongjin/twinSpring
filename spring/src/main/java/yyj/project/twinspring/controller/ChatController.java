@@ -10,6 +10,7 @@ import yyj.project.twinspring.dto.ChatMessageDTO;
 import yyj.project.twinspring.dto.ChatRequestDTO;
 import yyj.project.twinspring.dto.ChatResponseDTO;
 import yyj.project.twinspring.dto.MultimodalRequestDTO;
+import yyj.project.twinspring.dto.WbsRagRequestDTO;
 import yyj.project.twinspring.service.ChatService;
 
 import java.util.List;
@@ -114,5 +115,128 @@ public class ChatController {
         return available
                 ? ResponseEntity.ok(Map.of("status", "online"))
                 : ResponseEntity.status(503).body(Map.of("status", "offline"));
+    }
+
+    /**
+     * WBS 이벤트 발생 시 관련 건설 시방서(KCS/KDS) 증거 RAG 검색
+     *
+     * Body 예시:
+     * {
+     *   "eventType": "CRACK",
+     *   "title": "3층 기둥 균열 감지",
+     *   "detail": "균열폭 0.3mm 이상"
+     * }
+     *
+     * Response:
+     * {
+     *   "query": "구조물 균열 ...",
+     *   "evidence": [{ "source": "KCS 41 30 01", "series": "...", "content": "..." }],
+     *   "hasData": true
+     * }
+     */
+    @PostMapping("/wbs-rag-suggest")
+    public ResponseEntity<Map<String, Object>> wbsRagSuggest(@RequestBody WbsRagRequestDTO request) {
+        Map<String, Object> result = chatService.wbsRagSuggest(request);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/rag-status")
+    public ResponseEntity<Map<String, Object>> ragStatus() {
+        return ResponseEntity.ok(chatService.ragStatus());
+    }
+
+    @PostMapping("/rag-rebuild")
+    public ResponseEntity<Map<String, Object>> ragRebuild() {
+        return ResponseEntity.ok(chatService.ragRebuild());
+    }
+
+    @GetMapping("/graph-rag-status")
+    public ResponseEntity<Map<String, Object>> graphRagStatus() {
+        return ResponseEntity.ok(chatService.graphRagStatus());
+    }
+
+    @PostMapping("/graph-rag-rebuild")
+    public ResponseEntity<Map<String, Object>> graphRagRebuild() {
+        return ResponseEntity.ok(chatService.graphRagRebuild());
+    }
+
+    /**
+     * 런타임 센서 알람 임계값 조회
+     */
+    @GetMapping("/sensor-thresholds")
+    public ResponseEntity<Map<String, Object>> getSensorThresholds() {
+        return ResponseEntity.ok(chatService.getSensorThresholds());
+    }
+
+    /**
+     * 런타임 센서 알람 임계값 업데이트 — Agent 재시작 없이 즉시 반영
+     *
+     * Body 예시:
+     * { "temp_high": 38.0, "temp_low": 3.0, "hum_high": 85.0, "hum_low": 15.0 }
+     */
+    @PutMapping("/sensor-thresholds")
+    public ResponseEntity<Map<String, Object>> updateSensorThresholds(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(chatService.updateSensorThresholds(body));
+    }
+
+    /**
+     * WBS 프로젝트 생성 에이전트 채팅
+     *
+     * Body 예시:
+     * {
+     *   "message": "한강대교 보강공사 현장 등록해줘",
+     *   "history": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}],
+     *   "collected": {"projectName": "한강대교 보강공사"}
+     * }
+     *
+     * Response:
+     * {
+     *   "response": "알겠습니다. 현장 위치를 알려주세요.",
+     *   "collected": {"projectName": "한강대교 보강공사"},
+     *   "ready": false
+     * }
+     */
+    @PostMapping("/wbs-project-chat")
+    public ResponseEntity<Map<String, Object>> wbsProjectChat(@RequestBody Map<String, Object> request) {
+        Map<String, Object> result = chatService.wbsProjectChat(request);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 구조해석 결과에 기반한 KCS/KDS 시방서 RAG 검색
+     * StructuralDashboard 시방서 패널에서 사용
+     */
+    @PostMapping("/structural-spec")
+    public ResponseEntity<Map<String, Object>> structuralSpec(@RequestBody Map<String, Object> request) {
+        Map<String, Object> result = chatService.structuralSpec(request);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 굴착 존·날씨·깊이에 맞는 KCS/KDS 토공 시방서 RAG 검색
+     * SimulationDashboard 시방서 패널에서 사용
+     */
+    @PostMapping("/excavation-spec")
+    public ResponseEntity<Map<String, Object>> excavationSpec(@RequestBody Map<String, Object> request) {
+        Map<String, Object> result = chatService.excavationSpec(request);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * BIM 공종(elementType) 또는 WBS 태스크명 기반 KCS/KDS 시방서 RAG 검색
+     * 통합관제 WbsProgressPanel 공종별 시방서 조회에서 사용
+     *
+     * Body 예시:
+     * {
+     *   "taskName": "기둥 공사",
+     *   "elementType": "IfcColumn",
+     *   "status": "IN_PROGRESS",
+     *   "detail": ""
+     * }
+     */
+    @PostMapping("/wbs-task-spec")
+    public ResponseEntity<Map<String, Object>> wbsTaskSpec(@RequestBody Map<String, Object> request) {
+        Map<String, Object> result = chatService.wbsTaskSpec(request);
+        return ResponseEntity.ok(result);
     }
 }

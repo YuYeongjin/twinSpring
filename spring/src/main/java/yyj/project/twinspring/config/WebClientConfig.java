@@ -54,4 +54,40 @@ public class WebClientConfig {
                 .baseUrl(detectBaseUrl)
                 .build();
     }
+
+    @Value("${ollama.url:http://localhost:11434}")
+    private String ollamaUrl;
+
+    @Bean("ollamaWebClient")
+    public WebClient ollamaWebClient(WebClient.Builder builder) {
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)
+                .responseTimeout(Duration.ofSeconds(60));
+        return builder
+                .baseUrl(ollamaUrl)
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build();
+    }
+
+    @Value("${agent.server.url:http://localhost:7070}")
+    private String agentBaseUrl;
+
+    @Bean("agentWebClient")
+    public WebClient agentWebClient(WebClient.Builder builder) {
+        // Python IFC 변환은 대용량 파일 처리 → 응답 10분 타임아웃
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5_000)
+                .responseTimeout(Duration.ofMinutes(10));
+
+        ExchangeStrategies largeStrategies = ExchangeStrategies.builder()
+                .codecs(configurer -> configurer.defaultCodecs()
+                        .maxInMemorySize(512 * 1024 * 1024)) // 512MB (GLB 응답)
+                .build();
+
+        return builder
+                .baseUrl(agentBaseUrl)
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .exchangeStrategies(largeStrategies)
+                .build();
+    }
 }

@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import { useT } from '../../../i18n/LanguageContext';
 
 // 다크 테마 요소 타입별 2D 도면 스타일
 const TYPE_CFG = {
@@ -41,14 +42,16 @@ function fromCanvas(cx, cy, vp) {
   return [(cx - vp.x) / vp.scale, -(cy - vp.y) / vp.scale];
 }
 
+// 좌표 규칙: positionX/Y = 평면(2D), positionZ = 높이(3D)
+// 2D 캔버스: 가로=dataX, 세로=dataY
 function fitViewport(modelData, canvasW, canvasH) {
   if (!modelData.length) return { x: canvasW / 2, y: canvasH / 2, scale: 20 };
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (const el of modelData) {
     const px = Number(el.positionX) || 0;
-    const pz = Number(el.positionZ) || 0;
+    const pz = Number(el.positionY) || 0;   // floor Y → canvas vertical
     const hx = (Number(el.sizeX) || 1) / 2;
-    const hz = (Number(el.sizeZ) || 1) / 2;
+    const hz = (Number(el.sizeY) || 1) / 2; // floor Y size
     minX = Math.min(minX, px - hx); maxX = Math.max(maxX, px + hx);
     minZ = Math.min(minZ, pz - hz); maxZ = Math.max(maxZ, pz + hz);
   }
@@ -65,13 +68,13 @@ function fitViewport(modelData, canvasW, canvasH) {
   };
 }
 
-// 요소의 꼭짓점 4개 + 중간점 4개 + 중심 1개 (세계 XZ 좌표)
+// 요소의 꼭짓점 4개 + 중간점 4개 + 중심 1개 (세계 XY 좌표, 2D floor plane)
 function getElementSnapPoints(el) {
   const px  = Number(el.positionX) || 0;
-  const pz  = Number(el.positionZ) || 0;
+  const pz  = Number(el.positionY) || 0;   // floor Y → canvas vertical
   const hx  = (Number(el.sizeX) || 0.1) / 2;
-  const hz  = (Number(el.sizeZ) || 0.1) / 2;
-  const ry  = Number(el.rotationY) || 0;
+  const hz  = (Number(el.sizeY) || 0.1) / 2;  // floor Y size
+  const ry  = Number(el.rotationY) || 0;   // plan rotation (around height axis)
   const cos = Math.cos(-ry), sin = Math.sin(-ry);
   const rot = (x, z) => [px + x * cos - z * sin, pz + x * sin + z * cos];
   return [
@@ -100,7 +103,11 @@ export default function Plan2DView({
   selectedElements = new Set(),
   selectedLineId = null, onLineSelect = null,
   onLineVertexUpdate = null, onLineVertexSave = null,
+  onHoverPosition = null,
+  placementLockedAxes = null,
+  lineLockedAxes = null,
 }) {
+  const t = useT('bimDashboard');
   const canvasRef  = useRef(null);
   const vpRef      = useRef({ x: 0, y: 0, scale: 20 });
   const dragRef    = useRef({ active: false, lx: 0, ly: 0, moved: false });
@@ -114,11 +121,15 @@ export default function Plan2DView({
   const [, setTick] = useState(0);
   const redraw = useCallback(() => setTick(t => t + 1), []);
 
-  // 전체 스냅 포인트 목록
-  const allSnapPoints = useMemo(
-    () => modelData.flatMap(getElementSnapPoints),
-    [modelData]
-  );
+  // 전체 스냅 포인트 목록 (부재 꼭짓점 + 선 끝점) — 2D canvas XY 좌표
+  const allSnapPoints = useMemo(() => {
+    const pts = modelData.flatMap(getElementSnapPoints);
+    for (const line of lines) {
+      const lpts = getLinePoints2D(line);
+      lpts.forEach(p => pts.push([p[0], p[1] ?? 0]));  // dataX, dataY(floor)
+    }
+    return pts;
+  }, [modelData, lines]);
 
   // ── 그리기 ────────────────────────────────────────────────────────
   const draw = useCallback(() => {
@@ -159,9 +170,9 @@ export default function Plan2DView({
     ctx.fillStyle = '#444';
     ctx.font = '11px monospace';
     ctx.textAlign = 'left';  ctx.fillText('+X', vp.x + 6, H - 6);
-    ctx.textAlign = 'right'; ctx.fillText('-Z', W - 4, vp.y - 4);
+    ctx.textAlign = 'right'; ctx.fillText('-Y', W - 4, vp.y - 4);
 
-    // ── 선 (lines) ────────────────────────────────────────────────
+    // ── 선 (lines) — 데이터: [dataX, dataY(floor), dataZ(height)]
     for (const line of lines) {
       const pts = getLinePoints2D(line);
       if (!pts.length) continue;
@@ -171,19 +182,18 @@ export default function Plan2DView({
       ctx.lineWidth = Math.max(0.5, (line.lineWidth ?? 2) * 0.5) + (isSel ? 1.5 : 0);
       ctx.setLineDash([]);
       ctx.beginPath();
-      const [s0x, s0y] = toCanvas(pts[0][0], pts[0][2], vp);
+      const [s0x, s0y] = toCanvas(pts[0][0], pts[0][1] ?? 0, vp);  // dataX, dataY
       ctx.moveTo(s0x, s0y);
       for (let i = 1; i < pts.length; i++) {
-        const [ex, ey] = toCanvas(pts[i][0], pts[i][2], vp);
+        const [ex, ey] = toCanvas(pts[i][0], pts[i][1] ?? 0, vp);   // dataX, dataY
         ctx.lineTo(ex, ey);
       }
       if (line.closed) ctx.closePath();
       ctx.stroke();
-      // 꼭짓점 마커 (선택된 선은 색상 구분 + 크기 강조)
       const vtxR = isSel ? 5 : 3;
       for (let i = 0; i < pts.length; i++) {
         const pt = pts[i];
-        const [ppx, ppy] = toCanvas(pt[0], pt[2], vp);
+        const [ppx, ppy] = toCanvas(pt[0], pt[1] ?? 0, vp);  // dataX, dataY
         ctx.beginPath(); ctx.arc(ppx, ppy, vtxR, 0, Math.PI * 2);
         if (isSel) {
           const vtxColor = i === 0 ? '#4ade80'
@@ -205,10 +215,10 @@ export default function Plan2DView({
       const isSel      = el.elementId === selId;
       const isMultiSel = !isSel && selectedElements.has(el.elementId);
       const epx   = Number(el.positionX) || 0;
-      const epz   = Number(el.positionZ) || 0;
+      const epz   = Number(el.positionY) || 0;   // floor Y → canvas vertical
       const esx   = Math.max(0.05, Number(el.sizeX) || 0.1);
-      const esz   = Math.max(0.05, Number(el.sizeZ) || 0.1);
-      const ry    = Number(el.rotationY) || 0;
+      const esz   = Math.max(0.05, Number(el.sizeY) || 0.1);  // floor Y size
+      const ry    = Number(el.rotationY) || 0;   // plan rotation
       const [cx2, cy2] = toCanvas(epx, epz, vp);
       const w = esx * vp.scale, h = esz * vp.scale;
 
@@ -311,11 +321,34 @@ export default function Plan2DView({
       }
     }
 
+    // ── locked 축 가이드라인 ──────────────────────────────────────
+    const activeLocked = lineDrawMode === 'click' ? lineLockedAxes
+                       : pendingElement ? placementLockedAxes : null;
+    if (activeLocked) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(251,191,36,0.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 4]);
+      if (activeLocked.x != null) {
+        const [gx] = toCanvas(activeLocked.x, 0, vp);
+        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+      }
+      if (activeLocked.z != null) {
+        const [, gz] = toCanvas(0, activeLocked.z, vp);
+        ctx.beginPath(); ctx.moveTo(0, gz); ctx.lineTo(W, gz); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     // ── 선 작도 미리보기 ─────────────────────────────────────────
     if (lineDrawMode === 'click' && lineStart && mx > -9000) {
-      const [s0, s1] = toCanvas(lineStart[0], lineStart[2], vp);
-      let tx = mx, ty = my;
-      if (snapEnabled && si) { [tx, ty] = toCanvas(si.wx, si.wz, vp); }
+      const [s0, s1] = toCanvas(lineStart[0], lineStart[1] ?? 0, vp);  // dataX, dataY
+      let ewx = si ? si.wx : (mx - vp.x) / vp.scale;
+      let ewz = si ? si.wz : -(my - vp.y) / vp.scale;
+      if (lineLockedAxes?.x != null) ewx = lineLockedAxes.x;
+      if (lineLockedAxes?.z != null) ewz = lineLockedAxes.z;
+      const [tx, ty] = toCanvas(ewx, ewz, vp);
       ctx.save();
       ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
       ctx.beginPath(); ctx.moveTo(s0, s1); ctx.lineTo(tx, ty);
@@ -327,9 +360,10 @@ export default function Plan2DView({
 
     // ── 배치 고스트 ─────────────────────────────────────────────
     if (pendingElement && mx > -9000) {
-      let gwx = (mx - vp.x) / vp.scale;
-      let gwz = -(my - vp.y) / vp.scale;
-      if (snapEnabled && si) { gwx = si.wx; gwz = si.wz; }
+      let gwx = si ? si.wx : (mx - vp.x) / vp.scale;
+      let gwz = si ? si.wz : -(my - vp.y) / vp.scale;
+      if (placementLockedAxes?.x != null) gwx = placementLockedAxes.x;
+      if (placementLockedAxes?.z != null) gwz = placementLockedAxes.z;
       const [gx, gy] = toCanvas(gwx, gwz, vp);
       const gw = (Number(pendingElement.sizeX) || 1) * vp.scale;
       const gh = (Number(pendingElement.sizeZ) || 1) * vp.scale;
@@ -410,7 +444,7 @@ export default function Plan2DView({
       ctx.fillText(cfg.label, lx + 14, ly + 9);
       lx += 42;
     }
-  }, [modelData, lines, selectedElement, selectedElements, lineDrawMode, lineStart, pendingElement, snapEnabled, isSelectMode, selectedLineId]);
+  }, [modelData, lines, selectedElement, selectedElements, lineDrawMode, lineStart, pendingElement, snapEnabled, isSelectMode, selectedLineId, placementLockedAxes, lineLockedAxes]);
 
   // ── 초기 fit ──────────────────────────────────────────────────────
   // 데이터가 완전히 비워질 때(프로젝트 전환)만 재fit 허용.
@@ -511,7 +545,7 @@ export default function Plan2DView({
         if (selLine) {
           const pts = getLinePoints2D(selLine);
           for (let i = 0; i < pts.length; i++) {
-            if (Math.hypot(wx - pts[i][0], wz - pts[i][2]) <= vtxHitThr) {
+            if (Math.hypot(wx - pts[i][0], wz - (pts[i][1] ?? 0)) <= vtxHitThr) {
               // 꼭짓점 드래그 시작
               vertexDragRef.current = {
                 active: true,
@@ -552,7 +586,7 @@ export default function Plan2DView({
       const [wx, wz] = fromCanvas(cx, cy, vpRef.current);
       const { lineId, vtxIdx, pts } = vertexDragRef.current;
       pts[vtxIdx][0] = wx;
-      pts[vtxIdx][2] = wz;
+      pts[vtxIdx][1] = wz;   // dataY (floor Y) at index 1
       dragRef.current.moved = true; // 드래그 완료 후 click 이벤트 억제
       onLineVertexUpdate?.(lineId, {
         pointsJson: JSON.stringify(pts),
@@ -571,7 +605,7 @@ export default function Plan2DView({
       const selLine = lines.find(l => l.lineId === selectedLineId);
       if (selLine) {
         const pts = getLinePoints2D(selLine);
-        const nearVtx = pts.some(p => Math.hypot(wx - p[0], wz - p[2]) <= vtxHitThr);
+        const nearVtx = pts.some(p => Math.hypot(wx - p[0], wz - (p[1] ?? 0)) <= vtxHitThr);
         if (canvasRef.current) canvasRef.current.style.cursor = nearVtx ? 'grab' : 'crosshair';
       }
     }
@@ -586,17 +620,44 @@ export default function Plan2DView({
       vpRef.current = { ...vpRef.current, x: vpRef.current.x + dx, y: vpRef.current.y + dy };
     }
 
-    // 스냅 인디케이터 갱신 (배치 / 선 작도 모드에서만)
-    if (snapEnabled && (lineDrawMode === 'click' || !!pendingElement)) {
+    // 스냅 · locked 축 · Shift 직교 통합 계산
+    if (lineDrawMode === 'click' || !!pendingElement) {
       const [wx, wz] = fromCanvas(cx, cy, vpRef.current);
-      const snap = findNearestSnap(wx, wz, allSnapPoints, SNAP_THRESHOLD_PX, vpRef.current.scale);
-      snapRef.current = snap ? { wx: snap[0], wz: snap[1] } : null;
+      let sx = wx, sz = wz;
+
+      // 1. 스냅
+      if (snapEnabled) {
+        const snap = findNearestSnap(wx, wz, allSnapPoints, SNAP_THRESHOLD_PX, vpRef.current.scale);
+        if (snap) { sx = snap[0]; sz = snap[1]; }
+      }
+
+      // 2. Locked 축 — 2D에서 x=dataX, y=dataY (z는 항상 0)
+      const la = lineDrawMode === 'click' ? lineLockedAxes : placementLockedAxes;
+      if (la?.x != null) sx = la.x;
+      if (la?.y != null) sz = la.y;  // data Y locked → canvas vertical
+
+      // 3. Shift 직교 제약 (locked 없는 자유 축에만 적용)
+      if (e.shiftKey) {
+        if (lineDrawMode === 'click' && lineStart) {
+          const dx = sx - lineStart[0], dz = sz - (lineStart[1] ?? 0);  // lineStart[1]=dataY
+          if (la?.x == null && la?.y == null) {
+            if (Math.abs(dx) >= Math.abs(dz)) sz = lineStart[1] ?? 0;
+            else sx = lineStart[0];
+          }
+        } else if (pendingElement) {
+          if (la?.x == null) sx = Math.round(sx * 2) / 2;
+          if (la?.y == null) sz = Math.round(sz * 2) / 2;
+        }
+      }
+
+      snapRef.current = { wx: sx, wz: sz };
+      onHoverPosition?.({ x: sx, y: sz, z: 0 });  // data coords: x=dataX, y=dataY, z=0
     } else {
       snapRef.current = null;
     }
 
     draw();
-  }, [draw, isSelectMode, snapEnabled, allSnapPoints, lineDrawMode, pendingElement, selectedLineId, lines, onLineVertexUpdate]);
+  }, [draw, isSelectMode, snapEnabled, allSnapPoints, lineDrawMode, lineStart, pendingElement, selectedLineId, lines, onLineVertexUpdate, lineLockedAxes, placementLockedAxes, onHoverPosition]);
 
   const handlePointerUp = useCallback(() => {
     // ── 꼭짓점 드래그 완료 → 서버 저장 ──────────────────────────
@@ -623,12 +684,12 @@ export default function Plan2DView({
 
         const hit = modelData.filter(el => {
           const px = Number(el.positionX) || 0;
-          const pz = Number(el.positionZ) || 0;
+          const pz = Number(el.positionY) || 0;  // floor Y
           const hx = (Number(el.sizeX) || 0.1) / 2;
-          const hz = (Number(el.sizeZ) || 0.1) / 2;
+          const hz = (Number(el.sizeY) || 0.1) / 2;  // floor Y size
           const ry = Number(el.rotationY) || 0;
           const cos = Math.cos(-ry), sin = Math.sin(-ry);
-          // 4 꼭짓점을 회전 적용해 world XZ로 변환 후 AABB 계산
+          // 4 꼭짓점을 회전 적용해 world XY(floor)로 변환 후 AABB 계산
           let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
           for (const [ox, oz] of [[-hx,-hz],[hx,-hz],[hx,hz],[-hx,hz]]) {
             const wx = px + ox * cos - oz * sin;
@@ -680,21 +741,36 @@ export default function Plan2DView({
     const vp = vpRef.current;
     let [wx, wz] = fromCanvas(cx, cy, vp);
 
-    // 스냅 적용
-    if (snapEnabled && snapRef.current) {
+    // snapRef에는 스냅·locked·shift가 모두 반영된 최종 좌표가 들어있음
+    if (snapRef.current) {
       wx = snapRef.current.wx;
       wz = snapRef.current.wz;
+    } else {
+      // 마우스가 캔버스 밖 등 snapRef가 없을 경우 직접 적용
+      const la = lineDrawMode === 'click' ? lineLockedAxes : placementLockedAxes;
+      if (la?.x != null) wx = la.x;
+      if (la?.y != null) wz = la.y;  // data Y
+      if (e.shiftKey) {
+        if (lineDrawMode === 'click' && lineStart) {
+          const dx = wx - lineStart[0], dz = wz - (lineStart[1] ?? 0);
+          if (Math.abs(dx) >= Math.abs(dz)) wz = lineStart[1] ?? 0;
+          else wx = lineStart[0];
+        } else if (pendingElement) {
+          wx = Math.round(wx * 2) / 2;
+          wz = Math.round(wz * 2) / 2;
+        }
+      }
     }
 
-    // 선 작도 모드
+    // 선 작도 모드 — data coords: { x: dataX, y: dataY }
     if (lineDrawMode === 'click' && onLineClick) {
-      onLineClick({ x: wx, z: wz });
+      onLineClick({ x: wx, y: wz });
       return;
     }
 
-    // 부재 배치 모드
+    // 부재 배치 모드 — data coords: { x: dataX, y: dataY }
     if (pendingElement && onPlacementConfirm) {
-      onPlacementConfirm({ x: wx, z: wz });
+      onPlacementConfirm({ x: wx, y: wz });
       return;
     }
 
@@ -705,12 +781,12 @@ export default function Plan2DView({
         const pts = getLinePoints2D(line);
         let hit = false;
         for (let i = 0; i < pts.length - 1 && !hit; i++) {
-          if (distToSegment(wx, wz, pts[i][0], pts[i][2], pts[i+1][0], pts[i+1][2]) <= hitThr) {
+          if (distToSegment(wx, wz, pts[i][0], pts[i][1] ?? 0, pts[i+1][0], pts[i+1][1] ?? 0) <= hitThr) {
             hit = true;
           }
         }
         if (!hit && line.closed && pts.length >= 3) {
-          if (distToSegment(wx, wz, pts[pts.length-1][0], pts[pts.length-1][2], pts[0][0], pts[0][2]) <= hitThr) {
+          if (distToSegment(wx, wz, pts[pts.length-1][0], pts[pts.length-1][1] ?? 0, pts[0][0], pts[0][1] ?? 0) <= hitThr) {
             hit = true;
           }
         }
@@ -729,9 +805,9 @@ export default function Plan2DView({
     }
     for (const el of [...modelData].reverse()) {
       const px = Number(el.positionX) || 0;
-      const pz = Number(el.positionZ) || 0;
+      const pz = Number(el.positionY) || 0;  // floor Y
       const hx = (Number(el.sizeX) || 0.1) / 2;
-      const hz = (Number(el.sizeZ) || 0.1) / 2;
+      const hz = (Number(el.sizeY) || 0.1) / 2;  // floor Y size
       if (wx >= px - hx && wx <= px + hx && wz >= pz - hz && wz <= pz + hz) {
         onLineSelect?.(null);
         onElementSelect(el, null, false);
@@ -743,7 +819,7 @@ export default function Plan2DView({
       onLineSelect?.(null);
       onElementSelect(null, null, false);
     }
-  }, [isSelectMode, modelData, lines, onElementSelect, onLineSelect, lineDrawMode, onLineClick, pendingElement, onPlacementConfirm, snapEnabled]);
+  }, [isSelectMode, modelData, lines, onElementSelect, onLineSelect, lineDrawMode, onLineClick, pendingElement, onPlacementConfirm, lineLockedAxes, lineStart, placementLockedAxes]);
 
   // ── 전체보기 ──────────────────────────────────────────────────────
   const handleFit = useCallback(() => {
@@ -756,11 +832,11 @@ export default function Plan2DView({
   const isActionMode = lineDrawMode === 'click' || !!pendingElement;
 
   const hintText = isSelectMode
-    ? '선택 모드 — 드래그하여 영역 선택  |  클릭: 단일 선택'
+    ? t('plan2dSelectMode')
     : isActionMode
       ? lineDrawMode === 'click'
-        ? `선 작도 — ${lineStart ? '두 번째 점 클릭' : '첫 번째 점 클릭'}${snapEnabled ? '  🧲 스냅 ON' : ''}`
-        : `부재 배치 — 클릭하여 배치${snapEnabled ? '  🧲 스냅 ON' : ''}`
+        ? `${lineStart ? t('plan2dLineDrawSecond') : t('plan2dLineDrawFirst')}${snapEnabled ? `  🧲 ${t('plan2dSnapOn')}` : ''}`
+        : `${t('plan2dMemberPlace')}${snapEnabled ? `  🧲 ${t('plan2dSnapOn')}` : ''}`
       : '2D floor plan — Wheel: Zoom | Drag: Move | Click: Select';
 
   return (
@@ -782,14 +858,14 @@ export default function Plan2DView({
 
       <div className="absolute top-3 right-3 flex items-center gap-2">
         <div className="bg-black/75 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-400 shadow">
-          부재 {modelData.length}개
+          {t('plan2dMemberCount', { n: modelData.length })}
         </div>
         <button
           onClick={handleFit}
           className="bg-black/75 border border-gray-700 rounded-lg px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 shadow transition"
-          title="전체 뷰로 맞추기"
+          title={t('plan2dFitAll')}
         >
-          ⊞ 전체보기
+          ⊞ {t('plan2dViewAll')}
         </button>
       </div>
 
@@ -800,7 +876,7 @@ export default function Plan2DView({
           {selectedElement.data.material && (
             <span className="ml-2 text-gray-500">{selectedElement.data.material}</span>
           )}
-          <span className="ml-2 text-gray-600 text-xs">■ 꼭짓점  ● 중간점  + 중심</span>
+          <span className="ml-2 text-gray-600 text-xs">{t('plan2dSnapLegend')}</span>
         </div>
       )}
     </div>

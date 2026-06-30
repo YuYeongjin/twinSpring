@@ -2,6 +2,7 @@ package yyj.project.twinspring.serviceImpl;
 
 import org.springframework.stereotype.Service;
 import yyj.project.twinspring.dao.SafeDAO;
+import yyj.project.twinspring.dto.SafeIotMappingDTO;
 import yyj.project.twinspring.dto.SafeProjectDTO;
 import yyj.project.twinspring.service.SafeProjectService;
 
@@ -74,6 +75,56 @@ public class SafeProjectServiceImpl implements SafeProjectService {
         dto.setStatus((String)      r.get("status"));
         dto.setMode((String)        r.get("mode"));
         dto.setCreatedAt((String)   r.get("createdAt"));
+        return dto;
+    }
+
+    // ── IoT 매핑 ─────────────────────────────────────────────────
+
+    @Override
+    public List<SafeIotMappingDTO> getAllIotMappings() {
+        return safeDAO.getAllIotMappings().stream()
+                .map(this::rowToMappingDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<SafeIotMappingDTO> getIotMappingsByProject(String projectId) {
+        return safeDAO.getIotMappingsByProject(projectId).stream()
+                .map(this::rowToMappingDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public SafeIotMappingDTO addIotMapping(String projectId, String sensorLocation, String sensorAlias) {
+        String id = UUID.randomUUID().toString();
+        Map<String, Object> p = new HashMap<>();
+        p.put("mappingId",      id);
+        p.put("projectId",      projectId);
+        p.put("sensorLocation", sensorLocation);
+        p.put("sensorAlias",    sensorAlias);
+        safeDAO.insertIotMapping(p);
+
+        SafeIotMappingDTO dto = new SafeIotMappingDTO();
+        dto.setMappingId(id);
+        dto.setProjectId(projectId);
+        dto.setSensorLocation(sensorLocation);
+        dto.setSensorAlias(sensorAlias);
+        return dto;
+    }
+
+    @Override
+    public void removeIotMapping(String mappingId) {
+        safeDAO.deleteIotMapping(mappingId);
+    }
+
+    private SafeIotMappingDTO rowToMappingDTO(Map<String, Object> r) {
+        SafeIotMappingDTO dto = new SafeIotMappingDTO();
+        dto.setMappingId((String)      r.get("mappingId"));
+        dto.setProjectId((String)      r.get("projectId"));
+        dto.setProjectName((String)    r.get("projectName"));
+        dto.setSensorLocation((String) r.get("sensorLocation"));
+        dto.setSensorAlias((String)    r.get("sensorAlias"));
+        dto.setCreatedAt((String)      r.get("createdAt"));
         return dto;
     }
 }

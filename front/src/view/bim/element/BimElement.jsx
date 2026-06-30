@@ -18,13 +18,25 @@ export const parseVectorData = (dataString, defaultValue = [0, 0, 0]) => {
 // PlacementGhost 에서 계속 사용 (색상 참조용)
 export const getBaseColor = (elementType) => {
   switch (elementType) {
-    case 'IfcColumn': return '#8B4513';
+    case 'IfcColumn':       return '#8B4513';
     case 'IfcBeam':
-    case 'IfcMember': return '#A9A9A9';
-    case 'IfcWall':   return '#E0E0E0';
-    case 'IfcSlab':   return '#B0C4DE';
-    case 'IfcPier':   return '#D2691E';
-    default:          return '#ff4444';
+    case 'IfcMember':       return '#A9A9A9';
+    case 'IfcWall':         return '#E0E0E0';
+    case 'IfcCurtainWall':  return '#9BB8CD';
+    case 'IfcRailing':      return '#8896A4';
+    case 'IfcSlab':         return '#B0C4DE';
+    case 'IfcFoundation':   return '#8B6400';
+    case 'IfcPier':         return '#D2691E';
+    case 'IfcRebar':        return '#9E4A2A';
+    case 'IfcDoor':         return '#A0785A';
+    case 'IfcWindow':       return '#7EB3C8';
+    case 'IfcStair':        return '#A0A080';
+    case 'IfcRoof':         return '#8B7355';
+    case 'IfcPipe':
+    case 'IfcDuct':
+    case 'IfcFlowSegment':
+    case 'IfcFlowFitting':  return '#5A8A6A';
+    default:                return '#6B7280';
   }
 };
 
@@ -33,20 +45,18 @@ export function BimElement({ element, onElementSelect, isPlacementMode }) {
   const meshRef = useRef();
   const [hovered, setHover] = useState(false);
 
+  // 좌표 규칙: Z-up — posX→X, posY→Y, posZ→Z(높이)
   const { size, position } = useMemo(() => {
-    const rawPosition = [
-      Number(element.positionX) || 0,
-      Number(element.positionY) || 0,
-      Number(element.positionZ) || 0,
-    ];
-    const rawSize = [
-      Number(element.sizeX) || 0.1,
-      Number(element.sizeY) || 0.1,
-      Number(element.sizeZ) || 0.1,
-    ];
-    const adjustedPosition = [...rawPosition];
-    adjustedPosition[1] = rawPosition[1] + rawSize[1] / 2;
-    return { size: rawSize, position: adjustedPosition };
+    const pX = Number(element.positionX) || 0;
+    const pY = Number(element.positionY) || 0;
+    const pZ = Number(element.positionZ) || 0;  // 높이 (Z-up)
+    const sX = Number(element.sizeX) || 0.1;
+    const sY = Number(element.sizeY) || 0.1;
+    const sZ = Number(element.sizeZ) || 0.1;
+    return {
+      size:     [sX, sY, sZ],
+      position: [pX, pY, pZ + sZ / 2],
+    };
   }, [element.positionX, element.positionY, element.positionZ,
       element.sizeX, element.sizeY, element.sizeZ]);
 
@@ -99,7 +109,10 @@ export function BimElement({ element, onElementSelect, isPlacementMode }) {
         color={faceColor}
         roughness={0.55}
         metalness={0.0}
-        opacity={selected || multiSel ? 0.95 : hovered ? 0.92 : 0.88}
+        opacity={
+          element.resolvedOpacity != null ? element.resolvedOpacity :
+          (selected || multiSel ? 0.95 : hovered ? 0.92 : 0.88)
+        }
         transparent
         emissive={multiSel && !selected ? '#c8a800' : '#000000'}
         emissiveIntensity={multiSel && !selected ? 0.06 : 0}

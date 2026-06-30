@@ -3,13 +3,6 @@
 
 <mapper namespace="yyj.project.twinspring.dao.SimulationDAO">
 
-    <!--
-        ※ PostgreSQL은 따옴표 없는 SQL 식별자(alias)를 소문자로 반환합니다.
-          resultType="map" 에서 camelCase 키를 보존하려면 별칭을 큰따옴표로 감싸야 합니다.
-          예) AS projectId  → JDBC에서 "projectid" 반환 (소문자) → row.get("projectId") = null  ✗
-              AS "projectId"→ JDBC에서 "projectId" 반환 (원본)  → row.get("projectId") = 값   ✓
-    -->
-
     <select id="getAllSimulationProjects" resultType="map">
         SELECT project_id   AS "projectId",
                project_name AS "projectName"
@@ -46,7 +39,9 @@
                operation_mode      AS "operationMode",
                soil_in_bucket      AS "soilInBucket",
                selected_machine_id AS "selectedMachineId",
-               height_map_data     AS "heightMapData"
+               height_map_data     AS "heightMapData",
+               zone_map_data       AS "zoneMapData",
+               has_random_terrain  AS "hasRandomTerrain"
         FROM simulation_state
         WHERE excavator_id = #{excavatorId}
     </select>
@@ -55,11 +50,13 @@
         INSERT INTO simulation_state (
             excavator_id, position_x, position_y, position_z,
             body_rotation, swing_angle, boom_angle, arm_angle, bucket_angle,
-            operation_mode, soil_in_bucket, selected_machine_id, height_map_data
+            operation_mode, soil_in_bucket, selected_machine_id,
+            height_map_data, zone_map_data, has_random_terrain
         ) VALUES (
             #{excavatorId}, #{positionX}, #{positionY}, #{positionZ},
             #{bodyRotation}, #{swingAngle}, #{boomAngle}, #{armAngle}, #{bucketAngle},
-            #{operationMode}, #{soilInBucket}, #{selectedMachineId}, #{heightMapData}
+            #{operationMode}, #{soilInBucket}, #{selectedMachineId},
+            #{heightMapData}, #{zoneMapData}, #{hasRandomTerrain}
         )
         ON CONFLICT (excavator_id) DO UPDATE SET
             position_x          = EXCLUDED.position_x,
@@ -74,6 +71,8 @@
             soil_in_bucket      = EXCLUDED.soil_in_bucket,
             selected_machine_id = EXCLUDED.selected_machine_id,
             height_map_data     = EXCLUDED.height_map_data,
+            zone_map_data       = EXCLUDED.zone_map_data,
+            has_random_terrain  = EXCLUDED.has_random_terrain,
             updated_at          = CURRENT_TIMESTAMP
     </insert>
 

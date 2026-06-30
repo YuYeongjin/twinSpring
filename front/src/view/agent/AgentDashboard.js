@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useT, useLanguage } from '../../i18n/LanguageContext';
 import {
-  LineChart, Line,
   BarChart, Bar, Cell,
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -20,42 +19,22 @@ const API_CHAT = '/api/chat';
 
 // SSE 스트리밍은 fetch() 로 호출 — AxiosCustom 은 스트리밍 미지원
 // 상대경로로 쓰면 React 개발서버(3000)으로 날아가므로 환경별 base 명시
-const SPRING_BASE = process.env.NODE_ENV === 'development'
-  ? 'http://localhost:8080'
-  : '';
+const SPRING_BASE = process.env.REACT_APP_API_URL
+  || (process.env.NODE_ENV === 'development'
+      ? `http://${window.location.hostname}:8080`
+      : '');
 
-// ── Agent step 상태 레이블 (다국어) ──────────────────────────────────────────
-const STEP_LABELS = {
-  ko: {
-    classifying:       '질문 분류 중...',
-    sensor_agent:      '센서 데이터 조회 중...',
-    bim_agent:         'BIM Agent 처리 중...',
-    simulation_agent:  '시뮬레이션 Agent 처리 중...',
-    safe_agent:        '안전 모니터링 Agent 처리 중...',
-    test_agent:        '충돌 테스트 Agent 처리 중...',
-    tab_guide:         '탭 안내 준비 중...',
-    generating:        '답변 생성 중...',
-  },
-  en: {
-    classifying:       'Classifying question...',
-    sensor_agent:      'Fetching sensor data...',
-    bim_agent:         'BIM Agent processing...',
-    simulation_agent:  'Simulation Agent processing...',
-    safe_agent:        'Safety Monitoring Agent processing...',
-    test_agent:        'Collision Test Agent processing...',
-    tab_guide:         'Preparing tab guide...',
-    generating:        'Generating response...',
-  },
-  ja: {
-    classifying:       '質問を分類中...',
-    sensor_agent:      'センサーデータ取得中...',
-    bim_agent:         'BIM エージェント処理中...',
-    simulation_agent:  'シミュレーションエージェント処理中...',
-    safe_agent:        '安全監視エージェント処理中...',
-    test_agent:        '衝突テストエージェント処理中...',
-    tab_guide:         'タブガイドを準備中...',
-    generating:        '回答を生成中...',
-  },
+// Maps backend step keys to translation keys in agent namespace
+const STEP_KEY_MAP = {
+  classifying:       'stepClassifying',
+  sensor_agent:      'stepSensorAgent',
+  bim_agent:         'stepBimAgent',
+  simulation_agent:  'stepSimAgent',
+  safe_agent:        'stepSafeAgent',
+  test_agent:        'stepTestAgent',
+  orchestrator:      'stepOrchestrator',
+  tab_guide:         'stepTabGuide',
+  generating:        'stepGenerating',
 };
 
 const ELEMENT_TYPE_KOR = {
@@ -68,18 +47,22 @@ const COUNT_OPTIONS = [10, 20, 50, 100];
 // ────────────────────────────────────────────────────
 // Main component
 // ────────────────────────────────────────────────────
-export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject, agentAvailable }) {
+export default function AgentDashboard({ selectedProject, onBimUpdate, selectedSimulationProject, agentAvailable, onOpenSettings }) {
   const t = useT('agent');
   const { lang } = useLanguage();
   // ── Chat state ──
   const [messages, setMessages] = useState(() => [
-    {
-      role: 'assistant',
-      // t is resolved at component mount; greeting matches the active language
-      content: t('greeting'),
-      intent: 'chat',
-    },
+    { role: 'assistant', content: t('greeting'), intent: 'chat' },
   ]);
+
+  // Update greeting when language changes (only if conversation hasn't started)
+  useEffect(() => {
+    setMessages(prev =>
+      prev.length === 1 && prev[0].role === 'assistant'
+        ? [{ ...prev[0], content: t('greeting') }]
+        : prev
+    );
+  }, [t]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(() => `agent-${Date.now()}`);
@@ -87,6 +70,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 
   // ── Voice state ──
   const [isListening, setIsListening] = useState(false);
+  const [sttError, setSttError] = useState('');
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const recognitionRef = useRef(null);
 
@@ -113,33 +97,14 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   const [bimTargetProject, setBimTargetProject] = useState(null);
   const [bimLoading, setBimLoading]     = useState(false);
 
+  // ── Report data (orchestrator) ──
+  const [reportData, setReportData] = useState(null);
+
   // ── Right panel tab ──
   const [activeTab, setActiveTab] = useState('data');
 
-  // ── STT initialization ──
-  useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    const rec = new SR();
-    rec.lang = getLangCode(lang);   // set from current language at mount
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.onresult = (e) => {
-      setInput(e.results[0][0].transcript);
-      setIsListening(false);
-    };
-    rec.onend = () => setIsListening(false);
-    rec.onerror = () => setIsListening(false);
-    recognitionRef.current = rec;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // init once; lang synced in the effect below
-
-  // ── Sync STT lang when UI language changes ──
-  useEffect(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.lang = getLangCode(lang);
-    }
-  }, [lang]);
+  // STT: 인스턴스를 미리 만들지 않음 — toggleListening 호출 시마다 생성
+  // (iOS Safari / Android: 동일 인스턴스 재사용 시 두 번째 호출부터 무응답)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -206,16 +171,58 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
     window.speechSynthesis.speak(utt);
   }, [ttsEnabled, lang]);
 
-  const toggleListening = () => {
-    if (!recognitionRef.current) { alert(t('speechNotSupported')); return; }
-    if (isListening) { recognitionRef.current.stop(); }
-    else {
-      // Re-apply language right before starting in case it changed
-      recognitionRef.current.lang = getLangCode(lang);
-      recognitionRef.current.start();
-      setIsListening(true);
+  const toggleListening = useCallback(() => {
+    // 중지 요청
+    if (isListening) {
+      try { recognitionRef.current?.stop(); } catch (_) {}
+      setIsListening(false);
+      return;
     }
-  };
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setSttError(t('speechNotSupported'));
+      return;
+    }
+
+    setSttError('');
+
+    // 매번 새 인스턴스 생성 — iOS Safari / Android 재사용 불가 문제 해결
+    const rec = new SR();
+    rec.lang = getLangCode(lang);
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .map(r => r[0].transcript)
+        .join('');
+      setInput(prev => prev ? `${prev} ${transcript}` : transcript);
+      setIsListening(false);
+    };
+
+    rec.onend = () => setIsListening(false);
+
+    rec.onerror = (e) => {
+      setIsListening(false);
+      if (e.error === 'not-allowed') {
+        setSttError(t('sttNotAllowed'));
+      } else if (e.error === 'no-speech') {
+        setSttError(t('sttNoSpeech'));
+      } else if (e.error !== 'aborted') {
+        setSttError(`${t('sttError')}${e.error}`);
+      }
+    };
+
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+      setIsListening(true);
+    } catch (err) {
+      setSttError(`${t('sttError')}${err.message}`);
+    }
+  }, [isListening, lang, t]);
 
   // ── Image ──
   const handleImageSelect = (e) => {
@@ -244,10 +251,11 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   }, [lang]);
 
   // ── Send message (SSE streaming) ──
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (overrideText) => {
+    const text = (typeof overrideText === 'string' ? overrideText : input).trim();
     if ((!text && !imageBase64) || loading) return;
 
+    setSttError('');
     const userContent = text || t('imageAnalyze');
     setMessages(prev => [...prev, { role: 'user', content: userContent, intent: null, image: imagePreview }]);
     setInput('');
@@ -273,7 +281,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
       const history = messages.map(m => ({ role: m.role, content: m.content }));
 
       // 빈 assistant 버블을 먼저 추가 — 초기 상태 "질문 분류 중..."
-      const initStatus = (STEP_LABELS[lang] || STEP_LABELS.ko).classifying;
+      const initStatus = t('stepClassifying');
       setMessages(prev => [...prev, { role: 'assistant', content: '', intent: 'chat', _streaming: true, _status: initStatus }]);
 
       // SSE 스트리밍: Spring Gateway 경유 (/api/chat/stream)
@@ -284,6 +292,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
         body: JSON.stringify({
           sessionId,
           message: text,
+          uiLang: lang,
           projectId: selectedProject?.projectId || null,
           simulationProjectId: selectedSimulationProject?.projectId || null,
           history,
@@ -323,7 +332,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 
           if (event.step) {
             // step 이벤트: 버블 상태 텍스트 업데이트
-            const label = (STEP_LABELS[lang] || STEP_LABELS.ko)[event.step] || event.step;
+            const label = STEP_KEY_MAP[event.step] ? t(STEP_KEY_MAP[event.step]) : event.step;
             updateLastMsg(msg => ({ ...msg, _status: label }));
           } else if (event.done) {
             // 완료 이벤트: 구조화 데이터 처리
@@ -333,6 +342,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
               intent: event.intent,
               bimData: event.bimData || null,
               sensorData: event.sensorData || null,
+              reportData: event.reportData || null,
               _streaming: false,
             }));
             speak(event.response || '');
@@ -357,6 +367,11 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
                 );
                 setBimTargetProject(proj || { projectId: event.bimData.targetProjectId });
               }
+            }
+            // 통합 보고서 — orchestrator
+            if (event.intent === 'orchestrator' && event.reportData) {
+              setReportData(event.reportData);
+              setActiveTab('report');
             }
           } else if (event.content) {
             // 토큰 청크: 버블에 실시간 추가
@@ -426,15 +441,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
   const [mobilePanel, setMobilePanel] = useState('chat');
 
   // ─────────────────────────────────────────────────
-  if (agentAvailable === false) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <span className="text-5xl opacity-30">🤖</span>
-        <p className="text-gray-400 font-semibold">{t('llmOffline')}</p>
-        <p className="text-gray-600 text-sm">{t('llmOfflineDesc')}</p>
-      </div>
-    );
-  }
+  const chatDisabled = agentAvailable === false;
 
   return (
     <div className="flex flex-col lg:h-[calc(100vh-120px)]">
@@ -475,6 +482,14 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
 
         {/* ════ Left: Chat panel ════ */}
         <div className={`flex-col flex-1 min-w-0 bg-[#1c2a3a] border border-[#253347] rounded-2xl overflow-hidden ${mobilePanel === 'chat' ? 'flex' : 'hidden lg:flex'}`}>
+          {/* Agent offline banner */}
+          {chatDisabled && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-yellow-900/30 border-b border-yellow-700/40 text-xs text-yellow-400">
+              <span>⚠</span>
+              <span>{t('llmOffline')} — {t('llmOfflineDesc')}</span>
+            </div>
+          )}
+
           {/* Chat header */}
           <div className="flex items-center justify-between px-4 py-3 bg-[#162032] border-b border-[#253347]">
             <span className="text-sm font-semibold text-gray-200">{t('chat')}</span>
@@ -519,57 +534,75 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
           )}
 
           {/* Quick prompts — context-aware */}
-          <div className="px-4 pt-3 bg-[#162032] border-t border-[#253347]">
-            <div className="flex flex-wrap gap-1.5">
-              {(selectedProject
-                ? [t('quickShowTemp'), t('quickMemberCount'), t('quickAddColumn'), t('quickTabGuide')]
-                : selectedSimulationProject
-                  ? [t('quickShowTemp'), t('quickSimStatus'), t('quickSimDig'), t('quickTestTab')]
-                  : [t('quickShowTemp'), t('quickBimList'), t('quickSimTab'), t('quickTabGuide')]
-              ).map(q => (
-                <button
-                  key={q}
-                  onClick={() => setInput(q)}
-                  className="text-xs bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 px-3 py-1 rounded-full transition-colors"
-                >
-                  {q}
-                </button>
-              ))}
+          {!chatDisabled && (
+            <div className="px-3 sm:px-4 pt-2 pb-1 bg-[#162032] border-t border-[#253347]">
+              <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {(selectedProject
+                  ? [t('quickShowTemp'), t('quickMemberCount'), t('quickTabGuide')]
+                  : selectedSimulationProject
+                    ? [t('quickShowTemp'), t('quickSimStatus'), t('quickSimDig'), t('quickTestTab')]
+                    : [t('quickShowTemp'), t('quickBimList'), t('quickSimTab'), t('quickTabGuide')]
+                ).map(q => (
+                  <button
+                    key={q}
+                    onClick={() => sendMessage(q)}
+                    className="text-xs bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 px-3 py-1 rounded-full transition-colors whitespace-nowrap shrink-0"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Input area */}
-          <div className="px-4 py-3 bg-[#162032]">
-            <div className="flex items-center gap-2">
+          <div className="px-3 sm:px-4 py-2.5 sm:py-3 bg-[#162032]">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
               <button
                 onClick={() => imageInputRef.current?.click()}
+                disabled={chatDisabled}
                 title="Attach image"
-                className="w-9 h-9 flex items-center justify-center rounded-lg bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 transition-colors text-base shrink-0"
+                className="hidden sm:flex w-9 h-9 items-center justify-center rounded-lg bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200 transition-colors text-base shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
               >📎</button>
               <button
                 onClick={toggleListening}
+                disabled={chatDisabled}
                 title={isListening ? t('stopRecording') : t('voiceInput')}
-                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-all text-base shrink-0 ${
+                className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg transition-all text-sm sm:text-base shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${
                   isListening
                     ? 'bg-red-600/30 text-red-400 border border-red-600/50 animate-pulse'
-                    : 'bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200'
+                    : sttError
+                      ? 'bg-yellow-900/30 text-yellow-500 border border-yellow-600/40'
+                      : 'bg-[#253347] hover:bg-[#2d4060] text-gray-400 hover:text-gray-200'
                 }`}
               >🎤</button>
               <input
                 type="text"
                 value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={isListening ? t('listening') : t('typeOrSpeak')}
-                className="flex-1 bg-[#253347] text-gray-200 text-sm rounded-xl px-4 py-2.5 outline-none placeholder-gray-500 focus:ring-2 focus:ring-accent-blue/50"
+                onChange={e => { setInput(e.target.value); setSttError(''); }}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && !chatDisabled && sendMessage()}
+                placeholder={chatDisabled ? t('llmOffline') : isListening ? t('listening') : t('typeOrSpeak')}
+                disabled={chatDisabled}
+                className="flex-1 min-w-0 bg-[#253347] text-gray-200 text-sm rounded-xl px-3 sm:px-4 py-2.5 outline-none placeholder-gray-500 focus:ring-2 focus:ring-accent-blue/50 disabled:opacity-40 disabled:cursor-not-allowed"
               />
               <button
                 onClick={sendMessage}
-                disabled={loading || (!input.trim() && !imageBase64)}
-                className="px-5 py-2.5 rounded-xl bg-accent-blue text-white text-sm font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors shrink-0"
-              >{t('send')}</button>
+                disabled={chatDisabled || loading || (!input.trim() && !imageBase64)}
+                className="flex items-center justify-center gap-1 sm:px-5 px-3 py-2.5 rounded-xl bg-accent-blue text-white text-sm font-semibold disabled:opacity-40 hover:bg-blue-500 transition-colors shrink-0"
+              >
+                <span className="hidden sm:inline">{t('send')}</span>
+                <svg className="w-4 h-4 sm:hidden" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12zm0 0h7.5" />
+                </svg>
+              </button>
             </div>
+            {/* STT 오류 메시지 */}
+            {sttError && (
+              <p className="text-xs text-yellow-500 mt-1.5 px-1 flex items-center gap-1">
+                <span>⚠</span>{sttError}
+              </p>
+            )}
           </div>
         </div>
 
@@ -580,6 +613,7 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
             {[
               { id: 'data',   label: t('dataTab') },
               { id: 'bim',    label: t('bimTab')  },
+              { id: 'report', label: t('reportTab') },
               { id: 'caps',   label: t('capsTab')  },
               { id: 'export', label: t('exportTab') },
             ].map(tab => (
@@ -623,7 +657,10 @@ export default function AgentDashboard({ selectedProject, onBimUpdate, selectedS
                 onOpenProject={() => { if (onBimUpdate) onBimUpdate(); }}
               />
             )}
-            {activeTab === 'caps' && <CapsPanel />}
+            {activeTab === 'report' && (
+              <ReportPanel reportData={reportData} />
+            )}
+            {activeTab === 'caps' && <CapsPanel onOpenSettings={onOpenSettings} />}
             {activeTab === 'export' && (
               <ExportPanel
                 onExportChat={exportChat}
@@ -793,7 +830,7 @@ function KpiCard({ label, value, unit, color }) {
 // ────────────────────────────────────────────────────
 // Capabilities panel
 // ────────────────────────────────────────────────────
-function CapsPanel() {
+function CapsPanel({ onOpenSettings }) {
   const t = useT('agent');
   const CAPABILITIES = [
     { icon: '🌡', title: t('cap1Title'), desc: t('cap1Desc') },
@@ -817,6 +854,19 @@ function CapsPanel() {
           </div>
         </div>
       ))}
+
+      {onOpenSettings && (
+        <button
+          onClick={onOpenSettings}
+          className="w-full flex gap-3 items-start bg-[#162032] rounded-xl px-3 py-3 border border-[#253347] hover:border-accent-blue/40 transition-colors text-left"
+        >
+          <span className="text-xl shrink-0">⚙️</span>
+          <div>
+            <p className="text-xs font-semibold text-gray-200">{t('settingsTitle')}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{t('settingsDesc')}</p>
+          </div>
+        </button>
+      )}
     </div>
   );
 }
@@ -1019,6 +1069,7 @@ function AgentMessageBubble({ msg }) {
     simulation_agent: { label: t('intentSimulation'),      color: 'text-indigo-400 bg-indigo-900/40 border-indigo-800/50'  },
     safe_agent:       { label: t('intentSafety'),          color: 'text-red-400 bg-red-900/40 border-red-800/50'           },
     test_agent:       { label: t('intentCollisionTest'),   color: 'text-orange-400 bg-orange-900/40 border-orange-800/50'  },
+    orchestrator:     { label: t('intentReport'),                  color: 'text-teal-400 bg-teal-900/40 border-teal-800/50' },
     chat: null,
   };
   const isUser = msg.role === 'user';
@@ -1224,6 +1275,149 @@ function AgentTypingIndicator() {
       </div>
     </div>
   );
+}
+
+// ────────────────────────────────────────────────────
+// Report panel (orchestrator output)
+// ────────────────────────────────────────────────────
+function ReportPanel({ reportData }) {
+  const t = useT('agent');
+  if (!reportData) {
+    return (
+      <div className="p-4 flex flex-col items-center justify-center text-center gap-3 py-12">
+        <span className="text-4xl opacity-30">📄</span>
+        <p className="text-xs text-gray-500">{t('reportNoData')}</p>
+        <p className="text-xs text-gray-600 opacity-60">{t('reportNoDataHint')}</p>
+      </div>
+    );
+  }
+
+  const handleDownload = () => {
+    const content = `# ${reportData.title}\n${t('reportGeneratedAt')} ${reportData.generatedAt}\n\n${reportData.content}`;
+    downloadBlob(new Blob([content], { type: 'text/markdown;charset=utf-8' }), `report-${reportData.generatedAt?.slice(0, 10) || today()}.md`);
+  };
+
+  return (
+    <div className="p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-teal-400">{reportData.title}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('reportGeneratedAt')} {reportData.generatedAt}</p>
+        </div>
+        <button
+          onClick={handleDownload}
+          className="text-xs px-3 py-1.5 rounded-lg bg-teal-800/40 text-teal-300 border border-teal-700/50 hover:bg-teal-700/50 transition-colors shrink-0"
+        >
+          ↓ MD
+        </button>
+      </div>
+      <div className="bg-[#162032] rounded-xl border border-[#253347] p-3 overflow-y-auto max-h-[calc(100vh-340px)]">
+        <SimpleMarkdown content={reportData.content} />
+      </div>
+    </div>
+  );
+}
+
+// Lightweight Markdown renderer (no external deps)
+// Handles: headings, tables, blockquotes, bullet lists, bold/italic, horizontal rules
+function SimpleMarkdown({ content }) {
+  if (!content) return null;
+
+  const lines = content.split('\n');
+  const elements = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Heading
+    const h3 = line.match(/^###\s+(.*)/);
+    const h2 = line.match(/^##\s+(.*)/);
+    const h1 = line.match(/^#\s+(.*)/);
+    if (h1) { elements.push(<h1 key={i} className="text-sm font-bold text-gray-100 mt-3 mb-1">{inlineMarkdown(h1[1])}</h1>); i++; continue; }
+    if (h2) { elements.push(<h2 key={i} className="text-xs font-bold text-teal-300 mt-3 mb-1 border-b border-[#253347] pb-1">{inlineMarkdown(h2[1])}</h2>); i++; continue; }
+    if (h3) { elements.push(<h3 key={i} className="text-xs font-semibold text-gray-200 mt-2 mb-0.5">{inlineMarkdown(h3[1])}</h3>); i++; continue; }
+
+    // Blockquote
+    if (line.startsWith('> ')) {
+      elements.push(<p key={i} className="text-xs text-gray-400 italic border-l-2 border-teal-600 pl-2 my-1">{inlineMarkdown(line.slice(2))}</p>);
+      i++; continue;
+    }
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      elements.push(<hr key={i} className="border-[#253347] my-2" />);
+      i++; continue;
+    }
+
+    // Table: collect all consecutive table lines
+    if (line.startsWith('|')) {
+      const tableLines = [];
+      while (i < lines.length && lines[i].startsWith('|')) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      // separator row is "|---|---|"
+      const rows = tableLines.filter(l => !/^\|[-| :]+\|$/.test(l.trim()));
+      elements.push(
+        <div key={i} className="overflow-x-auto my-2">
+          <table className="w-full text-xs border-collapse">
+            <tbody>
+              {rows.map((row, ri) => {
+                const cells = row.split('|').filter((_, ci) => ci > 0 && ci < row.split('|').length - 1);
+                const isHeader = ri === 0;
+                return (
+                  <tr key={ri} className={isHeader ? 'bg-[#1e3a4a]' : ri % 2 === 0 ? 'bg-[#0d1b2a]' : 'bg-[#162032]'}>
+                    {cells.map((cell, ci) => isHeader ? (
+                      <th key={ci} className="px-2 py-1 text-left text-teal-300 font-semibold border border-[#253347] whitespace-nowrap">{inlineMarkdown(cell.trim())}</th>
+                    ) : (
+                      <td key={ci} className="px-2 py-1 text-gray-300 border border-[#253347]">{inlineMarkdown(cell.trim())}</td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
+    // Bullet list item
+    const bullet = line.match(/^[-*]\s+(.*)/);
+    if (bullet) {
+      elements.push(
+        <div key={i} className="flex gap-1.5 text-xs text-gray-300 my-0.5">
+          <span className="text-teal-400 shrink-0 mt-0.5">•</span>
+          <span>{inlineMarkdown(bullet[1])}</span>
+        </div>
+      );
+      i++; continue;
+    }
+
+    // Empty line
+    if (line.trim() === '') { elements.push(<div key={i} className="h-1" />); i++; continue; }
+
+    // Regular paragraph
+    elements.push(<p key={i} className="text-xs text-gray-300 leading-relaxed">{inlineMarkdown(line)}</p>);
+    i++;
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
+}
+
+function inlineMarkdown(text) {
+  // bold **text** or __text__
+  const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__)/);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('__') && part.endsWith('__')) {
+      return <strong key={i} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
 }
 
 // ────────────────────────────────────────────────────

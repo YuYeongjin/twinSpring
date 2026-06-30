@@ -3,24 +3,6 @@
 
 <mapper namespace="yyj.project.twinspring.dao.SafeDAO">
 
-    <!--
-        DDL (초기 1회 실행):
-
-        CREATE TABLE IF NOT EXISTS safe_project (
-            project_id   VARCHAR(64)  PRIMARY KEY,
-            project_name VARCHAR(255) NOT NULL,
-            location     VARCHAR(512),
-            description  TEXT,
-            camera_url   VARCHAR(1024),
-            status       VARCHAR(32)  DEFAULT 'ACTIVE',
-            mode         VARCHAR(16)  DEFAULT 'SAFETY',
-            created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-            updated_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
-        );
-        -- 기존 테이블에 컬럼 추가 (이미 존재하면 오류 무시):
-        -- ALTER TABLE safe_project ADD COLUMN IF NOT EXISTS mode VARCHAR(16) DEFAULT 'SAFETY';
-    -->
-
     <select id="getAllSafeProjects" resultType="map">
         SELECT
             project_id   AS "projectId",
@@ -68,6 +50,45 @@
 
     <delete id="deleteSafeProject" parameterType="string">
         DELETE FROM safe_project WHERE project_id = #{projectId}
+    </delete>
+
+    <!-- ── IoT 센서 매핑 ──────────────────────────────────────── -->
+
+    <select id="getAllIotMappings" resultType="map">
+        SELECT
+            m.mapping_id      AS "mappingId",
+            m.project_id      AS "projectId",
+            p.project_name    AS "projectName",
+            m.sensor_location AS "sensorLocation",
+            m.sensor_alias    AS "sensorAlias",
+            TO_CHAR(m.created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM safe_iot_mapping m
+        JOIN safe_project p ON p.project_id = m.project_id
+        ORDER BY p.project_name ASC, m.sensor_location ASC
+    </select>
+
+    <select id="getIotMappingsByProject" parameterType="string" resultType="map">
+        SELECT
+            m.mapping_id      AS "mappingId",
+            m.project_id      AS "projectId",
+            p.project_name    AS "projectName",
+            m.sensor_location AS "sensorLocation",
+            m.sensor_alias    AS "sensorAlias",
+            TO_CHAR(m.created_at, 'YYYY-MM-DD HH24:MI:SS') AS "createdAt"
+        FROM safe_iot_mapping m
+        JOIN safe_project p ON p.project_id = m.project_id
+        WHERE m.project_id = #{projectId}
+        ORDER BY m.sensor_location ASC
+    </select>
+
+    <insert id="insertIotMapping" parameterType="map">
+        INSERT INTO safe_iot_mapping (mapping_id, project_id, sensor_location, sensor_alias)
+        VALUES (#{mappingId}, #{projectId}, #{sensorLocation}, #{sensorAlias})
+        ON CONFLICT (project_id, sensor_location) DO NOTHING
+    </insert>
+
+    <delete id="deleteIotMapping" parameterType="string">
+        DELETE FROM safe_iot_mapping WHERE mapping_id = #{mappingId}
     </delete>
 
 </mapper>

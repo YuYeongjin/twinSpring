@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.MonitoringDAO">
+
+    <!-- ═══════════════════════════════════════════════
+         카메라 쿼리
+    ═══════════════════════════════════════════════ -->
+
+    <select id="getCamerasByProject" resultType="map">
+        SELECT camera_id   AS "cameraId",
+               project_id  AS "projectId",
+               camera_name AS "cameraName",
+               camera_url  AS "cameraUrl",
+               enabled,
+               sort_order  AS "sortOrder",
+               created_at  AS "createdAt"
+        FROM monitoring_camera
+        WHERE project_id = #{projectId}
+        ORDER BY sort_order ASC, created_at ASC
+    </select>
+
+    <select id="getEnabledCamerasByProject" resultType="map">
+        SELECT camera_id   AS "cameraId",
+               project_id  AS "projectId",
+               camera_name AS "cameraName",
+               camera_url  AS "cameraUrl",
+               enabled,
+               sort_order  AS "sortOrder"
+        FROM monitoring_camera
+        WHERE project_id = #{projectId}
+          AND enabled    = TRUE
+        ORDER BY sort_order ASC, created_at ASC
+    </select>
+
+    <select id="getCameraById" resultType="map">
+        SELECT camera_id   AS "cameraId",
+               project_id  AS "projectId",
+               camera_name AS "cameraName",
+               camera_url  AS "cameraUrl",
+               enabled,
+               sort_order  AS "sortOrder",
+               created_at  AS "createdAt"
+        FROM monitoring_camera
+        WHERE camera_id = #{cameraId}
+    </select>
+
+    <insert id="insertCamera">
+        INSERT INTO monitoring_camera
+            (camera_id, project_id, camera_name, camera_url, enabled, sort_order)
+        VALUES
+            (#{cameraId}, #{projectId}, #{cameraName}, #{cameraUrl}, #{enabled}, #{sortOrder})
+    </insert>
+
+    <update id="updateCamera">
+        UPDATE monitoring_camera
+        SET camera_name = #{cameraName},
+            camera_url  = #{cameraUrl},
+            enabled     = #{enabled},
+            sort_order  = #{sortOrder}
+        WHERE camera_id = #{cameraId}
+    </update>
+
+    <delete id="deleteCamera">
+        DELETE FROM monitoring_camera WHERE camera_id = #{cameraId}
+    </delete>
+
+    <!-- ═══════════════════════════════════════════════
+         스케줄 쿼리
+    ═══════════════════════════════════════════════ -->
+
+    <select id="getEnabledSchedules" resultType="map">
+        SELECT schedule_id          AS "scheduleId",
+               project_id           AS "projectId",
+               enabled,
+               capture_interval_sec AS "captureIntervalSec",
+               retention_sec        AS "retentionSec",
+               last_captured_at     AS "lastCapturedAt"
+        FROM monitoring_schedule
+        WHERE enabled = TRUE
+    </select>
+
+    <select id="getScheduleByProjectId" resultType="map">
+        SELECT schedule_id          AS "scheduleId",
+               project_id           AS "projectId",
+               enabled,
+               capture_interval_sec AS "captureIntervalSec",
+               retention_sec        AS "retentionSec",
+               last_captured_at     AS "lastCapturedAt",
+               created_at           AS "createdAt"
+        FROM monitoring_schedule
+        WHERE project_id = #{projectId}
+        LIMIT 1
+    </select>
+
+    <insert id="upsertSchedule">
+        INSERT INTO monitoring_schedule
+            (schedule_id, project_id, enabled, capture_interval_sec, retention_sec, updated_at)
+        VALUES
+            (#{scheduleId}, #{projectId}, #{enabled}, #{captureIntervalSec}, #{retentionSec}, CURRENT_TIMESTAMP)
+        ON CONFLICT (schedule_id) DO UPDATE
+            SET enabled              = EXCLUDED.enabled,
+                capture_interval_sec = EXCLUDED.capture_interval_sec,
+                retention_sec        = EXCLUDED.retention_sec,
+                updated_at           = CURRENT_TIMESTAMP
+    </insert>
+
+    <update id="updateLastCapturedAt">
+        UPDATE monitoring_schedule
+        SET last_captured_at = CURRENT_TIMESTAMP,
+            updated_at       = CURRENT_TIMESTAMP
+        WHERE schedule_id = #{scheduleId}
+    </update>
+
+    <!-- ═══════════════════════════════════════════════
+         스냅샷 쿼리
+    ═══════════════════════════════════════════════ -->
+
+    <select id="getSnapshotsByProject" resultType="map">
+        SELECT snapshot_id    AS "snapshotId",
+               project_id     AS "projectId",
+               schedule_id    AS "scheduleId",
+               camera_id      AS "cameraId",
+               camera_name    AS "cameraName",
+               mode,
+               is_problem     AS "isProblem",
+               detection_json AS "detectionJson",
+               captured_at    AS "capturedAt",
+               expires_at     AS "expiresAt"
+        FROM monitoring_snapshot
+        WHERE project_id = #{projectId}
+        ORDER BY captured_at DESC
+    </select>
+
+    <select id="getSnapshotById" resultType="map">
+        SELECT snapshot_id    AS "snapshotId",
+               project_id     AS "projectId",
+               schedule_id    AS "scheduleId",
+               camera_id      AS "cameraId",
+               camera_name    AS "cameraName",
+               mode,
+               is_problem     AS "isProblem",
+               detection_json AS "detectionJson",
+               captured_at    AS "capturedAt",
+               expires_at     AS "expiresAt"
+        FROM monitoring_snapshot
+        WHERE snapshot_id = #{snapshotId}
+    </select>
+
+    <select id="getSnapshotImageData" resultType="_byte[]">
+        SELECT image_data FROM monitoring_snapshot WHERE snapshot_id = #{snapshotId}
+    </select>
+
+    <insert id="insertSnapshot">
+        INSERT INTO monitoring_snapshot
+            (snapshot_id, project_id, schedule_id, camera_id, camera_name,
+             mode, image_data, is_problem, detection_json, captured_at, expires_at)
+        VALUES
+            (#{snapshotId}, #{projectId}, #{scheduleId}, #{cameraId,jdbcType=VARCHAR},
+             #{cameraName,jdbcType=VARCHAR}, #{mode}, #{imageData},
+             #{isProblem}, #{detectionJson,jdbcType=VARCHAR},
+             CURRENT_TIMESTAMP, #{expiresAt,jdbcType=TIMESTAMP})
+    </insert>
+
+    <select id="countProblemSnapshots" resultType="int">
+        SELECT COUNT(*) FROM monitoring_snapshot
+        WHERE project_id = #{projectId} AND is_problem = TRUE
+    </select>
+
+    <delete id="deleteOldestProblemSnapshot">
+        DELETE FROM monitoring_snapshot
+        WHERE snapshot_id = (
+            SELECT snapshot_id FROM monitoring_snapshot
+            WHERE project_id = #{projectId} AND is_problem = TRUE
+            ORDER BY captured_at ASC LIMIT 1
+        )
+    </delete>
+
+    <delete id="deleteExpiredSnapshots">
+        DELETE FROM monitoring_snapshot
+        WHERE expires_at IS NOT NULL AND expires_at &lt; CURRENT_TIMESTAMP
+    </delete>
+
+    <delete id="deleteSnapshot">
+        DELETE FROM monitoring_snapshot WHERE snapshot_id = #{snapshotId}
+    </delete>
+
+    <update id="updateSnapshotDetection">
+        UPDATE monitoring_snapshot
+        SET detection_json = #{detectionJson},
+            is_problem     = #{isProblem}
+        WHERE snapshot_id  = #{snapshotId}
+    </update>
+
+</mapper>

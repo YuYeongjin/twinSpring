@@ -1,8 +1,9 @@
+from __future__ import annotations
 import logging
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
-from config import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
+from config.settings import VECTOR_DB_HOST, VECTOR_DB_PORT, VECTOR_DB_NAME, VECTOR_DB_USER, VECTOR_DB_PASSWORD
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +103,8 @@ def query_bim_projects() -> list[dict]:
         with _PooledConn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT project_id AS projectId, project_name AS projectName, "
-                    "structure_type AS structureType, span_count AS spanCount "
+                    'SELECT project_id AS "projectId", project_name AS "projectName", '
+                    'structure_type AS "structureType", span_count AS "spanCount" '
                     "FROM bim_project ORDER BY project_name ASC"
                 )
                 return [dict(row) for row in cur.fetchall()]
@@ -118,9 +119,9 @@ def query_bim_element_stats(project_id: str) -> list[dict]:
         with _PooledConn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT element_type AS elementType, COUNT(*) AS elementCount "
+                    'SELECT element_type AS "elementType", COUNT(*) AS "elementCount" '
                     "FROM bim_element WHERE project_id = %s "
-                    "GROUP BY element_type ORDER BY elementCount DESC",
+                    'GROUP BY element_type ORDER BY "elementCount" DESC',
                     (project_id,),
                 )
                 return [dict(row) for row in cur.fetchall()]
@@ -135,11 +136,11 @@ def query_bim_elements(project_id: str, limit: int = 200) -> list[dict]:
         with _PooledConn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT element_id AS elementId, element_type AS elementType, material, "
-                    "position_x AS positionX, position_y AS positionY, position_z AS positionZ, "
-                    "size_x AS sizeX, size_y AS sizeY, size_z AS sizeZ "
+                    'SELECT element_id AS "elementId", element_type AS "elementType", material, '
+                    'position_x AS "positionX", position_y AS "positionY", position_z AS "positionZ", '
+                    'size_x AS "sizeX", size_y AS "sizeY", size_z AS "sizeZ" '
                     "FROM bim_element WHERE project_id = %s "
-                    "ORDER BY element_type, element_id LIMIT %s",
+                    'ORDER BY element_type, element_id LIMIT %s',
                     (project_id, limit),
                 )
                 return [dict(row) for row in cur.fetchall()]
@@ -162,6 +163,31 @@ def query_bim_total_count(project_id: str) -> int:
     except Exception as e:
         logger.warning("[DB] bim_total_count 조회 실패: %s", e)
         return 0
+
+
+def insert_bim_project(project_id: str, project_name: str, structure_type: str = "Building") -> None:
+    """BIM 프로젝트를 PostgreSQL에 직접 저장."""
+    with _PooledConn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO bim_project (project_id, project_name, structure_type) "
+                "VALUES (%s, %s, %s) ON CONFLICT (project_id) DO NOTHING",
+                (project_id, project_name, structure_type),
+            )
+
+
+def log_agent_query(session_id: str, message: str, domain: str | None = None, project_id: str | None = None) -> None:
+    """사용자 질문을 agent_query_log 테이블에 저장 (실패해도 조용히 무시)."""
+    try:
+        with _PooledConn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO agent_query_log (session_id, message, domain, project_id) "
+                    "VALUES (%s, %s, %s, %s)",
+                    (session_id, message, domain, project_id),
+                )
+    except Exception as e:
+        logger.warning("[DB] agent_query_log 저장 실패: %s", e)
 
 
 # 테이블별 조회 함수 매핑

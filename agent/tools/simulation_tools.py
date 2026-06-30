@@ -4,11 +4,17 @@ Simulation Agent 도구 모음 — 굴착기 시뮬레이션 제어
 SimulationAgent 가 create_react_agent 를 통해 호출하는 @tool 함수들.
 Spring Boot /api/simulation/excavator 엔드포인트와 통신합니다.
 """
+from __future__ import annotations
+from typing import Optional
 
 import json
+import logging
 import httpx
 from langchain_core.tools import tool
-from config import SPRING_BASE_URL
+from config.settings import SPRING_BASE_URL
+
+logger = logging.getLogger(__name__)
+_ERR = "처리 중 오류가 발생했습니다."
 
 EXCAVATOR_ID = "EX-001"
 
@@ -51,8 +57,9 @@ def _put_state(payload: dict) -> tuple[bool, str]:
         )
         res.raise_for_status()
         return True, "success"
-    except Exception as e:
-        return False, str(e)
+    except Exception:
+        logger.error("[sim] _put_state 실패", exc_info=True)
+        return False, _ERR
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -110,11 +117,11 @@ def set_excavator_preset(preset: str) -> str:
 
 @tool
 def set_excavator_angles(
-    boom_angle: float | None = None,
-    arm_angle: float | None = None,
-    bucket_angle: float | None = None,
-    swing_angle: float | None = None,
-    body_rotation: float | None = None,
+    boom_angle: Optional[float] = None,
+    arm_angle: Optional[float] = None,
+    bucket_angle: Optional[float] = None,
+    swing_angle: Optional[float] = None,
+    body_rotation: Optional[float] = None,
 ) -> str:
     """
     굴착기 관절 각도를 개별 설정합니다 (단위: 도°).
@@ -188,8 +195,78 @@ def reset_excavator() -> str:
         )
         res.raise_for_status()
         return json.dumps({"success": True, "message": "굴착기 초기화 완료 (IDLE 자세, 위치 0,0,0)"})
-    except Exception as e:
-        return json.dumps({"success": False, "error": str(e)})
+    except Exception:
+        logger.error("[sim] reset_excavator 실패", exc_info=True)
+        return json.dumps({"success": False, "error": _ERR})
+
+
+@tool
+def get_earthwork_summary() -> str:
+    """
+    굴착기 EX-001의 현재 상태와 토공 정보를 조회합니다.
+    위치, 각도, 작동 모드, 지형 저장 여부를 반환합니다.
+    토공량(굴착량·성토량) 누계는 시뮬레이션 프론트엔드에서 실시간 관리됩니다.
+    """
+    state = _fetch_state()
+    return json.dumps({
+        "excavatorId":    state.get("excavatorId", EXCAVATOR_ID),
+        "position":       {"x": state.get("positionX", 0), "y": state.get("positionY", 0), "z": state.get("positionZ", 0)},
+        "operationMode":  state.get("operationMode", "IDLE"),
+        "angles": {
+            "boom":   state.get("boomAngle", 35),
+            "arm":    state.get("armAngle", 60),
+            "bucket": state.get("bucketAngle", -25),
+            "swing":  state.get("swingAngle", 0),
+        },
+        "note": (
+            "토공량(총 굴착량·성토량) 누계와 굴착 구역(토질·암반·수중) 정보는 "
+            "SimulationDashboard UI에서 실시간으로 관리됩니다. "
+            "구체적인 수치는 화면 우측 패널의 Earthwork Log 섹션을 확인하세요."
+        ),
+    }, ensure_ascii=False)
+
+
+@tool
+def search_excavation_specs(query: str) -> str:
+    """
+    굴착·토공 관련 KCS/KDS 시방서 조문을 검색합니다.
+    토공 시공기준, 암반 굴착, 수중 굴착, 비탈면 안정, 토적 계산,
+    흙막이·지보공, 날씨별 시공 제한 등에 대해 검색할 수 있습니다.
+
+    예시 query:
+      "암반 굴착 기계굴착 한계 KCS"
+      "비탈면 경사 기준 굴착깊이"
+      "우천 시 토공 시공 제한"
+      "토공량 팽창계수 체적 계산"
+    """
+    from tools.construction_rag_tool import search_construction_docs
+
+    base = "토공 굴착 시공기준 KCS 11 20 토공일반 "
+    full_query = (base + query.strip())[:250]
+
+    try:
+        docs = search_construction_docs(full_query, k=4)
+    except Exception:
+        logger.error("[sim] search_excavation_specs RAG 검색 실패", exc_info=True)
+        return json.dumps({"error": _ERR}, ensure_ascii=False)
+
+    results = []
+    seen: set[str] = set()
+    for doc in docs:
+        text = doc.page_content.strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        meta = doc.metadata
+        source = f"{meta.get('code', '')} {meta.get('title', '')}".strip() or meta.get("source", "알 수 없음")
+        results.append({"source": source, "content": text[:400]})
+
+    return json.dumps({
+        "query":    full_query,
+        "count":    len(results),
+        "results":  results,
+        "note": "KCS/KDS 건설 시방서 기반 검색 결과입니다.",
+    }, ensure_ascii=False)
 
 
 # ── 도구 목록 ──────────────────────────────────────────────────────────────────
@@ -199,4 +276,6 @@ SIMULATION_TOOLS = [
     set_excavator_angles,
     move_excavator,
     reset_excavator,
+    get_earthwork_summary,
+    search_excavation_specs,
 ]

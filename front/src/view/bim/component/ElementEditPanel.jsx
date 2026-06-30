@@ -4,25 +4,27 @@ import AxiosCustom from '../../../axios/AxiosCustom';
 const API_URL = `/api/bim/element`;
 
 export default function ElementEditPanel({ element, onClose, onUpdate }) {
-    // 폼 입력 값을 관리할 상태
-    const [formData, setFormData] = useState({ 
+    const [formData, setFormData] = useState({
         elementId: element.elementId,
         material: element.material || '',
-        
-        // 💡 새 필드 초기화 (Number 타입으로 저장, 입력은 String으로 받음)
-        positionX: element.positionX ?? '', 
+        positionX: element.positionX ?? '',
         positionY: element.positionY ?? '',
         positionZ: element.positionZ ?? '',
-        
         sizeX: element.sizeX ?? '',
         sizeY: element.sizeY ?? '',
         sizeZ: element.sizeZ ?? '',
     });
     const [isSaving, setIsSaving] = useState(false);
+    const [showProps, setShowProps] = useState(true);
 
-    // element prop이 변경될 때마다 formData를 업데이트
+    // ifcProperties JSON 파싱
+    const ifcProps = (() => {
+        try { return element.ifcProperties ? JSON.parse(element.ifcProperties) : null; }
+        catch { return null; }
+    })();
+
     useEffect(() => {
-        setFormData({ 
+        setFormData({
             elementId: element.elementId,
             material: element.material || '',
             positionX: element.positionX ?? '',
@@ -78,9 +80,48 @@ export default function ElementEditPanel({ element, onClose, onUpdate }) {
     };
 
     return (
-        <div className="fixed right-0 top-0 w-80 h-full bg-space-800/95 border-l border-space-700 p-6 shadow-xl z-50">
-            <h3 className="text-xl font-bold mb-4 text-accent-orange">Edit Member Info</h3>
-            <p className="text-sm text-gray-400 mb-6">ID: {element.elementId} ({element.elementType})</p>
+        <div className="fixed right-0 top-0 w-80 h-full bg-space-800/95 border-l border-space-700 p-6 shadow-xl z-50 overflow-y-auto">
+            <h3 className="text-xl font-bold mb-1 text-accent-orange">Edit Member Info</h3>
+            <p className="text-xs text-gray-500 mb-1">{element.elementId} · {element.elementType}</p>
+            {element.ifcName && (
+                <p className="text-xs text-gray-400 mb-1">Name: <span className="text-gray-200">{element.ifcName}</span></p>
+            )}
+            {element.globalId && (
+                <p className="text-xs text-gray-600 mb-4 font-mono break-all">GUID: {element.globalId}</p>
+            )}
+
+            {/* ── IFC 속성 뷰어 ── */}
+            {ifcProps && Object.keys(ifcProps).length > 0 && (
+                <div className="mb-5">
+                    <button
+                        className="flex items-center gap-1 text-xs font-semibold text-blue-400 mb-2 w-full text-left"
+                        onClick={() => setShowProps(v => !v)}
+                    >
+                        <span>{showProps ? '▾' : '▸'}</span>
+                        IFC Properties ({Object.keys(ifcProps).length})
+                    </button>
+                    {showProps && (
+                        <div className="rounded-lg overflow-hidden border border-space-600 text-xs">
+                            {Object.entries(ifcProps).map(([key, val], i) => (
+                                <div
+                                    key={key}
+                                    className="flex gap-2 px-3 py-1.5"
+                                    style={{ backgroundColor: i % 2 === 0 ? '#0f1a26' : '#111e2d' }}
+                                >
+                                    <span className="text-gray-500 flex-shrink-0 w-32 truncate" title={key}>{key}</span>
+                                    <span className="text-gray-200 break-all">
+                                        {val === null ? <span className="text-gray-600 italic">null</span>
+                                         : val === true  ? <span className="text-green-400">true</span>
+                                         : val === false ? <span className="text-red-400">false</span>
+                                         : String(val)}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
 
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>

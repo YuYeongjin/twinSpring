@@ -1,7 +1,11 @@
 package yyj.project.twinspring.serviceImpl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import yyj.project.twinspring.dao.IntegrationDAO;
 import yyj.project.twinspring.dao.ProjectLinkDAO;
+import yyj.project.twinspring.dao.WbsDAO;
 import yyj.project.twinspring.dto.ProjectLinkDTO;
 import yyj.project.twinspring.service.ProjectLinkService;
 
@@ -11,10 +15,16 @@ import java.util.stream.Collectors;
 @Service
 public class ProjectLinkServiceImpl implements ProjectLinkService {
 
-    private final ProjectLinkDAO linkDAO;
+    private static final Logger log = LoggerFactory.getLogger(ProjectLinkServiceImpl.class);
 
-    public ProjectLinkServiceImpl(ProjectLinkDAO linkDAO) {
-        this.linkDAO = linkDAO;
+    private final ProjectLinkDAO  linkDAO;
+    private final WbsDAO          wbsDAO;
+    private final IntegrationDAO  integrationDAO;
+
+    public ProjectLinkServiceImpl(ProjectLinkDAO linkDAO, WbsDAO wbsDAO, IntegrationDAO integrationDAO) {
+        this.linkDAO        = linkDAO;
+        this.wbsDAO         = wbsDAO;
+        this.integrationDAO = integrationDAO;
     }
 
     @Override
@@ -33,10 +43,14 @@ public class ProjectLinkServiceImpl implements ProjectLinkService {
 
     @Override
     public ProjectLinkDTO createLink(ProjectLinkDTO dto) {
-        // 중복 방지
-        int cnt = linkDAO.countLink(dto.getWbsProjectId(), dto.getLinkedType(), dto.getLinkedProjectId());
+        // note 에 instanceKey가 포함된 경우 (BIM:xxx:ROOT:key 형태) → note까지 포함해 중복 체크
+        // 그 외에는 (wbs, type, linkedProject) 기준 중복 방지
+        String note = dto.getNote();
+        boolean hasInstanceKey = note != null && note.startsWith("BIM:") && note.contains(":ROOT:");
+        int cnt = hasInstanceKey
+            ? linkDAO.countLinkByNote(dto.getWbsProjectId(), dto.getLinkedType(), dto.getLinkedProjectId(), note)
+            : linkDAO.countLink(dto.getWbsProjectId(), dto.getLinkedType(), dto.getLinkedProjectId());
         if (cnt > 0) {
-            // 이미 존재하는 링크는 무시 — 기존 DTO 재조회 없이 입력값을 그대로 반환
             return dto;
         }
         String id = UUID.randomUUID().toString();
@@ -53,6 +67,38 @@ public class ProjectLinkServiceImpl implements ProjectLinkService {
 
     @Override
     public void deleteLink(String linkId) {
+        Map<String, Object> link = linkDAO.getLinkById(linkId);
+        if (link != null && "BIM".equals(link.get("linkedType"))) {
+            String wbsProjectId = (String) link.get("wbsProjectId");
+            String bimProjectId = (String) link.get("linkedProjectId");
+            String note         = (String) link.get("note");
+            // note 에 instanceKey가 있으면 해당 루트만 삭제 (동일 BIM 여러 개 중 1개만 지우기)
+            boolean hasInstanceKey = note != null && note.startsWith("BIM:") && note.contains(":ROOT:");
+            if (hasInstanceKey) {
+                try {
+                    wbsDAO.deleteTasksByRootMarker(wbsProjectId, note);
+                    log.info("[ProjectLink] BIM WBS 루트 삭제: rootMarker={}", note);
+                } catch (Exception e) {
+                    log.warn("[ProjectLink] BIM WBS 루트 삭제 실패(무시): {}", e.getMessage());
+                }
+            } else {
+                // instanceKey 없는 구 방식: 통합관제 참조가 없을 때만 전체 삭제
+                int integrationRefs = 0;
+                try {
+                    integrationRefs = integrationDAO.countIntegrationByWbsAndBim(wbsProjectId, bimProjectId);
+                } catch (Exception e) {
+                    log.warn("[ProjectLink] 통합관제 참조 카운트 실패(무시): {}", e.getMessage());
+                }
+                if (integrationRefs == 0) {
+                    try {
+                        wbsDAO.deleteTasksByBimMarker(wbsProjectId, bimProjectId);
+                        log.info("[ProjectLink] BIM WBS 태스크 전체 삭제: wbsProjectId={}, bimProjectId={}", wbsProjectId, bimProjectId);
+                    } catch (Exception e) {
+                        log.warn("[ProjectLink] BIM WBS 태스크 삭제 실패(무시): {}", e.getMessage());
+                    }
+                }
+            }
+        }
         linkDAO.deleteLink(linkId);
     }
 

@@ -1,11 +1,15 @@
 """
-Node: General chat node (Ollama - gemma3:12b)
+Node: General chat node
 """
 
+import logging
+
 from langchain_core.messages import SystemMessage, AIMessage
-from state import AgentState
-from llm_config import llm_chat
-from lang_util import detect_lang, lang_instruction
+from config.state import AgentState
+from config.llm_config import llm_chat
+from config.lang_util import detect_lang, lang_instruction, error_msg
+
+logger = logging.getLogger(__name__)
 
 # Base system prompt — language instruction is appended dynamically per request
 _SYSTEM_BASE = (
@@ -56,7 +60,7 @@ def chat_node(state: AgentState) -> dict:
         msg.content for msg in state["messages"][-5:]
         if hasattr(msg, "content")
     )
-    lang = detect_lang(recent_text)
+    lang = state.get("lang") or detect_lang(recent_text)
     note = lang_instruction(lang)
 
     # Build dynamic system message with language instruction
@@ -67,8 +71,9 @@ def chat_node(state: AgentState) -> dict:
     try:
         response = llm_chat.invoke(messages)
         content = response.content.strip()
-    except Exception as e:
-        content = f"An error occurred while generating a response: {e}"
+    except Exception:
+        logger.error("[chat_node] LLM 응답 생성 실패", exc_info=True)
+        content = error_msg(lang)
 
     return {
         "messages": [AIMessage(content=content)],

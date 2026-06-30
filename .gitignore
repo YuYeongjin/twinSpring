@@ -18,7 +18,8 @@ target/
 *.iws
 *.iml
 *.ipr
-
+/.claude
+.claude/*
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
@@ -40,7 +41,18 @@ publish-arm64/
 agent/__pycache__/**
 agent/nodes/__pycache__/**
 agent/tools/__pycache__/**
+agent/agents/__pycache__/**
+agent/config/__pycache__/**
 agent/.env
+
+### H2 / local test DB ###
+testdb.mv.db
+testdb.trace.db
+*.mv.db
+*.trace.db
+
+### lib (manual JARs) ###
+lib/
 
 
 [Ll]ibrary/

@@ -1,6 +1,7 @@
 package yyj.project.twinspring.serviceImpl;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import yyj.project.twinspring.dao.WbsDAO;
 import yyj.project.twinspring.dto.WbsProjectDTO;
 import yyj.project.twinspring.dto.WbsTaskDTO;
@@ -104,8 +105,12 @@ public class WbsServiceImpl implements WbsService {
     }
 
     @Override
+    @Transactional
     public void deleteTask(String taskId) {
-        wbsDAO.deleteTask(taskId);
+        // progress_analysis_log는 FK 없음 → 태스크 삭제 전에 수동 정리
+        wbsDAO.deleteProgressLogsByTaskTree(taskId);
+        // 대상 태스크 + 모든 하위 항목 재귀 삭제 (BIM 연결 notes도 함께 제거됨)
+        wbsDAO.deleteTaskWithDescendants(taskId);
     }
 
     @Override
@@ -163,6 +168,7 @@ public class WbsServiceImpl implements WbsService {
         WbsTaskDTO dto = new WbsTaskDTO();
         dto.setTaskId((String) r.get("taskId"));
         dto.setWbsProjectId((String) r.get("wbsProjectId"));
+        dto.setProjectName((String) r.get("projectName"));
         dto.setWbsCode((String) r.get("wbsCode"));
         dto.setTaskName((String) r.get("taskName"));
         dto.setStartDate((String) r.get("startDate"));
@@ -176,6 +182,7 @@ public class WbsServiceImpl implements WbsService {
         dto.setSource((String) r.get("source"));
         dto.setSortOrder(toInt(r.get("sortOrder"), 0));
         dto.setCreatedAt((String) r.get("createdAt"));
+        dto.setParentTaskId((String) r.get("parentTaskId"));
         return dto;
     }
 
@@ -195,6 +202,7 @@ public class WbsServiceImpl implements WbsService {
         m.put("notes",          dto.getNotes());
         m.put("source",         dto.getSource() != null ? dto.getSource() : "MANUAL");
         m.put("sortOrder",      dto.getSortOrder() != null ? dto.getSortOrder() : 0);
+        m.put("parentTaskId",   dto.getParentTaskId());
         return m;
     }
 

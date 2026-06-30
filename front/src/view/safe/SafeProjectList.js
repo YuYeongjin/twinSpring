@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useT } from "../../i18n/LanguageContext";
 import WbsLinkWidget from "../wbs/component/WbsLinkWidget";
 import AxiosCustom from "../../axios/AxiosCustom";
+import IotTab from "./IotTab";
 
 const TB = {
   card:  "bg-[#1c2a3a] border border-[#253347] rounded-xl shadow-lg",
@@ -11,8 +12,9 @@ const TB = {
 
 // ── 모드 정의 (tKey는 safeProjectList 네임스페이스 키) ─────────────
 const MODE_META = {
-  SAFETY: { icon: "🛡", tKeyLabel: "modeSafetyLabel", tKeyDesc: "modeSafetyDesc", color: "#4ade80", bg: "#14532d", border: "#4ade80" },
-  CRACK:  { icon: "🔍", tKeyLabel: "modeCrackLabel",  tKeyDesc: "modeCrackDesc",  color: "#60a5fa", bg: "#1e3a5f", border: "#60a5fa" },
+  SAFETY:   { icon: "🛡", tKeyLabel: "modeSafetyLabel",   tKeyDesc: "modeSafetyDesc",   color: "#4ade80", bg: "#14532d", border: "#4ade80" },
+  CRACK:    { icon: "🔍", tKeyLabel: "modeCrackLabel",    tKeyDesc: "modeCrackDesc",    color: "#60a5fa", bg: "#1e3a5f", border: "#60a5fa" },
+  PROGRESS: { icon: "📐", tKeyLabel: "modeProgressLabel", tKeyDesc: "modeProgressDesc", color: "#c4b5fd", bg: "#1a1040", border: "#a78bfa" },
 };
 
 // ── 상태 정의 (tKey는 safeProjectList 네임스페이스 키) ─────────────
@@ -25,11 +27,27 @@ const STATUS_META = {
 // ── WBS 프로젝트 선택 드롭다운 패널 ──────────────────────────────
 function WbsProjectPicker({ selectedId, onChange, wbsProjects, loading, t }) {
   const [open, setOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+  const btnRef = useRef(null);
   const selected = wbsProjects.find(p => p.projectId === selectedId);
+
+  function handleToggle() {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: "fixed",
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    }
+    setOpen(v => !v);
+  }
 
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(v => !v)}
+      <button ref={btnRef} type="button" onClick={handleToggle}
               className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm transition"
               style={{
                 backgroundColor: open ? "#0d2040" : "#0d1b2a",
@@ -44,8 +62,15 @@ function WbsProjectPicker({ selectedId, onChange, wbsProjects, loading, t }) {
       </button>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-xl overflow-hidden shadow-2xl"
-             style={{ backgroundColor: "#0a1521", border: "1px solid #1e3a5f", maxHeight: "220px" }}>
+        <div style={{
+          ...dropdownStyle,
+          backgroundColor: "#0a1521",
+          border: "1px solid #1e3a5f",
+          borderRadius: "12px",
+          overflow: "hidden",
+          boxShadow: "0 25px 50px -12px rgba(0,0,0,0.7)",
+          maxHeight: "220px",
+        }}>
           <div style={{ overflowY: "auto", maxHeight: "220px" }}>
             <button type="button" onClick={() => { onChange(""); setOpen(false); }}
                     className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-[#0d1b2a] transition"
@@ -78,7 +103,7 @@ function WbsProjectPicker({ selectedId, onChange, wbsProjects, loading, t }) {
         </div>
       )}
 
-      {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+      {open && <div style={{ position: "fixed", inset: 0, zIndex: 9998 }} onClick={() => setOpen(false)} />}
     </div>
   );
 }
@@ -147,7 +172,7 @@ function ProjectModal({ initial = null, onClose, onSave }) {
         </div>
 
         {/* 스크롤 영역 */}
-        <div className="flex flex-col gap-4 px-6 pb-2 overflow-y-auto">
+        <div className="flex flex-col gap-4 px-6 pb-2 overflow-y-auto flex-1 min-h-0">
 
           {/* 프로젝트 유형 */}
           <div>
@@ -336,9 +361,16 @@ export default function SafeProjectList({
   onDeleteProject,
 }) {
   const t = useT('safeProjectList');
+
+  const SAFE_TABS = [
+    { key: "projects", label: t('tabProjects') },
+    { key: "iot",      label: t('tabIot') },
+  ];
+  const [activeTab,      setActiveTab]      = useState("projects");
   const [showModal,      setShowModal]      = useState(false);
   const [editingProject, setEditingProject] = useState(null);
   const [search,         setSearch]         = useState("");
+  const [showAllCameras, setShowAllCameras] = useState(false);
 
   const filtered = projectList.filter(p =>
     p.projectName?.toLowerCase().includes(search.toLowerCase()) ||
@@ -356,76 +388,123 @@ export default function SafeProjectList({
     await onDeleteProject(projectId);
   }
 
+  // 전체 카메라 조회 화면
+  if (showAllCameras) {
+    return (
+      <AllCameraView
+        projectList={projectList}
+        onSelectProject={proj => { onProjectSelect(proj); setViceComponent("safe"); }}
+        onBack={() => setShowAllCameras(false)}
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-6">
+    <div className="min-h-screen bg-[#0d1b2a] text-gray-200">
 
-      {/* 헤더 */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            {t('title')}
-          </h2>
-          <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
-            {t('subtitle')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm"
-                  style={{ color: TB.text2 }}>🔍</span>
-            <input type="text" value={search}
-                   onChange={e => setSearch(e.target.value)}
-                   placeholder={t('searchPlaceholder')}
-                   className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
-                   style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text1 }} />
-          </div>
-          <button onClick={() => setShowModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-                  style={{ backgroundColor: "#065f46", border: "1px solid #4ade80" }}>
-            {t('addProject')}
+      {/* 탭 네비게이션 */}
+      <div className="flex items-center gap-1 px-6 pt-5 pb-0 border-b border-[#1a2a3a]">
+        {SAFE_TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="px-5 py-2.5 text-sm font-semibold rounded-t-lg transition"
+            style={{
+              backgroundColor: activeTab === tab.key ? "#0d1b2a" : "transparent",
+              borderTop:    activeTab === tab.key ? "2px solid #4ade80" : "2px solid transparent",
+              borderLeft:   activeTab === tab.key ? "1px solid #1a2a3a" : "1px solid transparent",
+              borderRight:  activeTab === tab.key ? "1px solid #1a2a3a" : "1px solid transparent",
+              color: activeTab === tab.key ? "#4ade80" : "#8896a4",
+              marginBottom: "-1px",
+            }}
+          >
+            {tab.label}
           </button>
-        </div>
-      </div>
-
-      {/* 통계 */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          { label: t('total'),    value: stats.total,    color: "#60a5fa", icon: "🛡" },
-          { label: t('active'),   value: stats.active,   color: "#4ade80", icon: "🟢" },
-          { label: t('inactive'), value: stats.inactive, color: "#f59e0b", icon: "🟡" },
-        ].map(s => (
-          <div key={s.label} className="rounded-xl p-3 text-center"
-               style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
-            <div className="text-2xl mb-1">{s.icon}</div>
-            <div className="text-lg font-bold" style={{ color: s.color }}>{s.value}</div>
-            <div className="text-xs mt-0.5" style={{ color: TB.text2 }}>{s.label}</div>
-          </div>
         ))}
       </div>
 
-      {/* 카드 그리드 */}
-      {filtered.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(p => (
-            <ProjectCard
-              key={p.projectId}
-              project={p}
-              t={t}
-              onSelect={(proj) => { onProjectSelect(proj); setViceComponent("safe"); }}
-              onEdit={(proj) => { setEditingProject(proj); setShowModal(true); }}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-32 text-center">
-          <div className="text-7xl mb-5">{search ? "🔍" : "🛡"}</div>
-          <div className="text-lg font-semibold text-gray-400 mb-2">
-            {search ? t('noResults', { search }) : t('noSites')}
+      {/* IoT 탭 */}
+      {activeTab === "iot" && (
+        <IotTab projectList={projectList} />
+      )}
+
+      {/* 프로젝트 탭 */}
+      {activeTab === "projects" && (
+        <div className="p-6">
+          {/* 헤더 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                {t('title')}
+              </h2>
+              <p className="text-sm mt-0.5" style={{ color: TB.text2 }}>
+                {t('subtitle')}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => setShowAllCameras(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+                      style={{ backgroundColor: "#1e1a3a", border: "1px solid #818cf8", color: "#c4b5fd" }}>
+                {t('cameraListTitle')}
+              </button>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm"
+                      style={{ color: TB.text2 }}>🔍</span>
+                <input type="text" value={search}
+                       onChange={e => setSearch(e.target.value)}
+                       placeholder={t('searchPlaceholder')}
+                       className="pl-8 pr-3 py-2 rounded-lg text-sm outline-none w-44"
+                       style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347", color: TB.text1 }} />
+              </div>
+              <button onClick={() => setShowModal(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
+                      style={{ backgroundColor: "#065f46", border: "1px solid #4ade80" }}>
+                {t('addProject')}
+              </button>
+            </div>
           </div>
-          <div className="text-sm" style={{ color: TB.text2 }}>
-            {search ? t('searchPlaceholder') : t('noSitesHint')}
+
+          {/* 통계 */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            {[
+              { label: t('total'),    value: stats.total,    color: "#60a5fa", icon: "🛡" },
+              { label: t('active'),   value: stats.active,   color: "#4ade80", icon: "🟢" },
+              { label: t('inactive'), value: stats.inactive, color: "#f59e0b", icon: "🟡" },
+            ].map(s => (
+              <div key={s.label} className="rounded-xl p-3 text-center"
+                   style={{ backgroundColor: "#1c2a3a", border: "1px solid #253347" }}>
+                <div className="text-2xl mb-1">{s.icon}</div>
+                <div className="text-lg font-bold" style={{ color: s.color }}>{s.value}</div>
+                <div className="text-xs mt-0.5" style={{ color: TB.text2 }}>{s.label}</div>
+              </div>
+            ))}
           </div>
+
+          {/* 카드 그리드 */}
+          {filtered.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {filtered.map(p => (
+                <ProjectCard
+                  key={p.projectId}
+                  project={p}
+                  t={t}
+                  onSelect={(proj) => { onProjectSelect(proj); setViceComponent("safe"); }}
+                  onEdit={(proj) => { setEditingProject(proj); setShowModal(true); }}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-32 text-center">
+              <div className="text-7xl mb-5">{search ? "🔍" : "🛡"}</div>
+              <div className="text-lg font-semibold text-gray-400 mb-2">
+                {search ? t('noResults', { search }) : t('noSites')}
+              </div>
+              <div className="text-sm" style={{ color: TB.text2 }}>
+                {search ? t('searchPlaceholder') : t('noSitesHint')}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -438,6 +517,221 @@ export default function SafeProjectList({
             : onCreateProject}
         />
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// 전체 카메라 조회 화면
+// 모든 safe 프로젝트의 카메라를 그리드로 표시.
+// 각 카드 클릭 → 해당 프로젝트로 이동.
+// ══════════════════════════════════════════════════════════════
+function AllCameraView({ projectList, onSelectProject, onBack }) {
+  const t = useT('safeProjectList');
+  const [camerasByProject, setCamerasByProject] = useState({});
+  const [latestSnapByProject, setLatestSnapByProject] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (projectList.length === 0) { setLoading(false); return; }
+
+    // 모든 프로젝트의 카메라 목록 + 최신 스냅샷 병렬 로드
+    Promise.all(
+      projectList.map(async proj => {
+        const [camRes, snapRes] = await Promise.all([
+          fetch(`/api/monitoring/cameras/${proj.projectId}`).catch(() => null),
+          fetch(`/api/monitoring/snapshots/${proj.projectId}`).catch(() => null),
+        ]);
+        const cameras   = camRes?.ok  ? await camRes.text().then(t  => { try { return JSON.parse(t);  } catch { return []; } }) : [];
+        const snapshots = snapRes?.ok ? await snapRes.text().then(t => { try { return JSON.parse(t); } catch { return []; } }) : [];
+        return { projectId: proj.projectId, cameras, latestSnap: snapshots[0] ?? null };
+      })
+    ).then(results => {
+      const camMap  = {};
+      const snapMap = {};
+      results.forEach(({ projectId, cameras, latestSnap }) => {
+        camMap[projectId]  = cameras;
+        snapMap[projectId] = latestSnap;
+      });
+      setCamerasByProject(camMap);
+      setLatestSnapByProject(snapMap);
+      setLoading(false);
+    });
+  }, [projectList]);
+
+  // 표시할 카드 목록 생성
+  // 카메라가 등록된 경우 → 카메라별 1장,  미등록인 경우 → 프로젝트 cameraUrl로 1장
+  const cards = projectList.flatMap(proj => {
+    const cameras = camerasByProject[proj.projectId] ?? [];
+    const snap    = latestSnapByProject[proj.projectId] ?? null;
+    if (cameras.length > 0) {
+      return cameras.map(cam => ({
+        key:        `${proj.projectId}-${cam.cameraId}`,
+        project:    proj,
+        cameraName: cam.cameraName,
+        cameraUrl:  cam.cameraUrl,
+        snap,
+      }));
+    }
+    // 카메라 미등록: 프로젝트 cameraUrl이 있으면 1장, 없으면 빈 카드 1장
+    return [{
+      key:        proj.projectId,
+      project:    proj,
+      cameraName: proj.cameraUrl ? t('cameraDefault') : t('cameraNotRegistered'),
+      cameraUrl:  proj.cameraUrl ?? null,
+      snap,
+    }];
+  });
+
+  const isCrack = proj => (proj.mode || 'SAFETY') === 'CRACK';
+
+  return (
+    <div className="min-h-screen bg-[#0d1b2a] text-gray-200 p-6">
+
+      {/* 헤더 */}
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack}
+          className="text-sm px-3 py-1.5 rounded-lg"
+          style={{ background: '#1c2a3a', border: '1px solid #253347', color: '#8896a4' }}>
+          {t('backBtn')}
+        </button>
+        <h2 className="text-xl font-bold text-white">{t('cameraListTitle')}</h2>
+        <span className="text-sm text-gray-500">
+          {t('cameraListSubtitle', { cams: cards.length, projs: projectList.length })}
+        </span>
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-32 text-gray-500">
+          {t('cameraLoading')}
+        </div>
+      )}
+
+      {!loading && cards.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-32 text-center">
+          <div className="text-6xl mb-4">📷</div>
+          <p className="text-gray-400">{t('cameraEmpty')}</p>
+        </div>
+      )}
+
+      {/* 카메라 카드 그리드 */}
+      {!loading && cards.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {cards.map(card => (
+            <CameraCard
+              key={card.key}
+              card={card}
+              isCrack={isCrack(card.project)}
+              onClick={() => onSelectProject(card.project)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 카메라 카드 ────────────────────────────────────────────────
+function CameraCard({ card, isCrack, onClick }) {
+  const t = useT('safeProjectList');
+  const { project, cameraName, cameraUrl, snap } = card;
+  const hasSnap   = !!snap?.snapshotId;
+  const imgUrl    = hasSnap ? `/api/monitoring/snapshot/${snap.snapshotId}/image` : null;
+  const isRtsp    = cameraUrl?.toLowerCase().startsWith('rtsp://');
+  const noCamera  = !cameraUrl;
+
+  const modeColor  = isCrack ? '#60a5fa' : '#4ade80';
+  const modeBg     = isCrack ? '#1e3a5f' : '#14532d';
+  const modeBorder = isCrack ? '#3b82f6' : '#22c55e';
+
+  function fmtAgo(iso) {
+    if (!iso) return null;
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1)  return t('timeAgoJustNow');
+    if (m < 60) return t('timeAgoMin', { n: m });
+    const h = Math.floor(m / 60);
+    if (h < 24) return t('timeAgoHour', { n: h });
+    return t('timeAgoDay', { n: Math.floor(h / 24) });
+  }
+
+  return (
+    <div
+      onClick={onClick}
+      className="rounded-xl border overflow-hidden flex flex-col cursor-pointer transition-transform hover:scale-[1.02] hover:shadow-xl"
+      style={{ borderColor: '#253347', background: '#0a1525' }}
+      title={t('goToProject', { name: project.projectName })}>
+
+      {/* 썸네일 영역 */}
+      <div className="relative bg-black" style={{ height: '140px' }}>
+        {imgUrl ? (
+          <img src={imgUrl} alt="snap"
+            className="w-full h-full object-cover"
+            onError={e => { e.target.style.display = 'none'; }} />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2"
+            style={{ background: '#060f1c' }}>
+            <span className="text-4xl opacity-30">
+              {noCamera ? '📵' : isRtsp ? '📡' : '📷'}
+            </span>
+            <span className="text-xs text-gray-600">
+              {noCamera ? t('cameraNotRegistered') : isRtsp ? t('statusRtsp') : t('statusNoSnapshot')}
+            </span>
+          </div>
+        )}
+
+        {/* 상태 오버레이 */}
+        <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
+          {/* 모드 배지 */}
+          <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
+            style={{ background: modeBg, border: `1px solid ${modeBorder}`, color: modeColor, fontSize: '10px' }}>
+            {isCrack ? t('modeCrack') : t('modeSafe')}
+          </span>
+          {/* 프로젝트 상태 배지 */}
+          {project.status !== 'ACTIVE' && (
+            <span className="text-xs px-1.5 py-0.5 rounded"
+              style={{ background: '#1e293b', border: '1px solid #475569', color: '#94a3b8', fontSize: '10px' }}>
+              {project.status === 'INACTIVE' ? t('statusInactiveBadge') : t('statusArchivedBadge')}
+            </span>
+          )}
+        </div>
+
+        {/* 카메라 URL 타입 */}
+        {cameraUrl && (
+          <span className="absolute top-2 right-2 text-xs px-1.5 py-0.5 rounded"
+            style={{ background: isRtsp ? '#1e1a3a' : '#0d2233',
+                     border: `1px solid ${isRtsp ? '#818cf8' : '#0ea5e9'}`,
+                     color:  isRtsp ? '#c4b5fd' : '#7dd3fc', fontSize: '10px' }}>
+            {isRtsp ? 'RTSP' : 'HTTP'}
+          </span>
+        )}
+
+        {/* 스냅샷 촬영 시간 */}
+        {hasSnap && (
+          <div className="absolute bottom-0 left-0 right-0 px-2 py-1"
+            style={{ background: 'linear-gradient(transparent, rgba(0,0,0,0.75))' }}>
+            <span className="text-xs text-gray-300">{fmtAgo(snap.capturedAt)}</span>
+            {snap.isProblem && (
+              <span className="ml-2 text-xs text-red-400">⚠ 위험 감지</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 카드 정보 */}
+      <div className="px-3 py-2.5 flex flex-col gap-1">
+        <p className="text-sm font-semibold text-white truncate" title={cameraName}>
+          {cameraName}
+        </p>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-gray-500 truncate flex-1" title={project.projectName}>
+            📍 {project.projectName}
+          </span>
+        </div>
+        {project.location && (
+          <span className="text-xs text-gray-600 truncate">{project.location}</span>
+        )}
+      </div>
     </div>
   );
 }

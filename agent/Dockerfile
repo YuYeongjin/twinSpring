@@ -6,7 +6,7 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# ── Layer 1: 무거운 패키지 (PyTorch / ChromaDB)
+# ── Layer 1: 무거운 패키지 (PyTorch / HuggingFace)
 # requirements-base.txt가 바뀌지 않으면 이 레이어는 캐시 히트
 COPY requirements-base.txt .
 RUN pip install --no-cache-dir -r requirements-base.txt
@@ -21,4 +21,6 @@ COPY . .
 
 EXPOSE 7070
 
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "7070"]
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]

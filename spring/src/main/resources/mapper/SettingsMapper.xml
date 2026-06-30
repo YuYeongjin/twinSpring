@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="yyj.project.twinspring.dao.SettingsDAO">
+
+    <select id="getAllSettings" resultType="map">
+        SELECT setting_key  AS "settingKey",
+               setting_value AS "settingValue",
+               updated_at    AS "updatedAt"
+        FROM user_settings
+        ORDER BY setting_key
+    </select>
+
+    <select id="getSetting" resultType="map">
+        SELECT setting_key   AS "settingKey",
+               setting_value AS "settingValue",
+               updated_at    AS "updatedAt"
+        FROM user_settings
+        WHERE setting_key = #{key}
+    </select>
+
+    <insert id="upsertSetting">
+        INSERT INTO user_settings (setting_key, setting_value, updated_at)
+        VALUES (#{settingKey}, #{settingValue}, CURRENT_TIMESTAMP)
+        ON CONFLICT (setting_key) DO UPDATE
+            SET setting_value = EXCLUDED.setting_value,
+                updated_at    = CURRENT_TIMESTAMP
+    </insert>
+
+    <!-- ── 대화 히스토리 ── -->
+
+    <select id="getChatHistory" resultType="map">
+        SELECT id, session_id AS "sessionId", role, content,
+               created_at    AS "createdAt"
+        FROM chat_history
+        WHERE session_id = #{sessionId}
+        <if test="limit != null">
+            ORDER BY created_at DESC
+            LIMIT #{limit}
+        </if>
+        <if test="limit == null">
+            ORDER BY created_at ASC
+        </if>
+    </select>
+
+    <insert id="insertChatMessages">
+        INSERT INTO chat_history (session_id, role, content)
+        VALUES
+        <foreach collection="list" item="m" separator=",">
+            (#{m.sessionId}, #{m.role}, #{m.content})
+        </foreach>
+    </insert>
+
+    <delete id="deleteExpiredChatHistory">
+        DELETE FROM chat_history
+        WHERE created_at &lt; CURRENT_TIMESTAMP - (#{retentionDays}::int * INTERVAL '1 day')
+    </delete>
+
+    <delete id="deleteChatHistoryBySession">
+        DELETE FROM chat_history
+        WHERE session_id = #{sessionId}
+    </delete>
+
+    <select id="countChatHistory" resultType="int">
+        SELECT COUNT(*) FROM chat_history WHERE session_id = #{sessionId}
+    </select>
+
+</mapper>

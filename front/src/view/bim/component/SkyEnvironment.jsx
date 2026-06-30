@@ -426,10 +426,13 @@ export default function SkyEnvironment({ preset }) {
             )}
 
             {/* HDR 환경맵 (조명 + 배경) — preset.env가 없으면 렌더링 안 함 */}
+            {/* environmentRotation/backgroundRotation: Y-up HDR → Z-up 씬 보정 */}
             {preset.env && (
                 <Environment
                     preset={preset.env}
                     background={preset.useEnvBg}
+                    environmentRotation={[Math.PI / 2, 0, 0]}
+                    backgroundRotation={[Math.PI / 2, 0, 0]}
                 />
             )}
 

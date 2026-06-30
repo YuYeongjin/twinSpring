@@ -19,6 +19,10 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // ── 신규 상태: 배치 모드 ────────────────────────────────────────
     const [pendingElement, setPendingElement] = useState(null);
 
+    // ── 신규 상태: 그룹 이동 모드 ───────────────────────────────────
+    // null | { elements: BimElementData[], pivotX: number, pivotY: number }
+    const [groupMovePending, setGroupMovePending] = useState(null);
+
     // ── 신규 상태: 선택(러버밴드) 모드 ─────────────────────────────
     const [isSelectMode, setIsSelectMode] = useState(false);
 
@@ -36,17 +40,43 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         ];
     }, [modelData]);
 
-    const undo = useCallback(() => {
+    const undo = useCallback(async () => {
         if (undoHistoryRef.current.length === 0) return;
         const prev = undoHistoryRef.current.pop();
+        const current = modelData;
+
+        // 현재에는 있고 이전에는 없는 요소 → DB에서 삭제
+        const prevIds = new Set(prev.map(e => e.elementId));
+        const toDelete = current.filter(e => !prevIds.has(e.elementId));
+        for (const el of toDelete) {
+            AxiosCustom.delete(`${API_BASE}/element/${el.elementId}`).catch(() => {});
+        }
+
+        // 이전에는 있고 현재에는 없는 요소 → DB에 복원
+        const currentIds = new Set(current.map(e => e.elementId));
+        const toRestore = prev.filter(e => !currentIds.has(e.elementId));
+        for (const el of toRestore) {
+            AxiosCustom.post(`${API_BASE}/element`, { ...el, projectId: el.projectId ?? selectedProject?.projectId }).catch(() => {});
+        }
+
+        // 양쪽에 있지만 데이터가 다른 요소 → DB 업데이트
+        const currentMap = new Map(current.map(e => [e.elementId, e]));
+        for (const el of prev) {
+            const cur = currentMap.get(el.elementId);
+            if (cur && JSON.stringify(cur) !== JSON.stringify(el)) {
+                AxiosCustom.put(`${API_BASE}/model/element`, { ...el, projectId: el.projectId ?? selectedProject?.projectId }).catch(() => {});
+            }
+        }
+
         setModelData(prev);
         setSelectedElement(null);
         setSelectedElements(new Set());
-    }, [setModelData]);
+    }, [modelData, selectedProject, setModelData]);
 
     // ── 레이어 & 색상 상태 ──────────────────────────────────────────
     const [layers, setLayers] = useState([]);
     const [elementColors, setElementColors] = useState({});
+    const [elementOpacities, setElementOpacitiesState] = useState({});
 
     // ── 미니맵 초기화 ───────────────────────────────────────────────
     useLayoutEffect(() => {
@@ -66,7 +96,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 setSelectedElement(prev => ({ ...prev, data: updated }));
             }
         }
-    }, [modelData]);
+    }, [modelData]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── 레이어 / 색상 DB 로드 (프로젝트 전환 시) ──────────────────
     useEffect(() => {
@@ -86,6 +116,14 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 setElementColors(colorMap);
             })
             .catch(() => setElementColors({}));
+    }, [selectedProject?.projectId]);
+
+    const reloadLayers = useCallback(() => {
+        const pid = selectedProject?.projectId;
+        if (!pid) return;
+        AxiosCustom.get(`${API_BASE}/layers?projectId=${pid}`)
+            .then(res => setLayers(res.data || []))
+            .catch(() => {});
     }, [selectedProject?.projectId]);
 
     // ── 로딩 상태 ──────────────────────────────────────────────────
@@ -133,10 +171,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     // 선택 모드 토글
     // ================================================================
     function toggleSelectMode() {
-        setIsSelectMode(prev => {
-            if (prev) setSelectedElements(new Set());
-            return !prev;
-        });
+        setIsSelectMode(prev => !prev);
     }
 
     // ================================================================
@@ -151,41 +186,102 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
     };
 
     // ================================================================
-    // 저장 (서버 PUT) — rotation 포함
+    // 저장 (서버 PUT) — rotation 포함, 다중 선택 시 전체 저장
     // ================================================================
     function saveUpdateElement() {
         if (!selectedElement) return;
         pushUndo();
-        const payload = {
-            ...selectedElement.data,
-            projectId: selectedProject?.projectId || selectedElement.data.projectId,
-        };
 
-        if (payload.positionData) {
-            try {
-                const arr = typeof payload.positionData === 'string'
-                    ? JSON.parse(payload.positionData)
-                    : payload.positionData;
-                if (Array.isArray(arr) && arr.length >= 3) {
-                    payload.positionX = arr[0]; payload.positionY = arr[1]; payload.positionZ = arr[2];
-                }
-            } catch (e) { console.error("Position 파싱 오류", e); }
-        }
-        if (payload.sizeData) {
-            try {
-                const arr = typeof payload.sizeData === 'string'
-                    ? JSON.parse(payload.sizeData)
-                    : payload.sizeData;
-                if (Array.isArray(arr) && arr.length >= 3) {
-                    payload.sizeX = arr[0]; payload.sizeY = arr[1]; payload.sizeZ = arr[2];
-                }
-            } catch (e) { console.error("Size 파싱 오류", e); }
-        }
+        const allIds = new Set([...selectedElements, selectedElement.data.elementId]);
+        const projectId = selectedProject?.projectId;
 
-        AxiosCustom.put(`${API_BASE}/model/element`, payload)
-            .then(() => console.log("저장 완료:", payload.elementId))
-            .catch(err => console.error("저장 실패:", err));
+        const payloads = [...allIds].flatMap(id => {
+            const latestData = modelData.find(e => e.elementId === id);
+            if (!latestData) return [];
+            const p = { ...latestData, projectId: projectId || latestData.projectId };
+            if (p.positionData) {
+                try {
+                    const arr = typeof p.positionData === 'string' ? JSON.parse(p.positionData) : p.positionData;
+                    if (Array.isArray(arr) && arr.length >= 3) {
+                        p.positionX = arr[0]; p.positionY = arr[1]; p.positionZ = arr[2];
+                    }
+                } catch (e) { console.error('Position 파싱 오류', e); }
+            }
+            if (p.sizeData) {
+                try {
+                    const arr = typeof p.sizeData === 'string' ? JSON.parse(p.sizeData) : p.sizeData;
+                    if (Array.isArray(arr) && arr.length >= 3) {
+                        p.sizeX = arr[0]; p.sizeY = arr[1]; p.sizeZ = arr[2];
+                    }
+                } catch (e) { console.error('Size 파싱 오류', e); }
+            }
+            return [p];
+        });
+
+        if (payloads.length === 0) return;
+
+        if (payloads.length === 1) {
+            // 단건: 기존 단일 PUT
+            AxiosCustom.put(`${API_BASE}/model/element`, payloads[0])
+                .catch(err => console.error('저장 실패:', err));
+        } else {
+            // 다건: 단일 API로 일괄 업데이트
+            AxiosCustom.put(`${API_BASE}/project/${projectId}/batch-update`, payloads)
+                .catch(err => console.error('배치 저장 실패:', err));
+        }
     }
+
+    // ================================================================
+    // 그룹 이동 모드
+    // ================================================================
+    const startGroupMove = useCallback(() => {
+        const allIds = new Set([
+            ...selectedElements,
+            ...(selectedElement ? [selectedElement.data.elementId] : []),
+        ]);
+        if (allIds.size === 0) return;
+        const elems = [...allIds].map(id => modelData.find(e => e.elementId === id)).filter(Boolean);
+        if (elems.length === 0) return;
+        const pivot = selectedElement?.data ?? elems[0];
+        setGroupMovePending({
+            elements: elems,
+            pivotX: Number(pivot.positionX) || 0,
+            pivotY: Number(pivot.positionY) || 0,
+        });
+    }, [selectedElements, selectedElement, modelData]);
+
+    const cancelGroupMove = useCallback(() => {
+        setGroupMovePending(null);
+    }, []);
+
+    const confirmGroupMove = useCallback((newPivotX, newPivotY) => {
+        if (!groupMovePending) return;
+        pushUndo();
+        const { elements, pivotX, pivotY } = groupMovePending;
+        const dx = parseFloat((newPivotX - pivotX).toFixed(4));
+        const dy = parseFloat((newPivotY - pivotY).toFixed(4));
+
+        // 로컬 상태 즉시 반영
+        const updateMap = new Map(elements.map(el => [el.elementId, {
+            ...el,
+            positionX: parseFloat((Number(el.positionX) + dx).toFixed(3)),
+            positionY: parseFloat((Number(el.positionY) + dy).toFixed(3)),
+        }]));
+        setModelData(prev => prev.map(e => updateMap.has(e.elementId) ? { ...e, ...updateMap.get(e.elementId) } : e));
+
+        const projectId = selectedProject?.projectId || elements[0]?.projectId;
+        const elementIds = elements.map(el => el.elementId);
+
+        // 단일 API 호출 — N번 PUT 대신 bulk-transform 사용
+        AxiosCustom.put(`${API_BASE}/project/${projectId}/bulk-transform`, {
+            elementIds,
+            position: { deltaX: dx, deltaY: dy, deltaZ: 0 },
+            rotation: { deltaX: 0, deltaY: 0, deltaZ: 0 },
+            scale:    { x: 1, y: 1, z: 1 },
+        }).catch(err => console.error('그룹 이동 저장 실패:', err));
+
+        setGroupMovePending(null);
+    }, [groupMovePending, pushUndo, selectedProject, setModelData]);
 
     // ================================================================
     // 배치 모드
@@ -209,7 +305,7 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
                 projectId,
                 elementId: "ELEM-" + Math.random().toString(36).substr(2, 9),
                 positionX: parseFloat(position.x.toFixed(3)),
-                positionY: 0,
+                positionY: parseFloat((position.y ?? 0).toFixed(3)),
                 positionZ: parseFloat(position.z.toFixed(3)),
                 sizeX: pendingElement.sizeX ?? 1,
                 sizeY: pendingElement.sizeY ?? 1,
@@ -322,9 +418,12 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
             elementIds: [],
             sortOrder:  layers.length,
         };
+        setLayers(prev => [...prev, newLayer]);
         AxiosCustom.post(`${API_BASE}/layer`, newLayer)
-            .then(() => setLayers(prev => [...prev, newLayer]))
-            .catch(err => console.error('레이어 생성 실패:', err));
+            .catch(err => {
+                console.error('레이어 생성 실패:', err);
+                setLayers(prev => prev.filter(l => l.layerId !== newLayer.layerId));
+            });
     }
 
     function deleteLayer(layerId) {
@@ -389,6 +488,118 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
             .catch(err => console.error('색상 삭제 실패:', err));
     }
 
+    // ================================================================
+    // 부재 투명도 (로컬 상태만 — 서버 저장 없음)
+    // ================================================================
+    function setElementOpacity(elementId, opacity) {
+        setElementOpacitiesState(prev => ({ ...prev, [elementId]: opacity }));
+    }
+
+    function clearElementOpacity(elementId) {
+        setElementOpacitiesState(prev => {
+            const next = { ...prev };
+            delete next[elementId];
+            return next;
+        });
+    }
+
+    // ================================================================
+    // 그룹화 — 선택 부재를 새 레이어로 묶기
+    // ================================================================
+    function createGroupLayer(name, elementIds) {
+        const pid = selectedProject?.projectId;
+        if (!pid) return;
+        const newLayer = {
+            layerId:    'layer-' + Math.random().toString(36).substr(2, 9),
+            projectId:  pid,
+            layerName:  name,
+            color:      '#a78bfa',
+            visible:    true,
+            elementIds: [...elementIds],
+            sortOrder:  layers.length,
+        };
+        AxiosCustom.post(`${API_BASE}/layer`, newLayer)
+            .then(() => setLayers(prev => [...prev, newLayer]))
+            .catch(err => console.error('그룹 레이어 생성 실패:', err));
+    }
+
+    // ================================================================
+    // 배열 복사 (Grid / Linear)
+    // options: { type:'grid'|'linear', countX, countY, spacingX, spacingY }
+    //          or { type:'linear', count, dx, dy, dz }
+    // ================================================================
+    async function arrayElements(elementIds, options) {
+        const pid = selectedProject?.projectId;
+        if (!pid || elementIds.size === 0) return;
+        pushUndo();
+        const sources = modelData.filter(e => elementIds.has(e.elementId));
+        const copies  = [];
+
+        if (options.type === 'linear') {
+            for (let i = 1; i < options.count; i++) {
+                for (const el of sources) {
+                    copies.push({
+                        ...el,
+                        elementId:  'ELEM-' + Math.random().toString(36).substr(2, 9),
+                        projectId:  pid,
+                        positionX:  parseFloat(((Number(el.positionX)||0) + options.dx * i).toFixed(3)),
+                        positionY:  parseFloat(((Number(el.positionY)||0) + options.dy * i).toFixed(3)),
+                        positionZ:  parseFloat(((Number(el.positionZ)||0) + options.dz * i).toFixed(3)),
+                    });
+                }
+            }
+        } else { // grid
+            for (let ix = 0; ix < options.countX; ix++) {
+                for (let iy = 0; iy < options.countY; iy++) {
+                    if (ix === 0 && iy === 0) continue;
+                    for (const el of sources) {
+                        copies.push({
+                            ...el,
+                            elementId:  'ELEM-' + Math.random().toString(36).substr(2, 9),
+                            projectId:  pid,
+                            positionX:  parseFloat(((Number(el.positionX)||0) + options.spacingX * ix).toFixed(3)),
+                            positionY:  parseFloat(((Number(el.positionY)||0) + options.spacingY * iy).toFixed(3)),
+                        });
+                    }
+                }
+            }
+        }
+        if (copies.length === 0) return;
+        try {
+            const res = await AxiosCustom.post(`${API_BASE}/elements/batch`, copies);
+            setModelData(prev => [...prev, ...(res.data || [])]);
+        } catch (err) { console.error('배열 복사 실패:', err); }
+    }
+
+    // ================================================================
+    // 대칭 복사 (Mirror)
+    // axis: 'x'|'y'|'z', mirrorPos: number, copyMode: true=복사/false=이동
+    // ================================================================
+    async function mirrorElements(elementIds, axis, mirrorPos, copyMode = true) {
+        const pid = selectedProject?.projectId;
+        if (!pid || elementIds.size === 0) return;
+        pushUndo();
+        const sources = modelData.filter(e => elementIds.has(e.elementId));
+        const mirrors = sources.map(el => ({
+            ...el,
+            elementId: 'ELEM-' + Math.random().toString(36).substr(2, 9),
+            projectId: pid,
+            positionX: axis === 'x' ? parseFloat((2 * mirrorPos - (Number(el.positionX)||0)).toFixed(3)) : el.positionX,
+            positionY: axis === 'y' ? parseFloat((2 * mirrorPos - (Number(el.positionY)||0)).toFixed(3)) : el.positionY,
+            positionZ: axis === 'z' ? parseFloat((2 * mirrorPos - (Number(el.positionZ)||0)).toFixed(3)) : el.positionZ,
+        }));
+        try {
+            const res = await AxiosCustom.post(`${API_BASE}/elements/batch`, mirrors);
+            const newEls = res.data || [];
+            if (copyMode) {
+                setModelData(prev => [...prev, ...newEls]);
+            } else {
+                for (const id of elementIds) AxiosCustom.delete(`${API_BASE}/element/${id}`).catch(()=>{});
+                setModelData(prev => [...prev.filter(e => !elementIds.has(e.elementId)), ...newEls]);
+            }
+        } catch (err) { console.error('대칭 복사 실패:', err); }
+    }
+
     return {
         // 기존
         saveUpdateElement,
@@ -426,6 +637,12 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         undo,
         pushUndo,
 
+        // 그룹 이동
+        groupMovePending,
+        startGroupMove,
+        cancelGroupMove,
+        confirmGroupMove,
+
         // 레이어
         layers,
         addLayer,
@@ -433,10 +650,23 @@ export default function BimDashboardAPI({ setViceComponent, modelData, setModelD
         updateLayer,
         assignToLayer,
         removeFromLayer,
+        reloadLayers,
 
         // 부재 커스텀 색상
         elementColors,
         setElementColor,
         clearElementColor,
+
+        // 부재 투명도
+        elementOpacities,
+        setElementOpacity,
+        clearElementOpacity,
+
+        // 그룹화
+        createGroupLayer,
+
+        // 배열 복사 / 대칭 복사
+        arrayElements,
+        mirrorElements,
     };
 }

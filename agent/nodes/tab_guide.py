@@ -15,11 +15,14 @@ Flow:
 """
 
 import re
+import logging
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from state import AgentState
-from llm_config import llm_chat
-from lang_util import detect_lang, lang_instruction, translate_reply
+logger = logging.getLogger(__name__)
+
+from config.state import AgentState
+from config.llm_config import llm_chat
+from config.lang_util import detect_lang, lang_instruction, translate_reply
 
 # ──────────────────────────────────────────────
 # Reference data for each tab
@@ -255,21 +258,17 @@ def _build_context(tabs: list[str]) -> str:
 # Node entry point
 # ──────────────────────────────────────────────
 def tab_guide_node(state: AgentState) -> dict:
-    """
-    Provides information and guidance about dashboard tabs.
-    Detects the target tab(s) from the user message, builds structured context,
-    and asks the LLM to generate a clear, helpful answer.
-    Falls back to the raw context if the LLM is unavailable.
-    """
+    logger.info("[NODE] ▶ tab_guide_node 진입")
     last_message = state["messages"][-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
+    logger.info("[tab_guide] 입력 텍스트: %.80s", user_text)
 
     # Language detection
     recent_text = " ".join(
         msg.content for msg in state["messages"][-5:]
         if hasattr(msg, "content")
     )
-    lang = detect_lang(recent_text)
+    lang = state.get("lang") or detect_lang(recent_text)
     note = lang_instruction(lang)
     system_content = _SYSTEM_BASE + (" " + note if note else "")
 
