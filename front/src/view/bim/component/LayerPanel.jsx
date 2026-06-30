@@ -94,6 +94,7 @@ const DEPTH_BORDER = ['#2a508090', '#1e406090', undefined];
 function TreeNodeRow({
     node, depth, modelData, expandedSet, onToggleExpand,
     onUpdate, onDelete, onRemoveElement, onSelectElement, onSelectAllInLayer,
+    onAssignToLayer, selectedIds,
     elementColors,
 }) {
     const t = useT('bimDashboard');
@@ -182,6 +183,16 @@ function TreeNodeRow({
                     </span>
                 )}
 
+                {/* 선택 부재 추가 — 리프 레이어 + 선택된 부재 있을 때만 */}
+                {isLeaf && selectedIds?.size > 0 && onAssignToLayer && (
+                    <button
+                        className="flex-shrink-0 text-xs font-bold leading-none transition hover:scale-110"
+                        style={{ color: node.color, opacity: 0.85 }}
+                        title={`선택한 ${selectedIds.size}개 부재를 이 레이어에 추가`}
+                        onClick={() => selectedIds.forEach(id => onAssignToLayer(node.layerId, id))}
+                    >＋</button>
+                )}
+
                 {/* 가시성 토글 — 하위 전체 연동 */}
                 <button
                     className="transition leading-none flex items-center flex-shrink-0"
@@ -223,6 +234,8 @@ function TreeNodeRow({
                             onRemoveElement={onRemoveElement}
                             onSelectElement={onSelectElement}
                             onSelectAllInLayer={onSelectAllInLayer}
+                            onAssignToLayer={onAssignToLayer}
+                            selectedIds={selectedIds}
                             elementColors={elementColors}
                         />
                     ))}
@@ -434,14 +447,32 @@ export default function LayerPanel({
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     Layer
                 </span>
-                <button
-                    onClick={onAddLayer}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition text-white"
-                    style={{ backgroundColor: '#1e3a5f', border: '1px solid #2a5080' }}
-                    title="Add New Layer"
-                >
-                    + Layer
-                </button>
+                <div className="flex items-center gap-1.5">
+                    {onRegenerateLayers && modelData?.some(e => e.storey || e.globalId || e.building) && (
+                        <button
+                            onClick={onRegenerateLayers}
+                            disabled={isRegeneratingLayers}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition"
+                            style={{
+                                backgroundColor: isRegeneratingLayers ? '#0f1d2d' : '#14532d',
+                                border: `1px solid ${isRegeneratingLayers ? '#253347' : '#166534'}`,
+                                color: isRegeneratingLayers ? '#475569' : '#86efac',
+                                cursor: isRegeneratingLayers ? 'not-allowed' : 'pointer',
+                            }}
+                            title="IFC 데이터로 레이어 재생성"
+                        >
+                            {isRegeneratingLayers ? t('layerRegenBusy') : t('layerRegenBtn')}
+                        </button>
+                    )}
+                    <button
+                        onClick={onAddLayer}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition text-white"
+                        style={{ backgroundColor: '#1e3a5f', border: '1px solid #2a5080' }}
+                        title="Add New Layer"
+                    >
+                        + Layer
+                    </button>
+                </div>
             </div>
 
             {/* ── 도면선 가상 레이어 ── */}
@@ -499,6 +530,8 @@ export default function LayerPanel({
                             onRemoveElement={onRemoveFromLayer}
                             onSelectElement={onSelectElement}
                             onSelectAllInLayer={onSelectAllInLayer}
+                            onAssignToLayer={onAssignToLayer}
+                            selectedIds={allSelectedIds}
                             elementColors={elementColors}
                         />
                     ))}

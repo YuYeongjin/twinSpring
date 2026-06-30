@@ -36,6 +36,9 @@ public class BimElementDTO {
     private String storey;
     private String building;
 
+    // ── IFC 속성 정보 (IfcPropertySet + IfcElementQuantity → JSON 직렬화) ──
+    private String ifcProperties;
+
     /*
     @Override
     public String toString() {

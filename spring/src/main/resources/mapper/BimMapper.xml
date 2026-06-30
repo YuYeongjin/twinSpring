@@ -231,14 +231,14 @@
         ORDER BY 2 DESC
     </select>
 
-    <!-- IFC 임포트 시 부재 배치 로컬 저장 (globalId/storey/building 포함) -->
+    <!-- IFC 임포트 시 부재 배치 로컬 저장 (globalId/storey/building/ifcProperties 포함) -->
     <insert id="insertElementsBatch">
         INSERT INTO bim_element (element_id, project_id, element_type, material,
                                   position_x, position_y, position_z,
                                   size_x, size_y, size_z,
                                   rotation_x, rotation_y, rotation_z,
                                   ifc_world_x, ifc_world_y, ifc_world_z,
-                                  global_id, ifc_name, storey, building)
+                                  global_id, ifc_name, storey, building, ifc_properties)
         VALUES
         <foreach collection="list" item="e" separator=",">
             (#{e.elementId}, #{e.projectId}, #{e.elementType}, #{e.material,jdbcType=VARCHAR},
@@ -247,7 +247,8 @@
              #{e.rotationX,jdbcType=DOUBLE}, #{e.rotationY,jdbcType=DOUBLE}, #{e.rotationZ,jdbcType=DOUBLE},
              #{e.ifcWorldX,jdbcType=DOUBLE}, #{e.ifcWorldY,jdbcType=DOUBLE}, #{e.ifcWorldZ,jdbcType=DOUBLE},
              #{e.globalId,jdbcType=VARCHAR}, #{e.ifcName,jdbcType=VARCHAR},
-             #{e.storey,jdbcType=VARCHAR}, #{e.building,jdbcType=VARCHAR})
+             #{e.storey,jdbcType=VARCHAR}, #{e.building,jdbcType=VARCHAR},
+             #{e.ifcProperties,jdbcType=VARCHAR})
         </foreach>
         ON CONFLICT (element_id) DO NOTHING
     </insert>
@@ -260,27 +261,28 @@
         DELETE FROM bim_project WHERE project_id = #{projectId}
     </delete>
 
-    <!-- getElementsByProject: globalId/storey/building 포함 -->
+    <!-- getElementsByProject: globalId/storey/building/ifcProperties 포함 -->
     <select id="getElementsByProject" parameterType="string" resultType="map">
-        SELECT element_id   AS "elementId",
-               element_type AS "elementType",
+        SELECT element_id      AS "elementId",
+               element_type    AS "elementType",
                material,
-               position_x   AS "positionX",
-               position_y   AS "positionY",
-               position_z   AS "positionZ",
-               size_x       AS "sizeX",
-               size_y       AS "sizeY",
-               size_z       AS "sizeZ",
-               rotation_x   AS "rotationX",
-               rotation_y   AS "rotationY",
-               rotation_z   AS "rotationZ",
-               ifc_world_x  AS "ifcWorldX",
-               ifc_world_y  AS "ifcWorldY",
-               ifc_world_z  AS "ifcWorldZ",
-               global_id    AS "globalId",
-               ifc_name     AS "ifcName",
+               position_x      AS "positionX",
+               position_y      AS "positionY",
+               position_z      AS "positionZ",
+               size_x          AS "sizeX",
+               size_y          AS "sizeY",
+               size_z          AS "sizeZ",
+               rotation_x      AS "rotationX",
+               rotation_y      AS "rotationY",
+               rotation_z      AS "rotationZ",
+               ifc_world_x     AS "ifcWorldX",
+               ifc_world_y     AS "ifcWorldY",
+               ifc_world_z     AS "ifcWorldZ",
+               global_id       AS "globalId",
+               ifc_name        AS "ifcName",
                storey,
-               building
+               building,
+               ifc_properties  AS "ifcProperties"
         FROM bim_element
         WHERE project_id = #{projectId}
         ORDER BY element_type, element_id

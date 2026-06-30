@@ -1,9 +1,11 @@
 """
 BIM-WBS Bridge Agent
 
-BIM 에디터에서 대화로 두 가지 작업을 처리합니다.
-  1. 구조 안정성 검토  → get_structural_summary 호출 후 structural 탭 전환 신호
-  2. WBS 스케줄링     → schedule_wbs_for_bim 호출 (기존 WBS 업데이트 or 신규 생성)
+BIM 에디터에서 대화로 다음 작업을 처리합니다.
+  1. 부재 이동       → translate_bim_elements / translate_selected_elements
+  2. 부재 회전·크기  → transform_bim_elements
+  3. 구조 안정성 검토 → get_structural_summary 호출 후 structural 탭 전환 신호
+  4. WBS 스케줄링    → schedule_wbs_for_bim 호출 (기존 WBS 업데이트 or 신규 생성)
 
 directAgent="bim_wbs_agent" 로 직접 라우팅됩니다 (LLM 라우터 스킵).
 """
@@ -25,9 +27,21 @@ _MOVE_PAT = re.compile(
     r"|이동.{0,10}(해줘|해주|시켜|부재)",
     re.I,
 )
+_ROTATE_PAT = re.compile(
+    r"회전|rotate|rotation|돌리|돌려|각도|기울|tilt|spin"
+    r"|回転|傾け|回す|スピン|チルト",
+    re.I,
+)
+_SCALE_PAT = re.compile(
+    r"크기|사이즈|scale|resize|확대|축소|배율|키워|줄여|늘려|작게|크게|shrink|reduce"
+    r"|サイズ|スケール|拡大|縮小|リサイズ",
+    re.I,
+)
+_CCW_PAT   = re.compile(r"반시계|counter|ccw|왼쪽으로|反時計|左回り", re.I)
 _AXIS_DOWN = re.compile(r"내리|내려|아래|down|minus|マイナス|下げ|下方", re.I)
 _AXIS_X    = re.compile(r"x\s*축|x-axis|x방향|x\s*軸|x方向", re.I)
 _AXIS_Y    = re.compile(r"y\s*축|y-axis|y방향|y\s*軸|y方向", re.I)
+_AXIS_Z    = re.compile(r"z\s*축|z-axis|z방향|z\s*軸|z方向", re.I)
 
 _STRUCT_PAT = re.compile(
     r"구조.{0,5}(안정성|검토|분석|해석|리뷰)"
@@ -95,6 +109,37 @@ def run_bim_wbs_agent(state: AgentState) -> dict:
         bim_data = {"action": "glb_reload"} if result.get("action") == "glb_reload" else None
         return {"tool_results": {"data": result}, "bim_data": bim_data}
 
+    # ── 부재 회전 / 크기 ─────────────────────────────────────────────────────
+    if _ROTATE_PAT.search(text) or _SCALE_PAT.search(text):
+        from tools.bim_tools import transform_bim_elements
+        nums = re.findall(r'[\d.]+', text)
+        val  = float(nums[0]) if nums else 0.0
+        drx = dry = drz = 0.0
+        if _ROTATE_PAT.search(text):
+            deg = -val if _CCW_PAT.search(text) else val
+            if   _AXIS_X.search(text): drx = deg
+            elif _AXIS_Y.search(text): dry = deg
+            else:                      drz = deg
+        sx = sy = sz = 1.0
+        if _SCALE_PAT.search(text):
+            factor = val if val > 0 else 1.0
+            if re.search(r"절반|반으로|50\s*%|半分|half", text, re.I):
+                factor = 0.5
+            elif re.search(r"축소|줄여|작게|縮小|小さく|shrink|reduce", text, re.I) and factor > 1:
+                factor = round(1.0 / factor, 4)
+            if   _AXIS_X.search(text): sx = factor
+            elif _AXIS_Y.search(text): sy = factor
+            elif _AXIS_Z.search(text): sz = factor
+            else:                      sx = sy = sz = factor
+        sel_ids = state.get("selected_element_ids") or None
+        result = _invoke(transform_bim_elements, {
+            "project_id":  str(bim_project_id),
+            "element_ids": sel_ids,
+            "delta_rot_x": drx, "delta_rot_y": dry, "delta_rot_z": drz,
+            "scale_x": sx, "scale_y": sy, "scale_z": sz,
+        })
+        return {"tool_results": {"data": result}, "bim_data": None}
+
     # ── 구조 안정성 검토 ───────────────────────────────────────────────────────
     if _STRUCT_PAT.search(text):
         result   = _invoke(get_structural_summary, {"project_id": str(bim_project_id)})
@@ -124,6 +169,9 @@ def run_bim_wbs_agent(state: AgentState) -> dict:
     # ── 일반 안내 ────────────────────────────────────────────────────────────
     info = (
         "BIM Agent에게 다음과 같이 요청할 수 있습니다:\n"
+        "• '부재 전체 Z축으로 5m 이동해줘' → 전체/선택 부재 이동\n"
+        "• 'x축 기준으로 90도 회전시켜줘' → 전체/선택 부재 회전\n"
+        "• '전체 2배로 키워줘' → 크기 배율 조정\n"
         "• '구조 안정성 검토해줘' → 부재 기반 구조해석 탭 자동 전환\n"
         "• 'WBS 스케줄링 넣어줘' → 기존 WBS 업데이트 또는 신규 공정표 생성"
     )

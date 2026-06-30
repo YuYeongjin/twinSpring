@@ -982,7 +982,7 @@ public class BimServiceImpl implements BimService {
                 List<BimElementDTO> dtos = rawElements.stream().map(e -> {
                     BimElementDTO dto = new BimElementDTO();
                     dto.setProjectId(projectId);
-                    dto.setElementId((String) e.get("elementId")); // Python이 이미 project_id suffix 포함
+                    dto.setElementId((String) e.get("elementId"));
                     dto.setElementType((String) e.get("elementType"));
                     dto.setPositionX(toDoubleOrNull(e.get("positionX")));
                     dto.setPositionY(toDoubleOrNull(e.get("positionY")));
@@ -990,10 +990,27 @@ public class BimServiceImpl implements BimService {
                     dto.setSizeX(toDoubleOrNull(e.get("sizeX")));
                     dto.setSizeY(toDoubleOrNull(e.get("sizeY")));
                     dto.setSizeZ(toDoubleOrNull(e.get("sizeZ")));
+                    dto.setRotationX(toDoubleOrNull(e.get("rotationX")));
+                    dto.setRotationY(toDoubleOrNull(e.get("rotationY")));
+                    dto.setRotationZ(toDoubleOrNull(e.get("rotationZ")));
                     dto.setMaterial((String) e.get("material"));
                     dto.setStorey((String) e.get("storey"));
                     dto.setBuilding((String) e.get("building"));
                     dto.setGlobalId((String) e.get("globalId"));
+                    dto.setIfcName((String) e.get("ifcName"));
+                    // ifcProperties + ifcQuantities 를 하나의 JSON 문자열로 병합 저장
+                    try {
+                        @SuppressWarnings("unchecked")
+                        java.util.Map<String, Object> props  = (java.util.Map<String, Object>) e.get("ifcProperties");
+                        @SuppressWarnings("unchecked")
+                        java.util.Map<String, Object> quants = (java.util.Map<String, Object>) e.get("ifcQuantities");
+                        if ((props != null && !props.isEmpty()) || (quants != null && !quants.isEmpty())) {
+                            java.util.Map<String, Object> merged = new java.util.LinkedHashMap<>();
+                            if (props  != null) merged.putAll(props);
+                            if (quants != null) merged.putAll(quants);
+                            dto.setIfcProperties(new ObjectMapper().writeValueAsString(merged));
+                        }
+                    } catch (Exception ignored) {}
                     return dto;
                 }).collect(Collectors.toList());
                 // C# 서버 경유 저장; 실패 시 로컬 DB에 폴백 저장
