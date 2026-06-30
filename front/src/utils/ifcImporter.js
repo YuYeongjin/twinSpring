@@ -33,7 +33,7 @@ import {
   IFCRELCONTAINEDINSPATIALSTRUCTURE,
   IFCRELAGGREGATES,
   IFCRELASSOCIATESMATERIAL,
-  IFCRELDEFINEDBYPROPERTIES,
+  IFCRELDEFINESBYPROPERTIES,
 } from 'web-ifc';
 
 // IFC 엔티티 타입 → 서비스 elementType 매핑
@@ -177,7 +177,7 @@ function _extractMatName(mat) {
 function buildPropertiesMap(ifcAPI, modelId) {
   const map = new Map();
   try {
-    const relIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELDEFINEDBYPROPERTIES, false);
+    const relIds = ifcAPI.GetLineIDsWithType(modelId, IFCRELDEFINESBYPROPERTIES, false);
     for (let i = 0; i < relIds.size(); i++) {
       try {
         const rel = ifcAPI.GetLine(modelId, relIds.get(i), true);
