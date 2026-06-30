@@ -95,7 +95,7 @@ function EnvSelector({ currentId, onChange }) {
                 title={t('selectBgEnv')}
             >
                 <span>{current.icon}</span>
-                <span className="hidden lg:inline">{t(current.labelKey)}</span>
+                <span className="hidden lg:inline">{current.label}</span>
                 <span className="opacity-50">▾</span>
             </button>
 
@@ -130,7 +130,7 @@ function EnvSelector({ currentId, onChange }) {
                                 }}
                             >
                                 <span style={{ fontSize: 14 }}>{p.icon}</span>
-                                <span>{t(p.labelKey)}</span>
+                                <span>{p.label}</span>
                                 {p.id === currentId && <span style={{ marginLeft: 'auto', color: '#60a5fa' }}>✓</span>}
                             </button>
                         ))}
@@ -2368,7 +2368,7 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                     </span>
                     <button onClick={cancelPlacement}
                             className="ml-auto text-xs px-2 py-1 rounded border border-blue-700/60 text-blue-400 hover:text-white transition">
-                        {t('escCancel')}
+                        ✕
                     </button>
                 </div>
             )}
@@ -2931,7 +2931,6 @@ export default function BimDashboard({ setViceComponent, modelData, setModelData
                                                     ? t('ghostMoveConfirm', { n: totalSelectedCount })
                                                     : t('ghostRotateConfirm', { n: totalSelectedCount, axis: rotateAxis.toUpperCase() })}
                                             </span>
-                                            <span style={{ color: '#4b5563' }}>{t('escCancel')}</span>
                                             <button onClick={() => setGhostMode(null)}
                                                 style={{ color: '#6b7280', fontSize: 13, lineHeight: 1, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                                             >✕</button>

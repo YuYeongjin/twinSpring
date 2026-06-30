@@ -1,5 +1,5 @@
 import AxiosCustom from './axios/AxiosCustom';
-import { generateLayersFromElements, IFC_LAYER_LABEL, IFC_LAYER_COLOR, IFC_TYPE_ORDER, storeyRank, isRealBuilding, normalizeStoreyName } from './utils/layerGenerator';
+import { generateLayersFromElements } from './utils/layerGenerator';
 import { useT } from './i18n/LanguageContext';
 import SatelliteAPI from './view/SatelliteAPI';
 import Footer from './component/Footer';
@@ -99,10 +99,6 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [projectList, setProjectList] = useState([]);
   const [wbsJobState, setWbsJobState] = useState({ projectId: null, status: 'idle' });
-
-  // ── IFC 실제 지오메트리 캐시 (세션 동안 유지, 재렌더링 없음) ───────
-  // Map: projectId → IfcMeshData[]
-  const ifcMeshesRef = useRef(new Map());
 
   // ── Simulation projects ───────────────────────────────────────
   const [simulationProjectList, setSimulationProjectList] = useState([]);
@@ -414,15 +410,6 @@ function App() {
         } catch (e) {
           console.warn('레이어/WBS 자동 생성 실패(무시):', e.message);
         }
-      }
-
-      // IFC 지오메트리 클라이언트 캐시 (DB 미저장)
-      if (ifcMeshes && ifcMeshes.length > 0) {
-        const renamedMeshes = ifcMeshes.map(mesh => ({
-          ...mesh,
-          elementId: `${mesh.elementId}-${project.projectId}`,
-        }));
-        ifcMeshesRef.current.set(project.projectId, renamedMeshes);
       }
 
       // IFC 원본 파일 Object Storage 업로드 (파싱 성공 후에만, fire-and-forget)

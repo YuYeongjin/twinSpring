@@ -1,5 +1,5 @@
 import React, {
-  useRef, useEffect, useMemo, forwardRef, useImperativeHandle, useCallback, useState,
+  useRef, useEffect, useMemo, forwardRef, useImperativeHandle, useCallback,
 } from 'react';
 import { useLoader, useThree } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
