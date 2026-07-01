@@ -1,5 +1,5 @@
 """
-Responder Node — qwen2.5:3b 최종 응답 생성
+Responder Node — qwen3:4b 최종 응답 생성
 
 tool_results + rag_context 를 받아 자연어 응답을 생성합니다.
 모든 Domain Agent 의 공통 출구입니다.

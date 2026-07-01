@@ -179,7 +179,7 @@ footer { text-align:center; font-size:10px; color:#1e2e3e; margin-top:32px; padd
 <body>
 
 <h1>🤖 TwinSpring — AI Agent Architecture v2</h1>
-<div class="subtitle">Supervisor Pattern · llama3.2:1b Router · qwen2.5:3b Responder · Shared RAG · No-LLM Domain Agents</div>
+<div class="subtitle">Supervisor Pattern · llama3.2:1b Router · qwen3:4b Responder · Shared RAG · No-LLM Domain Agents</div>
 
 <!-- ── 전체 시스템 흐름 ── -->
 <div class="system-flow">
@@ -393,7 +393,7 @@ footer { text-align:center; font-size:10px; color:#1e2e3e; margin-top:32px; padd
 
   <!-- RESPONDER -->
   <div class="p-node p-resp">
-    <div class="p-node-title">✨ responder_node &nbsp;<span style="font-size:10px;font-weight:400;border:1px solid #34d39944;padding:1px 8px;border-radius:6px;color:#34d399;">qwen2.5:3b</span></div>
+    <div class="p-node-title">✨ responder_node &nbsp;<span style="font-size:10px;font-weight:400;border:1px solid #34d39944;padding:1px 8px;border-radius:6px;color:#34d399;">qwen3:4b</span></div>
     <div class="p-node-sub">tool_results + rag_context + 대화이력 → 최종 자연어 응답 · ko/en/ja 자동 감지 · None 값은 state 덮어쓰지 않음</div>
   </div>
 
@@ -413,14 +413,14 @@ footer { text-align:center; font-size:10px; color:#1e2e3e; margin-top:32px; padd
   </div>
   <div class="llm-box llm-responder">
     <div class="llm-box-title">✨ llm_responder (= llm_chat)</div>
-    <div class="llm-box-item">모델: qwen2.5:3b · temperature: 0.7</div>
+    <div class="llm-box-item">모델: qwen3:4b · temperature: 0.7</div>
     <div class="llm-box-item">역할: tool결과 + RAG → 최종 답변 생성</div>
     <div class="llm-box-item">orchestrator 모드 시 통합 보고서 생성</div>
     <div class="llm-box-item" style="color:#2a4a3a;">사용: responder_node · /chat-stream chat경로</div>
   </div>
   <div class="llm-box llm-precise">
     <div class="llm-box-title">🔬 llm_precise</div>
-    <div class="llm-box-item">모델: qwen2.5:3b · temperature: 0</div>
+    <div class="llm-box-item">모델: qwen3:4b · temperature: 0</div>
     <div class="llm-box-item">역할: JSON 파싱 · 구조화 필드 추출</div>
     <div class="llm-box-item" style="color:#2a4a3a;">사용: /wbs-project-chat · /excavation-spec 요약</div>
   </div>
@@ -582,7 +582,7 @@ footer { text-align:center; font-size:10px; color:#1e2e3e; margin-top:32px; padd
   <div class="env-box">
     <div class="env-title" style="color:#a5b4fc;">🧠 LLM (Ollama)</div>
     <div class="env-item">OLLAMA_BASE_URL</div>
-    <div class="env-item">LLM_MODEL (qwen2.5:3b)</div>
+    <div class="env-item">LLM_MODEL (qwen3:4b)</div>
     <div class="env-item">EMBEDDING_MODEL</div>
   </div>
   <div class="env-box">
@@ -612,7 +612,7 @@ footer { text-align:center; font-size:10px; color:#1e2e3e; margin-top:32px; padd
 </div>
 
 <footer>
-  TwinSpring Digital Twin Platform · Supervisor Architecture v2 · LangGraph + llama3.2:1b + qwen2.5:3b + pgvector
+  TwinSpring Digital Twin Platform · Supervisor Architecture v2 · LangGraph + llama3.2:1b + qwen3:4b + pgvector
 </footer>
 </body>
 </html>

@@ -5,7 +5,7 @@ load_dotenv()
 
 # LLM (Ollama)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5:3b")
+LLM_MODEL = os.getenv("LLM_MODEL", "twinspring-llm")
 
 # Database (PostgreSQL)
 # VECTOR_DB_* 우선, 없으면 docker-compose 호환 DB_* 사용, 최종 로컬 기본값

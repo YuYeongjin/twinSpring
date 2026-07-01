@@ -28,7 +28,7 @@ def print_now(label):
 db = SQLDatabase.from_uri("mysql+pymysql://root:Abcd1234@localhost:3306/digital_twin")
 llm = ChatOllama(
     # model="llama3.1:8b",
-    model="qwen2.5:3b",
+    model="qwen3:4b",
     temperature=0,
     base_url="http://127.0.0.1:11434"
 )
