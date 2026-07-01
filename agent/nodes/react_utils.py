@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
+
+_THINK_PAT = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.graph import StateGraph, END
@@ -102,6 +105,8 @@ def build_react_subgraph(
     def agent_node(state: AgentState) -> dict:
         system   = SystemMessage(content=system_fn(state))
         response = _llm.invoke([system] + state["messages"])
+        if isinstance(response.content, str):
+            response.content = _THINK_PAT.sub("", response.content).strip()
         return {"messages": [response]}
 
     def _route(state: AgentState) -> str:
