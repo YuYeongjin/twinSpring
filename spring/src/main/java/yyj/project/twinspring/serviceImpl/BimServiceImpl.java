@@ -49,7 +49,7 @@ public class BimServiceImpl implements BimService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Value("${ollama.model:qwen2.5:3b}")
+    @Value("${ollama.model:qwen3:4b}")
     private String ollamaModel;
 
     public BimServiceImpl(WebClient webClient,

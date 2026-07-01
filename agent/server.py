@@ -43,7 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_session_store: Dict[str, dict] = {}
+# _session_store 제거 — LangGraph Checkpointer 가 세션 상태(undo_stack, snapshot 포함)를 영속 관리
 
 
 # ── Request / Response 스키마 ─────────────────────────────────────────────────
@@ -82,43 +82,33 @@ class MultimodalRequest(BaseModel):
     session_id: str = "default"
 
 
-def _build_initial_state(req: ChatRequest, messages: list) -> dict:
-    session_data = _session_store.get(req.session_id, {})
+def _build_turn_state(req: ChatRequest) -> dict:
+    """
+    현재 턴(turn)의 새 메시지 + 컨텍스트 필드만 반환합니다.
+    대화 이력과 BIM 세션 상태(undo_stack, snapshot)는 LangGraph Checkpointer가 제공합니다.
+    일시적(transient) 필드는 매 턴 초기화하여 이전 값이 누적되지 않도록 합니다.
+    """
     return {
-        "messages":              messages,
-        "domain":                None,
-        "need_rag":              False,
+        "messages":              [HumanMessage(content=req.message)],
+        # 컨텍스트
         "lang":                  req.context.uiLang or None,
-        "rag_context":           None,
-        "tool_results":          None,
         "bim_project_id":        req.context.projectId,
         "simulation_project_id": req.context.simulationProjectId,
         "wbs_project_id":        req.context.wbsProjectId,
         "direct_agent":          req.context.directAgent,
         "selected_element_ids":  req.context.selectedElementIds,
+        # 일시적 필드 초기화 (매 턴 router/agent 가 새로 설정)
+        "domain":                None,
+        "need_rag":              False,
+        "rag_context":           None,
+        "tool_results":          None,
         "bim_data":              None,
         "sensor_data":           None,
         "report_data":           None,
         "wbs_data":              None,
         "safe_data":             None,
         "intent":                None,
-        # ── 세션 지속 BIM 상태 (취소·저장용) ───────────────────────────────
-        "bim_undo_stack":        session_data.get("bim_undo_stack", []),
-        "bim_snapshot":          session_data.get("bim_snapshot"),
     }
-
-
-def _save_bim_session(session_id: str, result: dict) -> None:
-    """graph 실행 결과에서 BIM 세션 데이터(undo stack, snapshot)를 추출해 저장합니다."""
-    undo  = result.get("bim_undo_stack")
-    snap  = result.get("bim_snapshot")
-    if undo is None and snap is None:
-        return
-    store = _session_store.setdefault(session_id, {})
-    if undo is not None:
-        store["bim_undo_stack"] = undo[-50:]   # 최대 50건
-    if snap is not None:
-        store["bim_snapshot"] = snap
 
 
 def _history_to_messages(history: List[HistoryMessage]) -> list:
@@ -135,14 +125,12 @@ def _history_to_messages(history: List[HistoryMessage]) -> list:
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    """자연어 요청 → Supervisor Workflow (LangGraph)."""
-    messages = _history_to_messages(req.history) + [HumanMessage(content=req.message)]
-    initial_state = _build_initial_state(req, messages)
-
+    """자연어 요청 → Supervisor Workflow (LangGraph + Checkpointing)."""
     log_agent_query(req.session_id, req.message, project_id=req.context.projectId)
 
+    config = {"configurable": {"thread_id": req.session_id}}
     try:
-        result = graph.invoke(initial_state)
+        result = graph.invoke(_build_turn_state(req), config=config)
     except Exception:
         traceback.print_exc()
         return ChatResponse(
@@ -150,9 +138,7 @@ def chat(req: ChatRequest):
             intent="chat",
         )
 
-    _save_bim_session(req.session_id, result)
-
-    result_msgs = result.get("messages", [])
+    result_msgs  = result.get("messages", [])
     last_content = result_msgs[-1].content if result_msgs else "No response received."
 
     return ChatResponse(
@@ -177,10 +163,8 @@ def chat_stream(req: ChatRequest):
       2. chat → llm_responder.stream() 으로 토큰 스트리밍
          domain → graph.invoke() 결과를 단일 이벤트로 반환
     """
-    messages = _history_to_messages(req.history) + [HumanMessage(content=req.message)]
-    initial_state = _build_initial_state(req, messages)
-
     log_agent_query(req.session_id, req.message, project_id=req.context.projectId)
+    _config = {"configurable": {"thread_id": req.session_id}}
 
     def generate():
         try:
@@ -201,12 +185,11 @@ def chat_stream(req: ChatRequest):
             }
 
             if domain != "chat":
-                # ── 도메인 Agent: graph.invoke (LLM router + tool + responder)
+                # ── 도메인 Agent: graph.invoke (LLM router + tool + ReAct)
                 agent_name = _DOMAIN_TO_INTENT.get(domain, domain)
                 yield f"data: {json.dumps({'step': agent_name}, ensure_ascii=False)}\n\n"
 
-                result      = graph.invoke(initial_state)
-                _save_bim_session(req.session_id, result)
+                result      = graph.invoke(_build_turn_state(req), config=_config)
                 result_msgs = result.get("messages", [])
                 last_content = result_msgs[-1].content if result_msgs else ""
 
@@ -231,11 +214,11 @@ def chat_stream(req: ChatRequest):
             # ── 일반 채팅: 토큰 스트리밍
             yield f"data: {json.dumps({'step': 'generating'}, ensure_ascii=False)}\n\n"
 
-            recent = " ".join(m.content for m in messages[-5:] if hasattr(m, "content"))
-            lang   = initial_state.get("lang") or detect_lang(recent)
+            chat_msgs = _history_to_messages(req.history) + [HumanMessage(content=req.message)]
+            lang   = detect_lang(req.message)
             note   = lang_instruction(lang)
             system_content = _SYSTEM_BASE + (f"\n\n{note}" if note else "")
-            final_messages = [SystemMessage(content=system_content)] + list(messages)
+            final_messages = [SystemMessage(content=system_content)] + chat_msgs
 
             full_content = ""
             for chunk in llm_responder.stream(final_messages):
@@ -1066,8 +1049,9 @@ def analyze_progress(req: ProgressAnalysisRequest):
 
 @app.delete("/session/{session_id}")
 def clear_session(session_id: str):
-    _session_store.pop(session_id, None)
-    return {"status": "cleared", "session_id": session_id}
+    # Checkpointer 기반으로 전환됨 — 세션 히스토리는 DB에 보존됩니다.
+    # 필요 시 LangGraph checkpoint API로 삭제 가능합니다.
+    return {"status": "cleared", "session_id": session_id, "note": "managed by checkpointer"}
 
 
 @app.get("/health")

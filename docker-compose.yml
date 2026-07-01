@@ -50,6 +50,15 @@ services:
       - "11434:11434"
     volumes:
       - ./ollama_data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      ollama serve &
+      until ollama list > /dev/null 2>&1; do sleep 2; done
+      ollama pull qwen3:4b
+      ollama pull llama3.2:1b
+      printf 'FROM qwen3:4b\nPARAMETER think false\n' > /tmp/Modelfile
+      ollama create twinspring-llm -f /tmp/Modelfile
+      wait
     # 라즈베리파이 ARM64 지원 (ollama/ollama 이미지는 arm64 포함)
 
   agent:
@@ -64,7 +73,7 @@ services:
       - "7070:7070"
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
-      LLM_MODEL: qwen2.5:3b
+      LLM_MODEL: twinspring-llm
       VECTOR_DB_HOST: db
       VECTOR_DB_PORT: "5432"
       VECTOR_DB_NAME: digital_twin

@@ -1017,7 +1017,7 @@ export default function SettingsPanel() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px', fontSize: 12 }}>
           {[
             ['Platform', 'Digital Twin'],
-            ['AI Model', 'qwen2.5:3b (Ollama)'],
+            ['AI Model', 'qwen3:4b (Ollama)'],
             ['Router', 'llama3.2:1b'],
             ['Vector DB', 'pgvector (PostgreSQL)'],
             ['Standard', 'KCS / KDS'],
